@@ -6,7 +6,7 @@
 
 Los modelos de lenguaje de gran escala (LLMs) han demostrado una capacidad notable para interpolar patrones lingüísticos, pero su arquitectura dominante mezcla en una misma tubería tres funciones que en sistemas biológicos suelen estar separadas: percepción, estabilización conceptual y expresión simbólica. Esta mezcla obliga a resolver razonamiento abstracto, coherencia física, memoria episódica y sintaxis mediante álgebra lineal densa, atención cuadrática y retropropagación global. El resultado es un régimen de cómputo intensivo con altos costos energéticos, latencia elevada y fragilidad semántica ante tareas que exigen anclaje espacial o causal.
 
-Este documento propone el **Sistema Neuro-Geométrico de Agentes (SNGA)**, una arquitectura experimental en la que la cognición abstracta se modela como relajación mecánica de una malla topológica descentralizada. El núcleo cognitivo no es un vector denso, sino un complejo simplicial formado por agentes binarios, aristas asíncronas y símplices de orden superior. Cada agente minimiza una energía libre local derivada de la tensión geométrica con sus vecinos. Los LLMs quedan relegados a módulos periféricos de entrada/salida: codifican estímulos lingüísticos como impulsos binarios y renderizan configuraciones geométricas estabilizadas como lenguaje natural.
+Este documento propone el **Sistema Neuro-Geométrico de Agentes (SNGA)**, una arquitectura híbrida experimental en la que la cognición abstracta se modela como relajación mecánica de una malla topológica descentralizada, mientras que los LLMs permanecen como interfaces lingüísticas periféricas. La tesis central no es reemplazar los LLMs, sino desacoplar el lenguaje del núcleo de memoria e inferencia: SNGA almacena y evoca estados conceptuales mediante complejos simpliciales esparsos; los LLMs traducen entre lenguaje humano y activaciones geométricas internas. El núcleo cognitivo no es un vector denso, sino un complejo simplicial formado por agentes binarios, aristas asíncronas y símplices de orden superior. Cada agente minimiza una energía libre local derivada de la tensión geométrica con sus vecinos.
 
 La tesis se presenta como una hipótesis de arquitectura, no como una demostración de AGI. El repositorio acompaña la propuesta con un prototipo íntegro en Rust. La implementación incluye una red binaria event-driven, una malla simplicial 2D, una regla de relajación elástica local, un demostrador multimodal sintético y un motor gráfico basado en `macroquad` para observar la estabilización de la red en tiempo real.
 
@@ -14,9 +14,31 @@ La tesis se presenta como una hipótesis de arquitectura, no como una demostraci
 
 La inteligencia artificial contemporánea suele tratar el lenguaje como el medio universal del pensamiento. En los LLMs, el razonamiento aparece como una trayectoria dentro de un espacio latente de alta dimensión entrenado para predicción de tokens. Este enfoque ha escalado con éxito, pero introduce una dependencia fuerte en multiplicaciones matriciales masivas, memoria de activaciones, sincronización global y optimización por retropropagación. En términos energéticos, la red paga por activar una gran fracción de sus parámetros incluso cuando el problema requiere solo una pequeña región conceptual.
 
-SNGA parte de una hipótesis distinta: el lenguaje no es el sustrato primario de la cognición, sino una interfaz periférica. La representación abstracta se define como una geometría dinámica, semejante a un mapa conceptual. El razonamiento no consiste en recorrer tokens, sino en deformar y estabilizar una estructura espacial sometida a restricciones locales.
+SNGA parte de una hipótesis distinta: el lenguaje no es el sustrato primario de la cognición, sino una interfaz periférica. La representación abstracta se define como una geometría dinámica, semejante a un mapa conceptual. El razonamiento no consiste necesariamente en recorrer tokens, sino en deformar y estabilizar una estructura espacial sometida a restricciones locales. Bajo esta hipótesis, el LLM conserva un papel fundamental: actúa como codificador y decodificador lingüístico, pero no como único depósito de memoria conceptual.
 
-La inspiración neurobiológica procede de la separación funcional entre sistemas de mapeo espacial/conceptual, como la corteza entorrinal y las células de rejilla, y sistemas lingüísticos especializados, como las áreas de Broca y Wernicke. En esta analogía, el núcleo SNGA opera como un tejido de navegación conceptual, mientras que el LLM actúa como traductor entre texto humano y estados de la malla.
+La inspiración neurobiológica procede de la separación funcional entre sistemas de mapeo espacial/conceptual, como la corteza entorrinal y las células de rejilla, y sistemas lingüísticos especializados, como las áreas de Broca y Wernicke. En esta analogía, el núcleo SNGA opera como un tejido de navegación conceptual, mientras que el LLM actúa como traductor entre texto humano y estados de la malla. La arquitectura resultante es explícitamente híbrida:
+
+```text
+entrada humana / sensorial
+        |
+        v
+LLM o encoder periférico
+        |
+        v
+spikes binarios multimodales
+        |
+        v
+SNGA: memoria e inferencia geométrica esparsa
+        |
+        v
+estado conceptual estabilizado
+        |
+        v
+adaptador / LLM decodificador
+        |
+        v
+salida lingüística, visual o motora
+```
 
 ## 2. Marco Teórico
 
@@ -112,15 +134,19 @@ Cada frame ejecuta el siguiente ciclo:
 
 El estado final tras varios pasos no es una secuencia de tokens, sino una configuración geométrica estabilizada. Esta configuración puede interpretarse como un atractor conceptual.
 
-### 3.3 Disociación Lingüística
+### 3.3 Arquitectura Híbrida: SNGA como Núcleo y LLM como Interfaz
 
-SNGA propone tres interfaces:
+SNGA propone una separación funcional entre núcleo cognitivo y periferia lingüística. El objetivo no es eliminar los LLMs, sino especializarlos. En lugar de usar un LLM monolítico como memoria, razonador, simulador físico y generador textual al mismo tiempo, la arquitectura divide el sistema en cuatro etapas:
 
-**Codificador de entrada.** Un LLM o encoder externo transforma texto, imagen o sonido en impulsos discretos. En el prototipo, `MultimodalDemo` usa una proyección determinista separada por modalidad: lenguaje, visión y audio ocupan bandas distintas de la malla. Esta función no pretende sustituir a un encoder semántico real; actúa como sustituto mínimo para demostrar el mecanismo de inyección, coactivación y evocación.
+**Codificación periférica de entrada.** Un LLM o encoder externo transforma texto, imagen o sonido en impulsos discretos. En el prototipo, `MultimodalDemo` usa una proyección determinista separada por modalidad: lenguaje, visión y audio ocupan bandas distintas de la malla. Esta función no pretende sustituir a un encoder semántico real; actúa como sustituto mínimo para demostrar el mecanismo de inyección, coactivación y evocación.
 
-**Núcleo intuitivo.** La malla propaga los impulsos y minimiza energía libre local hasta alcanzar una configuración estable.
+**Núcleo neuro-geométrico.** La malla propaga los impulsos y minimiza energía libre local hasta alcanzar una configuración estable. Este núcleo funciona como memoria asociativa, espacio de grounding y posible motor de inferencia geométrica.
 
-**Renderizador de salida.** Un adaptador futuro observaría distancias, curvaturas, regiones activas y caminos geodésicos para producir embeddings condicionantes. Un LLM decodificador generaría lenguaje a partir de ese paisaje estacionario. En el código actual, el renderizado es visual: muestra agentes activos, aristas excitadas, símplices, energía libre y una proyección simple de los agentes con mayor sorpresa.
+**Adaptador de lectura.** Un módulo futuro observaría distancias, curvaturas, regiones activas y caminos geodésicos para producir embeddings condicionantes. Esta capa es el puente entre un estado topológico discreto y el espacio continuo que un LLM puede consumir.
+
+**Renderizador lingüístico de salida.** Un LLM decodificador generaría lenguaje a partir del paisaje geométrico estacionario. En el código actual, el renderizado es visual: muestra agentes activos, aristas excitadas, símplices, energía libre y una proyección simple de los agentes con mayor sorpresa.
+
+Esta división permite que el LLM haga lo que mejor sabe hacer: interpretar y producir lenguaje. SNGA asume la tarea complementaria: almacenar asociaciones multimodales, limitar la activación a regiones relevantes y ofrecer un estado conceptual estable que pueda condicionar al LLM.
 
 ### 3.4 Aprendizaje Multimodal Inicial
 
@@ -252,7 +278,7 @@ activos_max_observado  = 32
 
 El resultado indica que la malla puede almacenar miles de asociaciones sintéticas y evocarlas sin colapso global. La baja fuga porcentual y el límite de activación muestran que la inhibición controla la expansión. La precisión media todavía no es perfecta porque el sistema usa codificación sintética por hashing y no aprende todavía fronteras semánticas reales. Aun así, el resultado es compatible con la hipótesis de una memoria asociativa esparsa y evolutiva.
 
-Estos datos no permiten afirmar que SNGA sea superior a un LLM completo. Sí permiten una afirmación más acotada: para almacenamiento y evocación de asociaciones multimodales discretas, una red geométrica esparsa puede ser más eficiente que activar una red densa de lenguaje, porque usa una fracción fija y pequeña de agentes activos (`32/180000`, aproximadamente `0.018%`) durante la evocación.
+Estos datos no permiten afirmar que SNGA sea superior a un LLM completo. Sí permiten una afirmación más acotada y alineada con la tesis híbrida: para almacenamiento y evocación de asociaciones multimodales discretas, una red geométrica esparsa puede servir como núcleo de memoria más eficiente que activar una red densa de lenguaje. En la validación actual se usa una fracción fija y pequeña de agentes activos (`32/180000`, aproximadamente `0.018%`) durante la evocación. El LLM, en esta visión, no desaparece; se acopla a SNGA para traducir entre símbolos humanos y estados geométricos.
 
 ## 7. Viabilidad hacia AGI
 
@@ -269,7 +295,7 @@ Con los resultados actuales, la evaluación de viabilidad queda así:
 
 - **Viable:** memoria asociativa multimodal, propagación esparsa, aprendizaje estructural local, control de cascadas por inhibición.
 - **No demostrado:** razonamiento causal, lenguaje natural abierto, planificación, transferencia fuera de distribución y superioridad general frente a LLMs.
-- **Hipótesis fuerte siguiente:** combinar SNGA con encoders reales y un LLM periférico podría reducir costo en tareas donde el LLM hoy funciona como memoria semántica, dejando al LLM solo como traductor.
+- **Hipótesis fuerte siguiente:** combinar SNGA con encoders reales y un LLM periférico podría reducir costo en tareas donde el LLM hoy funciona como memoria semántica, dejando al LLM como traductor, narrador y adaptador lingüístico.
 
 ## 8. Viabilidad de Hardware
 
@@ -312,6 +338,6 @@ Los siguientes pasos técnicos son:
 
 ## 11. Conclusión
 
-SNGA plantea un cambio de énfasis: de predicción lingüística densa a estabilización geométrica esparsa. El sistema no elimina los LLMs, sino que los reubica como renderizadores periféricos. El núcleo cognitivo se modela como un complejo simplicial que minimiza tensión local, permitiendo una forma de inferencia más cercana a navegación conceptual que a multiplicación matricial global.
+SNGA plantea un cambio de énfasis: de predicción lingüística densa como única arquitectura cognitiva a una arquitectura híbrida donde la memoria e inferencia abstracta ocurren en una malla geométrica esparsa y el lenguaje se resuelve en módulos periféricos especializados. El sistema no elimina los LLMs, sino que los reubica como interfaces de entrada/salida. El núcleo cognitivo se modela como un complejo simplicial que minimiza tensión local, permitiendo una forma de inferencia más cercana a navegación conceptual que a multiplicación matricial global.
 
 El prototipo Rust de este repositorio materializa la primera pieza de esa hipótesis: una red binaria de agentes, una malla simplicial, propagación por eventos y relajación elástica observable en tiempo real.
