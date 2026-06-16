@@ -23,6 +23,12 @@ Experimento sin ventana para medir aprendizaje multimodal sintético:
 cargo run --bin experiment
 ```
 
+Experimento grande con miles de conceptos e inhibición lateral:
+
+```powershell
+cargo run --bin large_experiment
+```
+
 ## Qué Simula
 
 El programa abre una ventana con una malla triangulada. Cada vértice es un agente binario; cada arista es una restricción elástica; cada triángulo es un símplice de coherencia de orden superior.
@@ -45,6 +51,22 @@ resumen_despues: recall_medio=100.0% precision_media=68.2% fuga_media=10.9%
 ```
 
 Esto muestra aprendizaje asociativo en la malla, pero no demuestra razonamiento general. La fuga residual indica que hacen falta mejores mecanismos de inhibición, separación semántica y control causal.
+
+Resultado de referencia con `large_experiment`:
+
+```text
+conceptos=2000
+nodos=19800
+inhibicion=max_active:32 max_spikes:128 decay:0.02
+
+resumen:
+  recall_medio=100.0%
+  precision_media=19.7%
+  fuga_media=0.246%
+  activos_max_observado=32
+```
+
+La inhibición top-k evita cascadas globales: aunque la red entrena miles de asociaciones, la actividad máxima observada queda limitada a 32 agentes. La precisión baja se debe principalmente a colisiones de rasgos en un espacio aún pequeño para 2000 conceptos sintéticos.
 
 ## Controles
 

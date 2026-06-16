@@ -134,6 +134,9 @@ fn experiment_config() -> SimplicialConfig {
         damping: 0.86,
         activation_threshold: 0.68,
         simplex_area_weight: 0.0008,
+        max_active_agents: 96,
+        inhibition_decay: 0.18,
+        max_spikes_per_step: 512,
         seed: 11,
     }
 }

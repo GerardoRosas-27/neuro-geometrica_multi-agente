@@ -1,6 +1,6 @@
 use crate::geometry::Vec2;
 use rand::{rngs::StdRng, Rng, SeedableRng};
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 
 const ASSOCIATIVE_EDGE_THRESHOLD: f32 = 1.05;
 
@@ -57,6 +57,9 @@ pub struct SimplicialConfig {
     pub damping: f32,
     pub activation_threshold: f32,
     pub simplex_area_weight: f32,
+    pub max_active_agents: usize,
+    pub inhibition_decay: f32,
+    pub max_spikes_per_step: usize,
     pub seed: u64,
 }
 
@@ -70,6 +73,9 @@ impl Default for SimplicialConfig {
             damping: 0.88,
             activation_threshold: 0.72,
             simplex_area_weight: 0.0008,
+            max_active_agents: 96,
+            inhibition_decay: 0.18,
+            max_spikes_per_step: 512,
             seed: 7,
         }
     }
@@ -95,6 +101,7 @@ pub struct SimplicialNetwork {
     pub spikes: VecDeque<Spike>,
     pub config: SimplicialConfig,
     adjacency: Vec<Vec<usize>>,
+    edge_lookup: HashMap<(usize, usize), usize>,
 }
 
 impl SimplicialNetwork {
@@ -117,6 +124,7 @@ impl SimplicialNetwork {
             simplices: Vec::new(),
             spikes: VecDeque::new(),
             adjacency: vec![Vec::new(); config.width * config.height],
+            edge_lookup: HashMap::new(),
             config,
         };
 
@@ -303,14 +311,12 @@ impl SimplicialNetwork {
         });
         self.adjacency[a].push(edge_idx);
         self.adjacency[b].push(edge_idx);
+        self.edge_lookup.insert(edge_key(a, b), edge_idx);
     }
 
     fn reinforce_pair(&mut self, a: usize, b: usize, learning_rate: f32) {
-        if let Some(edge) = self
-            .edges
-            .iter_mut()
-            .find(|edge| (edge.a == a && edge.b == b) || (edge.a == b && edge.b == a))
-        {
+        if let Some(&edge_idx) = self.edge_lookup.get(&edge_key(a, b)) {
+            let edge = &mut self.edges[edge_idx];
             edge.weight = (edge.weight + learning_rate).min(5.0);
             edge.rest_length *= 1.0 - learning_rate.min(0.08) * 0.12;
             return;
@@ -339,7 +345,7 @@ impl SimplicialNetwork {
     }
 
     fn propagate_spikes(&mut self) {
-        let mut next = VecDeque::new();
+        let mut next = Vec::new();
 
         while let Some(spike) = self.spikes.pop_front() {
             if spike.ttl == 0 {
@@ -363,16 +369,51 @@ impl SimplicialNetwork {
                 if neighbor != spike.source
                     && self.agents[spike.target].surprise > self.config.activation_threshold
                 {
-                    next.push_back(Spike {
-                        source: spike.target,
-                        target: neighbor,
-                        ttl: spike.ttl - 1,
-                    });
+                    next.push((
+                        edge.weight,
+                        Spike {
+                            source: spike.target,
+                            target: neighbor,
+                            ttl: spike.ttl - 1,
+                        },
+                    ));
                 }
             }
         }
 
-        self.spikes = next;
+        next.sort_by(|a, b| b.0.total_cmp(&a.0));
+        next.truncate(self.config.max_spikes_per_step);
+        self.spikes = next.into_iter().map(|(_, spike)| spike).collect();
+        self.apply_lateral_inhibition();
+    }
+
+    fn apply_lateral_inhibition(&mut self) {
+        let mut active = self
+            .agents
+            .iter()
+            .filter(|agent| agent.surprise > 0.0)
+            .map(|agent| (agent.id, agent.surprise))
+            .collect::<Vec<_>>();
+
+        if active.len() <= self.config.max_active_agents {
+            return;
+        }
+
+        active.sort_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        let mut keep = vec![false; self.agents.len()];
+        for (agent_id, _) in active.into_iter().take(self.config.max_active_agents) {
+            keep[agent_id] = true;
+        }
+
+        for agent in &mut self.agents {
+            if !keep[agent.id] {
+                agent.surprise *= self.config.inhibition_decay;
+                if agent.surprise < 0.08 {
+                    agent.activation = false;
+                    agent.surprise = 0.0;
+                }
+            }
+        }
     }
 
     fn relax_geometry(&mut self) {
@@ -438,4 +479,12 @@ impl SimplicialNetwork {
 
 fn triangle_area(a: Vec2, b: Vec2, c: Vec2) -> f32 {
     ((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)).abs() * 0.5
+}
+
+fn edge_key(a: usize, b: usize) -> (usize, usize) {
+    if a < b {
+        (a, b)
+    } else {
+        (b, a)
+    }
 }

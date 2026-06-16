@@ -143,6 +143,18 @@ si i y j se activan juntos:
 
 Esto no crea semántica humana completa. Lo que demuestra es el mecanismo básico: estímulos de modalidades distintas pueden quedar ligados en una vecindad topológica compartida. Después del entrenamiento, activar solo la entrada lingüística de `manzana` tiende a reactivar parte de la región multimodal asociada.
 
+### 3.5 Inhibición Lateral y Control de Cascadas
+
+Una red de picos sin inhibición tiende a activar demasiadas regiones, análogo a una crisis epiléptica computacional. Para evitarlo, el prototipo introduce tres compuertas:
+
+```text
+1. Propagación solo por aristas asociativas aprendidas.
+2. Presupuesto máximo de spikes por paso.
+3. Inhibición lateral top-k: solo sobreviven los N agentes con mayor sorpresa.
+```
+
+La inhibición no elimina la memoria; limita la difusión global. Esto permite que una evocación active su vecindad conceptual sin contaminar toda la malla.
+
 ## 4. Complejidad y Eficiencia
 
 En atención densa, la interacción entre tokens escala como:
@@ -222,6 +234,23 @@ despues:
 ```
 
 Estos resultados muestran que la red puede funcionar como memoria asociativa topológica inicial: una entrada lingüística reactiva rasgos sensoriales aprendidos mediante coactivación. Sin embargo, la precisión imperfecta y la fuga residual demuestran que todavía no hay razonamiento general ni grounding robusto. El siguiente reto es introducir inhibición competitiva, control causal y separación geométrica de conceptos cercanos.
+
+Se añadió además `large_experiment`, una validación sintética con 2000 conceptos, 19,800 agentes y control inhibitorio estricto:
+
+```text
+conceptos              = 2000
+epocas                 = 3
+muestras_eval          = 240
+max_active_agents      = 32
+max_spikes_per_step    = 128
+
+recall_medio           = 100.0%
+precision_media        = 19.7%
+fuga_media             = 0.246%
+activos_max_observado  = 32
+```
+
+El resultado indica que la malla puede almacenar miles de asociaciones sintéticas y evocarlas sin colapso global. La baja fuga porcentual y el límite de activación muestran que la inhibición controla la expansión. La precisión media todavía es baja porque 2000 conceptos comparten un espacio de nodos limitado y aparecen colisiones de hashing entre rasgos. Esto sugiere que la escalabilidad requiere espacios más grandes, codificación menos colisiva, inhibición local por vecindad y posible geometría hiperbólica.
 
 ## 7. Viabilidad hacia AGI
 
