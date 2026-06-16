@@ -1,0 +1,10 @@
+[package]
+name = "snga"
+version = "0.1.0"
+edition = "2021"
+description = "Sistema Neuro-Geometrico de Agentes: red binaria simplicial con minimizacion local de energia libre"
+license = "MIT"
+
+[dependencies]
+macroquad = "0.4"
+rand = "0.8"

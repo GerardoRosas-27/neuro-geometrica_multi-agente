@@ -1,0 +1,209 @@
+# Arquitectura Neuro-Geométrica Multi-Agente
+
+## Complejos Simpliciales Guiados por Energía Libre con Renderizado Lingüístico Periférico
+
+### Resumen
+
+Los modelos de lenguaje de gran escala (LLMs) han demostrado una capacidad notable para interpolar patrones lingüísticos, pero su arquitectura dominante mezcla en una misma tubería tres funciones que en sistemas biológicos suelen estar separadas: percepción, estabilización conceptual y expresión simbólica. Esta mezcla obliga a resolver razonamiento abstracto, coherencia física, memoria episódica y sintaxis mediante álgebra lineal densa, atención cuadrática y retropropagación global. El resultado es un régimen de cómputo intensivo con altos costos energéticos, latencia elevada y fragilidad semántica ante tareas que exigen anclaje espacial o causal.
+
+Este documento propone el **Sistema Neuro-Geométrico de Agentes (SNGA)**, una arquitectura experimental en la que la cognición abstracta se modela como relajación mecánica de una malla topológica descentralizada. El núcleo cognitivo no es un vector denso, sino un complejo simplicial formado por agentes binarios, aristas asíncronas y símplices de orden superior. Cada agente minimiza una energía libre local derivada de la tensión geométrica con sus vecinos. Los LLMs quedan relegados a módulos periféricos de entrada/salida: codifican estímulos lingüísticos como impulsos binarios y renderizan configuraciones geométricas estabilizadas como lenguaje natural.
+
+El repositorio acompaña la propuesta con un prototipo íntegro en Rust. La implementación incluye una red binaria event-driven, una malla simplicial 2D, una regla de relajación elástica local y un motor gráfico basado en `macroquad` para observar la estabilización de la red en tiempo real.
+
+## 1. Introducción
+
+La inteligencia artificial contemporánea suele tratar el lenguaje como el medio universal del pensamiento. En los LLMs, el razonamiento aparece como una trayectoria dentro de un espacio latente de alta dimensión entrenado para predicción de tokens. Este enfoque ha escalado con éxito, pero introduce una dependencia fuerte en multiplicaciones matriciales masivas, memoria de activaciones, sincronización global y optimización por retropropagación. En términos energéticos, la red paga por activar una gran fracción de sus parámetros incluso cuando el problema requiere solo una pequeña región conceptual.
+
+SNGA parte de una hipótesis distinta: el lenguaje no es el sustrato primario de la cognición, sino una interfaz periférica. La representación abstracta se define como una geometría dinámica, semejante a un mapa conceptual. El razonamiento no consiste en recorrer tokens, sino en deformar y estabilizar una estructura espacial sometida a restricciones locales.
+
+La inspiración neurobiológica procede de la separación funcional entre sistemas de mapeo espacial/conceptual, como la corteza entorrinal y las células de rejilla, y sistemas lingüísticos especializados, como las áreas de Broca y Wernicke. En esta analogía, el núcleo SNGA opera como un tejido de navegación conceptual, mientras que el LLM actúa como traductor entre texto humano y estados de la malla.
+
+## 2. Marco Teórico
+
+### 2.1 Complejos Simpliciales
+
+Un grafo clásico representa relaciones binarias mediante vértices y aristas. Un complejo simplicial extiende esta idea incorporando relaciones de orden superior:
+
+- 0-símplices: vértices o agentes.
+- 1-símplices: aristas entre pares de agentes.
+- 2-símplices: triángulos que codifican coherencia entre ternas.
+- 3-símplices: tetraedros para restricciones volumétricas en implementaciones 3D.
+
+En SNGA, un concepto no se almacena como un vector denso fijo. Se aproxima como una región estable dentro de un complejo:
+
+```text
+G = (V, E, S)
+```
+
+donde `V` es el conjunto de agentes binarios, `E` el conjunto de canales asíncronos y `S` el conjunto de símplices que preservan estructura de orden superior. En el prototipo Rust, `S` se limita a triángulos 2D para facilitar visualización, pero la formulación se extiende naturalmente a tetraedros.
+
+### 2.2 Energía Libre Local
+
+El Principio de Energía Libre de Friston puede interpretarse computacionalmente como una tendencia a reducir sorpresa variacional. SNGA traduce esta idea a geometría: una entrada produce sorpresa cuando deforma la malla de forma incompatible con sus longitudes y áreas esperadas.
+
+Para una arista entre agentes `i` y `j`, se define una energía elástica:
+
+```text
+F_ij = w_ij (||x_i - x_j|| - l_ij)^2
+```
+
+donde `x_i` y `x_j` son posiciones, `l_ij` es la longitud de reposo y `w_ij` la rigidez conceptual de la relación. Para un triángulo `s = (i, j, k)`, se añade una penalización de área:
+
+```text
+F_s = beta (A(x_i, x_j, x_k) - A_s^0)^2
+```
+
+La energía libre total aproximada del sistema es:
+
+```text
+F = sum(F_ij) + sum(F_s)
+```
+
+El aprendizaje no actualiza pesos por retropropagación global. Cada agente aplica una regla local:
+
+```text
+Delta x_i = -alpha * grad_x_i F_i
+```
+
+En el prototipo, el gradiente se implementa como fuerzas de resorte sobre aristas y fuerzas de preservación de área sobre triángulos. La activación binaria aumenta temporalmente la rigidez local, simulando atención event-driven sin atención densa.
+
+### 2.3 Codificación Esparsa Predictiva
+
+Los agentes tienen un estado binario de activación y un escalar de sorpresa. Una señal lingüística periférica se convierte en ráfagas discretas que activan vértices específicos. La propagación ocurre por colas de `Spike`, no por pasos matriciales densos. Esto aproxima una red de picos:
+
+```text
+spike = { source, target, ttl }
+```
+
+Cada pico posee un tiempo de vida finito. Si un agente supera un umbral de sorpresa, propaga nuevos picos hacia vecinos. La computación se concentra en la región activa de la malla.
+
+## 3. Arquitectura SNGA
+
+### 3.1 Núcleo de Simulación
+
+El núcleo implementado en Rust se organiza en tres capas:
+
+- `geometry.rs`: álgebra vectorial mínima para posiciones, distancias y fuerzas.
+- `simplicial.rs`: agentes, aristas, triángulos, picos y dinámica de relajación.
+- `render.rs`: motor gráfico 2D para visualizar la red y sus métricas.
+
+La estructura principal es `SimplicialNetwork`. Contiene:
+
+- `agents`: vértices binarios con posición, velocidad, activación y sorpresa.
+- `edges`: restricciones elásticas de distancia.
+- `simplices`: triángulos con área objetivo.
+- `spikes`: cola asíncrona de eventos.
+- `config`: parámetros físicos y topológicos.
+
+El prototipo genera una rejilla triangulada. Cada celda rectangular se divide en dos triángulos, creando una malla con interacciones binarias y ternarias.
+
+### 3.2 Ciclo de Inferencia
+
+Cada frame ejecuta el siguiente ciclo:
+
+```text
+1. Propagar spikes activos.
+2. Activar agentes destino y acumular sorpresa.
+3. Calcular fuerzas locales sobre aristas.
+4. Calcular correcciones por área en símplices.
+5. Integrar velocidad y posición con amortiguamiento.
+6. Decaer sorpresa y apagar agentes en reposo.
+```
+
+El estado final tras varios pasos no es una secuencia de tokens, sino una configuración geométrica estabilizada. Esta configuración puede interpretarse como un atractor conceptual.
+
+### 3.3 Disociación Lingüística
+
+SNGA propone tres interfaces:
+
+**Codificador de entrada.** Un LLM o encoder externo transforma texto, imagen o sonido en impulsos discretos. En el prototipo, `inject_text_pattern()` usa una proyección determinista simple desde bytes de texto hacia índices de vértices. Esta función no pretende ser semántica; actúa como sustituto mínimo para demostrar el mecanismo de inyección.
+
+**Núcleo intuitivo.** La malla propaga los impulsos y minimiza energía libre local hasta alcanzar una configuración estable.
+
+**Renderizador de salida.** Un adaptador futuro observaría distancias, curvaturas, regiones activas y caminos geodésicos para producir embeddings condicionantes. Un LLM decodificador generaría lenguaje a partir de ese paisaje estacionario. En el código actual, el renderizado es visual: muestra agentes activos, aristas excitadas, símplices y energía libre.
+
+## 4. Complejidad y Eficiencia
+
+En atención densa, la interacción entre tokens escala como:
+
+```text
+O(N^2)
+```
+
+En SNGA, el costo dominante por paso depende de aristas y símplices activos o evaluados:
+
+```text
+O(E + S)
+```
+
+En hardware neuromórfico o FPGA, esta complejidad puede volverse event-driven real:
+
+```text
+O(E_activos + S_activos)
+```
+
+La diferencia arquitectónica es importante. Un transformer procesa capas completas incluso cuando solo una parte de la información es relevante. SNGA permite reposo nulo: agentes no excitados pueden permanecer sin cómputo hasta recibir un pico local.
+
+## 5. Implementación Rust
+
+El repositorio incluye una versión inicial funcional:
+
+```text
+cargo run
+```
+
+El motor abre una ventana con una malla triangulada. Los colores codifican estado:
+
+- Nodos claros: agentes en reposo.
+- Nodos naranjas: agentes activados.
+- Aristas azules: canales con actividad local.
+- Triángulos tenues: símplices de coherencia.
+
+Controles:
+
+- `Espacio`: pausar o reanudar.
+- `Click izquierdo`: inyectar estímulo en el agente más cercano.
+- `T`: inyectar patrón textual de ejemplo.
+- `R`: reiniciar la malla.
+- `+` / `-`: zoom.
+- Flechas: mover cámara.
+
+## 6. Viabilidad de Hardware
+
+La arquitectura SNGA es especialmente compatible con hardware donde la localidad física importa:
+
+- FPGAs con regiones dedicadas a submallas.
+- Procesadores neuromórficos con comunicación por spikes.
+- NoC con micro-paquetes asíncronos.
+- Simuladores físicos en GPU cuando se prioriza visualización o prototipado.
+
+Una implementación futura debería particionar la malla en sectores, asignar cada sector a un núcleo y comunicar solo eventos de frontera. Esto reduciría sincronización global y permitiría escalado espacial.
+
+## 7. Limitaciones del Prototipo
+
+La versión actual es una demostración de mecanismo, no un modelo entrenado. Sus principales limitaciones son:
+
+- La codificación textual es determinista pero no semántica.
+- El complejo es 2D, no hiperbólico ni 3D.
+- Los pesos de aristas son fijos.
+- No existe aún decodificador LLM periférico.
+- No hay persistencia de memoria episódica ni crecimiento topológico.
+
+Estas limitaciones son deliberadas: el objetivo inicial es aislar el principio operativo de relajación local y visualizarlo con claridad.
+
+## 8. Ruta de Investigación
+
+Los siguientes pasos técnicos son:
+
+1. Sustituir la proyección por bytes por un encoder multimodal real.
+2. Implementar crecimiento topológico: creación y poda de aristas según coactivación.
+3. Añadir geometría hiperbólica para jerarquías conceptuales.
+4. Incorporar símplices 3D para restricciones volumétricas.
+5. Entrenar un adaptador cross-attention que lea matrices de distancia estabilizadas.
+6. Medir energía, latencia y sparsity frente a una línea base transformer.
+
+## 9. Conclusión
+
+SNGA plantea un cambio de énfasis: de predicción lingüística densa a estabilización geométrica esparsa. El sistema no elimina los LLMs, sino que los reubica como renderizadores periféricos. El núcleo cognitivo se modela como un complejo simplicial que minimiza tensión local, permitiendo una forma de inferencia más cercana a navegación conceptual que a multiplicación matricial global.
+
+El prototipo Rust de este repositorio materializa la primera pieza de esa hipótesis: una red binaria de agentes, una malla simplicial, propagación por eventos y relajación elástica observable en tiempo real.
