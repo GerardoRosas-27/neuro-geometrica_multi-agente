@@ -199,10 +199,11 @@ impl LanguageModel {
     }
 
     fn prompt_pattern(&self, prompt: &str) -> Vec<usize> {
-        let meaningful = tokenize(prompt)
+        let mut meaningful = tokenize(prompt)
             .into_iter()
             .filter(|token| !is_prompt_stopword(token))
             .collect::<Vec<_>>();
+        meaningful.extend(expand_prompt_concepts(&meaningful));
         let prompt_text = if meaningful.is_empty() {
             prompt.to_string()
         } else {
@@ -365,18 +366,46 @@ fn build_autonomous_corpus(intents: &[Intent]) -> Vec<String> {
         "memoria",
         "lenguaje",
         "razonamiento",
+        "agente",
+        "nucleo",
+        "concepto",
+        "ruta",
     ];
     let verbs = [
-        "aprende", "organiza", "explica", "conecta", "optimiza", "recuerda",
+        "aprende",
+        "organiza",
+        "explica",
+        "conecta",
+        "optimiza",
+        "recuerda",
+        "predice",
+        "inhibe",
+        "consolida",
+        "evapora",
     ];
     let objects = [
-        "energia", "memoria", "lenguaje", "rutas", "sorpresa", "contexto",
+        "energia",
+        "memoria",
+        "lenguaje",
+        "rutas",
+        "sorpresa",
+        "contexto",
+        "causalidad",
+        "contradiccion",
+        "geometria",
+        "simplices",
+        "sensores",
+        "tokens",
     ];
     let modes = [
         "con calma",
         "usando malla",
         "sin matrices",
         "con memoria de trabajo",
+        "por energia libre",
+        "con inhibicion",
+        "por replay",
+        "con rutas optimas",
     ];
 
     for intent in intents {
@@ -405,22 +434,49 @@ fn intent_cases() -> Vec<Intent> {
             label: "saludo",
             response: "sistema responde hola usuario con calma",
             required: &["hola", "usuario"],
-            train_prompts: &["hola", "buenos dias", "saludos", "que tal", "hey hola"],
-            eval_prompts: &["que tal", "hey hola"],
+            train_prompts: &[
+                "hola",
+                "buenos dias",
+                "saludos",
+                "que tal",
+                "hey hola",
+                "buenas",
+            ],
+            eval_prompts: &["que tal", "hey hola", "buenas sistema"],
         },
         Intent {
             label: "energia",
             response: "sistema explica energia libre y reduce sorpresa",
             required: &["energia", "sorpresa"],
-            train_prompts: &["que es energia", "explica sorpresa", "energia libre"],
-            eval_prompts: &["hablame de energia", "como reduces sorpresa"],
+            train_prompts: &[
+                "que es energia",
+                "explica sorpresa",
+                "energia libre",
+                "como reduces sorpresa",
+                "minimizar energia",
+            ],
+            eval_prompts: &[
+                "hablame de energia",
+                "como reduces sorpresa",
+                "que significa energia libre",
+            ],
         },
         Intent {
             label: "memoria",
             response: "sistema explica memoria y guarda rutas utiles",
             required: &["memoria", "rutas"],
-            train_prompts: &["que es memoria", "como aprendes", "explica replay"],
-            eval_prompts: &["como recuerdas", "hablame de memoria"],
+            train_prompts: &[
+                "que es memoria",
+                "como aprendes",
+                "explica replay",
+                "como recuerdas",
+                "guardar rutas utiles",
+            ],
+            eval_prompts: &[
+                "como recuerdas",
+                "hablame de memoria",
+                "como guardas conocimiento",
+            ],
         },
         Intent {
             label: "lenguaje",
@@ -433,7 +489,11 @@ fn intent_cases() -> Vec<Intent> {
                 "como conviertes ideas",
                 "convertir ideas en palabras",
             ],
-            eval_prompts: &["como conviertes ideas", "hablame de lenguaje"],
+            eval_prompts: &[
+                "como conviertes ideas",
+                "hablame de lenguaje",
+                "como produces palabras",
+            ],
         },
         Intent {
             label: "razonamiento",
@@ -446,14 +506,28 @@ fn intent_cases() -> Vec<Intent> {
                 "como razonas",
                 "hablame de logica",
             ],
-            eval_prompts: &["como razonas", "hablame de logica"],
+            eval_prompts: &[
+                "como razonas",
+                "hablame de logica",
+                "como infieres consecuencias",
+            ],
         },
         Intent {
             label: "gpu",
             response: "sistema explica gpu y simula mallas vertices triangulos",
             required: &["gpu", "mallas"],
-            train_prompts: &["explica gpu", "graficos y mallas", "vertices triangulos"],
-            eval_prompts: &["puede usar gpu", "hablame de graficos"],
+            train_prompts: &[
+                "explica gpu",
+                "graficos y mallas",
+                "vertices triangulos",
+                "puede usar gpu",
+                "malla grafica",
+            ],
+            eval_prompts: &[
+                "puede usar gpu",
+                "hablame de graficos",
+                "como usas triangulos",
+            ],
         },
         Intent {
             label: "matrices",
@@ -466,7 +540,11 @@ fn intent_cases() -> Vec<Intent> {
                 "por que no matrices",
                 "hablame de transformes",
             ],
-            eval_prompts: &["por que no matrices", "hablame de transformes"],
+            eval_prompts: &[
+                "por que no matrices",
+                "hablame de transformes",
+                "por que evitar algebra densa",
+            ],
         },
         Intent {
             label: "snga",
@@ -479,7 +557,139 @@ fn intent_cases() -> Vec<Intent> {
                 "hablame de snga",
                 "explica sistema neuro geometrico",
             ],
-            eval_prompts: &["hablame de snga", "explica sistema neuro geometrico"],
+            eval_prompts: &[
+                "hablame de snga",
+                "explica sistema neuro geometrico",
+                "que arquitectura eres",
+            ],
+        },
+        Intent {
+            label: "inhibicion",
+            response: "sistema explica inhibicion y evita colapso de red",
+            required: &["inhibicion", "colapso"],
+            train_prompts: &[
+                "que es inhibicion",
+                "evitar colapso",
+                "epilepsia neuronal",
+                "control de activacion",
+            ],
+            eval_prompts: &[
+                "como evitas colapso",
+                "hablame de inhibicion",
+                "como controlas activacion",
+            ],
+        },
+        Intent {
+            label: "replay",
+            response: "sistema explica replay y refuerza memorias importantes",
+            required: &["replay", "memorias"],
+            train_prompts: &[
+                "que es replay",
+                "sueño neuronal",
+                "reforzar memorias",
+                "repetir episodios",
+            ],
+            eval_prompts: &[
+                "como funciona replay",
+                "hablame de sueño",
+                "como refuerzas recuerdos",
+            ],
+        },
+        Intent {
+            label: "contradiccion",
+            response: "sistema explica contradiccion y aumenta energia libre",
+            required: &["contradiccion", "energia"],
+            train_prompts: &[
+                "que es contradiccion",
+                "incompatibilidad",
+                "energia por conflicto",
+                "frio caliente",
+            ],
+            eval_prompts: &[
+                "como detectas contradiccion",
+                "que pasa con conflictos",
+                "hablame de incompatibilidad",
+            ],
+        },
+        Intent {
+            label: "ruta_optima",
+            response: "sistema explica ruta optima con evaporacion y refuerzo",
+            required: &["ruta", "evaporacion"],
+            train_prompts: &[
+                "ruta optima",
+                "physarum",
+                "evaporacion de rutas",
+                "reforzar camino",
+            ],
+            eval_prompts: &[
+                "como eliges ruta",
+                "hablame de physarum",
+                "como optimizas caminos",
+            ],
+        },
+        Intent {
+            label: "aprendizaje",
+            response: "sistema explica aprendizaje por coactivacion local",
+            required: &["aprendizaje", "coactivacion"],
+            train_prompts: &[
+                "como aprende la red",
+                "coactivacion local",
+                "aprendizaje biologico",
+                "plasticidad",
+            ],
+            eval_prompts: &[
+                "como aprendes",
+                "hablame de plasticidad",
+                "como cambian conexiones",
+            ],
+        },
+        Intent {
+            label: "geometria",
+            response: "sistema explica geometria con vertices aristas y simplices",
+            required: &["geometria", "simplices"],
+            train_prompts: &[
+                "geometria de la red",
+                "vertices aristas",
+                "simplices",
+                "triangulos",
+            ],
+            eval_prompts: &[
+                "como usas geometria",
+                "hablame de simplices",
+                "que son vertices",
+            ],
+        },
+        Intent {
+            label: "sensores",
+            response: "sistema explica sensores como periferia futura",
+            required: &["sensores", "periferia"],
+            train_prompts: &[
+                "sensores reales",
+                "vision audio texto",
+                "periferia futura",
+                "encoders",
+            ],
+            eval_prompts: &[
+                "como conectaras sensores",
+                "hablame de vision",
+                "que hacen los encoders",
+            ],
+        },
+        Intent {
+            label: "trabajo",
+            response: "sistema explica memoria de trabajo y ordena idea",
+            required: &["memoria", "trabajo"],
+            train_prompts: &[
+                "memoria de trabajo",
+                "ordenar idea",
+                "plan abstracto",
+                "idea antes de hablar",
+            ],
+            eval_prompts: &[
+                "como ordenas la idea",
+                "que es memoria de trabajo",
+                "como planeas respuesta",
+            ],
         },
     ]
 }
@@ -521,7 +731,46 @@ fn is_prompt_stopword(token: &str) -> bool {
             | "y"
             | "a"
             | "en"
+            | "dime"
+            | "habla"
+            | "hablar"
+            | "significa"
     )
+}
+
+fn expand_prompt_concepts(tokens: &[String]) -> Vec<String> {
+    let mut expanded = Vec::new();
+    for token in tokens {
+        match token.as_str() {
+            "buenas" | "hey" => expanded.extend(["hola", "saludo"].map(str::to_string)),
+            "conocimiento" | "recuerdas" | "guardas" => {
+                expanded.extend(["memoria", "rutas"].map(str::to_string));
+            }
+            "consecuencias" | "inferir" | "razonas" => {
+                expanded.extend(["razonamiento", "causales"].map(str::to_string));
+            }
+            "graficos" | "triangulos" => expanded.extend(["gpu", "mallas"].map(str::to_string)),
+            "algebra" | "densa" | "transformes" => {
+                expanded.extend(["matrices", "energia"].map(str::to_string));
+            }
+            "recuerdos" | "sueño" | "sueno" => {
+                expanded.extend(["replay", "memorias"].map(str::to_string));
+            }
+            "conflictos" | "incompatibilidad" => {
+                expanded.extend(["contradiccion", "energia"].map(str::to_string));
+            }
+            "caminos" | "physarum" => {
+                expanded.extend(["ruta", "optima", "evaporacion"].map(str::to_string));
+            }
+            "conexiones" | "plasticidad" => {
+                expanded.extend(["aprendizaje", "coactivacion"].map(str::to_string));
+            }
+            "planeas" | "plan" => expanded.extend(["memoria", "trabajo"].map(str::to_string)),
+            "vision" | "encoders" => expanded.extend(["sensores", "periferia"].map(str::to_string)),
+            _ => {}
+        }
+    }
+    expanded
 }
 
 fn token_pattern(token_id: usize, nodes: usize) -> Vec<usize> {
@@ -577,16 +826,16 @@ fn hash_to_node(prefix: &str, a: usize, b: usize, nodes: usize) -> usize {
 
 fn language_config() -> SimplicialConfig {
     SimplicialConfig {
-        width: 420,
-        height: 220,
+        width: 620,
+        height: 300,
         spacing: 3.2,
         elasticity: 0.0025,
         damping: 0.88,
         activation_threshold: 0.64,
         simplex_area_weight: 0.00008,
-        max_active_agents: 192,
+        max_active_agents: 256,
         inhibition_decay: 0.02,
-        max_spikes_per_step: 768,
+        max_spikes_per_step: 1024,
         local_inhibition_decay: 1.0,
         refractory_ticks: 0,
         rhythm_period: 32,

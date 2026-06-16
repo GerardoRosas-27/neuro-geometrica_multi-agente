@@ -237,6 +237,30 @@ O(E_activos + S_activos)
 
 La diferencia arquitectónica es importante. Un transformer procesa capas completas incluso cuando solo una parte de la información es relevante. SNGA permite reposo nulo: agentes no excitados pueden permanecer sin cómputo hasta recibir un pico local.
 
+### 4.1 Comparación Teórica Frente a Transformers
+
+SNGA no debe interpretarse como "un transformer sin matrices". La diferencia central es más profunda: en un transformer, el lenguaje suele operar como sustrato principal del cómputo; en SNGA, el lenguaje es una interfaz periférica que activa y lee un núcleo geométrico. La ruta conceptual es:
+
+```text
+entrada lingüística
+  -> intención abstracta
+  -> rutas geométricas activas
+  -> minimización de energía / contradicción / causalidad
+  -> estado conceptual estabilizado
+  -> salida lingüística
+```
+
+En un transformer, buena parte del razonamiento queda distribuida en operaciones densas de atención y MLP sobre tokens. En SNGA, la hipótesis es que el entendimiento emerge de relaciones topológicas: rutas causales, jerarquías, tensión por contradicción, replay, inhibición y selección de caminos de baja energía. Por tanto, al escalar la red, el costo de inferencia no debería depender del número total de nodos, sino del subgrafo activo necesario para resolver la tarea.
+
+Esta diferencia permite formular una ventaja potencial:
+
+```text
+Transformer: costo asociado al procesamiento denso de secuencias y capas.
+SNGA: costo asociado a rutas activas, spikes y regiones geométricas relevantes.
+```
+
+Los experimentos actuales no demuestran superioridad general frente a LLMs. Sí muestran que SNGA puede resolver memoria asociativa, inferencia transitiva, contradicción energética, selección de rutas e intención lingüística de dominio pequeño sin recurrir a multiplicación matricial densa. La tesis fuerte es que, con mayor escala y mejores periféricos sensoriales, el núcleo SNGA podría ofrecer una forma más eficiente de grounding y razonamiento, mientras el lenguaje permanece como mecanismo de comunicación y no como centro del pensamiento.
+
 ## 5. Implementación Rust
 
 El repositorio incluye una versión inicial funcional:
@@ -403,14 +427,14 @@ dialogue_coherence score      = 100.0% (10/10 casos)
 
 La métrica `dialogue_coherence` evalúa si la respuesta contiene los conceptos clave esperados para intenciones como energía, memoria, lenguaje, razonamiento, GPU, matrices e inhibición. El resultado indica que SNGA puede sostener comunicación coherente en un dominio pequeño cuando la respuesta está guiada por memoria de trabajo. Sin embargo, no demuestra lenguaje abierto general ni reemplaza a un LLM: valida una ruta experimental para usar SNGA como núcleo pre-lingüístico y renderizador simbólico limitado.
 
-Un segundo benchmark (`autonomous_language_benchmark`) elimina el plan manual explícito. La red aprende rutas `prompt -> intención abstracta -> respuesta` y usa un filtrado semántico simple del prompt para enfocar contenido sobre palabras funcionales. Con 8 intenciones, vocabulario de 81 tokens y 92,400 nodos, obtiene:
+Un segundo benchmark (`autonomous_language_benchmark`) elimina el plan manual explícito. La red aprende rutas `prompt -> intención abstracta -> respuesta` y usa un filtrado semántico simple del prompt para enfocar contenido sobre palabras funcionales. En una versión ampliada con 16 intenciones, vocabulario de 148 tokens y 186,000 nodos, obtiene:
 
 ```text
-intent_accuracy     = 93.8%
-response_coherence  = 93.8%
+intent_accuracy     = 89.6%
+response_coherence  = 89.6%
 ```
 
-Esto indica que SNGA puede empezar a internalizar la memoria de trabajo: no solo verbaliza una idea dada, sino que infiere la intención abstracta desde la entrada del usuario dentro de un dominio pequeño. El resultado sigue lejos de un LLM general, pero reduce la dependencia del plan externo y acerca el sistema a una arquitectura de conversación autónoma.
+Esto indica que SNGA puede empezar a internalizar la memoria de trabajo: no solo verbaliza una idea dada, sino que infiere la intención abstracta desde la entrada del usuario dentro de un dominio pequeño ampliado. El resultado sigue lejos de un LLM general y todavía falla en algunas paráfrasis ambiguas, pero reduce la dependencia del plan externo y acerca el sistema a una arquitectura de conversación autónoma centrada en el núcleo geométrico.
 
 ## 7. Viabilidad hacia AGI
 

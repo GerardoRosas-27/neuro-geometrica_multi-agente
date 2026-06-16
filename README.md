@@ -4,6 +4,8 @@ Prototipo Rust para explorar una arquitectura neuro-geométrica multi-agente bas
 
 El paper técnico ampliado está en [`docs/paper.md`](docs/paper.md).
 
+Tesis central: SNGA no busca ser "un transformer sin matrices". El lenguaje es una interfaz periférica; el núcleo de memoria y razonamiento vive en una malla geométrica esparsa que activa rutas, minimiza tensión y selecciona caminos útiles.
+
 ## Ejecutar
 
 Requisitos:
@@ -192,11 +194,11 @@ Esto muestra comunicacion coherente en un dominio pequeño y controlado usando m
 Resultado de referencia con `autonomous_language_benchmark`:
 
 ```text
-intents=8
-vocab=81
-nodes=92400
-intent_accuracy=93.8%
-response_coherence=93.8%
+intents=16
+vocab=148
+nodes=186000
+intent_accuracy=89.6%
+response_coherence=89.6%
 ```
 
 Este benchmark ya no recibe el plan abstracto manualmente: usa un filtrado semántico simple del prompt y rutas SNGA para inferir la intención interna antes de responder.
