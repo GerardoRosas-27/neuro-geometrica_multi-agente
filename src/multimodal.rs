@@ -46,8 +46,15 @@ pub struct RecallReport {
     pub label: String,
     pub target_agents: usize,
     pub active_target_agents: usize,
+    pub distractor_agents: usize,
+    pub active_distractor_agents: usize,
     pub target_surprise: f32,
+    pub distractor_surprise: f32,
     pub mean_target_surprise: f32,
+    pub mean_distractor_surprise: f32,
+    pub recall: f32,
+    pub leakage: f32,
+    pub precision: f32,
     pub total_free_energy: f32,
 }
 
@@ -72,23 +79,71 @@ impl MultimodalDemo {
                     vision: &["gris", "irregular", "opaca"],
                     audio: &["golpe seco", "raspado"],
                 },
+                GroundedConcept {
+                    label: "lluvia",
+                    language: &["lluvia", "agua", "nube"],
+                    vision: &["gotas", "gris", "charcos", "cielo nublado"],
+                    audio: &["goteo", "trueno"],
+                },
+                GroundedConcept {
+                    label: "fuego",
+                    language: &["fuego", "calor", "flama"],
+                    vision: &["naranja", "brillante", "humo", "movimiento"],
+                    audio: &["chisporroteo", "crujido"],
+                },
+                GroundedConcept {
+                    label: "perro",
+                    language: &["perro", "animal", "mascota"],
+                    vision: &["pelaje", "cuatro patas", "cola", "hocico"],
+                    audio: &["ladrido", "jadeo"],
+                },
+                GroundedConcept {
+                    label: "tambor",
+                    language: &["tambor", "ritmo", "percusion"],
+                    vision: &["cilindro", "parche", "baquetas"],
+                    audio: &["golpe grave", "ritmico"],
+                },
+                GroundedConcept {
+                    label: "cafe",
+                    language: &["cafe", "bebida", "amargo"],
+                    vision: &["oscuro", "taza", "vapor"],
+                    audio: &["hervor", "sorbo"],
+                },
+                GroundedConcept {
+                    label: "bicicleta",
+                    language: &["bicicleta", "rueda", "pedal"],
+                    vision: &["dos ruedas", "manubrio", "cadena"],
+                    audio: &["timbre", "rodar"],
+                },
             ],
             last_trace: DemoTrace {
-                message: "M=train multimodal, L=evocar manzana desde lenguaje, O=evocar roca"
-                    .to_string(),
+                message: "M=train multimodal, L=evocar manzana, O=evocar roca".to_string(),
                 projection: network.project_active_state(8),
             },
         }
     }
 
     pub fn train_all(&mut self, network: &mut SimplicialNetwork) {
+        self.train_epochs(network, 1);
+    }
+
+    pub fn train_epochs(&mut self, network: &mut SimplicialNetwork, epochs: usize) {
         let concepts = self.concepts.clone();
-        for concept in &concepts {
-            self.train_concept(network, concept);
+        for _ in 0..epochs {
+            for concept in &concepts {
+                self.train_concept(network, concept);
+                for _ in 0..3 {
+                    network.step();
+                }
+                network.clear_activity();
+            }
         }
         self.last_trace = DemoTrace {
-            message: "Entrenamiento multimodal sintetico: lenguaje, vision y audio coactivados"
-                .to_string(),
+            message: format!(
+                "Entrenamiento multimodal sintetico: {} conceptos, {} epocas",
+                concepts.len(),
+                epochs
+            ),
             projection: network.project_active_state(8),
         };
     }
@@ -108,7 +163,7 @@ impl MultimodalDemo {
         };
 
         let pattern = self.encode_terms(network, Modality::Language, language);
-        network.inject_pattern(&pattern, 1.35, 5);
+        network.inject_pattern(&pattern, 1.35, 2);
         self.last_trace = DemoTrace {
             message: format!(
                 "Evocacion desde lenguaje: '{}' activa su vecindad multimodal",
@@ -136,7 +191,9 @@ impl MultimodalDemo {
         label: &str,
         steps: usize,
     ) -> Option<RecallReport> {
-        let target = self.fused_pattern(network, label)?;
+        let target = self.sensory_pattern(network, label)?;
+        let distractors = self.sensory_patterns_except(network, label);
+        network.clear_activity();
         self.recall_language(network, label);
 
         for _ in 0..steps {
@@ -153,12 +210,34 @@ impl MultimodalDemo {
             }
         }
 
+        let mut active_distractor_agents = 0;
+        let mut distractor_surprise = 0.0;
+        for &idx in &distractors {
+            let surprise = network.agents[idx].surprise;
+            distractor_surprise += surprise;
+            if surprise > 0.08 {
+                active_distractor_agents += 1;
+            }
+        }
+
+        let recall = active_target_agents as f32 / target.len().max(1) as f32;
+        let leakage = active_distractor_agents as f32 / distractors.len().max(1) as f32;
+        let precision = active_target_agents as f32
+            / (active_target_agents + active_distractor_agents).max(1) as f32;
+
         Some(RecallReport {
             label: label.to_string(),
             target_agents: target.len(),
             active_target_agents,
+            distractor_agents: distractors.len(),
+            active_distractor_agents,
             target_surprise,
+            distractor_surprise,
             mean_target_surprise: target_surprise / target.len().max(1) as f32,
+            mean_distractor_surprise: distractor_surprise / distractors.len().max(1) as f32,
+            recall,
+            leakage,
+            precision,
             total_free_energy: network.total_free_energy(),
         })
     }
@@ -176,21 +255,36 @@ impl MultimodalDemo {
         fused.dedup();
 
         network.inject_pattern(&fused, 1.2, 4);
-        network.reinforce_coactivation(&fused, 0.18);
+        network.reinforce_coactivation(&fused, 0.12);
     }
 
-    fn fused_pattern(&self, network: &SimplicialNetwork, label: &str) -> Option<Vec<usize>> {
+    fn sensory_pattern(&self, network: &SimplicialNetwork, label: &str) -> Option<Vec<usize>> {
         let concept = self
             .concepts
             .iter()
             .find(|concept| concept.label == label)?;
         let mut fused = Vec::new();
-        fused.extend(self.encode_terms(network, Modality::Language, concept.language));
         fused.extend(self.encode_terms(network, Modality::Vision, concept.vision));
         fused.extend(self.encode_terms(network, Modality::Audio, concept.audio));
         fused.sort_unstable();
         fused.dedup();
         Some(fused)
+    }
+
+    fn sensory_patterns_except(&self, network: &SimplicialNetwork, label: &str) -> Vec<usize> {
+        let mut patterns = self
+            .concepts
+            .iter()
+            .filter(|concept| concept.label != label)
+            .flat_map(|concept| {
+                let mut pattern = self.encode_terms(network, Modality::Vision, concept.vision);
+                pattern.extend(self.encode_terms(network, Modality::Audio, concept.audio));
+                pattern
+            })
+            .collect::<Vec<_>>();
+        patterns.sort_unstable();
+        patterns.dedup();
+        patterns
     }
 
     fn encode_terms(

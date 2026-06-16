@@ -35,7 +35,16 @@ spikes -> activacion binaria -> tension geometrica -> relajacion -> atractor est
 
 La demo inicial añade un entrenamiento multimodal sintético. Los conceptos `manzana` y `roca` se codifican como rasgos separados de lenguaje, visión y audio. Al pulsar `M`, esos rasgos se coactivan y refuerzan conexiones locales. Luego `L` u `O` evocan el concepto desde el canal lingüístico para observar si reaparece parte de su vecindad multimodal.
 
-El binario `experiment` compara evocación antes/después del entrenamiento. La métrica principal es cuántos nodos objetivo multimodales se reactivan cuando solo se inyecta el patrón de lenguaje.
+El binario `experiment` compara evocación antes/después del entrenamiento. La métrica principal es cuántos nodos sensoriales objetivo se reactivan cuando solo se inyecta el patrón de lenguaje. También reporta precisión y fuga hacia rasgos de otros conceptos.
+
+Resultado de referencia con 8 conceptos sintéticos y 6 épocas:
+
+```text
+resumen_antes:   recall_medio=0.0% precision_media=0.0% fuga_media=0.0%
+resumen_despues: recall_medio=100.0% precision_media=68.2% fuga_media=10.9%
+```
+
+Esto muestra aprendizaje asociativo en la malla, pero no demuestra razonamiento general. La fuga residual indica que hacen falta mejores mecanismos de inhibición, separación semántica y control causal.
 
 ## Controles
 

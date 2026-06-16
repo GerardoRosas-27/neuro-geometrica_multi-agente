@@ -1,13 +1,8 @@
-mod geometry;
-mod multimodal;
-mod render;
-mod simplicial;
-
-use geometry::Vec2;
 use macroquad::prelude::*;
-use multimodal::MultimodalDemo;
-use render::Renderer;
-use simplicial::{SimplicialConfig, SimplicialNetwork, Spike};
+use snga::geometry::Vec2;
+use snga::multimodal::MultimodalDemo;
+use snga::render::Renderer;
+use snga::simplicial::{SimplicialConfig, SimplicialNetwork, Spike};
 
 fn window_conf() -> Conf {
     Conf {

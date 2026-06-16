@@ -192,7 +192,38 @@ Controles:
 - `+` / `-`: zoom.
 - Flechas: mover cámara.
 
-## 6. Viabilidad hacia AGI
+## 6. Resultados Iniciales de Validación
+
+Se añadió un experimento sin ventana (`cargo run --bin experiment`) para medir si la malla aprende asociaciones multimodales. La prueba usa 8 conceptos sintéticos (`manzana`, `roca`, `lluvia`, `fuego`, `perro`, `tambor`, `cafe`, `bicicleta`) con rasgos separados de lenguaje, visión y audio.
+
+El protocolo evita medir activación residual:
+
+```text
+1. Inicializar una malla limpia.
+2. Medir evocación sin entrenamiento.
+3. Entrenar por coactivación multimodal durante 6 épocas.
+4. Limpiar toda actividad dinámica.
+5. Inyectar solo el patrón lingüístico.
+6. Medir recuperación de rasgos sensoriales y fuga a distractores.
+```
+
+Resultados de referencia:
+
+```text
+antes:
+  recall_medio    = 0.0%
+  precision_media = 0.0%
+  fuga_media      = 0.0%
+
+despues:
+  recall_medio    = 100.0%
+  precision_media = 68.2%
+  fuga_media      = 10.9%
+```
+
+Estos resultados muestran que la red puede funcionar como memoria asociativa topológica inicial: una entrada lingüística reactiva rasgos sensoriales aprendidos mediante coactivación. Sin embargo, la precisión imperfecta y la fuga residual demuestran que todavía no hay razonamiento general ni grounding robusto. El siguiente reto es introducir inhibición competitiva, control causal y separación geométrica de conceptos cercanos.
+
+## 7. Viabilidad hacia AGI
 
 SNGA no demuestra AGI por sí mismo. Su valor en esta dirección es que separa tres funciones que los LLMs actuales tienden a mezclar: representación conceptual persistente, inferencia dinámica y renderizado lingüístico. Esta separación podría ser relevante para AGI si el núcleo geométrico demuestra cuatro propiedades:
 
@@ -203,7 +234,7 @@ SNGA no demuestra AGI por sí mismo. Su valor en esta dirección es que separa t
 
 Por tanto, el camino hacia AGI se formula como una hipótesis experimental: si un núcleo geométrico esparso puede aprender atractores multimodales estables y guiar módulos periféricos especializados, entonces podría reducir parte de la dependencia actual en modelos monolíticos de lenguaje. La afirmación requiere evidencia empírica comparativa; no debe presentarse como conclusión cerrada.
 
-## 7. Viabilidad de Hardware
+## 8. Viabilidad de Hardware
 
 La arquitectura SNGA es especialmente compatible con hardware donde la localidad física importa:
 
@@ -214,7 +245,7 @@ La arquitectura SNGA es especialmente compatible con hardware donde la localidad
 
 Una implementación futura debería particionar la malla en sectores, asignar cada sector a un núcleo y comunicar solo eventos de frontera. Esto reduciría sincronización global y permitiría escalado espacial.
 
-## 8. Limitaciones del Prototipo
+## 9. Limitaciones del Prototipo
 
 La versión actual es una demostración de mecanismo, no un modelo entrenado. Sus principales limitaciones son:
 
@@ -224,10 +255,12 @@ La versión actual es una demostración de mecanismo, no un modelo entrenado. Su
 - No existe aún decodificador LLM periférico.
 - No hay persistencia de memoria episódica en disco.
 - El crecimiento topológico existe solo como refuerzo/creación de aristas, no como neurogénesis estructural completa.
+- La validación actual usa datos sintéticos; todavía no prueba visión, audio o lenguaje reales.
+- La fuga residual entre conceptos indica falta de mecanismos de inhibición y desambiguación causal.
 
 Estas limitaciones son deliberadas: el objetivo inicial es aislar el principio operativo de relajación local y visualizarlo con claridad.
 
-## 9. Ruta de Investigación
+## 10. Ruta de Investigación
 
 Los siguientes pasos técnicos son:
 
@@ -238,8 +271,9 @@ Los siguientes pasos técnicos son:
 5. Entrenar un adaptador cross-attention que lea matrices de distancia estabilizadas.
 6. Medir energía, latencia y sparsity frente a una línea base transformer.
 7. Evaluar tareas pequeñas de grounding: recuperación de rasgos, consistencia física simple y aprendizaje incremental.
+8. Añadir inhibición lateral y normalización de energía para reducir fuga asociativa.
 
-## 10. Conclusión
+## 11. Conclusión
 
 SNGA plantea un cambio de énfasis: de predicción lingüística densa a estabilización geométrica esparsa. El sistema no elimina los LLMs, sino que los reubica como renderizadores periféricos. El núcleo cognitivo se modela como un complejo simplicial que minimiza tensión local, permitiendo una forma de inferencia más cercana a navegación conceptual que a multiplicación matricial global.
 

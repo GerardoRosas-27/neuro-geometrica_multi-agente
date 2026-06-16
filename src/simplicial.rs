@@ -2,6 +2,8 @@ use crate::geometry::Vec2;
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use std::collections::VecDeque;
 
+const ASSOCIATIVE_EDGE_THRESHOLD: f32 = 1.05;
+
 #[derive(Clone, Debug)]
 pub struct Agent {
     pub id: usize,
@@ -176,6 +178,15 @@ impl SimplicialNetwork {
         ConceptProjection { top_agents }
     }
 
+    pub fn clear_activity(&mut self) {
+        self.spikes.clear();
+        for agent in &mut self.agents {
+            agent.activation = false;
+            agent.surprise = 0.0;
+            agent.velocity = Vec2::ZERO;
+        }
+    }
+
     pub fn excite_center(&mut self) {
         let cx = self.config.width / 2;
         let cy = self.config.height / 2;
@@ -306,7 +317,12 @@ impl SimplicialNetwork {
         }
 
         let distance = self.agents[a].position.distance(self.agents[b].position);
-        self.add_edge(a, b, distance.max(1.0) * 0.92, learning_rate.max(0.05));
+        self.add_edge(
+            a,
+            b,
+            distance.max(1.0) * 0.92,
+            ASSOCIATIVE_EDGE_THRESHOLD + learning_rate.max(0.05),
+        );
     }
 
     fn add_simplex(&mut self, a: usize, b: usize, c: usize) {
@@ -336,6 +352,9 @@ impl SimplicialNetwork {
 
             for &edge_idx in &self.adjacency[spike.target] {
                 let edge = &self.edges[edge_idx];
+                if edge.weight < ASSOCIATIVE_EDGE_THRESHOLD {
+                    continue;
+                }
                 let neighbor = if edge.a == spike.target {
                     edge.b
                 } else {
