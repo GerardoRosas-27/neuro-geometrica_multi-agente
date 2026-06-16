@@ -92,6 +92,8 @@ pub struct SimplicialConfig {
     pub replay_batch: usize,
     pub replay_learning_rate: f32,
     pub causal_learning_rate: f32,
+    pub contradiction_learning_rate: f32,
+    pub contradiction_energy_weight: f32,
     pub simplex3_weight: f32,
     pub hyperbolic_curvature: f32,
     pub seed: u64,
@@ -123,6 +125,8 @@ impl Default for SimplicialConfig {
             replay_batch: 4,
             replay_learning_rate: 0.03,
             causal_learning_rate: 0.08,
+            contradiction_learning_rate: 0.2,
+            contradiction_energy_weight: 1.0,
             simplex3_weight: 0.0001,
             hyperbolic_curvature: 0.0,
             seed: 7,
@@ -147,6 +151,14 @@ pub struct PredictionReport {
 }
 
 #[derive(Clone, Debug)]
+pub struct RouteOptimizationReport {
+    pub candidates: usize,
+    pub rewarded_paths: usize,
+    pub evaporated_paths: usize,
+    pub prediction: PredictionReport,
+}
+
+#[derive(Clone, Debug)]
 pub struct PlasticityStats {
     pub tick: u64,
     pub active_edges: usize,
@@ -154,6 +166,7 @@ pub struct PlasticityStats {
     pub consolidated_edges: usize,
     pub episodes: usize,
     pub causal_edges: usize,
+    pub contradiction_edges: usize,
     pub tetrahedra: usize,
 }
 
@@ -180,6 +193,8 @@ pub struct SimplicialNetwork {
     adjacency: Vec<Vec<usize>>,
     edge_lookup: HashMap<(usize, usize), usize>,
     causal_edges: HashMap<(usize, usize), f32>,
+    causal_adjacency: HashMap<usize, Vec<(usize, f32)>>,
+    contradiction_edges: HashMap<(usize, usize), f32>,
     episodes: VecDeque<Episode>,
     tick: u64,
     // Scratch buffers reutilizados entre pasos para evitar reasignaciones por frame.
@@ -210,6 +225,8 @@ impl SimplicialNetwork {
             adjacency: vec![Vec::new(); config.width * config.height],
             edge_lookup: HashMap::new(),
             causal_edges: HashMap::new(),
+            causal_adjacency: HashMap::new(),
+            contradiction_edges: HashMap::new(),
             episodes: VecDeque::new(),
             tick: 0,
             forces_buffer: Vec::new(),
@@ -249,6 +266,8 @@ impl SimplicialNetwork {
             adjacency: vec![Vec::new(); layer_size * layers],
             edge_lookup: HashMap::new(),
             causal_edges: HashMap::new(),
+            causal_adjacency: HashMap::new(),
+            contradiction_edges: HashMap::new(),
             episodes: VecDeque::new(),
             tick: 0,
             forces_buffer: Vec::new(),
@@ -316,6 +335,40 @@ impl SimplicialNetwork {
                 }
                 let weight = self.causal_edges.entry((a, b)).or_insert(0.0);
                 *weight = (*weight + lr).min(1.0);
+                upsert_weighted_neighbor(&mut self.causal_adjacency, a, b, *weight);
+            }
+        }
+    }
+
+    fn set_causal_weight(&mut self, source: usize, target: usize, weight: f32) {
+        let weight = weight.clamp(0.0, 1.0);
+        if weight <= f32::EPSILON {
+            self.causal_edges.remove(&(source, target));
+            if let Some(neighbors) = self.causal_adjacency.get_mut(&source) {
+                neighbors.retain(|(idx, _)| *idx != target);
+            }
+            return;
+        }
+
+        self.causal_edges.insert((source, target), weight);
+        upsert_weighted_neighbor(&mut self.causal_adjacency, source, target, weight);
+    }
+
+    pub fn learn_contradiction(&mut self, left: &[usize], right: &[usize]) {
+        let lr = self.config.contradiction_learning_rate;
+        for &a in left {
+            if a >= self.agents.len() {
+                continue;
+            }
+            for &b in right {
+                if b >= self.agents.len() || a == b {
+                    continue;
+                }
+                let weight = self
+                    .contradiction_edges
+                    .entry(edge_key(a, b))
+                    .or_insert(0.0);
+                *weight = (*weight + lr).min(1.0);
             }
         }
     }
@@ -323,8 +376,8 @@ impl SimplicialNetwork {
     pub fn predict_from(&self, cause: &[usize], limit: usize) -> Vec<(usize, f32)> {
         let mut scores = HashMap::<usize, f32>::new();
         for &a in cause {
-            for (&(source, target), &weight) in &self.causal_edges {
-                if source == a {
+            if let Some(neighbors) = self.causal_adjacency.get(&a) {
+                for &(target, weight) in neighbors {
                     *scores.entry(target).or_insert(0.0) += weight;
                 }
             }
@@ -336,31 +389,234 @@ impl SimplicialNetwork {
         predicted
     }
 
+    pub fn infer_transitive_from(
+        &self,
+        cause: &[usize],
+        max_hops: usize,
+        limit: usize,
+    ) -> Vec<(usize, f32)> {
+        let mut all_scores = HashMap::<usize, f32>::new();
+        let mut frontier = HashMap::<usize, f32>::new();
+        let source_set = cause
+            .iter()
+            .copied()
+            .collect::<std::collections::HashSet<_>>();
+
+        for &idx in cause {
+            if idx < self.agents.len() {
+                frontier.insert(idx, 1.0);
+            }
+        }
+
+        for hop in 1..=max_hops {
+            let mut next = HashMap::<usize, f32>::new();
+            let hop_discount = 1.0 / hop as f32;
+            for (&source, &source_score) in &frontier {
+                let Some(neighbors) = self.causal_adjacency.get(&source) else {
+                    continue;
+                };
+                for &(target, weight) in neighbors {
+                    if source_set.contains(&target) {
+                        continue;
+                    }
+                    let score = source_score * weight * hop_discount;
+                    *all_scores.entry(target).or_insert(0.0) += score;
+                    *next.entry(target).or_insert(0.0) += score;
+                }
+            }
+
+            if next.is_empty() {
+                break;
+            }
+            frontier = next;
+        }
+
+        let mut predicted = all_scores.into_iter().collect::<Vec<_>>();
+        predicted.sort_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        predicted.truncate(limit);
+        predicted
+    }
+
+    pub fn evaluate_transitive_prediction(
+        &self,
+        cause: &[usize],
+        expected: &[usize],
+        max_hops: usize,
+        limit: usize,
+    ) -> PredictionReport {
+        let predicted_agents = self.infer_transitive_from(cause, max_hops, limit);
+        prediction_report(predicted_agents, expected)
+    }
+
+    pub fn infer_exact_hop_from(
+        &self,
+        cause: &[usize],
+        hops: usize,
+        limit: usize,
+    ) -> Vec<(usize, f32)> {
+        let mut frontier = HashMap::<usize, f32>::new();
+        let source_set = cause
+            .iter()
+            .copied()
+            .collect::<std::collections::HashSet<_>>();
+
+        for &idx in cause {
+            if idx < self.agents.len() {
+                frontier.insert(idx, 1.0);
+            }
+        }
+
+        for _ in 0..hops {
+            let mut next = HashMap::<usize, f32>::new();
+            for (&source, &source_score) in &frontier {
+                let Some(neighbors) = self.causal_adjacency.get(&source) else {
+                    continue;
+                };
+                for &(target, weight) in neighbors {
+                    if source_set.contains(&target) {
+                        continue;
+                    }
+                    *next.entry(target).or_insert(0.0) += source_score * weight;
+                }
+            }
+            if next.is_empty() {
+                return Vec::new();
+            }
+            frontier = next;
+        }
+
+        let mut predicted = frontier.into_iter().collect::<Vec<_>>();
+        predicted.sort_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        predicted.truncate(limit);
+        predicted
+    }
+
+    pub fn evaluate_exact_hop_prediction(
+        &self,
+        cause: &[usize],
+        expected: &[usize],
+        hops: usize,
+        limit: usize,
+    ) -> PredictionReport {
+        prediction_report(self.infer_exact_hop_from(cause, hops, limit), expected)
+    }
+
+    pub fn optimize_routes_to_expected(
+        &mut self,
+        cause: &[usize],
+        expected: &[usize],
+        hops: usize,
+        beam_width: usize,
+        evaporation: f32,
+        deposit: f32,
+    ) -> RouteOptimizationReport {
+        let expected_set = expected
+            .iter()
+            .copied()
+            .collect::<std::collections::HashSet<_>>();
+        let source_set = cause
+            .iter()
+            .copied()
+            .collect::<std::collections::HashSet<_>>();
+        let mut frontier = cause
+            .iter()
+            .copied()
+            .filter(|&idx| idx < self.agents.len())
+            .map(|idx| (idx, 1.0_f32, Vec::<(usize, usize)>::new()))
+            .collect::<Vec<_>>();
+
+        for _ in 0..hops {
+            let mut next = Vec::new();
+            for (source, score, path) in frontier {
+                let Some(neighbors) = self.causal_adjacency.get(&source) else {
+                    continue;
+                };
+                for &(target, weight) in neighbors {
+                    if source_set.contains(&target) {
+                        continue;
+                    }
+                    let mut next_path = path.clone();
+                    next_path.push((source, target));
+                    next.push((target, score * weight, next_path));
+                }
+            }
+
+            if next.is_empty() {
+                return RouteOptimizationReport {
+                    candidates: 0,
+                    rewarded_paths: 0,
+                    evaporated_paths: 0,
+                    prediction: prediction_report(Vec::new(), expected),
+                };
+            }
+
+            next.sort_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+            next.truncate(beam_width.max(expected.len()).max(1));
+            frontier = next;
+        }
+
+        let candidates = frontier.len();
+        let mut rewarded_edges = std::collections::HashSet::<(usize, usize)>::new();
+        let mut evaporated_edges = std::collections::HashSet::<(usize, usize)>::new();
+        let mut prediction = Vec::new();
+
+        for (terminal, score, path) in &frontier {
+            if expected_set.contains(terminal) {
+                prediction.push((*terminal, *score));
+                for &(source, target) in path {
+                    rewarded_edges.insert((source, target));
+                }
+            } else {
+                for &(source, target) in path {
+                    evaporated_edges.insert((source, target));
+                }
+            }
+        }
+
+        for &(source, target) in &rewarded_edges {
+            let current = *self.causal_edges.get(&(source, target)).unwrap_or(&0.0);
+            self.set_causal_weight(source, target, (current + deposit).min(1.0));
+        }
+
+        let evaporation = evaporation.clamp(0.0, 1.0);
+        for &(source, target) in &evaporated_edges {
+            if rewarded_edges.contains(&(source, target)) {
+                continue;
+            }
+            let current = *self.causal_edges.get(&(source, target)).unwrap_or(&0.0);
+            self.set_causal_weight(source, target, current * (1.0 - evaporation));
+        }
+
+        prediction.sort_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        prediction.truncate(expected.len());
+
+        RouteOptimizationReport {
+            candidates,
+            rewarded_paths: rewarded_edges.len(),
+            evaporated_paths: evaporated_edges.len(),
+            prediction: prediction_report(prediction, expected),
+        }
+    }
+
+    pub fn contradiction_tension(&self, left: &[usize], right: &[usize]) -> f32 {
+        let mut tension = 0.0;
+        for &a in left {
+            for &b in right {
+                if let Some(weight) = self.contradiction_edges.get(&edge_key(a, b)) {
+                    tension += weight;
+                }
+            }
+        }
+        tension
+    }
+
     pub fn evaluate_prediction(
         &self,
         cause: &[usize],
         expected: &[usize],
         limit: usize,
     ) -> PredictionReport {
-        let predicted_agents = self.predict_from(cause, limit);
-        let expected_set = expected
-            .iter()
-            .copied()
-            .collect::<std::collections::HashSet<_>>();
-        let matched_agents = predicted_agents
-            .iter()
-            .filter(|(idx, _)| expected_set.contains(idx))
-            .count();
-        let precision = matched_agents as f32 / predicted_agents.len().max(1) as f32;
-        let recall = matched_agents as f32 / expected_set.len().max(1) as f32;
-
-        PredictionReport {
-            predicted_agents,
-            matched_agents,
-            expected_agents: expected_set.len(),
-            precision,
-            recall,
-        }
+        prediction_report(self.predict_from(cause, limit), expected)
     }
 
     pub fn plasticity_stats(&self) -> PlasticityStats {
@@ -379,6 +635,7 @@ impl SimplicialNetwork {
                 .count(),
             episodes: self.episodes.len(),
             causal_edges: self.causal_edges.len(),
+            contradiction_edges: self.contradiction_edges.len(),
             tetrahedra: self.tetrahedra.len(),
         }
     }
@@ -479,7 +736,9 @@ impl SimplicialNetwork {
             acc + self.config.simplex3_weight * delta * delta
         });
 
-        edge_energy + simplex_energy + simplex3_energy
+        let contradiction_energy = self.active_contradiction_energy();
+
+        edge_energy + simplex_energy + simplex3_energy + contradiction_energy
     }
 
     fn build_grid_topology(&mut self) {
@@ -957,6 +1216,32 @@ impl SimplicialNetwork {
         let gain = 1.0 + self.config.rhythm_amplitude * phase.sin();
         self.config.activation_threshold * gain
     }
+
+    fn active_contradiction_energy(&self) -> f32 {
+        if self.contradiction_edges.is_empty() {
+            return 0.0;
+        }
+
+        let active = self
+            .agents
+            .iter()
+            .filter(|agent| agent.surprise > 0.08)
+            .map(|agent| agent.id)
+            .collect::<Vec<_>>();
+
+        let mut energy = 0.0;
+        for i in 0..active.len() {
+            for j in (i + 1)..active.len() {
+                if let Some(weight) = self
+                    .contradiction_edges
+                    .get(&edge_key(active[i], active[j]))
+                {
+                    energy += weight * self.config.contradiction_energy_weight;
+                }
+            }
+        }
+        energy
+    }
 }
 
 fn triangle_area(a: Vec2, b: Vec2, c: Vec2) -> f32 {
@@ -985,5 +1270,40 @@ fn edge_key(a: usize, b: usize) -> (usize, usize) {
         (a, b)
     } else {
         (b, a)
+    }
+}
+
+fn upsert_weighted_neighbor(
+    adjacency: &mut HashMap<usize, Vec<(usize, f32)>>,
+    source: usize,
+    target: usize,
+    weight: f32,
+) {
+    let neighbors = adjacency.entry(source).or_default();
+    if let Some((_, existing_weight)) = neighbors.iter_mut().find(|(idx, _)| *idx == target) {
+        *existing_weight = weight;
+    } else {
+        neighbors.push((target, weight));
+    }
+}
+
+fn prediction_report(predicted_agents: Vec<(usize, f32)>, expected: &[usize]) -> PredictionReport {
+    let expected_set = expected
+        .iter()
+        .copied()
+        .collect::<std::collections::HashSet<_>>();
+    let matched_agents = predicted_agents
+        .iter()
+        .filter(|(idx, _)| expected_set.contains(idx))
+        .count();
+    let precision = matched_agents as f32 / predicted_agents.len().max(1) as f32;
+    let recall = matched_agents as f32 / expected_set.len().max(1) as f32;
+
+    PredictionReport {
+        predicted_agents,
+        matched_agents,
+        expected_agents: expected_set.len(),
+        precision,
+        recall,
     }
 }

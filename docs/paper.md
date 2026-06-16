@@ -195,7 +195,21 @@ La versión actual del núcleo añade mecanismos biomiméticos adicionales:
 
 Estos mecanismos no sustituyen todavía a encoders reales de visión/audio/texto. Esos módulos se mantienen explícitamente como periferia futura. El objetivo actual es fortalecer el núcleo SNGA para que pueda recibir dichos encoders cuando estén disponibles.
 
-### 3.7 Geometría 3D, Hiperbólica y Símplex de Orden Superior
+### 3.7 Operadores de Razonamiento Topológico
+
+Para pasar de asociación a razonamiento, el núcleo incorpora operadores que actúan sobre la malla sin recurrir a multiplicación matricial densa:
+
+- **Implicación causal dirigida:** una relación `A -> B` se almacena como transición orientada entre agentes.
+- **Inferencia transitiva:** cadenas `A -> B -> C` pueden consultarse como predicción `A -> C`, aunque el atajo no haya sido entrenado.
+- **Contradicción energética:** relaciones incompatibles aumentan la energía libre cuando se coactivan.
+- **Selección por inhibición:** rutas competidoras se limitan por presupuestos de activación y spikes.
+- **Optimización por flujo/evaporación:** rutas candidatas compiten; las rutas predictivas reciben depósito de conductancia y las rutas débiles se evaporan.
+
+En este marco, la lógica no aparece como reglas simbólicas externas, sino como dinámica de rutas, tensiones y estabilización topológica.
+
+La optimización de rutas se inspira en sistemas tipo *Physarum*: primero se permite una nube de caminos posibles y luego se refuerzan únicamente los caminos que llegan a estados esperados con menor costo. Las conexiones no usadas o menos predictivas pierden conductancia. Esto transforma una inferencia difusa con alto recall pero baja precisión en una ruta preferente de menor energía.
+
+### 3.8 Geometría 3D, Hiperbólica y Símplex de Orden Superior
 
 El prototipo conserva renderizado 2D para visualización, pero el núcleo ya soporta coordenada de profundidad, distancia 3D opcional, curvatura hiperbólica aproximada y símplices tetraédricos (`Simplex3`). Esto permite experimentar con volúmenes conceptuales y no solo con superficies triangulares.
 
@@ -313,6 +327,44 @@ prediccion B->C        = 100.0% precision / 100.0% recall
 
 El experimento muestra consolidación de trazas repetidas, poda/olvido de huellas transitorias, replay episódico, causalidad dirigida y geometría tetraédrica activa. Esta evidencia sigue siendo sintética, pero amplía el argumento: SNGA puede modelarse no solo como memoria asociativa, sino como un tejido plástico con dinámica temporal y capacidad predictiva inicial.
 
+`reasoning_experiment` valida razonamiento topológico inicial mediante datos sintéticos donde las respuestas correctas no fueron entrenadas directamente:
+
+```text
+directo fuego->ruptura      = 0.0% recall
+transitivo fuego->ruptura   = 100.0% recall
+directo perro->animal       = 0.0% recall
+transitivo perro->animal    = 100.0% recall
+contradiccion frio/caliente = tension 25.000; delta energia 100.000
+```
+
+La lectura es importante: el sistema no memorizó el atajo `fuego -> ruptura` ni `perro -> animal`; los recuperó recorriendo rutas causales/jerárquicas dentro de la malla. Además, la coactivación de estados incompatibles (`frio` y `caliente`) elevó la energía libre, proporcionando una forma geométrica de contradicción.
+
+`reasoning_benchmark` escala esta prueba a miles de estructuras sintéticas y compara inferencia amplia contra rutas optimizadas por flujo/evaporación:
+
+```text
+causal_chains     = 5000
+hierarchy_chains  = 3000
+contradictions    = 3000
+
+causal:
+  broad_recall        = 100.0%
+  broad_precision     = 4.5%
+  optimized_recall    = 96.6%
+  optimized_precision = 96.7%
+
+jerarquia:
+  broad_recall        = 100.0%
+  broad_precision     = 11.7%
+  optimized_recall    = 100.0%
+  optimized_precision = 100.0%
+
+contradiccion:
+  tension_media       = 6.250
+  delta_energia_medio = 25.000
+```
+
+Estos resultados sugieren que la red puede pasar de "encontrar muchas rutas posibles" a "consolidar rutas útiles". El mecanismo no usa multiplicación matricial densa; opera sobre rutas, pesos locales, evaporación y energía libre.
+
 ## 7. Viabilidad hacia AGI
 
 SNGA no demuestra AGI por sí mismo. Su valor en esta dirección es que separa tres funciones que los LLMs actuales tienden a mezclar: representación conceptual persistente, inferencia dinámica y renderizado lingüístico. Esta separación podría ser relevante para AGI si el núcleo geométrico demuestra cuatro propiedades:
@@ -326,7 +378,7 @@ Por tanto, el camino hacia AGI se formula como una hipótesis experimental: si u
 
 Con los resultados actuales, la evaluación de viabilidad queda así:
 
-- **Viable:** memoria asociativa multimodal, propagación esparsa, aprendizaje estructural local, control de cascadas por inhibición, replay episódico sintético, causalidad dirigida inicial y geometría 3D/tetraédrica.
+- **Viable:** memoria asociativa multimodal, propagación esparsa, aprendizaje estructural local, control de cascadas por inhibición, replay episódico sintético, causalidad dirigida inicial, inferencia transitiva, contradicción energética, optimización de rutas por flujo/evaporación y geometría 3D/tetraédrica.
 - **No demostrado:** lenguaje natural abierto, planificación larga, transferencia fuera de distribución, grounding con sensores reales y superioridad general frente a LLMs.
 - **Hipótesis fuerte siguiente:** combinar SNGA con encoders reales y un LLM periférico podría reducir costo en tareas donde el LLM hoy funciona como memoria semántica, dejando al LLM como traductor, narrador y adaptador lingüístico.
 
@@ -370,6 +422,7 @@ Los siguientes pasos técnicos son:
 8. Añadir inhibición lateral y normalización de energía para reducir fuga asociativa.
 9. Evaluar replay episódico con secuencias temporales largas y benchmarks causales.
 10. Explorar geometría hiperbólica para jerarquías y memoria semántica taxonómica.
+11. Convertir la optimización de rutas en un mecanismo no supervisado basado solo en reducción de energía libre y estabilidad del atractor.
 
 ## 11. Conclusión
 

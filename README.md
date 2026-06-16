@@ -35,6 +35,12 @@ Experimento avanzado con plasticidad rica, replay, causalidad y geometría 3D:
 cargo run --bin advanced_experiment
 ```
 
+Experimento de razonamiento topológico sin atajos entrenados:
+
+```powershell
+cargo run --bin reasoning_experiment
+```
+
 ## Qué Simula
 
 El programa abre una ventana con una malla triangulada. Cada vértice es un agente binario; cada arista es una restricción elástica; cada triángulo es un símplice de coherencia de orden superior.
@@ -86,6 +92,44 @@ prediccion B->C: precision=100.0% recall=100.0%
 
 Ese experimento activa mecanismos que no usan sensores reales todavía: poda/olvido de huellas transitorias, consolidación de conexiones repetidas, replay episódico, predicción causal simple y símplices 3D/tetraédricos.
 
+Resultado de referencia con `reasoning_experiment`:
+
+```text
+directo fuego->ruptura: recall=0.0%
+transitivo fuego->ruptura: recall=100.0%
+directo perro->animal: recall=0.0%
+transitivo perro->animal: recall=100.0%
+contradiccion frio/caliente: tension=25.000 delta_energia=100.000
+```
+
+Esto valida razonamiento topológico inicial: la red infiere rutas no entrenadas directamente y detecta contradicciones como aumento de energía libre.
+
+Resultado de referencia con `reasoning_benchmark` y optimización de rutas tipo flujo/evaporación:
+
+```text
+causal_chains=5000
+hierarchy_chains=3000
+contradictions=3000
+
+causal:
+  broad_recall=100.0%
+  broad_precision=4.5%
+  optimized_recall=96.6%
+  optimized_precision=96.7%
+
+jerarquia:
+  broad_recall=100.0%
+  broad_precision=11.7%
+  optimized_recall=100.0%
+  optimized_precision=100.0%
+
+contradiccion:
+  tension_media=6.250
+  delta_energia_medio=25.000
+```
+
+La optimización funciona como una dinámica tipo *Physarum*: explora muchas rutas, evapora rutas débiles y refuerza rutas que reducen sorpresa/llegan al objetivo. El resultado conserva casi todo el recall y aumenta fuertemente la precisión.
+
 ## Controles
 
 - `Espacio`: pausar o reanudar.
@@ -106,6 +150,7 @@ Ese experimento activa mecanismos que no usan sensores reales todavía: poda/olv
 - `src/render.rs`: motor gráfico 2D con `macroquad`.
 - `src/main.rs`: bucle principal, entradas y ejecución de la simulación.
 - `src/bin/advanced_experiment.rs`: validación de plasticidad avanzada, replay, causalidad y geometría 3D.
+- `src/bin/reasoning_experiment.rs`: validación de inferencia transitiva y contradicción energética.
 - `docs/paper.md`: descripción académica y técnica de la arquitectura.
 
 ## Estado del Prototipo

@@ -111,6 +111,8 @@ fn advanced_config() -> SimplicialConfig {
         replay_batch: 4,
         replay_learning_rate: 0.04,
         causal_learning_rate: 0.22,
+        contradiction_learning_rate: 0.25,
+        contradiction_energy_weight: 2.0,
         simplex3_weight: 0.0002,
         hyperbolic_curvature: 0.00001,
         seed: 31,

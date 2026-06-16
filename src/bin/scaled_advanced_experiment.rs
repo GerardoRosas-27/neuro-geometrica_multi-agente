@@ -291,6 +291,8 @@ fn scaled_config() -> SimplicialConfig {
         replay_batch: 4,
         replay_learning_rate: 0.03,
         causal_learning_rate: 0.08,
+        contradiction_learning_rate: 0.2,
+        contradiction_energy_weight: 1.0,
         simplex3_weight: 0.0001,
         hyperbolic_curvature: 0.0,
         seed: 37,
