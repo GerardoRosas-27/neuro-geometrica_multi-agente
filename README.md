@@ -52,21 +52,21 @@ resumen_despues: recall_medio=100.0% precision_media=68.2% fuga_media=10.9%
 
 Esto muestra aprendizaje asociativo en la malla, pero no demuestra razonamiento general. La fuga residual indica que hacen falta mejores mecanismos de inhibición, separación semántica y control causal.
 
-Resultado de referencia con `large_experiment`:
+Resultado de referencia con `large_experiment` a escala mayor:
 
 ```text
-conceptos=2000
-nodos=19800
+conceptos=10000
+nodos=180000
 inhibicion=max_active:32 max_spikes:128 decay:0.02
 
 resumen:
   recall_medio=100.0%
-  precision_media=19.7%
-  fuga_media=0.246%
+  precision_media=55.1%
+  fuga_media=0.017%
   activos_max_observado=32
 ```
 
-La inhibición top-k evita cascadas globales: aunque la red entrena miles de asociaciones, la actividad máxima observada queda limitada a 32 agentes. La precisión baja se debe principalmente a colisiones de rasgos en un espacio aún pequeño para 2000 conceptos sintéticos.
+La inhibición top-k evita cascadas globales: aunque la red entrena 10,000 asociaciones, la actividad máxima observada queda limitada a 32 agentes. Esto sugiere viabilidad como memoria asociativa esparsa y evolutiva. No prueba que sea mejor que un LLM general, pero sí muestra una ruta más eficiente para almacenamiento/evocación de asociaciones multimodales.
 
 ## Controles
 

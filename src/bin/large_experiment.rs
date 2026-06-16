@@ -2,9 +2,9 @@ use snga::simplicial::{SimplicialConfig, SimplicialNetwork};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
-const CONCEPTS: usize = 2_000;
+const CONCEPTS: usize = 10_000;
 const EPOCHS: usize = 3;
-const EVAL_SAMPLES: usize = 240;
+const EVAL_SAMPLES: usize = 100;
 const RECALL_STEPS: usize = 4;
 const LANGUAGE_TERMS: usize = 3;
 const VISION_TERMS: usize = 4;
@@ -45,10 +45,16 @@ struct Aggregate {
     samples: usize,
 }
 
+struct ConceptPattern {
+    language: Vec<usize>,
+    sensory: Vec<usize>,
+}
+
 fn main() {
     let config = large_config();
     let mut network = SimplicialNetwork::grid(config);
-    let concepts = (0..CONCEPTS).collect::<Vec<_>>();
+    let patterns = build_patterns(&network);
+    let sensory_counts = build_sensory_counts(network.agents.len(), &patterns);
 
     println!("SNGA large synthetic validation");
     println!("conceptos={CONCEPTS}");
@@ -63,12 +69,14 @@ fn main() {
     );
     println!();
 
-    train(&mut network, &concepts);
+    train(&mut network, &patterns);
     network.clear_activity();
+    println!("aristas_totales_post_entrenamiento={}", network.edges.len());
+    println!();
 
     let mut aggregate = Aggregate::default();
-    for concept_id in concepts.iter().copied().take(EVAL_SAMPLES) {
-        let report = evaluate(&mut network, concept_id, &concepts);
+    for concept_id in 0..EVAL_SAMPLES.min(patterns.len()) {
+        let report = evaluate(&mut network, concept_id, &patterns, &sensory_counts);
         aggregate.recall += report.recall;
         aggregate.precision += report.precision;
         aggregate.leakage += report.leakage;
@@ -105,11 +113,11 @@ fn main() {
     );
 }
 
-fn train(network: &mut SimplicialNetwork, concepts: &[usize]) {
+fn train(network: &mut SimplicialNetwork, patterns: &[ConceptPattern]) {
     for _ in 0..EPOCHS {
-        for &concept_id in concepts {
-            let mut fused = language_pattern(network, concept_id);
-            fused.extend(sensory_pattern(network, concept_id));
+        for pattern in patterns {
+            let mut fused = pattern.language.clone();
+            fused.extend(pattern.sensory.iter().copied());
             fused.sort_unstable();
             fused.dedup();
             network.reinforce_coactivation(&fused, 0.12);
@@ -127,19 +135,17 @@ struct EvalReport {
 fn evaluate(
     network: &mut SimplicialNetwork,
     concept_id: usize,
-    all_concepts: &[usize],
+    patterns: &[ConceptPattern],
+    sensory_counts: &[u16],
 ) -> EvalReport {
-    let target = sensory_pattern(network, concept_id);
-    let distractors = all_concepts
-        .iter()
-        .copied()
-        .filter(|&other| other != concept_id)
-        .flat_map(|other| sensory_pattern(network, other))
-        .collect::<Vec<_>>();
+    let target = &patterns[concept_id].sensory;
+    let mut target_marker = vec![false; network.agents.len()];
+    for &idx in target {
+        target_marker[idx] = true;
+    }
 
     network.clear_activity();
-    let language = language_pattern(network, concept_id);
-    network.inject_pattern(&language, 1.35, 2);
+    network.inject_pattern(&patterns[concept_id].language, 1.35, 2);
 
     let mut max_active = 0;
     for _ in 0..RECALL_STEPS {
@@ -147,10 +153,20 @@ fn evaluate(
         max_active = max_active.max(stats.active_agents);
     }
 
-    let active_targets = count_active(network, &target);
-    let active_distractors = count_active(network, &distractors);
+    let active_targets = count_active(network, target);
+    let mut active_distractors = 0;
+    let mut distractor_nodes = 0;
+    for (idx, &count) in sensory_counts.iter().enumerate() {
+        if count == 0 || target_marker[idx] {
+            continue;
+        }
+        distractor_nodes += 1;
+        if network.agents[idx].surprise > ACTIVE_THRESHOLD {
+            active_distractors += 1;
+        }
+    }
     let recall = active_targets as f32 / target.len().max(1) as f32;
-    let leakage = active_distractors as f32 / distractors.len().max(1) as f32;
+    let leakage = active_distractors as f32 / distractor_nodes.max(1) as f32;
     let precision = active_targets as f32 / (active_targets + active_distractors).max(1) as f32;
 
     EvalReport {
@@ -168,8 +184,13 @@ fn count_active(network: &SimplicialNetwork, pattern: &[usize]) -> usize {
         .count()
 }
 
-fn language_pattern(network: &SimplicialNetwork, concept_id: usize) -> Vec<usize> {
-    encode_terms(network, concept_id, Modality::Language, LANGUAGE_TERMS)
+fn build_patterns(network: &SimplicialNetwork) -> Vec<ConceptPattern> {
+    (0..CONCEPTS)
+        .map(|concept_id| ConceptPattern {
+            language: encode_terms(network, concept_id, Modality::Language, LANGUAGE_TERMS),
+            sensory: sensory_pattern(network, concept_id),
+        })
+        .collect()
 }
 
 fn sensory_pattern(network: &SimplicialNetwork, concept_id: usize) -> Vec<usize> {
@@ -183,6 +204,16 @@ fn sensory_pattern(network: &SimplicialNetwork, concept_id: usize) -> Vec<usize>
     pattern.sort_unstable();
     pattern.dedup();
     pattern
+}
+
+fn build_sensory_counts(nodes: usize, patterns: &[ConceptPattern]) -> Vec<u16> {
+    let mut counts = vec![0_u16; nodes];
+    for pattern in patterns {
+        for &idx in &pattern.sensory {
+            counts[idx] = counts[idx].saturating_add(1);
+        }
+    }
+    counts
 }
 
 fn encode_terms(
@@ -214,13 +245,13 @@ fn encode_terms(
 
 fn large_config() -> SimplicialConfig {
     SimplicialConfig {
-        width: 220,
-        height: 90,
-        spacing: 7.0,
-        elasticity: 0.006,
+        width: 600,
+        height: 300,
+        spacing: 3.5,
+        elasticity: 0.003,
         damping: 0.88,
         activation_threshold: 0.68,
-        simplex_area_weight: 0.0002,
+        simplex_area_weight: 0.0001,
         max_active_agents: 32,
         inhibition_decay: 0.02,
         max_spikes_per_step: 128,

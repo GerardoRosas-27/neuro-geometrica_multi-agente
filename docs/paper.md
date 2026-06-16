@@ -235,22 +235,24 @@ despues:
 
 Estos resultados muestran que la red puede funcionar como memoria asociativa topológica inicial: una entrada lingüística reactiva rasgos sensoriales aprendidos mediante coactivación. Sin embargo, la precisión imperfecta y la fuga residual demuestran que todavía no hay razonamiento general ni grounding robusto. El siguiente reto es introducir inhibición competitiva, control causal y separación geométrica de conceptos cercanos.
 
-Se añadió además `large_experiment`, una validación sintética con 2000 conceptos, 19,800 agentes y control inhibitorio estricto:
+Se añadió además `large_experiment`, una validación sintética con 10,000 conceptos, 180,000 agentes y control inhibitorio estricto:
 
 ```text
-conceptos              = 2000
+conceptos              = 10000
 epocas                 = 3
-muestras_eval          = 240
+muestras_eval          = 100
 max_active_agents      = 32
 max_spikes_per_step    = 128
 
 recall_medio           = 100.0%
-precision_media        = 19.7%
-fuga_media             = 0.246%
+precision_media        = 55.1%
+fuga_media             = 0.017%
 activos_max_observado  = 32
 ```
 
-El resultado indica que la malla puede almacenar miles de asociaciones sintéticas y evocarlas sin colapso global. La baja fuga porcentual y el límite de activación muestran que la inhibición controla la expansión. La precisión media todavía es baja porque 2000 conceptos comparten un espacio de nodos limitado y aparecen colisiones de hashing entre rasgos. Esto sugiere que la escalabilidad requiere espacios más grandes, codificación menos colisiva, inhibición local por vecindad y posible geometría hiperbólica.
+El resultado indica que la malla puede almacenar miles de asociaciones sintéticas y evocarlas sin colapso global. La baja fuga porcentual y el límite de activación muestran que la inhibición controla la expansión. La precisión media todavía no es perfecta porque el sistema usa codificación sintética por hashing y no aprende todavía fronteras semánticas reales. Aun así, el resultado es compatible con la hipótesis de una memoria asociativa esparsa y evolutiva.
+
+Estos datos no permiten afirmar que SNGA sea superior a un LLM completo. Sí permiten una afirmación más acotada: para almacenamiento y evocación de asociaciones multimodales discretas, una red geométrica esparsa puede ser más eficiente que activar una red densa de lenguaje, porque usa una fracción fija y pequeña de agentes activos (`32/180000`, aproximadamente `0.018%`) durante la evocación.
 
 ## 7. Viabilidad hacia AGI
 
@@ -262,6 +264,12 @@ SNGA no demuestra AGI por sí mismo. Su valor en esta dirección es que separa t
 4. **Interfaz independiente del lenguaje.** La misma configuración abstracta debería poder renderizarse como texto, imagen, acción robótica o consulta estructurada.
 
 Por tanto, el camino hacia AGI se formula como una hipótesis experimental: si un núcleo geométrico esparso puede aprender atractores multimodales estables y guiar módulos periféricos especializados, entonces podría reducir parte de la dependencia actual en modelos monolíticos de lenguaje. La afirmación requiere evidencia empírica comparativa; no debe presentarse como conclusión cerrada.
+
+Con los resultados actuales, la evaluación de viabilidad queda así:
+
+- **Viable:** memoria asociativa multimodal, propagación esparsa, aprendizaje estructural local, control de cascadas por inhibición.
+- **No demostrado:** razonamiento causal, lenguaje natural abierto, planificación, transferencia fuera de distribución y superioridad general frente a LLMs.
+- **Hipótesis fuerte siguiente:** combinar SNGA con encoders reales y un LLM periférico podría reducir costo en tareas donde el LLM hoy funciona como memoria semántica, dejando al LLM solo como traductor.
 
 ## 8. Viabilidad de Hardware
 
