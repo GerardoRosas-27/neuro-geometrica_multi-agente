@@ -365,6 +365,53 @@ contradiccion:
 
 Estos resultados sugieren que la red puede pasar de "encontrar muchas rutas posibles" a "consolidar rutas útiles". El mecanismo no usa multiplicación matricial densa; opera sobre rutas, pesos locales, evaporación y energía libre.
 
+Como experimento temporal, `language_experiment` implementa un tokenizador de palabras y firmas contextuales n-grama que actúan como entrada/salida lingüística provisional para SNGA. El objetivo no es reemplazar al LLM periférico futuro, sino probar si la malla puede aprender regularidades discretas de secuencia:
+
+```text
+vocab                 = 36
+context_window        = 2
+eval_next_token top1  = 42.9%
+eval_next_token top3  = 59.5%
+eval_next_token top5  = 81.0%
+```
+
+La lectura es limitada pero útil: SNGA aprende transiciones lingüísticas locales y puede generar secuencias gramaticalmente simples dentro del dominio sintético. Sin embargo, no muestra todavía comprensión semántica abierta ni capacidades comparables a transformers. Este resultado refuerza la decisión arquitectónica de mantener el LLM como interfaz lingüística periférica en versiones futuras.
+
+Se añadió una segunda variante con **memoria de trabajo pre-lingüística**. En esta modalidad, antes de generar palabras, la red recibe una huella abstracta de la idea a expresar: determinante, sujeto, acción, objeto y lugar. Esta huella no es un LLM; es un estado topológico interno que organiza la intención antes de renderizarla en tokens. Con esta memoria de trabajo, el mismo experimento obtiene:
+
+```text
+train_sentences               = 3840
+vocab                         = 64
+eval_next_token top1          = 27.1%
+eval_next_token top3          = 52.9%
+eval_next_token top5          = 65.7%
+eval_with_working_memory top1 = 97.1%
+eval_with_working_memory top3 = 98.6%
+eval_with_working_memory top5 = 100.0%
+```
+
+La diferencia entre ambas pruebas es significativa. Sin memoria de trabajo, SNGA aprende regularidades locales pero tiende a producir frases genéricas. Con memoria de trabajo, la red dispone de un estado abstracto organizado y puede verbalizarlo de forma consistente incluso con frases más largas, adjetivos, adverbios y conectores causales/temporales. Esto apoya la hipótesis biológica del paper: el lenguaje funciona mejor como renderizador de una idea ya estructurada que como único sustrato del pensamiento.
+
+Un benchmark lingüístico escalado (`scaled_language_benchmark`) amplía el corpus a 19,220 frases sintéticas, vocabulario de 75 tokens y una malla de 92,400 nodos:
+
+```text
+eval_with_working_memory top1 = 69.0%
+eval_with_working_memory top3 = 82.1%
+eval_with_working_memory top5 = 85.7%
+dialogue_coherence score      = 100.0% (10/10 casos)
+```
+
+La métrica `dialogue_coherence` evalúa si la respuesta contiene los conceptos clave esperados para intenciones como energía, memoria, lenguaje, razonamiento, GPU, matrices e inhibición. El resultado indica que SNGA puede sostener comunicación coherente en un dominio pequeño cuando la respuesta está guiada por memoria de trabajo. Sin embargo, no demuestra lenguaje abierto general ni reemplaza a un LLM: valida una ruta experimental para usar SNGA como núcleo pre-lingüístico y renderizador simbólico limitado.
+
+Un segundo benchmark (`autonomous_language_benchmark`) elimina el plan manual explícito. La red aprende rutas `prompt -> intención abstracta -> respuesta` y usa un filtrado semántico simple del prompt para enfocar contenido sobre palabras funcionales. Con 8 intenciones, vocabulario de 81 tokens y 92,400 nodos, obtiene:
+
+```text
+intent_accuracy     = 93.8%
+response_coherence  = 93.8%
+```
+
+Esto indica que SNGA puede empezar a internalizar la memoria de trabajo: no solo verbaliza una idea dada, sino que infiere la intención abstracta desde la entrada del usuario dentro de un dominio pequeño. El resultado sigue lejos de un LLM general, pero reduce la dependencia del plan externo y acerca el sistema a una arquitectura de conversación autónoma.
+
 ## 7. Viabilidad hacia AGI
 
 SNGA no demuestra AGI por sí mismo. Su valor en esta dirección es que separa tres funciones que los LLMs actuales tienden a mezclar: representación conceptual persistente, inferencia dinámica y renderizado lingüístico. Esta separación podría ser relevante para AGI si el núcleo geométrico demuestra cuatro propiedades:
