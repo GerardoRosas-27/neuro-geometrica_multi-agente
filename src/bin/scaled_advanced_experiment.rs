@@ -2,9 +2,9 @@ use snga::simplicial::{SimplicialConfig, SimplicialNetwork};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
-const CONCEPTS: usize = 10_000;
+const CONCEPTS: usize = 20_000;
 const EPOCHS: usize = 3;
-const EVAL_SAMPLES: usize = 100;
+const EVAL_SAMPLES: usize = 200;
 const RECALL_STEPS: usize = 4;
 const LANGUAGE_TERMS: usize = 3;
 const VISION_TERMS: usize = 4;
@@ -36,6 +36,11 @@ impl Modality {
     }
 }
 
+struct ConceptPattern {
+    language: Vec<usize>,
+    sensory: Vec<usize>,
+}
+
 #[derive(Default)]
 struct Aggregate {
     recall: f32,
@@ -45,33 +50,51 @@ struct Aggregate {
     samples: usize,
 }
 
-struct ConceptPattern {
-    language: Vec<usize>,
-    sensory: Vec<usize>,
+struct EvalReport {
+    recall: f32,
+    precision: f32,
+    leakage: f32,
+    max_active: usize,
 }
 
 fn main() {
-    let config = large_config();
-    let mut network = SimplicialNetwork::grid(config);
+    let mut network = SimplicialNetwork::grid(scaled_config());
     let patterns = build_patterns(&network);
     let sensory_counts = build_sensory_counts(network.agents.len(), &patterns);
 
-    println!("SNGA large synthetic validation");
+    println!("SNGA scaled advanced synthetic validation");
     println!("conceptos={CONCEPTS}");
     println!("epocas={EPOCHS}");
     println!("muestras_eval={EVAL_SAMPLES}");
     println!("nodos={}", network.agents.len());
     println!(
-        "inhibicion=max_active:{} max_spikes:{} decay:{:.2}",
+        "inhibicion=max_active:{} max_spikes:{} decay:{:.2} local_decay:{:.2}",
         network.config.max_active_agents,
         network.config.max_spikes_per_step,
-        network.config.inhibition_decay
+        network.config.inhibition_decay,
+        network.config.local_inhibition_decay
+    );
+    println!(
+        "ritmo=period:{} amp:{:.2} replay_interval:{} max_episodes:{}",
+        network.config.rhythm_period,
+        network.config.rhythm_amplitude,
+        network.config.replay_interval,
+        network.config.max_episodes
     );
     println!();
 
     train(&mut network, &patterns);
     network.clear_activity();
-    println!("aristas_totales_post_entrenamiento={}", network.edges.len());
+
+    let plasticity = network.plasticity_stats();
+    println!(
+        "post_entrenamiento: aristas_activas={} asociativas={} consolidadas={} episodios={} causal={}",
+        plasticity.active_edges,
+        plasticity.associative_edges,
+        plasticity.consolidated_edges,
+        plasticity.episodes,
+        plasticity.causal_edges
+    );
     println!();
 
     let mut aggregate = Aggregate::default();
@@ -85,7 +108,7 @@ fn main() {
 
         if concept_id < 8 {
             println!(
-                "concepto={concept_id:04} recall={:.1}% precision={:.1}% fuga={:.3}% activos_max={}",
+                "concepto={concept_id:05} recall={:.1}% precision={:.1}% fuga={:.3}% activos_max={}",
                 report.recall * 100.0,
                 report.precision * 100.0,
                 report.leakage * 100.0,
@@ -105,31 +128,30 @@ fn main() {
     );
     println!(
         "lectura: {}",
-        if aggregate.recall / n > 0.85 && aggregate.leakage / n < 0.02 {
-            "estable con inhibicion; viable como memoria asociativa escalable inicial"
+        if aggregate.recall / n > 0.90 && aggregate.leakage / n < 0.05 {
+            "estable con mayor presupuesto activo; escala como memoria asociativa esparsa"
         } else {
-            "aprende, pero requiere mejor separacion/inhibicion para escalar con robustez"
+            "aprende, pero el mayor presupuesto activo requiere mas separacion o inhibicion"
         }
     );
 }
 
 fn train(network: &mut SimplicialNetwork, patterns: &[ConceptPattern]) {
     for _ in 0..EPOCHS {
-        for pattern in patterns {
+        for (idx, pattern) in patterns.iter().enumerate() {
             let mut fused = pattern.language.clone();
             fused.extend(pattern.sensory.iter().copied());
             fused.sort_unstable();
             fused.dedup();
             network.reinforce_coactivation(&fused, 0.12);
+
+            if idx % 512 == 0 {
+                network.inject_pattern(&fused, 0.8, 1);
+                network.step();
+                network.clear_activity();
+            }
         }
     }
-}
-
-struct EvalReport {
-    recall: f32,
-    precision: f32,
-    leakage: f32,
-    max_active: usize,
 }
 
 fn evaluate(
@@ -165,6 +187,7 @@ fn evaluate(
             active_distractors += 1;
         }
     }
+
     let recall = active_targets as f32 / target.len().max(1) as f32;
     let leakage = active_distractors as f32 / distractor_nodes.max(1) as f32;
     let precision = active_targets as f32 / (active_targets + active_distractors).max(1) as f32;
@@ -243,19 +266,33 @@ fn encode_terms(
         .collect()
 }
 
-fn large_config() -> SimplicialConfig {
+fn scaled_config() -> SimplicialConfig {
     SimplicialConfig {
-        width: 600,
-        height: 300,
-        spacing: 3.5,
-        elasticity: 0.003,
+        width: 720,
+        height: 360,
+        spacing: 3.0,
+        elasticity: 0.0025,
         damping: 0.88,
         activation_threshold: 0.68,
-        simplex_area_weight: 0.0001,
-        max_active_agents: 32,
+        simplex_area_weight: 0.00008,
+        max_active_agents: 50,
         inhibition_decay: 0.02,
-        max_spikes_per_step: 128,
-        seed: 23,
-        ..SimplicialConfig::default()
+        max_spikes_per_step: 192,
+        local_inhibition_decay: 0.82,
+        refractory_ticks: 0,
+        rhythm_period: 32,
+        rhythm_amplitude: 0.04,
+        forgetting_rate: 0.0,
+        prune_below_weight: 0.02,
+        consolidate_after: 4,
+        consolidated_forgetting_scale: 0.2,
+        max_episodes: 256,
+        replay_interval: 0,
+        replay_batch: 4,
+        replay_learning_rate: 0.03,
+        causal_learning_rate: 0.08,
+        simplex3_weight: 0.0001,
+        hyperbolic_curvature: 0.0,
+        seed: 37,
     }
 }

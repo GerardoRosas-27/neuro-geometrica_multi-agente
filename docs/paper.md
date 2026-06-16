@@ -181,6 +181,26 @@ Una red de picos sin inhibición tiende a activar demasiadas regiones, análogo 
 
 La inhibición no elimina la memoria; limita la difusión global. Esto permite que una evocación active su vecindad conceptual sin contaminar toda la malla.
 
+### 3.6 Plasticidad, Ritmos, Replay y Causalidad
+
+La versión actual del núcleo añade mecanismos biomiméticos adicionales:
+
+- **Crecimiento estructural:** si dos agentes se coactivan y no existe arista asociativa, la red crea una nueva conexión.
+- **Consolidación:** conexiones reforzadas repetidamente se marcan como consolidadas y olvidan más lento.
+- **Olvido y poda:** aristas no consolidadas pierden peso con el tiempo y pueden quedar inactivas.
+- **Inhibición local:** además del presupuesto global top-k, existe inhibición por vecindad geométrica base para evitar hiperactivación local.
+- **Ritmos temporales:** el umbral de activación puede oscilar periódicamente para simular ventanas de excitabilidad.
+- **Memoria episódica y replay:** patrones recientes se almacenan como episodios y pueden reinyectarse durante fases de replay para reforzar trazas.
+- **Causalidad predictiva:** el sistema aprende transiciones dirigidas `causa -> efecto` y puede predecir agentes esperados desde un patrón causa.
+
+Estos mecanismos no sustituyen todavía a encoders reales de visión/audio/texto. Esos módulos se mantienen explícitamente como periferia futura. El objetivo actual es fortalecer el núcleo SNGA para que pueda recibir dichos encoders cuando estén disponibles.
+
+### 3.7 Geometría 3D, Hiperbólica y Símplex de Orden Superior
+
+El prototipo conserva renderizado 2D para visualización, pero el núcleo ya soporta coordenada de profundidad, distancia 3D opcional, curvatura hiperbólica aproximada y símplices tetraédricos (`Simplex3`). Esto permite experimentar con volúmenes conceptuales y no solo con superficies triangulares.
+
+La distancia entre agentes puede operar en modo euclidiano 3D o aplicar una deformación hiperbólica controlada por `hyperbolic_curvature`. Esta extensión es relevante para jerarquías conceptuales, donde la geometría hiperbólica suele representar árboles y taxonomías con menor distorsión que un plano euclidiano.
+
 ## 4. Complejidad y Eficiencia
 
 En atención densa, la interacción entre tokens escala como:
@@ -280,6 +300,19 @@ El resultado indica que la malla puede almacenar miles de asociaciones sintétic
 
 Estos datos no permiten afirmar que SNGA sea superior a un LLM completo. Sí permiten una afirmación más acotada y alineada con la tesis híbrida: para almacenamiento y evocación de asociaciones multimodales discretas, una red geométrica esparsa puede servir como núcleo de memoria más eficiente que activar una red densa de lenguaje. En la validación actual se usa una fracción fija y pequeña de agentes activos (`32/180000`, aproximadamente `0.018%`) durante la evocación. El LLM, en esta visión, no desaparece; se acopla a SNGA para traducir entre símbolos humanos y estados geométricos.
 
+Finalmente, `advanced_experiment` valida los mecanismos biomiméticos extendidos:
+
+```text
+tetrahedra             = 374
+episodios              = 8
+aristas_causales       = 50
+aristas_consolidadas   = 20
+prediccion A->B        = 100.0% precision / 100.0% recall
+prediccion B->C        = 100.0% precision / 100.0% recall
+```
+
+El experimento muestra consolidación de trazas repetidas, poda/olvido de huellas transitorias, replay episódico, causalidad dirigida y geometría tetraédrica activa. Esta evidencia sigue siendo sintética, pero amplía el argumento: SNGA puede modelarse no solo como memoria asociativa, sino como un tejido plástico con dinámica temporal y capacidad predictiva inicial.
+
 ## 7. Viabilidad hacia AGI
 
 SNGA no demuestra AGI por sí mismo. Su valor en esta dirección es que separa tres funciones que los LLMs actuales tienden a mezclar: representación conceptual persistente, inferencia dinámica y renderizado lingüístico. Esta separación podría ser relevante para AGI si el núcleo geométrico demuestra cuatro propiedades:
@@ -293,8 +326,8 @@ Por tanto, el camino hacia AGI se formula como una hipótesis experimental: si u
 
 Con los resultados actuales, la evaluación de viabilidad queda así:
 
-- **Viable:** memoria asociativa multimodal, propagación esparsa, aprendizaje estructural local, control de cascadas por inhibición.
-- **No demostrado:** razonamiento causal, lenguaje natural abierto, planificación, transferencia fuera de distribución y superioridad general frente a LLMs.
+- **Viable:** memoria asociativa multimodal, propagación esparsa, aprendizaje estructural local, control de cascadas por inhibición, replay episódico sintético, causalidad dirigida inicial y geometría 3D/tetraédrica.
+- **No demostrado:** lenguaje natural abierto, planificación larga, transferencia fuera de distribución, grounding con sensores reales y superioridad general frente a LLMs.
 - **Hipótesis fuerte siguiente:** combinar SNGA con encoders reales y un LLM periférico podría reducir costo en tareas donde el LLM hoy funciona como memoria semántica, dejando al LLM como traductor, narrador y adaptador lingüístico.
 
 ## 8. Viabilidad de Hardware
@@ -335,6 +368,8 @@ Los siguientes pasos técnicos son:
 6. Medir energía, latencia y sparsity frente a una línea base transformer.
 7. Evaluar tareas pequeñas de grounding: recuperación de rasgos, consistencia física simple y aprendizaje incremental.
 8. Añadir inhibición lateral y normalización de energía para reducir fuga asociativa.
+9. Evaluar replay episódico con secuencias temporales largas y benchmarks causales.
+10. Explorar geometría hiperbólica para jerarquías y memoria semántica taxonómica.
 
 ## 11. Conclusión
 
