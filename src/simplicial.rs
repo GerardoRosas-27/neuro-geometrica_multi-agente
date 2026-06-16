@@ -102,6 +102,9 @@ pub struct SimplicialNetwork {
     pub config: SimplicialConfig,
     adjacency: Vec<Vec<usize>>,
     edge_lookup: HashMap<(usize, usize), usize>,
+    // Scratch buffers reutilizados entre pasos para evitar reasignaciones por frame.
+    forces_buffer: Vec<Vec2>,
+    inhibition_scratch: Vec<(usize, f32)>,
 }
 
 impl SimplicialNetwork {
@@ -125,6 +128,8 @@ impl SimplicialNetwork {
             spikes: VecDeque::new(),
             adjacency: vec![Vec::new(); config.width * config.height],
             edge_lookup: HashMap::new(),
+            forces_buffer: Vec::new(),
+            inhibition_scratch: Vec::new(),
             config,
         };
 
@@ -388,42 +393,45 @@ impl SimplicialNetwork {
     }
 
     fn apply_lateral_inhibition(&mut self) {
-        let mut active = self
-            .agents
-            .iter()
-            .filter(|agent| agent.surprise > 0.0)
-            .map(|agent| (agent.id, agent.surprise))
-            .collect::<Vec<_>>();
-
-        if active.len() <= self.config.max_active_agents {
-            return;
+        let mut active = std::mem::take(&mut self.inhibition_scratch);
+        active.clear();
+        for agent in &self.agents {
+            if agent.surprise > 0.0 {
+                active.push((agent.id, agent.surprise));
+            }
         }
 
-        active.sort_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
-        let mut keep = vec![false; self.agents.len()];
-        for (agent_id, _) in active.into_iter().take(self.config.max_active_agents) {
-            keep[agent_id] = true;
-        }
-
-        for agent in &mut self.agents {
-            if !keep[agent.id] {
-                agent.surprise *= self.config.inhibition_decay;
+        let keep = self.config.max_active_agents;
+        if active.len() > keep {
+            active.sort_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+            let decay = self.config.inhibition_decay;
+            // Solo decae la cola fuera del top-k; los agentes en reposo (sorpresa 0)
+            // quedarian inalterados, asi que no hace falta recorrerlos.
+            for &(agent_id, _) in &active[keep..] {
+                let agent = &mut self.agents[agent_id];
+                agent.surprise *= decay;
                 if agent.surprise < 0.08 {
                     agent.activation = false;
                     agent.surprise = 0.0;
                 }
             }
         }
+
+        self.inhibition_scratch = active;
     }
 
     fn relax_geometry(&mut self) {
-        let mut forces = vec![Vec2::ZERO; self.agents.len()];
+        let mut forces = std::mem::take(&mut self.forces_buffer);
+        forces.clear();
+        forces.resize(self.agents.len(), Vec2::ZERO);
 
         for edge in &self.edges {
             let pa = self.agents[edge.a].position;
             let pb = self.agents[edge.b].position;
             let delta = pb - pa;
-            let distance = delta.length().max(1.0);
+            // Una sola raiz cuadrada: longitud real para distancia y direccion.
+            let len = delta.length();
+            let distance = len.max(1.0);
             let stretch = distance - edge.rest_length;
             let activation_gain =
                 if self.agents[edge.a].activation || self.agents[edge.b].activation {
@@ -431,8 +439,13 @@ impl SimplicialNetwork {
                 } else {
                     1.0
                 };
-            let force = delta.normalized_or_zero()
-                * (stretch * edge.weight * self.config.elasticity * activation_gain);
+            let direction = if len <= f32::EPSILON {
+                Vec2::ZERO
+            } else {
+                delta / len
+            };
+            let force =
+                direction * (stretch * edge.weight * self.config.elasticity * activation_gain);
             forces[edge.a] += force;
             forces[edge.b] += force * -1.0;
         }
@@ -451,11 +464,13 @@ impl SimplicialNetwork {
             }
         }
 
-        for (agent, force) in self.agents.iter_mut().zip(forces.into_iter()) {
+        for (agent, force) in self.agents.iter_mut().zip(forces.iter().copied()) {
             let local_force = force.clamp_length(4.0);
             agent.velocity = (agent.velocity + local_force) * self.config.damping;
             agent.position += agent.velocity;
         }
+
+        self.forces_buffer = forces;
     }
 
     fn decay_activation(&mut self) {
