@@ -1,9 +1,11 @@
 mod geometry;
+mod multimodal;
 mod render;
 mod simplicial;
 
 use geometry::Vec2;
 use macroquad::prelude::*;
+use multimodal::MultimodalDemo;
 use render::Renderer;
 use simplicial::{SimplicialConfig, SimplicialNetwork, Spike};
 
@@ -22,6 +24,7 @@ async fn main() {
     let config = SimplicialConfig::default();
     let mut network = SimplicialNetwork::grid(config.clone());
     let mut renderer = Renderer::new();
+    let mut demo = MultimodalDemo::new(&network);
     let mut paused = false;
     let mut stats = network.stats();
 
@@ -35,8 +38,18 @@ async fn main() {
         }
         if is_key_pressed(KeyCode::R) {
             network = SimplicialNetwork::grid(config.clone());
+            demo = MultimodalDemo::new(&network);
             network.inject_text_pattern("reset topologico");
             stats = network.stats();
+        }
+        if is_key_pressed(KeyCode::M) {
+            demo.train_all(&mut network);
+        }
+        if is_key_pressed(KeyCode::L) {
+            demo.recall_language(&mut network, "manzana");
+        }
+        if is_key_pressed(KeyCode::O) {
+            demo.recall_language(&mut network, "roca");
         }
         if is_key_pressed(KeyCode::T) {
             network.inject_text_pattern("energia libre simplicial lenguaje periferico");
@@ -53,7 +66,8 @@ async fn main() {
             }
         }
 
-        renderer.draw(&network, &stats, paused);
+        demo.refresh_projection(&network);
+        renderer.draw(&network, &stats, paused, demo.trace());
         next_frame().await;
     }
 }

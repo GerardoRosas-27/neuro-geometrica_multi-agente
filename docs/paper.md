@@ -8,7 +8,7 @@ Los modelos de lenguaje de gran escala (LLMs) han demostrado una capacidad notab
 
 Este documento propone el **Sistema Neuro-Geométrico de Agentes (SNGA)**, una arquitectura experimental en la que la cognición abstracta se modela como relajación mecánica de una malla topológica descentralizada. El núcleo cognitivo no es un vector denso, sino un complejo simplicial formado por agentes binarios, aristas asíncronas y símplices de orden superior. Cada agente minimiza una energía libre local derivada de la tensión geométrica con sus vecinos. Los LLMs quedan relegados a módulos periféricos de entrada/salida: codifican estímulos lingüísticos como impulsos binarios y renderizan configuraciones geométricas estabilizadas como lenguaje natural.
 
-El repositorio acompaña la propuesta con un prototipo íntegro en Rust. La implementación incluye una red binaria event-driven, una malla simplicial 2D, una regla de relajación elástica local y un motor gráfico basado en `macroquad` para observar la estabilización de la red en tiempo real.
+La tesis se presenta como una hipótesis de arquitectura, no como una demostración de AGI. El repositorio acompaña la propuesta con un prototipo íntegro en Rust. La implementación incluye una red binaria event-driven, una malla simplicial 2D, una regla de relajación elástica local, un demostrador multimodal sintético y un motor gráfico basado en `macroquad` para observar la estabilización de la red en tiempo real.
 
 ## 1. Introducción
 
@@ -116,11 +116,32 @@ El estado final tras varios pasos no es una secuencia de tokens, sino una config
 
 SNGA propone tres interfaces:
 
-**Codificador de entrada.** Un LLM o encoder externo transforma texto, imagen o sonido en impulsos discretos. En el prototipo, `inject_text_pattern()` usa una proyección determinista simple desde bytes de texto hacia índices de vértices. Esta función no pretende ser semántica; actúa como sustituto mínimo para demostrar el mecanismo de inyección.
+**Codificador de entrada.** Un LLM o encoder externo transforma texto, imagen o sonido en impulsos discretos. En el prototipo, `MultimodalDemo` usa una proyección determinista separada por modalidad: lenguaje, visión y audio ocupan bandas distintas de la malla. Esta función no pretende sustituir a un encoder semántico real; actúa como sustituto mínimo para demostrar el mecanismo de inyección, coactivación y evocación.
 
 **Núcleo intuitivo.** La malla propaga los impulsos y minimiza energía libre local hasta alcanzar una configuración estable.
 
-**Renderizador de salida.** Un adaptador futuro observaría distancias, curvaturas, regiones activas y caminos geodésicos para producir embeddings condicionantes. Un LLM decodificador generaría lenguaje a partir de ese paisaje estacionario. En el código actual, el renderizado es visual: muestra agentes activos, aristas excitadas, símplices y energía libre.
+**Renderizador de salida.** Un adaptador futuro observaría distancias, curvaturas, regiones activas y caminos geodésicos para producir embeddings condicionantes. Un LLM decodificador generaría lenguaje a partir de ese paisaje estacionario. En el código actual, el renderizado es visual: muestra agentes activos, aristas excitadas, símplices, energía libre y una proyección simple de los agentes con mayor sorpresa.
+
+### 3.4 Aprendizaje Multimodal Inicial
+
+La primera demostración implementada prueba una versión mínima de grounding multimodal. El sistema define conceptos sintéticos como `manzana` y `roca`. Cada concepto tiene rasgos separados por modalidad:
+
+```text
+manzana:
+  lenguaje = [manzana, fruta, dulce]
+  vision   = [redonda, roja, verde, brillante]
+  audio    = [crujiente, mordida]
+```
+
+Durante el entrenamiento, los patrones de lenguaje, visión y audio se inyectan simultáneamente como picos binarios. La red aplica una regla local de coactivación:
+
+```text
+si i y j se activan juntos:
+  aumentar rigidez w_ij
+  reducir ligeramente la longitud de reposo l_ij
+```
+
+Esto no crea semántica humana completa. Lo que demuestra es el mecanismo básico: estímulos de modalidades distintas pueden quedar ligados en una vecindad topológica compartida. Después del entrenamiento, activar solo la entrada lingüística de `manzana` tiende a reactivar parte de la región multimodal asociada.
 
 ## 4. Complejidad y Eficiencia
 
@@ -163,12 +184,26 @@ Controles:
 
 - `Espacio`: pausar o reanudar.
 - `Click izquierdo`: inyectar estímulo en el agente más cercano.
+- `M`: entrenar coactivaciones multimodales sintéticas.
+- `L`: evocar `manzana` desde su patrón lingüístico.
+- `O`: evocar `roca` desde su patrón lingüístico.
 - `T`: inyectar patrón textual de ejemplo.
 - `R`: reiniciar la malla.
 - `+` / `-`: zoom.
 - Flechas: mover cámara.
 
-## 6. Viabilidad de Hardware
+## 6. Viabilidad hacia AGI
+
+SNGA no demuestra AGI por sí mismo. Su valor en esta dirección es que separa tres funciones que los LLMs actuales tienden a mezclar: representación conceptual persistente, inferencia dinámica y renderizado lingüístico. Esta separación podría ser relevante para AGI si el núcleo geométrico demuestra cuatro propiedades:
+
+1. **Grounding multimodal verificable.** Un concepto debe quedar ligado a visión, audio, tacto, acción y lenguaje sin depender solo de correlaciones textuales.
+2. **Aprendizaje continuo local.** La red debe incorporar conceptos nuevos sin reentrenar todo el sistema ni destruir atractores previos.
+3. **Restricciones físicas y causales.** El motor geométrico debe poder penalizar respuestas incompatibles con relaciones espaciales, temporales o causales aprendidas.
+4. **Interfaz independiente del lenguaje.** La misma configuración abstracta debería poder renderizarse como texto, imagen, acción robótica o consulta estructurada.
+
+Por tanto, el camino hacia AGI se formula como una hipótesis experimental: si un núcleo geométrico esparso puede aprender atractores multimodales estables y guiar módulos periféricos especializados, entonces podría reducir parte de la dependencia actual en modelos monolíticos de lenguaje. La afirmación requiere evidencia empírica comparativa; no debe presentarse como conclusión cerrada.
+
+## 7. Viabilidad de Hardware
 
 La arquitectura SNGA es especialmente compatible con hardware donde la localidad física importa:
 
@@ -179,30 +214,32 @@ La arquitectura SNGA es especialmente compatible con hardware donde la localidad
 
 Una implementación futura debería particionar la malla en sectores, asignar cada sector a un núcleo y comunicar solo eventos de frontera. Esto reduciría sincronización global y permitiría escalado espacial.
 
-## 7. Limitaciones del Prototipo
+## 8. Limitaciones del Prototipo
 
 La versión actual es una demostración de mecanismo, no un modelo entrenado. Sus principales limitaciones son:
 
 - La codificación textual es determinista pero no semántica.
 - El complejo es 2D, no hiperbólico ni 3D.
-- Los pesos de aristas son fijos.
+- El aprendizaje por coactivación es local y simple; todavía no separa causalidad de coincidencia.
 - No existe aún decodificador LLM periférico.
-- No hay persistencia de memoria episódica ni crecimiento topológico.
+- No hay persistencia de memoria episódica en disco.
+- El crecimiento topológico existe solo como refuerzo/creación de aristas, no como neurogénesis estructural completa.
 
 Estas limitaciones son deliberadas: el objetivo inicial es aislar el principio operativo de relajación local y visualizarlo con claridad.
 
-## 8. Ruta de Investigación
+## 9. Ruta de Investigación
 
 Los siguientes pasos técnicos son:
 
-1. Sustituir la proyección por bytes por un encoder multimodal real.
-2. Implementar crecimiento topológico: creación y poda de aristas según coactivación.
+1. Sustituir la proyección sintética por encoders reales: CLIP/ViT para visión, encoder de audio y LLM pequeño para lenguaje.
+2. Implementar crecimiento topológico completo: creación, poda y consolidación de aristas/símplices según coactivación y predicción.
 3. Añadir geometría hiperbólica para jerarquías conceptuales.
 4. Incorporar símplices 3D para restricciones volumétricas.
 5. Entrenar un adaptador cross-attention que lea matrices de distancia estabilizadas.
 6. Medir energía, latencia y sparsity frente a una línea base transformer.
+7. Evaluar tareas pequeñas de grounding: recuperación de rasgos, consistencia física simple y aprendizaje incremental.
 
-## 9. Conclusión
+## 10. Conclusión
 
 SNGA plantea un cambio de énfasis: de predicción lingüística densa a estabilización geométrica esparsa. El sistema no elimina los LLMs, sino que los reubica como renderizadores periféricos. El núcleo cognitivo se modela como un complejo simplicial que minimiza tensión local, permitiendo una forma de inferencia más cercana a navegación conceptual que a multiplicación matricial global.
 

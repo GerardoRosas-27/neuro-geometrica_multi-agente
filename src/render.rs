@@ -1,4 +1,5 @@
 use crate::geometry::Vec2;
+use crate::multimodal::DemoTrace;
 use crate::simplicial::{EnergyStats, SimplicialNetwork};
 use macroquad::prelude::*;
 
@@ -37,12 +38,18 @@ impl Renderer {
         }
     }
 
-    pub fn draw(&self, network: &SimplicialNetwork, stats: &EnergyStats, paused: bool) {
+    pub fn draw(
+        &self,
+        network: &SimplicialNetwork,
+        stats: &EnergyStats,
+        paused: bool,
+        trace: &DemoTrace,
+    ) {
         clear_background(Color::from_rgba(8, 10, 16, 255));
         self.draw_simplices(network);
         self.draw_edges(network);
         self.draw_agents(network);
-        self.draw_hud(network, stats, paused);
+        self.draw_hud(network, stats, paused, trace);
     }
 
     fn draw_simplices(&self, network: &SimplicialNetwork) {
@@ -81,12 +88,31 @@ impl Renderer {
                 Color::from_rgba(190, 214, 230, 220)
             };
             draw_circle(p.x, p.y, radius, color);
-            draw_circle_lines(p.x, p.y, radius + 1.5, 0.7, Color::from_rgba(255, 255, 255, 70));
+            draw_circle_lines(
+                p.x,
+                p.y,
+                radius + 1.5,
+                0.7,
+                Color::from_rgba(255, 255, 255, 70),
+            );
         }
     }
 
-    fn draw_hud(&self, network: &SimplicialNetwork, stats: &EnergyStats, paused: bool) {
+    fn draw_hud(
+        &self,
+        network: &SimplicialNetwork,
+        stats: &EnergyStats,
+        paused: bool,
+        trace: &DemoTrace,
+    ) {
         let status = if paused { "pausado" } else { "corriendo" };
+        let projected = trace
+            .projection
+            .top_agents
+            .iter()
+            .map(|(id, value)| format!("{id}:{value:.2}"))
+            .collect::<Vec<_>>()
+            .join(", ");
         let lines = [
             "SNGA - Sistema Neuro-Geometrico de Agentes".to_string(),
             format!(
@@ -99,11 +125,19 @@ impl Renderer {
                 network.edges.len(),
                 network.simplices.len()
             ),
-            "controles: espacio=inicio/pausa, click=estimulo, T=texto, R=reset, +/-=zoom, flechas=pan".to_string(),
+            trace.message.clone(),
+            format!("proyeccion activa: [{projected}]"),
+            "controles: espacio=pausa, click=estimulo, M=train, L=manzana, O=roca, T=texto, R=reset".to_string(),
         ];
 
-        let panel_height = 92.0;
-        draw_rectangle(0.0, 0.0, screen_width(), panel_height, Color::from_rgba(5, 8, 13, 220));
+        let panel_height = 132.0;
+        draw_rectangle(
+            0.0,
+            0.0,
+            screen_width(),
+            panel_height,
+            Color::from_rgba(5, 8, 13, 220),
+        );
         for (i, line) in lines.iter().enumerate() {
             draw_text(line, 18.0, 24.0 + i as f32 * 20.0, 20.0, WHITE);
         }

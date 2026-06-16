@@ -74,6 +74,11 @@ impl Default for SimplicialConfig {
 }
 
 #[derive(Clone, Debug)]
+pub struct ConceptProjection {
+    pub top_agents: Vec<(usize, f32)>,
+}
+
+#[derive(Clone, Debug)]
 pub struct EnergyStats {
     pub total_free_energy: f32,
     pub active_agents: usize,
@@ -98,7 +103,8 @@ impl SimplicialNetwork {
         for y in 0..config.height {
             for x in 0..config.width {
                 let jitter = Vec2::new(rng.gen_range(-3.0..3.0), rng.gen_range(-3.0..3.0));
-                let position = Vec2::new(x as f32 * config.spacing, y as f32 * config.spacing) + jitter;
+                let position =
+                    Vec2::new(x as f32 * config.spacing, y as f32 * config.spacing) + jitter;
                 agents.push(Agent::new(y * config.width + x, position));
             }
         }
@@ -122,16 +128,52 @@ impl SimplicialNetwork {
             return;
         }
 
-        for (i, byte) in bytes.iter().enumerate() {
-            let idx = ((*byte as usize * 31) + i * 17) % self.agents.len();
+        let pattern = bytes
+            .iter()
+            .enumerate()
+            .map(|(i, byte)| ((*byte as usize * 31) + i * 17) % self.agents.len())
+            .collect::<Vec<_>>();
+        self.inject_pattern(&pattern, 1.0, 3);
+    }
+
+    pub fn inject_pattern(&mut self, pattern: &[usize], surprise: f32, ttl: u8) {
+        for &idx in pattern {
+            if idx >= self.agents.len() {
+                continue;
+            }
             self.agents[idx].activation = true;
-            self.agents[idx].surprise = 1.0;
+            self.agents[idx].surprise = self.agents[idx].surprise.max(surprise);
             self.spikes.push_back(Spike {
                 source: idx,
                 target: idx,
-                ttl: 3,
+                ttl,
             });
         }
+    }
+
+    pub fn reinforce_coactivation(&mut self, pattern: &[usize], learning_rate: f32) {
+        for i in 0..pattern.len() {
+            for j in (i + 1)..pattern.len() {
+                let a = pattern[i];
+                let b = pattern[j];
+                if a == b || a >= self.agents.len() || b >= self.agents.len() {
+                    continue;
+                }
+                self.reinforce_pair(a, b, learning_rate);
+            }
+        }
+    }
+
+    pub fn project_active_state(&self, limit: usize) -> ConceptProjection {
+        let mut top_agents = self
+            .agents
+            .iter()
+            .filter(|agent| agent.surprise > 0.0)
+            .map(|agent| (agent.id, agent.surprise))
+            .collect::<Vec<_>>();
+        top_agents.sort_by(|a, b| b.1.total_cmp(&a.1));
+        top_agents.truncate(limit);
+        ConceptProjection { top_agents }
     }
 
     pub fn excite_center(&mut self) {
@@ -203,10 +245,20 @@ impl SimplicialNetwork {
             for x in 0..self.config.width {
                 let id = y * self.config.width + x;
                 if x + 1 < self.config.width {
-                    self.add_edge(id, y * self.config.width + (x + 1), self.config.spacing, 1.0);
+                    self.add_edge(
+                        id,
+                        y * self.config.width + (x + 1),
+                        self.config.spacing,
+                        1.0,
+                    );
                 }
                 if y + 1 < self.config.height {
-                    self.add_edge(id, (y + 1) * self.config.width + x, self.config.spacing, 1.0);
+                    self.add_edge(
+                        id,
+                        (y + 1) * self.config.width + x,
+                        self.config.spacing,
+                        1.0,
+                    );
                 }
                 if x + 1 < self.config.width && y + 1 < self.config.height {
                     self.add_edge(
@@ -242,6 +294,21 @@ impl SimplicialNetwork {
         self.adjacency[b].push(edge_idx);
     }
 
+    fn reinforce_pair(&mut self, a: usize, b: usize, learning_rate: f32) {
+        if let Some(edge) = self
+            .edges
+            .iter_mut()
+            .find(|edge| (edge.a == a && edge.b == b) || (edge.a == b && edge.b == a))
+        {
+            edge.weight = (edge.weight + learning_rate).min(5.0);
+            edge.rest_length *= 1.0 - learning_rate.min(0.08) * 0.12;
+            return;
+        }
+
+        let distance = self.agents[a].position.distance(self.agents[b].position);
+        self.add_edge(a, b, distance.max(1.0) * 0.92, learning_rate.max(0.05));
+    }
+
     fn add_simplex(&mut self, a: usize, b: usize, c: usize) {
         let pa = self.agents[a].position;
         let pb = self.agents[b].position;
@@ -269,8 +336,14 @@ impl SimplicialNetwork {
 
             for &edge_idx in &self.adjacency[spike.target] {
                 let edge = &self.edges[edge_idx];
-                let neighbor = if edge.a == spike.target { edge.b } else { edge.a };
-                if neighbor != spike.source && self.agents[spike.target].surprise > self.config.activation_threshold {
+                let neighbor = if edge.a == spike.target {
+                    edge.b
+                } else {
+                    edge.a
+                };
+                if neighbor != spike.source
+                    && self.agents[spike.target].surprise > self.config.activation_threshold
+                {
                     next.push_back(Spike {
                         source: spike.target,
                         target: neighbor,
@@ -292,11 +365,12 @@ impl SimplicialNetwork {
             let delta = pb - pa;
             let distance = delta.length().max(1.0);
             let stretch = distance - edge.rest_length;
-            let activation_gain = if self.agents[edge.a].activation || self.agents[edge.b].activation {
-                1.85
-            } else {
-                1.0
-            };
+            let activation_gain =
+                if self.agents[edge.a].activation || self.agents[edge.b].activation {
+                    1.85
+                } else {
+                    1.0
+                };
             let force = delta.normalized_or_zero()
                 * (stretch * edge.weight * self.config.elasticity * activation_gain);
             forces[edge.a] += force;
