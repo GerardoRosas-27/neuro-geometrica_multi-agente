@@ -1,6 +1,6 @@
 use crate::geometry::Vec2;
 use rand::{rngs::StdRng, Rng, SeedableRng};
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 const ASSOCIATIVE_EDGE_THRESHOLD: f32 = 1.05;
 
@@ -139,6 +139,10 @@ pub struct Episode {
     pub pattern: Vec<usize>,
     pub strength: f32,
     pub created_tick: u64,
+    pub context: Vec<usize>,
+    pub predicted_next: Vec<usize>,
+    pub prediction_error: f32,
+    pub novelty: f32,
 }
 
 #[derive(Clone, Debug)]
@@ -148,6 +152,80 @@ pub struct PredictionReport {
     pub expected_agents: usize,
     pub precision: f32,
     pub recall: f32,
+}
+
+#[derive(Clone, Debug)]
+pub struct PatternPredictionReport {
+    pub predicted_pattern: Vec<(usize, f32)>,
+    pub observed_pattern: Vec<usize>,
+    pub matched_agents: usize,
+    pub precision: f32,
+    pub recall: f32,
+    pub prediction_error: f32,
+}
+
+#[derive(Clone, Debug)]
+pub struct EpisodicMatch {
+    pub pattern: Vec<usize>,
+    pub context: Vec<usize>,
+    pub similarity: f32,
+    pub strength: f32,
+    pub age_ticks: u64,
+    pub prediction_error: f32,
+}
+
+#[derive(Clone, Debug)]
+pub struct EpisodicRecall {
+    pub matches: Vec<EpisodicMatch>,
+    pub merged_pattern: Vec<(usize, f32)>,
+}
+
+#[derive(Clone, Debug)]
+pub struct AttentionReport {
+    pub goal_agents: Vec<usize>,
+    pub context_agents: Vec<(usize, f32)>,
+    pub boosted_agents: usize,
+    pub suppressed_agents: usize,
+}
+
+#[derive(Clone, Debug)]
+pub struct WorldSnapshot {
+    pub tick: u64,
+    pub active_pattern: Vec<usize>,
+    pub projection: ConceptProjection,
+    pub free_energy: f32,
+}
+
+#[derive(Clone, Debug)]
+pub struct RolloutStep {
+    pub step: usize,
+    pub predicted_pattern: Vec<(usize, f32)>,
+    pub snapshot: WorldSnapshot,
+}
+
+#[derive(Clone, Debug)]
+pub struct RolloutReport {
+    pub initial_pattern: Vec<usize>,
+    pub terminal_pattern: Vec<usize>,
+    pub energy_delta: f32,
+    pub steps: Vec<RolloutStep>,
+}
+
+#[derive(Clone, Debug)]
+pub struct PlanStep {
+    pub agent: usize,
+    pub score: f32,
+}
+
+#[derive(Clone, Debug)]
+pub struct PlanReport {
+    pub start: Vec<usize>,
+    pub goal: Vec<usize>,
+    pub horizon: usize,
+    pub reached_goal: bool,
+    pub path: Vec<PlanStep>,
+    pub score: f32,
+    pub terminal_prediction: Vec<(usize, f32)>,
 }
 
 #[derive(Clone, Debug)]
@@ -196,6 +274,10 @@ pub struct SimplicialNetwork {
     causal_adjacency: HashMap<usize, Vec<(usize, f32)>>,
     contradiction_edges: HashMap<(usize, usize), f32>,
     episodes: VecDeque<Episode>,
+    last_episode_pattern: Vec<usize>,
+    attention_goal: Vec<usize>,
+    attention_context: HashMap<usize, f32>,
+    world_snapshots: VecDeque<WorldSnapshot>,
     tick: u64,
     // Scratch buffers reutilizados entre pasos para evitar reasignaciones por frame.
     forces_buffer: Vec<Vec2>,
@@ -228,6 +310,10 @@ impl SimplicialNetwork {
             causal_adjacency: HashMap::new(),
             contradiction_edges: HashMap::new(),
             episodes: VecDeque::new(),
+            last_episode_pattern: Vec::new(),
+            attention_goal: Vec::new(),
+            attention_context: HashMap::new(),
+            world_snapshots: VecDeque::new(),
             tick: 0,
             forces_buffer: Vec::new(),
             inhibition_scratch: Vec::new(),
@@ -269,6 +355,10 @@ impl SimplicialNetwork {
             causal_adjacency: HashMap::new(),
             contradiction_edges: HashMap::new(),
             episodes: VecDeque::new(),
+            last_episode_pattern: Vec::new(),
+            attention_goal: Vec::new(),
+            attention_context: HashMap::new(),
+            world_snapshots: VecDeque::new(),
             tick: 0,
             forces_buffer: Vec::new(),
             inhibition_scratch: Vec::new(),
@@ -619,6 +709,323 @@ impl SimplicialNetwork {
         prediction_report(self.predict_from(cause, limit), expected)
     }
 
+    pub fn predict_next_pattern(
+        &self,
+        current: &[usize],
+        horizon: usize,
+        limit: usize,
+    ) -> Vec<(usize, f32)> {
+        let mut scores = HashMap::<usize, f32>::new();
+        let current_set = current.iter().copied().collect::<HashSet<_>>();
+        let causal = if horizon <= 1 {
+            self.predict_from(current, limit.max(current.len()).max(1) * 2)
+        } else {
+            self.infer_transitive_from(current, horizon, limit.max(current.len()).max(1) * 2)
+        };
+
+        for (idx, score) in causal {
+            if !current_set.contains(&idx) {
+                *scores.entry(idx).or_insert(0.0) += score;
+            }
+        }
+
+        for episode in &self.episodes {
+            let context_similarity = pattern_similarity(current, &episode.context);
+            if context_similarity <= 0.0 {
+                continue;
+            }
+            let age = self.tick.saturating_sub(episode.created_tick).max(1) as f32;
+            let recency = 1.0 / age.sqrt();
+            let gain = context_similarity
+                * episode.strength
+                * (1.0 + episode.novelty)
+                * (1.0 + episode.prediction_error)
+                * recency;
+            for &idx in &episode.pattern {
+                if !current_set.contains(&idx) {
+                    *scores.entry(idx).or_insert(0.0) += gain;
+                }
+            }
+        }
+
+        let mut predicted = scores.into_iter().collect::<Vec<_>>();
+        predicted.sort_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        predicted.truncate(limit);
+        predicted
+    }
+
+    pub fn evaluate_pattern_prediction(
+        &self,
+        current: &[usize],
+        observed: &[usize],
+        horizon: usize,
+        limit: usize,
+    ) -> PatternPredictionReport {
+        let predicted_pattern = self.predict_next_pattern(current, horizon, limit);
+        let observed_set = observed.iter().copied().collect::<HashSet<_>>();
+        let matched_agents = predicted_pattern
+            .iter()
+            .filter(|(idx, _)| observed_set.contains(idx))
+            .count();
+        let precision = matched_agents as f32 / predicted_pattern.len().max(1) as f32;
+        let recall = matched_agents as f32 / observed_set.len().max(1) as f32;
+
+        PatternPredictionReport {
+            predicted_pattern,
+            observed_pattern: observed_set.into_iter().collect(),
+            matched_agents,
+            precision,
+            recall,
+            prediction_error: 1.0 - ((precision + recall) * 0.5),
+        }
+    }
+
+    pub fn retrieve_episodes(&self, query: &[usize], limit: usize) -> EpisodicRecall {
+        let mut matches = self
+            .episodes
+            .iter()
+            .filter_map(|episode| {
+                let pattern_score = pattern_similarity(query, &episode.pattern);
+                let context_score = pattern_similarity(query, &episode.context) * 0.5;
+                let similarity = pattern_score.max(context_score);
+                if similarity <= 0.0 {
+                    return None;
+                }
+                Some(EpisodicMatch {
+                    pattern: episode.pattern.clone(),
+                    context: episode.context.clone(),
+                    similarity,
+                    strength: episode.strength,
+                    age_ticks: self.tick.saturating_sub(episode.created_tick),
+                    prediction_error: episode.prediction_error,
+                })
+            })
+            .collect::<Vec<_>>();
+
+        matches.sort_by(|a, b| {
+            b.similarity
+                .total_cmp(&a.similarity)
+                .then_with(|| b.strength.total_cmp(&a.strength))
+        });
+        matches.truncate(limit);
+
+        let mut merged = HashMap::<usize, f32>::new();
+        for item in &matches {
+            let age = item.age_ticks.max(1) as f32;
+            let gain = item.similarity * item.strength / age.sqrt();
+            for &idx in &item.pattern {
+                *merged.entry(idx).or_insert(0.0) += gain;
+            }
+        }
+
+        let mut merged_pattern = merged.into_iter().collect::<Vec<_>>();
+        merged_pattern.sort_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        merged_pattern.truncate(limit.max(1) * 4);
+
+        EpisodicRecall {
+            matches,
+            merged_pattern,
+        }
+    }
+
+    pub fn set_attention_goal(&mut self, goal: &[usize]) {
+        self.attention_goal = compact_pattern(goal, self.agents.len());
+    }
+
+    pub fn clear_attention_goal(&mut self) {
+        self.attention_goal.clear();
+    }
+
+    pub fn attention_report(&self, limit: usize) -> AttentionReport {
+        let mut context_agents = self
+            .attention_context
+            .iter()
+            .map(|(&idx, &weight)| (idx, weight))
+            .collect::<Vec<_>>();
+        context_agents.sort_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        context_agents.truncate(limit);
+
+        AttentionReport {
+            goal_agents: self.attention_goal.clone(),
+            context_agents,
+            boosted_agents: self
+                .agents
+                .iter()
+                .filter(|agent| {
+                    agent.surprise > 0.0
+                        && (self.attention_goal.contains(&agent.id)
+                            || self.attention_context.contains_key(&agent.id))
+                })
+                .count(),
+            suppressed_agents: self
+                .agents
+                .iter()
+                .filter(|agent| agent.activation == false && agent.surprise == 0.0)
+                .count(),
+        }
+    }
+
+    pub fn capture_world_snapshot(&self, limit: usize) -> WorldSnapshot {
+        WorldSnapshot {
+            tick: self.tick,
+            active_pattern: self.active_pattern(limit),
+            projection: self.project_active_state(limit),
+            free_energy: self.total_free_energy(),
+        }
+    }
+
+    pub fn remember_world_snapshot(&mut self, limit: usize) -> WorldSnapshot {
+        let snapshot = self.capture_world_snapshot(limit);
+        self.world_snapshots.push_back(snapshot.clone());
+        while self.world_snapshots.len() > self.config.max_episodes.max(1) {
+            self.world_snapshots.pop_front();
+        }
+        snapshot
+    }
+
+    pub fn internal_rollout(
+        &self,
+        seed_pattern: &[usize],
+        steps: usize,
+        horizon: usize,
+        limit: usize,
+    ) -> RolloutReport {
+        let mut imagined = self.clone();
+        imagined.clear_activity();
+        imagined.inject_pattern(seed_pattern, 1.0, 2);
+        let initial_energy = imagined.total_free_energy();
+        let mut rollout_steps = Vec::new();
+        let mut active = compact_pattern(seed_pattern, imagined.agents.len());
+
+        for step in 0..steps {
+            let predicted = imagined.predict_next_pattern(&active, horizon.max(1), limit);
+            let predicted_pattern = predicted.iter().map(|(idx, _)| *idx).collect::<Vec<_>>();
+            if !predicted_pattern.is_empty() {
+                imagined.inject_pattern(&predicted_pattern, 0.7, 1);
+            }
+            imagined.step();
+            let snapshot = imagined.capture_world_snapshot(limit);
+            active = snapshot.active_pattern.clone();
+            rollout_steps.push(RolloutStep {
+                step,
+                predicted_pattern: predicted,
+                snapshot,
+            });
+        }
+
+        let terminal_pattern = active;
+        let terminal_energy = rollout_steps
+            .last()
+            .map(|step| step.snapshot.free_energy)
+            .unwrap_or(initial_energy);
+
+        RolloutReport {
+            initial_pattern: compact_pattern(seed_pattern, self.agents.len()),
+            terminal_pattern,
+            energy_delta: terminal_energy - initial_energy,
+            steps: rollout_steps,
+        }
+    }
+
+    pub fn plan_to_goal(
+        &self,
+        start: &[usize],
+        goal: &[usize],
+        horizon: usize,
+        beam_width: usize,
+    ) -> PlanReport {
+        let start_pattern = compact_pattern(start, self.agents.len());
+        let goal_pattern = compact_pattern(goal, self.agents.len());
+        let goal_set = goal_pattern.iter().copied().collect::<HashSet<_>>();
+        let mut frontier = start_pattern
+            .iter()
+            .copied()
+            .map(|idx| {
+                (
+                    idx,
+                    1.0_f32,
+                    vec![PlanStep {
+                        agent: idx,
+                        score: 1.0,
+                    }],
+                )
+            })
+            .collect::<Vec<_>>();
+
+        let mut best_path = frontier
+            .first()
+            .map(|(_, score, path)| (*score, path.clone()))
+            .unwrap_or((0.0, Vec::new()));
+        let mut best_goal_path = None::<(f32, Vec<PlanStep>)>;
+
+        for depth in 0..horizon {
+            let mut next = Vec::new();
+            for (source, score, path) in frontier {
+                let Some(neighbors) = self.causal_adjacency.get(&source) else {
+                    continue;
+                };
+                for &(target, weight) in neighbors {
+                    if path.iter().any(|step| step.agent == target) {
+                        continue;
+                    }
+                    let goal_bonus = if goal_set.contains(&target) { 1.5 } else { 1.0 };
+                    let contradiction_penalty =
+                        1.0 / (1.0 + self.contradiction_tension(&[target], &goal_pattern));
+                    let depth_discount = 1.0 / (depth as f32 + 1.0).sqrt();
+                    let next_score =
+                        score * weight * goal_bonus * contradiction_penalty * depth_discount;
+                    let mut next_path = path.clone();
+                    next_path.push(PlanStep {
+                        agent: target,
+                        score: next_score,
+                    });
+                    if next_score > best_path.0 {
+                        best_path = (next_score, next_path.clone());
+                    }
+                    if goal_set.contains(&target) {
+                        let should_replace = best_goal_path
+                            .as_ref()
+                            .map(|(goal_score, _)| next_score > *goal_score)
+                            .unwrap_or(true);
+                        if should_replace {
+                            best_goal_path = Some((next_score, next_path.clone()));
+                        }
+                    }
+                    next.push((target, next_score, next_path));
+                }
+            }
+
+            if next.is_empty() {
+                break;
+            }
+
+            next.sort_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+            next.truncate(beam_width.max(goal_pattern.len()).max(1));
+            frontier = next;
+        }
+
+        let selected_path = best_goal_path.unwrap_or(best_path);
+        let terminal = selected_path
+            .1
+            .last()
+            .map(|step| vec![step.agent])
+            .unwrap_or_default();
+
+        PlanReport {
+            start: start_pattern,
+            goal: goal_pattern.clone(),
+            horizon,
+            reached_goal: selected_path
+                .1
+                .last()
+                .map(|step| goal_pattern.contains(&step.agent))
+                .unwrap_or(false),
+            path: selected_path.1,
+            score: selected_path.0,
+            terminal_prediction: self.predict_next_pattern(&terminal, 1, goal_pattern.len().max(1)),
+        }
+    }
+
     pub fn plasticity_stats(&self) -> PlasticityStats {
         PlasticityStats {
             tick: self.tick,
@@ -652,8 +1059,21 @@ impl SimplicialNetwork {
         ConceptProjection { top_agents }
     }
 
+    pub fn active_pattern(&self, limit: usize) -> Vec<usize> {
+        let mut active = self
+            .agents
+            .iter()
+            .filter(|agent| agent.surprise > 0.0)
+            .map(|agent| (agent.id, agent.surprise))
+            .collect::<Vec<_>>();
+        active.sort_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        active.truncate(limit);
+        active.into_iter().map(|(idx, _)| idx).collect()
+    }
+
     pub fn clear_activity(&mut self) {
         self.spikes.clear();
+        self.last_episode_pattern.clear();
         for agent in &mut self.agents {
             agent.activation = false;
             agent.surprise = 0.0;
@@ -684,6 +1104,7 @@ impl SimplicialNetwork {
     pub fn step(&mut self) -> EnergyStats {
         self.tick = self.tick.wrapping_add(1);
         self.maybe_replay();
+        self.update_attention_context();
         self.propagate_spikes();
         self.relax_geometry();
         self.maintain_plasticity();
@@ -876,22 +1297,47 @@ impl SimplicialNetwork {
             return;
         }
 
-        let mut compact = pattern
-            .iter()
-            .copied()
-            .filter(|&idx| idx < self.agents.len())
-            .collect::<Vec<_>>();
-        compact.sort_unstable();
-        compact.dedup();
+        let compact = compact_pattern(pattern, self.agents.len());
         if compact.len() < 2 {
             return;
         }
 
+        let context = self.last_episode_pattern.clone();
+        let predicted_next = if context.is_empty() {
+            Vec::new()
+        } else {
+            self.predict_next_pattern(&context, 1, compact.len())
+                .into_iter()
+                .map(|(idx, _)| idx)
+                .collect::<Vec<_>>()
+        };
+        let prediction_error = if predicted_next.is_empty() {
+            1.0
+        } else {
+            1.0 - pattern_similarity(&predicted_next, &compact)
+        };
+        let novelty = 1.0
+            - self
+                .retrieve_episodes(&compact, 1)
+                .matches
+                .first()
+                .map(|item| item.similarity)
+                .unwrap_or(0.0);
+
+        if !context.is_empty() {
+            self.learn_transition(&context, &compact);
+        }
+
         self.episodes.push_back(Episode {
-            pattern: compact,
+            pattern: compact.clone(),
             strength,
             created_tick: self.tick,
+            context,
+            predicted_next,
+            prediction_error,
+            novelty,
         });
+        self.last_episode_pattern = compact;
 
         while self.episodes.len() > self.config.max_episodes {
             self.episodes.pop_front();
@@ -908,18 +1354,27 @@ impl SimplicialNetwork {
         }
 
         let batch = self.config.replay_batch.min(self.episodes.len());
-        let start = self.episodes.len() - batch;
-        let episodes = self
-            .episodes
-            .iter()
-            .skip(start)
-            .cloned()
-            .collect::<Vec<_>>();
+        let mut episodes = self.episodes.iter().cloned().collect::<Vec<_>>();
+        episodes.sort_by(|a, b| {
+            let age_a = self.tick.saturating_sub(a.created_tick).max(1) as f32;
+            let age_b = self.tick.saturating_sub(b.created_tick).max(1) as f32;
+            let score_a = (a.strength + a.novelty + a.prediction_error) / age_a.sqrt();
+            let score_b = (b.strength + b.novelty + b.prediction_error) / age_b.sqrt();
+            score_b.total_cmp(&score_a)
+        });
+        episodes.truncate(batch);
 
         for episode in episodes {
             let age = self.tick.saturating_sub(episode.created_tick).max(1) as f32;
-            let replay_gain = self.config.replay_learning_rate * episode.strength / age.sqrt();
+            let replay_gain = self.config.replay_learning_rate
+                * episode.strength
+                * (1.0 + episode.novelty)
+                * (1.0 + episode.prediction_error)
+                / age.sqrt();
             self.reinforce_coactivation(&episode.pattern, replay_gain);
+            if !episode.context.is_empty() {
+                self.learn_transition(&episode.context, &episode.pattern);
+            }
         }
     }
 
@@ -1022,7 +1477,7 @@ impl SimplicialNetwork {
                     && self.agents[spike.target].surprise > self.rhythmic_threshold()
                 {
                     next.push((
-                        edge.weight,
+                        edge.weight * self.attention_weight(neighbor),
                         Spike {
                             source: spike.target,
                             target: neighbor,
@@ -1039,12 +1494,65 @@ impl SimplicialNetwork {
         self.apply_lateral_inhibition();
     }
 
+    fn update_attention_context(&mut self) {
+        self.attention_context.clear();
+        if self.agents.is_empty() {
+            return;
+        }
+
+        let active = self.active_pattern(self.config.max_active_agents.max(1));
+        for idx in active.iter().copied() {
+            self.attention_context.insert(idx, 1.0);
+        }
+
+        for (idx, score) in
+            self.predict_next_pattern(&active, 1, self.config.max_active_agents.max(1))
+        {
+            let entry = self.attention_context.entry(idx).or_insert(0.0);
+            *entry = (*entry).max((score * 0.7).min(1.2));
+        }
+
+        if !self.attention_goal.is_empty() {
+            let goal = self.attention_goal.clone();
+            for idx in goal {
+                if idx < self.agents.len() {
+                    self.attention_context.insert(idx, 1.5);
+                }
+            }
+            for (idx, score) in self.infer_transitive_from(
+                &self.active_pattern(self.config.max_active_agents.max(1)),
+                3,
+                self.config.max_active_agents.max(1),
+            ) {
+                if self.attention_goal.contains(&idx) {
+                    let entry = self.attention_context.entry(idx).or_insert(0.0);
+                    *entry = (*entry).max((score * 1.25).min(1.5));
+                }
+            }
+        }
+    }
+
+    fn attention_weight(&self, agent_id: usize) -> f32 {
+        let goal_gain = if self.attention_goal.contains(&agent_id) {
+            1.35
+        } else {
+            1.0
+        };
+        let context_gain = self
+            .attention_context
+            .get(&agent_id)
+            .copied()
+            .unwrap_or(0.0)
+            .min(1.5);
+        goal_gain * (1.0 + context_gain * 0.35)
+    }
+
     fn apply_lateral_inhibition(&mut self) {
         let mut active = std::mem::take(&mut self.inhibition_scratch);
         active.clear();
         for agent in &self.agents {
             if agent.surprise > 0.0 {
-                active.push((agent.id, agent.surprise));
+                active.push((agent.id, agent.surprise * self.attention_weight(agent.id)));
             }
         }
 
@@ -1056,7 +1564,14 @@ impl SimplicialNetwork {
             // quedarian inalterados, asi que no hace falta recorrerlos.
             for &(agent_id, _) in &active[keep..] {
                 let agent = &mut self.agents[agent_id];
-                agent.surprise *= decay;
+                let attention_decay = if self.attention_context.contains_key(&agent_id)
+                    || self.attention_goal.contains(&agent_id)
+                {
+                    decay.max(0.5)
+                } else {
+                    decay
+                };
+                agent.surprise *= attention_decay;
                 if agent.surprise < 0.08 {
                     agent.activation = false;
                     agent.surprise = 0.0;
@@ -1285,6 +1800,29 @@ fn upsert_weighted_neighbor(
     } else {
         neighbors.push((target, weight));
     }
+}
+
+fn compact_pattern(pattern: &[usize], agent_count: usize) -> Vec<usize> {
+    let mut compact = pattern
+        .iter()
+        .copied()
+        .filter(|&idx| idx < agent_count)
+        .collect::<Vec<_>>();
+    compact.sort_unstable();
+    compact.dedup();
+    compact
+}
+
+fn pattern_similarity(left: &[usize], right: &[usize]) -> f32 {
+    if left.is_empty() || right.is_empty() {
+        return 0.0;
+    }
+
+    let left_set = left.iter().copied().collect::<HashSet<_>>();
+    let right_set = right.iter().copied().collect::<HashSet<_>>();
+    let intersection = left_set.intersection(&right_set).count() as f32;
+    let union = left_set.union(&right_set).count().max(1) as f32;
+    intersection / union
 }
 
 fn prediction_report(predicted_agents: Vec<(usize, f32)>, expected: &[usize]) -> PredictionReport {

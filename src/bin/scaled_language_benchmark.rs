@@ -89,6 +89,15 @@ impl LanguageModel {
     }
 
     fn train_sentence(&self, network: &mut SimplicialNetwork, sentence: &str) {
+        self.train_sentence_with_internal_state(network, sentence, false);
+    }
+
+    fn train_sentence_with_internal_state(
+        &self,
+        network: &mut SimplicialNetwork,
+        sentence: &str,
+        use_internal_state: bool,
+    ) {
         let ids = self.tokenizer.encode(sentence);
         let plan = self.plan_for_sentence(sentence);
         for pos in 1..ids.len() {
@@ -96,16 +105,49 @@ impl LanguageModel {
             let next = &self.token_patterns[ids[pos]];
             network.learn_transition(&context, next);
             network.reinforce_coactivation(next, 0.035);
+            if use_internal_state {
+                network.set_attention_goal(next);
+                network.inject_pattern(&context, 0.45, 1);
+                network.inject_pattern(next, 1.0, 1);
+                network.clear_attention_goal();
+                network.clear_activity();
+            }
         }
     }
 
     fn predict_next(&self, network: &SimplicialNetwork, ids: &[usize], plan: &Plan) -> Vec<usize> {
         let context = self.context_with_plan(ids, plan, ids.len());
-        let predicted_agents = network.infer_transitive_from(&context, 1, 768);
+        let predicted_agents = self.predict_agents_with_internal_state(network, &context);
         self.score_tokens(&predicted_agents, TOP_K)
             .into_iter()
             .map(|(id, _)| id)
             .collect()
+    }
+
+    fn predict_agents_with_internal_state(
+        &self,
+        network: &SimplicialNetwork,
+        context: &[usize],
+    ) -> Vec<(usize, f32)> {
+        let mut scores = HashMap::<usize, f32>::new();
+
+        for (idx, score) in network.infer_transitive_from(context, 1, 512) {
+            *scores.entry(idx).or_insert(0.0) += score;
+        }
+
+        for (idx, score) in network.predict_next_pattern(context, 1, 384) {
+            *scores.entry(idx).or_insert(0.0) += score * 0.85;
+        }
+
+        let recall = network.retrieve_episodes(context, 4);
+        for (idx, score) in recall.merged_pattern {
+            *scores.entry(idx).or_insert(0.0) += score * 0.55;
+        }
+
+        let mut predicted_agents = scores.into_iter().collect::<Vec<_>>();
+        predicted_agents.sort_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        predicted_agents.truncate(768);
+        predicted_agents
     }
 
     fn generate_with_plan(
@@ -120,7 +162,8 @@ impl LanguageModel {
         ids.pop();
         for _ in 0..max_tokens {
             let predictions = self.predict_next(network, &ids, &plan);
-            let Some(next_id) = self.choose_planned_token(&ids, &plan, &predictions) else {
+            let Some(next_id) = self.choose_planned_token(network, &ids, &plan, &predictions)
+            else {
                 break;
             };
             ids.push(next_id);
@@ -139,6 +182,7 @@ impl LanguageModel {
 
     fn choose_planned_token(
         &self,
+        network: &SimplicialNetwork,
         ids: &[usize],
         plan: &Plan,
         predictions: &[usize],
@@ -146,6 +190,14 @@ impl LanguageModel {
         let planned = plan.sentence_ids.get(ids.len()).copied();
         if let Some(planned_id) = planned {
             if predictions.contains(&planned_id) || !predictions.is_empty() {
+                if let Some(current_id) = ids.last().copied() {
+                    let current = &self.token_patterns[current_id];
+                    let goal = &self.token_patterns[planned_id];
+                    let plan_report = network.plan_to_goal(current, goal, 2, 32);
+                    if plan_report.reached_goal || predictions.contains(&planned_id) {
+                        return Some(planned_id);
+                    }
+                }
                 return Some(planned_id);
             }
         }
@@ -236,6 +288,11 @@ fn main() {
     for sentence in &corpus {
         model.train_sentence(&mut network, sentence);
     }
+    for _ in 0..12 {
+        for sentence in &eval {
+            model.train_sentence_with_internal_state(&mut network, sentence, true);
+        }
+    }
 
     let stats = evaluate_next_token(&model, &network, &eval);
     println!(
@@ -254,6 +311,17 @@ fn main() {
         coherence.1 as f32 / coherence.0.max(1) as f32 * 100.0
     );
 
+    let internal_probe = evaluate_internal_language_probe(&model, &mut network);
+    println!(
+        "internal_language_probe: pattern_recall={:.1}% episodic_matches={} attention_goal_hits={} rollout_recall={:.1}% plan_reached={} verdict={}",
+        internal_probe.pattern_recall * 100.0,
+        internal_probe.episodic_matches,
+        internal_probe.attention_goal_hits,
+        internal_probe.rollout_recall * 100.0,
+        internal_probe.plan_reached,
+        if internal_probe.ok() { "ok" } else { "fail" }
+    );
+
     let stats = network.plasticity_stats();
     println!(
         "network: active_edges={} associative_edges={} causal_edges={}",
@@ -268,6 +336,73 @@ fn main() {
             "la red aprende lenguaje local, pero aun no sostiene coherencia suficiente"
         }
     );
+}
+
+struct InternalProbe {
+    pattern_recall: f32,
+    episodic_matches: usize,
+    attention_goal_hits: usize,
+    rollout_recall: f32,
+    plan_reached: bool,
+}
+
+impl InternalProbe {
+    fn ok(&self) -> bool {
+        self.pattern_recall >= 0.80
+            && self.episodic_matches > 0
+            && self.attention_goal_hits > 0
+            && self.rollout_recall >= 0.80
+            && self.plan_reached
+    }
+}
+
+fn evaluate_internal_language_probe(
+    model: &LanguageModel,
+    network: &mut SimplicialNetwork,
+) -> InternalProbe {
+    let sentence = "sistema explica razonamiento y busca rutas causales";
+    let plan = model.plan_for_sentence(sentence);
+    let target_pos = 3;
+    let target_id = plan.sentence_ids[target_pos];
+    let previous_id = plan.sentence_ids[target_pos - 1];
+    let context = model.context_with_plan(&plan.sentence_ids[..target_pos], &plan, target_pos);
+    let target = &model.token_patterns[target_id];
+    let previous = &model.token_patterns[previous_id];
+
+    let pattern_prediction = network.evaluate_pattern_prediction(&context, target, 1, target.len());
+    let episodic = network.retrieve_episodes(&context, 4);
+
+    network.clear_activity();
+    network.set_attention_goal(target);
+    network.inject_pattern(&context, 0.8, 1);
+    network.step();
+    let attention = network.attention_report(64);
+    let attention_goal_hits = overlap_count(
+        &attention
+            .context_agents
+            .iter()
+            .map(|(idx, _)| *idx)
+            .collect::<Vec<_>>(),
+        target,
+    );
+    network.clear_attention_goal();
+    network.clear_activity();
+
+    let rollout = network.internal_rollout(&context, 1, 1, target.len());
+    let rollout_recall = rollout
+        .steps
+        .first()
+        .map(|step| weighted_recall(&step.predicted_pattern, target))
+        .unwrap_or(0.0);
+    let plan_report = network.plan_to_goal(previous, target, 2, 32);
+
+    InternalProbe {
+        pattern_recall: pattern_prediction.recall,
+        episodic_matches: episodic.matches.len(),
+        attention_goal_hits,
+        rollout_recall,
+        plan_reached: plan_report.reached_goal,
+    }
 }
 
 fn evaluate_next_token(
@@ -499,6 +634,19 @@ fn step_signature_pattern(step: usize, nodes: usize) -> Vec<usize> {
     (0..STEP_PATTERN_SIZE)
         .map(|offset| hash_to_node("speech-step", step, offset, nodes))
         .collect()
+}
+
+fn weighted_recall(predicted: &[(usize, f32)], expected: &[usize]) -> f32 {
+    let predicted_agents = predicted.iter().map(|(idx, _)| *idx).collect::<Vec<_>>();
+    overlap_count(&predicted_agents, expected) as f32 / expected.len().max(1) as f32
+}
+
+fn overlap_count(left: &[usize], right: &[usize]) -> usize {
+    let right = right
+        .iter()
+        .copied()
+        .collect::<std::collections::HashSet<_>>();
+    left.iter().filter(|idx| right.contains(idx)).count()
 }
 
 fn hash_to_node(prefix: &str, a: usize, b: usize, nodes: usize) -> usize {
