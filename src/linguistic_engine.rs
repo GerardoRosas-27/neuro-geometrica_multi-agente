@@ -110,7 +110,9 @@ fn build_gemma_prompt(context: &LinguisticContext) -> String {
     format!(
         "Eres el renderizador linguistico periferico de SNGA.\n\
         No inventes memoria nueva. Usa el estado geometrico como contexto.\n\
-        Responde en espanol, breve y claro.\n\n\
+        Responde en espanol, breve y claro.\n\
+        Si aparece una intencion inferida por SNGA, debes respetarla e incluirla literalmente o con sus mismas palabras clave.\n\
+        No reinterpretas codigos privados: SNGA ya hizo la inferencia.\n\n\
         Prompt del usuario: {}\n\
         Intencion inferida por SNGA: {}\n\
         Proyeccion geometrica activa: {}\n\

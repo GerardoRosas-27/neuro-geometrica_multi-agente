@@ -576,6 +576,24 @@ internal_language_probe       = ok
 
 La métrica `dialogue_coherence` evalúa si la respuesta contiene los conceptos clave esperados para intenciones como energía, memoria, lenguaje, razonamiento, GPU, matrices e inhibición. El resultado indica que SNGA puede sostener comunicación coherente en un dominio pequeño cuando la respuesta está guiada por memoria de trabajo, memoria episódica, predicción de patrón y planificación local. Sin embargo, no demuestra lenguaje abierto general ni reemplaza a un LLM: valida una ruta experimental para usar SNGA como núcleo pre-lingüístico y renderizador simbólico limitado.
 
+Para evaluar la tesis híbrida con un LLM periférico real, se añadió `snga_llm_peripheral_benchmark`. La prueba usa códigos privados (`xq17`, `v9k2`, `p3lm`) que no pertenecen al conocimiento general del modelo lingüístico. SNGA aprende internamente qué significan y aprende también una cadena causal privada. Luego se comparan tres condiciones:
+
+```text
+SNGA inference     = memoria/inferencia interna de la malla
+Gemma only         = LLM periférico sin memoria privada SNGA
+SNGA + Gemma       = SNGA infiere; Gemma solo verbaliza
+```
+
+Resultado con `gemma2:2b` vía Ollama:
+
+```text
+snga_inference = 100.0%
+gemma_only     = 0.0%
+snga_plus_gemma= 100.0%
+```
+
+La lectura es acotada pero importante: no demuestra superioridad general frente a LLMs masivos, pero sí demuestra una clase de ventaja arquitectónica. Cuando la respuesta depende de memoria privada aprendida durante la vida del sistema, SNGA puede actuar como núcleo persistente de memoria/razonamiento y el LLM pequeño puede quedar reducido al papel de renderizador lingüístico.
+
 Un segundo benchmark (`autonomous_language_benchmark`) elimina el plan manual explícito. La red aprende rutas `prompt -> intención abstracta -> respuesta` y usa un filtrado semántico simple del prompt para enfocar contenido sobre palabras funcionales. En una versión ampliada con 16 intenciones, vocabulario de 148 tokens y 186,000 nodos, obtiene:
 
 ```text
