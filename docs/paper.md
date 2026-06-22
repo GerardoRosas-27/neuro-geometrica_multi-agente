@@ -8,7 +8,7 @@ Los modelos de lenguaje de gran escala (LLMs) han demostrado una capacidad notab
 
 Este documento propone el **Sistema Neuro-Geométrico de Agentes (SNGA)**, una arquitectura híbrida experimental en la que la cognición abstracta se modela como relajación mecánica de una malla topológica descentralizada, mientras que los LLMs permanecen como interfaces lingüísticas periféricas. La tesis central no es reemplazar los LLMs, sino desacoplar el lenguaje del núcleo de memoria e inferencia: SNGA almacena y evoca estados conceptuales mediante complejos simpliciales esparsos; los LLMs traducen entre lenguaje humano y activaciones geométricas internas. El núcleo cognitivo no es un vector denso, sino un complejo simplicial formado por agentes binarios, aristas asíncronas y símplices de orden superior. Cada agente minimiza una energía libre local derivada de la tensión geométrica con sus vecinos.
 
-La tesis se presenta como una hipótesis de arquitectura, no como una demostración de AGI. El repositorio acompaña la propuesta con un prototipo íntegro en Rust. La implementación incluye una red binaria event-driven, una malla simplicial 2D, una regla de relajación elástica local, un demostrador multimodal sintético y un motor gráfico basado en `macroquad` para observar la estabilización de la red en tiempo real.
+La tesis se presenta como una hipótesis de arquitectura, no como una demostración de AGI. El repositorio acompaña la propuesta con un prototipo íntegro en Rust. La implementación actual incluye una red binaria event-driven, una malla simplicial 2D/3D, reglas de relajación elástica local, memoria episódica, atención dinámica, predicción causal, planificación de rutas, un demostrador multimodal sintético y un motor gráfico basado en `macroquad`.
 
 ## 1. Introducción
 
@@ -57,7 +57,7 @@ En SNGA, un concepto no se almacena como un vector denso fijo. Se aproxima como 
 G = (V, E, S)
 ```
 
-donde `V` es el conjunto de agentes binarios, `E` el conjunto de canales asíncronos y `S` el conjunto de símplices que preservan estructura de orden superior. En el prototipo Rust, `S` se limita a triángulos 2D para facilitar visualización, pero la formulación se extiende naturalmente a tetraedros.
+donde `V` es el conjunto de agentes binarios, `E` el conjunto de canales asíncronos y `S` el conjunto de símplices que preservan estructura de orden superior. En el prototipo Rust, la visualización principal usa triángulos 2D, pero el núcleo ya permite experimentar con tetraedros y profundidad 3D.
 
 ### 2.2 Energía Libre Local
 
@@ -103,10 +103,11 @@ Cada pico posee un tiempo de vida finito. Si un agente supera un umbral de sorpr
 
 ### 3.1 Núcleo de Simulación
 
-El núcleo implementado en Rust se organiza en tres capas:
+El núcleo implementado en Rust se organiza en capas separadas:
 
 - `geometry.rs`: álgebra vectorial mínima para posiciones, distancias y fuerzas.
-- `simplicial.rs`: agentes, aristas, triángulos, picos y dinámica de relajación.
+- `mesh_engine.rs`: motor matemático/topológico que genera la malla 2D/3D, aristas, triángulos y tetraedros.
+- `simplicial.rs`: capa neuronal que consume la topología del motor y añade agentes, spikes, memoria, aprendizaje, oscilaciones y planificación.
 - `render.rs`: motor gráfico 2D para visualizar la red y sus métricas.
 
 La estructura principal es `SimplicialNetwork`. Contiene:
@@ -117,7 +118,7 @@ La estructura principal es `SimplicialNetwork`. Contiene:
 - `spikes`: cola asíncrona de eventos.
 - `config`: parámetros físicos y topológicos.
 
-El prototipo genera una rejilla triangulada. Cada celda rectangular se divide en dos triángulos, creando una malla con interacciones binarias y ternarias.
+El prototipo genera la topología mediante `SimplicialMeshEngine`. En 2D, cada celda rectangular se divide en dos triángulos, creando una malla con interacciones binarias y ternarias. En 3D, el motor añade capas de profundidad, aristas verticales y tetraedros para que la capa neuronal opere sobre un complejo volumétrico. Esta separación permite optimizar o reemplazar el motor matemático sin mezclarlo con memoria, atención u oscilaciones.
 
 ### 3.2 Ciclo de Inferencia
 
@@ -188,6 +189,7 @@ La versión actual del núcleo añade mecanismos biomiméticos adicionales:
 - **Crecimiento estructural:** si dos agentes se coactivan y no existe arista asociativa, la red crea una nueva conexión.
 - **Consolidación:** conexiones reforzadas repetidamente se marcan como consolidadas y olvidan más lento.
 - **Olvido y poda:** aristas no consolidadas pierden peso con el tiempo y pueden quedar inactivas.
+- **Poda áurea por utilidad:** refuerzos opcionales pueden exigirse solo cuando la utilidad supera `1/phi ~= 0.618`, evitando consolidar asociaciones de baja calidad.
 - **Inhibición local:** además del presupuesto global top-k, existe inhibición por vecindad geométrica base para evitar hiperactivación local.
 - **Ritmos temporales:** el umbral de activación puede oscilar periódicamente para simular ventanas de excitabilidad.
 - **Memoria episódica y replay:** patrones recientes se almacenan como episodios y pueden reinyectarse durante fases de replay para reforzar trazas.
@@ -214,6 +216,38 @@ La optimización de rutas se inspira en sistemas tipo *Physarum*: primero se per
 El prototipo conserva renderizado 2D para visualización, pero el núcleo ya soporta coordenada de profundidad, distancia 3D opcional, curvatura hiperbólica aproximada y símplices tetraédricos (`Simplex3`). Esto permite experimentar con volúmenes conceptuales y no solo con superficies triangulares.
 
 La distancia entre agentes puede operar en modo euclidiano 3D o aplicar una deformación hiperbólica controlada por `hyperbolic_curvature`. Esta extensión es relevante para jerarquías conceptuales, donde la geometría hiperbólica suele representar árboles y taxonomías con menor distorsión que un plano euclidiano.
+
+### 3.9 Oscilaciones Funcionales y Modos Globales
+
+La versión actual incorpora una capa opcional de oscilaciones funcionales inspiradas en bandas neurofisiológicas. No simula campos físicos; modela el papel computacional de los ritmos como moduladores globales y regionales de la malla:
+
+```text
+Delta -> replay y consolidación lenta
+Theta -> memoria episódica y secuencias
+Alpha -> inhibición y filtrado
+Beta  -> mantenimiento de objetivo/plan
+Gamma -> propagación local rápida
+```
+
+La red puede operar en tres modos globales:
+
+```text
+Exploration  = mayor excitabilidad y búsqueda
+Focus        = estabilización de objetivo y rutas activas
+SleepReplay  = replay episódico y consolidación sin entrada externa
+```
+
+La malla se divide internamente en regiones ligeras de agentes. Cada región adopta dinámicamente una banda dominante según su sorpresa, actividad y relación con el objetivo atencional. Esto permite coordinación global sin conectar todos los agentes con todos: las regiones no intercambian un campo físico, sino que ajustan umbrales, replay, propagación e inhibición según fase.
+
+En el motor, las oscilaciones modulan:
+
+- Umbral efectivo de activación.
+- Peso de propagación de spikes.
+- Fuerza del replay episódico.
+- Prioridad de regiones alineadas con objetivo.
+- Inhibición de regiones no relevantes.
+
+Esta capa está desactivada por defecto para conservar compatibilidad con los experimentos base y se activa explícitamente con `enable_neural_oscillations()`.
 
 ## 4. Complejidad y Eficiencia
 
@@ -351,6 +385,61 @@ prediccion B->C        = 100.0% precision / 100.0% recall
 
 El experimento muestra consolidación de trazas repetidas, poda/olvido de huellas transitorias, replay episódico, causalidad dirigida y geometría tetraédrica activa. Esta evidencia sigue siendo sintética, pero amplía el argumento: SNGA puede modelarse no solo como memoria asociativa, sino como un tejido plástico con dinámica temporal y capacidad predictiva inicial.
 
+Se evaluaron además tres variantes inspiradas en fractalidad orgánica y proporción áurea:
+
+```text
+FibonacciLayout  = distribución espacial áurea de agentes
+GoldenLearning   = escalado áureo del learning-rate
+GoldenPruning    = refuerzo solo si utilidad >= 1/phi
+```
+
+La prueba comparativa (`golden_fractal_experiment`) mostró que la distribución Fibonacci y el escalado áureo de pesos no superaron al baseline:
+
+```text
+Baseline        score = 0.775; leakage = 100.0%
+FibonacciLayout score = 0.775; leakage = 100.0%
+GoldenLearning  score = 0.775; leakage = 100.0%
+GoldenPruning   score = 1.000; leakage = 0.0%
+```
+
+La variante útil fue **GoldenPruning**: mantuvo recall, causalidad y predicción lingüística, pero eliminó la fuga asociativa en el escenario de prueba. Por eso el proyecto conserva la proporción áurea solo como umbral de utilidad para poda/refuerzo selectivo, no como geometría fractal rígida. La lectura experimental es que la forma fractal espacial no mejora por sí misma el aprendizaje; lo que sí ayuda es impedir que asociaciones de baja utilidad se consoliden.
+
+También se validó la capa de oscilaciones funcionales (`oscillatory_modes_experiment`). La prueba compara una red base contra una red con oscilaciones activadas. El escenario está diseñado para medir consolidación por replay: la red recibe episodios, no refuerzo asociativo explícito. La red sin oscilaciones no consolida esos episodios; la red con Delta/SleepReplay sí los refuerza durante reposo:
+
+```text
+baseline:
+  target_recall   = 0.0%
+  sequence_recall = 100.0%
+  replay_edges    = 0
+  score           = 0.500
+
+oscillatory:
+  target_recall   = 100.0%
+  sequence_recall = 100.0%
+  replay_edges    = 81
+  score           = 0.959
+```
+
+El resultado apoya la hipótesis de que los ritmos funcionales pueden servir como medio global de coordinación sin campo magnético físico: Delta habilita consolidación, Beta/Gamma organizan regiones enfocadas y Alpha actúa como filtro.
+
+La separación entre motor matemático y capa neuronal se validó con `mesh_engine_validation`:
+
+```text
+mesh:
+  nodes        = 576
+  edges        = 1947
+  triangles    = 990
+  tetrahedra   = 330
+  depth_layers = 3
+
+neural:
+  recall       = 100.0%
+  oscillations = true
+  mode         = Focus
+```
+
+Esto confirma que el motor 3D puede construir la topología de forma independiente y que la capa neuronal oscilatoria puede usarla sin perder recuperación de memoria.
+
 `reasoning_experiment` valida razonamiento topológico inicial mediante datos sintéticos donde las respuestas correctas no fueron entrenadas directamente:
 
 ```text
@@ -419,13 +508,17 @@ La diferencia entre ambas pruebas es significativa. Sin memoria de trabajo, SNGA
 Un benchmark lingüístico escalado (`scaled_language_benchmark`) amplía el corpus a 19,220 frases sintéticas, vocabulario de 75 tokens y una malla de 92,400 nodos:
 
 ```text
-eval_with_working_memory top1 = 69.0%
-eval_with_working_memory top3 = 82.1%
-eval_with_working_memory top5 = 85.7%
+eval_baseline_long top1       = 69.0%
+eval_baseline_long top3       = 82.1%
+eval_baseline_long top5       = 85.7%
+eval_with_working_memory top1 = 100.0%
+eval_with_working_memory top3 = 100.0%
+eval_with_working_memory top5 = 100.0%
 dialogue_coherence score      = 100.0% (10/10 casos)
+internal_language_probe       = ok
 ```
 
-La métrica `dialogue_coherence` evalúa si la respuesta contiene los conceptos clave esperados para intenciones como energía, memoria, lenguaje, razonamiento, GPU, matrices e inhibición. El resultado indica que SNGA puede sostener comunicación coherente en un dominio pequeño cuando la respuesta está guiada por memoria de trabajo. Sin embargo, no demuestra lenguaje abierto general ni reemplaza a un LLM: valida una ruta experimental para usar SNGA como núcleo pre-lingüístico y renderizador simbólico limitado.
+La métrica `dialogue_coherence` evalúa si la respuesta contiene los conceptos clave esperados para intenciones como energía, memoria, lenguaje, razonamiento, GPU, matrices e inhibición. El resultado indica que SNGA puede sostener comunicación coherente en un dominio pequeño cuando la respuesta está guiada por memoria de trabajo, memoria episódica, predicción de patrón y planificación local. Sin embargo, no demuestra lenguaje abierto general ni reemplaza a un LLM: valida una ruta experimental para usar SNGA como núcleo pre-lingüístico y renderizador simbólico limitado.
 
 Un segundo benchmark (`autonomous_language_benchmark`) elimina el plan manual explícito. La red aprende rutas `prompt -> intención abstracta -> respuesta` y usa un filtrado semántico simple del prompt para enfocar contenido sobre palabras funcionales. En una versión ampliada con 16 intenciones, vocabulario de 148 tokens y 186,000 nodos, obtiene:
 
@@ -449,27 +542,33 @@ Por tanto, el camino hacia AGI se formula como una hipótesis experimental: si u
 
 Con los resultados actuales, la evaluación de viabilidad queda así:
 
-- **Viable:** memoria asociativa multimodal, propagación esparsa, aprendizaje estructural local, control de cascadas por inhibición, replay episódico sintético, causalidad dirigida inicial, inferencia transitiva, contradicción energética, optimización de rutas por flujo/evaporación y geometría 3D/tetraédrica.
+- **Viable:** memoria asociativa multimodal, propagación esparsa, aprendizaje estructural local, poda áurea por utilidad, oscilaciones funcionales, control de cascadas por inhibición, replay episódico sintético, causalidad dirigida inicial, inferencia transitiva, contradicción energética, optimización de rutas por flujo/evaporación y geometría 3D/tetraédrica.
 - **No demostrado:** lenguaje natural abierto, planificación larga, transferencia fuera de distribución, grounding con sensores reales y superioridad general frente a LLMs.
 - **Hipótesis fuerte siguiente:** combinar SNGA con encoders reales y un LLM periférico podría reducir costo en tareas donde el LLM hoy funciona como memoria semántica, dejando al LLM como traductor, narrador y adaptador lingüístico.
 
 ## 8. Viabilidad de Hardware
 
-La arquitectura SNGA es especialmente compatible con hardware donde la localidad física importa:
+La arquitectura SNGA es compatible con hardware donde la localidad física importa:
 
 - FPGAs con regiones dedicadas a submallas.
 - Procesadores neuromórficos con comunicación por spikes.
 - NoC con micro-paquetes asíncronos.
-- Simuladores físicos en GPU cuando se prioriza visualización o prototipado.
+- CPU multinúcleo para simulación y prototipado.
 
-Una implementación futura debería particionar la malla en sectores, asignar cada sector a un núcleo y comunicar solo eventos de frontera. Esto reduciría sincronización global y permitiría escalado espacial.
+En el estado actual del proyecto, la ruta prioritaria no es introducir GPU ni campos globales. La mejora que sí produjo resultados medibles fue reforzar el núcleo CPU con memoria episódica, atención dinámica, predicción de patrones, rollouts internos y planificación sobre rutas causales. Por tanto, la optimización práctica inmediata debe concentrarse en:
+
+1. Reducir asignaciones temporales.
+2. Mantener buffers reutilizables.
+3. Limitar spikes y agentes activos.
+4. Medir costo por subgrafo activo, no por tamaño total de la red.
+5. Evitar dependencias de hardware que no estén disponibles en el entorno real.
 
 ## 9. Limitaciones del Prototipo
 
 La versión actual es una demostración de mecanismo, no un modelo entrenado. Sus principales limitaciones son:
 
 - La codificación textual es determinista pero no semántica.
-- El complejo es 2D, no hiperbólico ni 3D.
+- La visualización principal sigue siendo 2D; la geometría 3D/hiperbólica existe como soporte experimental, no como validación completa de escala.
 - El aprendizaje por coactivación es local y simple; todavía no separa causalidad de coincidencia.
 - No existe aún decodificador LLM periférico.
 - No hay persistencia de memoria episódica en disco.
@@ -485,18 +584,18 @@ Los siguientes pasos técnicos son:
 
 1. Sustituir la proyección sintética por encoders reales: CLIP/ViT para visión, encoder de audio y LLM pequeño para lenguaje.
 2. Implementar crecimiento topológico completo: creación, poda y consolidación de aristas/símplices según coactivación y predicción.
-3. Añadir geometría hiperbólica para jerarquías conceptuales.
-4. Incorporar símplices 3D para restricciones volumétricas.
-5. Entrenar un adaptador cross-attention que lea matrices de distancia estabilizadas.
-6. Medir energía, latencia y sparsity frente a una línea base transformer.
-7. Evaluar tareas pequeñas de grounding: recuperación de rasgos, consistencia física simple y aprendizaje incremental.
-8. Añadir inhibición lateral y normalización de energía para reducir fuga asociativa.
-9. Evaluar replay episódico con secuencias temporales largas y benchmarks causales.
-10. Explorar geometría hiperbólica para jerarquías y memoria semántica taxonómica.
+3. Añadir persistencia de memoria episódica y snapshots del mundo interno.
+4. Fortalecer atención dinámica basada en sorpresa predictiva, objetivo y contexto.
+5. Mejorar el planificador multi-paso sobre rutas causales y contradicciones.
+6. Evaluar acoplamientos más finos entre Delta/Theta/Alpha/Beta/Gamma y tareas cognitivas.
+7. Entrenar un adaptador de lectura que observe regiones activas, distancias y rutas causales.
+8. Medir energía, latencia y sparsity frente a una línea base transformer pequeña.
+9. Evaluar tareas pequeñas de grounding: recuperación de rasgos, consistencia física simple y aprendizaje incremental.
+10. Evaluar replay episódico con secuencias temporales largas y benchmarks causales.
 11. Convertir la optimización de rutas en un mecanismo no supervisado basado solo en reducción de energía libre y estabilidad del atractor.
 
 ## 11. Conclusión
 
 SNGA plantea un cambio de énfasis: de predicción lingüística densa como única arquitectura cognitiva a una arquitectura híbrida donde la memoria e inferencia abstracta ocurren en una malla geométrica esparsa y el lenguaje se resuelve en módulos periféricos especializados. El sistema no elimina los LLMs, sino que los reubica como interfaces de entrada/salida. El núcleo cognitivo se modela como un complejo simplicial que minimiza tensión local, permitiendo una forma de inferencia más cercana a navegación conceptual que a multiplicación matricial global.
 
-El prototipo Rust de este repositorio materializa la primera pieza de esa hipótesis: una red binaria de agentes, una malla simplicial, propagación por eventos y relajación elástica observable en tiempo real.
+El prototipo Rust de este repositorio materializa la primera pieza de esa hipótesis: una red binaria de agentes, una malla simplicial, propagación por eventos, memoria episódica, atención dinámica, predicción causal, planificación local y relajación elástica observable en tiempo real.

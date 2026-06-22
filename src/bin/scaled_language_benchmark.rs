@@ -104,7 +104,7 @@ impl LanguageModel {
             let context = self.context_with_plan(&ids[..pos], &plan, pos);
             let next = &self.token_patterns[ids[pos]];
             network.learn_transition(&context, next);
-            network.reinforce_coactivation(next, 0.035);
+            network.reinforce_coactivation_if_useful(next, 0.035, 1.0);
             if use_internal_state {
                 network.set_attention_goal(next);
                 network.inject_pattern(&context, 0.45, 1);
@@ -288,6 +288,16 @@ fn main() {
     for sentence in &corpus {
         model.train_sentence(&mut network, sentence);
     }
+
+    let baseline_stats = evaluate_next_token(&model, &network, &eval);
+    println!(
+        "eval_baseline_long: total={} top1={:.1}% top3={:.1}% top5={:.1}%",
+        baseline_stats.total,
+        baseline_stats.top1 as f32 / baseline_stats.total.max(1) as f32 * 100.0,
+        baseline_stats.top3 as f32 / baseline_stats.total.max(1) as f32 * 100.0,
+        baseline_stats.top5 as f32 / baseline_stats.total.max(1) as f32 * 100.0
+    );
+
     for _ in 0..12 {
         for sentence in &eval {
             model.train_sentence_with_internal_state(&mut network, sentence, true);

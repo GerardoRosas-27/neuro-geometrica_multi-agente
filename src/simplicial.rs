@@ -1,8 +1,10 @@
 use crate::geometry::Vec2;
-use rand::{rngs::StdRng, Rng, SeedableRng};
+use crate::mesh_engine::{MeshConfig, MeshTopology, SimplicialMeshEngine};
 use std::collections::{HashMap, HashSet, VecDeque};
 
 const ASSOCIATIVE_EDGE_THRESHOLD: f32 = 1.05;
+pub const GOLDEN_UTILITY_THRESHOLD: f32 = 0.618_034;
+const OSCILLATORY_REGION_SIZE: usize = 64;
 
 #[derive(Clone, Debug)]
 pub struct Agent {
@@ -260,6 +262,53 @@ pub struct EnergyStats {
     pub active_spikes: usize,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum WaveBand {
+    Delta,
+    Theta,
+    Alpha,
+    Beta,
+    Gamma,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BrainMode {
+    Exploration,
+    Focus,
+    SleepReplay,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct OscillationGains {
+    pub delta: f32,
+    pub theta: f32,
+    pub alpha: f32,
+    pub beta: f32,
+    pub gamma: f32,
+    pub excitability: f32,
+    pub inhibition: f32,
+    pub replay: f32,
+    pub plasticity: f32,
+    pub prediction: f32,
+}
+
+#[derive(Clone, Debug)]
+pub struct OscillationStats {
+    pub enabled: bool,
+    pub mode: BrainMode,
+    pub delta: f32,
+    pub theta: f32,
+    pub alpha: f32,
+    pub beta: f32,
+    pub gamma: f32,
+    pub regions: usize,
+    pub delta_regions: usize,
+    pub theta_regions: usize,
+    pub alpha_regions: usize,
+    pub beta_regions: usize,
+    pub gamma_regions: usize,
+}
+
 #[derive(Clone, Debug)]
 pub struct SimplicialNetwork {
     pub agents: Vec<Agent>,
@@ -278,6 +327,10 @@ pub struct SimplicialNetwork {
     attention_goal: Vec<usize>,
     attention_context: HashMap<usize, f32>,
     world_snapshots: VecDeque<WorldSnapshot>,
+    oscillations_enabled: bool,
+    brain_mode: BrainMode,
+    agent_regions: Vec<usize>,
+    region_bands: Vec<WaveBand>,
     tick: u64,
     // Scratch buffers reutilizados entre pasos para evitar reasignaciones por frame.
     forces_buffer: Vec<Vec2>,
@@ -286,70 +339,34 @@ pub struct SimplicialNetwork {
 
 impl SimplicialNetwork {
     pub fn grid(config: SimplicialConfig) -> Self {
-        let mut rng = StdRng::seed_from_u64(config.seed);
-        let mut agents = Vec::with_capacity(config.width * config.height);
-
-        for y in 0..config.height {
-            for x in 0..config.width {
-                let jitter = Vec2::new(rng.gen_range(-3.0..3.0), rng.gen_range(-3.0..3.0));
-                let position =
-                    Vec2::new(x as f32 * config.spacing, y as f32 * config.spacing) + jitter;
-                agents.push(Agent::new(y * config.width + x, position));
-            }
-        }
-
-        let mut network = Self {
-            agents,
-            edges: Vec::new(),
-            simplices: Vec::new(),
-            tetrahedra: Vec::new(),
-            spikes: VecDeque::new(),
-            adjacency: vec![Vec::new(); config.width * config.height],
-            edge_lookup: HashMap::new(),
-            causal_edges: HashMap::new(),
-            causal_adjacency: HashMap::new(),
-            contradiction_edges: HashMap::new(),
-            episodes: VecDeque::new(),
-            last_episode_pattern: Vec::new(),
-            attention_goal: Vec::new(),
-            attention_context: HashMap::new(),
-            world_snapshots: VecDeque::new(),
-            tick: 0,
-            forces_buffer: Vec::new(),
-            inhibition_scratch: Vec::new(),
-            config,
-        };
-
-        network.build_grid_topology();
-        network
+        let topology = SimplicialMeshEngine::grid(mesh_config_from(&config));
+        Self::from_mesh_topology(config, topology)
     }
 
     pub fn grid_3d(config: SimplicialConfig, depth_layers: usize) -> Self {
-        let layers = depth_layers.max(1);
-        let mut rng = StdRng::seed_from_u64(config.seed);
-        let layer_size = config.width * config.height;
-        let mut agents = Vec::with_capacity(layer_size * layers);
+        let topology = SimplicialMeshEngine::grid_3d(mesh_config_from(&config), depth_layers);
+        Self::from_mesh_topology(config, topology)
+    }
 
-        for z in 0..layers {
-            for y in 0..config.height {
-                for x in 0..config.width {
-                    let jitter = Vec2::new(rng.gen_range(-3.0..3.0), rng.gen_range(-3.0..3.0));
-                    let position =
-                        Vec2::new(x as f32 * config.spacing, y as f32 * config.spacing) + jitter;
-                    let mut agent = Agent::new(z * layer_size + y * config.width + x, position);
-                    agent.depth = z as f32 * config.spacing;
-                    agents.push(agent);
-                }
-            }
-        }
+    fn from_mesh_topology(config: SimplicialConfig, topology: MeshTopology) -> Self {
+        let mut agents = topology
+            .nodes
+            .iter()
+            .map(|node| {
+                let mut agent = Agent::new(node.id, node.position);
+                agent.depth = node.depth;
+                agent
+            })
+            .collect::<Vec<_>>();
+        agents.sort_by_key(|agent| agent.id);
 
         let mut network = Self {
+            adjacency: vec![Vec::new(); agents.len()],
             agents,
             edges: Vec::new(),
             simplices: Vec::new(),
             tetrahedra: Vec::new(),
             spikes: VecDeque::new(),
-            adjacency: vec![Vec::new(); layer_size * layers],
             edge_lookup: HashMap::new(),
             causal_edges: HashMap::new(),
             causal_adjacency: HashMap::new(),
@@ -359,13 +376,26 @@ impl SimplicialNetwork {
             attention_goal: Vec::new(),
             attention_context: HashMap::new(),
             world_snapshots: VecDeque::new(),
+            oscillations_enabled: false,
+            brain_mode: BrainMode::Exploration,
+            agent_regions: Vec::new(),
+            region_bands: Vec::new(),
             tick: 0,
             forces_buffer: Vec::new(),
             inhibition_scratch: Vec::new(),
             config,
         };
 
-        network.build_grid_topology_3d(layers);
+        for edge in topology.edges {
+            network.add_edge(edge.a, edge.b, edge.rest_length, edge.weight);
+        }
+        for simplex in topology.simplices {
+            network.add_simplex(simplex.a, simplex.b, simplex.c);
+        }
+        for simplex in topology.tetrahedra {
+            network.add_simplex3(simplex.a, simplex.b, simplex.c, simplex.d);
+        }
+        network.initialize_oscillatory_regions();
         network
     }
 
@@ -411,6 +441,19 @@ impl SimplicialNetwork {
                 self.reinforce_pair(a, b, learning_rate);
             }
         }
+    }
+
+    pub fn reinforce_coactivation_if_useful(
+        &mut self,
+        pattern: &[usize],
+        learning_rate: f32,
+        utility: f32,
+    ) -> bool {
+        if utility < GOLDEN_UTILITY_THRESHOLD {
+            return false;
+        }
+        self.reinforce_coactivation(pattern, learning_rate);
+        true
     }
 
     pub fn learn_transition(&mut self, cause: &[usize], effect: &[usize]) {
@@ -1047,6 +1090,55 @@ impl SimplicialNetwork {
         }
     }
 
+    pub fn enable_neural_oscillations(&mut self) {
+        self.oscillations_enabled = true;
+        self.initialize_oscillatory_regions();
+        self.update_oscillatory_state();
+    }
+
+    pub fn disable_neural_oscillations(&mut self) {
+        self.oscillations_enabled = false;
+        self.brain_mode = BrainMode::Exploration;
+        for band in &mut self.region_bands {
+            *band = WaveBand::Theta;
+        }
+    }
+
+    pub fn oscillation_stats(&self) -> OscillationStats {
+        let gains = self.oscillation_gains();
+        let mut delta_regions = 0;
+        let mut theta_regions = 0;
+        let mut alpha_regions = 0;
+        let mut beta_regions = 0;
+        let mut gamma_regions = 0;
+
+        for band in &self.region_bands {
+            match band {
+                WaveBand::Delta => delta_regions += 1,
+                WaveBand::Theta => theta_regions += 1,
+                WaveBand::Alpha => alpha_regions += 1,
+                WaveBand::Beta => beta_regions += 1,
+                WaveBand::Gamma => gamma_regions += 1,
+            }
+        }
+
+        OscillationStats {
+            enabled: self.oscillations_enabled,
+            mode: self.brain_mode,
+            delta: gains.delta,
+            theta: gains.theta,
+            alpha: gains.alpha,
+            beta: gains.beta,
+            gamma: gains.gamma,
+            regions: self.region_bands.len(),
+            delta_regions,
+            theta_regions,
+            alpha_regions,
+            beta_regions,
+            gamma_regions,
+        }
+    }
+
     pub fn project_active_state(&self, limit: usize) -> ConceptProjection {
         let mut top_agents = self
             .agents
@@ -1103,6 +1195,7 @@ impl SimplicialNetwork {
 
     pub fn step(&mut self) -> EnergyStats {
         self.tick = self.tick.wrapping_add(1);
+        self.update_oscillatory_state();
         self.maybe_replay();
         self.update_attention_context();
         self.propagate_spikes();
@@ -1162,96 +1255,6 @@ impl SimplicialNetwork {
         edge_energy + simplex_energy + simplex3_energy + contradiction_energy
     }
 
-    fn build_grid_topology(&mut self) {
-        for y in 0..self.config.height {
-            for x in 0..self.config.width {
-                let id = y * self.config.width + x;
-                if x + 1 < self.config.width {
-                    self.add_edge(
-                        id,
-                        y * self.config.width + (x + 1),
-                        self.config.spacing,
-                        1.0,
-                    );
-                }
-                if y + 1 < self.config.height {
-                    self.add_edge(
-                        id,
-                        (y + 1) * self.config.width + x,
-                        self.config.spacing,
-                        1.0,
-                    );
-                }
-                if x + 1 < self.config.width && y + 1 < self.config.height {
-                    self.add_edge(
-                        id,
-                        (y + 1) * self.config.width + (x + 1),
-                        self.config.spacing * 2.0_f32.sqrt(),
-                        0.45,
-                    );
-                    self.add_simplex(
-                        id,
-                        y * self.config.width + (x + 1),
-                        (y + 1) * self.config.width + (x + 1),
-                    );
-                    self.add_simplex(
-                        id,
-                        (y + 1) * self.config.width + x,
-                        (y + 1) * self.config.width + (x + 1),
-                    );
-                }
-            }
-        }
-    }
-
-    fn build_grid_topology_3d(&mut self, depth_layers: usize) {
-        let layer_size = self.config.width * self.config.height;
-        for z in 0..depth_layers {
-            for y in 0..self.config.height {
-                for x in 0..self.config.width {
-                    let id = z * layer_size + y * self.config.width + x;
-                    if x + 1 < self.config.width {
-                        self.add_edge(
-                            id,
-                            z * layer_size + y * self.config.width + (x + 1),
-                            self.config.spacing,
-                            1.0,
-                        );
-                    }
-                    if y + 1 < self.config.height {
-                        self.add_edge(
-                            id,
-                            z * layer_size + (y + 1) * self.config.width + x,
-                            self.config.spacing,
-                            1.0,
-                        );
-                    }
-                    if z + 1 < depth_layers {
-                        self.add_edge(
-                            id,
-                            (z + 1) * layer_size + y * self.config.width + x,
-                            self.config.spacing,
-                            1.0,
-                        );
-                    }
-                    if x + 1 < self.config.width && y + 1 < self.config.height {
-                        let bx = z * layer_size + y * self.config.width + (x + 1);
-                        let cy = z * layer_size + (y + 1) * self.config.width + x;
-                        let dxy = z * layer_size + (y + 1) * self.config.width + (x + 1);
-                        self.add_edge(id, dxy, self.config.spacing * 2.0_f32.sqrt(), 0.45);
-                        self.add_simplex(id, bx, dxy);
-                        self.add_simplex(id, cy, dxy);
-
-                        if z + 1 < depth_layers {
-                            let up = (z + 1) * layer_size + y * self.config.width + x;
-                            self.add_simplex3(id, bx, cy, up);
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     fn add_edge(&mut self, a: usize, b: usize, rest_length: f32, weight: f32) {
         let edge_idx = self.edges.len();
         self.edges.push(Edge {
@@ -1267,6 +1270,128 @@ impl SimplicialNetwork {
         self.adjacency[a].push(edge_idx);
         self.adjacency[b].push(edge_idx);
         self.edge_lookup.insert(edge_key(a, b), edge_idx);
+    }
+
+    fn initialize_oscillatory_regions(&mut self) {
+        let region_count =
+            (self.agents.len() + OSCILLATORY_REGION_SIZE - 1) / OSCILLATORY_REGION_SIZE;
+        self.agent_regions = (0..self.agents.len())
+            .map(|idx| idx / OSCILLATORY_REGION_SIZE)
+            .collect();
+        self.region_bands = vec![WaveBand::Theta; region_count.max(1)];
+    }
+
+    fn update_oscillatory_state(&mut self) {
+        if !self.oscillations_enabled {
+            return;
+        }
+        if self.region_bands.is_empty() || self.agent_regions.len() != self.agents.len() {
+            self.initialize_oscillatory_regions();
+        }
+
+        let mut surprise_sum = vec![0.0_f32; self.region_bands.len()];
+        let mut active_count = vec![0_usize; self.region_bands.len()];
+        let mut goal_count = vec![0_usize; self.region_bands.len()];
+        let mut total_surprise = 0.0;
+        let mut total_active = 0_usize;
+
+        for agent in &self.agents {
+            if agent.surprise > 0.0 {
+                let region = self.agent_regions[agent.id];
+                surprise_sum[region] += agent.surprise;
+                active_count[region] += 1;
+                total_surprise += agent.surprise;
+                total_active += 1;
+            }
+        }
+
+        for &idx in &self.attention_goal {
+            if idx < self.agent_regions.len() {
+                goal_count[self.agent_regions[idx]] += 1;
+            }
+        }
+
+        let mean_surprise = total_surprise / total_active.max(1) as f32;
+        self.brain_mode =
+            if total_active == 0 && !self.episodes.is_empty() && self.delta_wave() > 0.65 {
+                BrainMode::SleepReplay
+            } else if !self.attention_goal.is_empty() || (total_active > 0 && mean_surprise < 0.75)
+            {
+                BrainMode::Focus
+            } else {
+                BrainMode::Exploration
+            };
+
+        for region in 0..self.region_bands.len() {
+            let avg = surprise_sum[region] / active_count[region].max(1) as f32;
+            self.region_bands[region] = match self.brain_mode {
+                BrainMode::SleepReplay => WaveBand::Delta,
+                BrainMode::Focus if goal_count[region] > 0 => WaveBand::Beta,
+                _ if avg > 0.95 => WaveBand::Gamma,
+                _ if avg > 0.20 => WaveBand::Theta,
+                _ => WaveBand::Alpha,
+            };
+        }
+    }
+
+    fn oscillation_gains(&self) -> OscillationGains {
+        if !self.oscillations_enabled {
+            return OscillationGains {
+                delta: 0.0,
+                theta: 0.0,
+                alpha: 0.0,
+                beta: 0.0,
+                gamma: 0.0,
+                excitability: 1.0,
+                inhibition: 1.0,
+                replay: 1.0,
+                plasticity: 1.0,
+                prediction: 1.0,
+            };
+        }
+
+        let delta = self.delta_wave();
+        let theta = oscillation(self.tick, 48);
+        let alpha = oscillation(self.tick, 24);
+        let beta = oscillation(self.tick, 12);
+        let gamma = oscillation(self.tick, 4);
+
+        let mode_boost = match self.brain_mode {
+            BrainMode::Exploration => (1.10, 0.95, 0.90, 1.05),
+            BrainMode::Focus => (0.98, 1.15, 0.95, 1.25),
+            BrainMode::SleepReplay => (0.80, 1.05, 1.80, 0.85),
+        };
+
+        OscillationGains {
+            delta,
+            theta,
+            alpha,
+            beta,
+            gamma,
+            excitability: mode_boost.0 * (1.0 + gamma * 0.18 + theta * 0.08 - alpha * 0.10),
+            inhibition: mode_boost.1 * (1.0 + alpha * 0.35),
+            replay: mode_boost.2 * (1.0 + delta * 0.80 + theta * 0.25),
+            plasticity: 1.0 + theta * 0.20 + delta * 0.10,
+            prediction: mode_boost.3 * (1.0 + beta * 0.30 + theta * 0.10),
+        }
+    }
+
+    fn delta_wave(&self) -> f32 {
+        oscillation(self.tick, 128)
+    }
+
+    fn oscillatory_weight(&self, agent_id: usize) -> f32 {
+        if !self.oscillations_enabled || agent_id >= self.agent_regions.len() {
+            return 1.0;
+        }
+        let gains = self.oscillation_gains();
+        match self.region_bands[self.agent_regions[agent_id]] {
+            WaveBand::Delta => 0.85 + gains.delta * 0.25,
+            WaveBand::Theta => 1.00 + gains.theta * 0.20,
+            WaveBand::Alpha => (1.0 - gains.alpha * 0.25).max(0.60),
+            WaveBand::Beta => 1.00 + gains.beta * 0.30,
+            WaveBand::Gamma => 1.00 + gains.gamma * 0.35,
+        }
     }
 
     fn reinforce_pair(&mut self, a: usize, b: usize, learning_rate: f32) {
@@ -1345,10 +1470,13 @@ impl SimplicialNetwork {
     }
 
     fn maybe_replay(&mut self) {
-        if self.config.replay_interval == 0
-            || self.config.replay_batch == 0
+        let scheduled_replay =
+            self.config.replay_interval != 0 && self.tick % self.config.replay_interval == 0;
+        let oscillatory_replay =
+            self.oscillations_enabled && self.delta_wave() > 0.85 && self.tick % 8 == 0;
+        if self.config.replay_batch == 0
             || self.episodes.is_empty()
-            || self.tick % self.config.replay_interval != 0
+            || (!scheduled_replay && !oscillatory_replay)
         {
             return;
         }
@@ -1370,6 +1498,7 @@ impl SimplicialNetwork {
                 * episode.strength
                 * (1.0 + episode.novelty)
                 * (1.0 + episode.prediction_error)
+                * self.oscillation_gains().replay
                 / age.sqrt();
             self.reinforce_coactivation(&episode.pattern, replay_gain);
             if !episode.context.is_empty() {
@@ -1477,7 +1606,9 @@ impl SimplicialNetwork {
                     && self.agents[spike.target].surprise > self.rhythmic_threshold()
                 {
                     next.push((
-                        edge.weight * self.attention_weight(neighbor),
+                        edge.weight
+                            * self.attention_weight(neighbor)
+                            * self.oscillatory_weight(neighbor),
                         Spike {
                             source: spike.target,
                             target: neighbor,
@@ -1544,7 +1675,7 @@ impl SimplicialNetwork {
             .copied()
             .unwrap_or(0.0)
             .min(1.5);
-        goal_gain * (1.0 + context_gain * 0.35)
+        goal_gain * (1.0 + context_gain * 0.35) * self.oscillatory_weight(agent_id)
     }
 
     fn apply_lateral_inhibition(&mut self) {
@@ -1721,15 +1852,22 @@ impl SimplicialNetwork {
     }
 
     fn rhythmic_threshold(&self) -> f32 {
+        let oscillatory_gain = if self.oscillations_enabled {
+            let gains = self.oscillation_gains();
+            (1.0 + gains.alpha * 0.18 + gains.beta * 0.05 - gains.gamma * 0.12 - gains.theta * 0.06)
+                .clamp(0.75, 1.35)
+        } else {
+            1.0
+        };
         if self.config.rhythm_period == 0 || self.config.rhythm_amplitude <= 0.0 {
-            return self.config.activation_threshold;
+            return self.config.activation_threshold * oscillatory_gain;
         }
 
         let phase = (self.tick % self.config.rhythm_period) as f32
             / self.config.rhythm_period as f32
             * std::f32::consts::TAU;
         let gain = 1.0 + self.config.rhythm_amplitude * phase.sin();
-        self.config.activation_threshold * gain
+        self.config.activation_threshold * gain * oscillatory_gain
     }
 
     fn active_contradiction_energy(&self) -> f32 {
@@ -1823,6 +1961,23 @@ fn pattern_similarity(left: &[usize], right: &[usize]) -> f32 {
     let intersection = left_set.intersection(&right_set).count() as f32;
     let union = left_set.union(&right_set).count().max(1) as f32;
     intersection / union
+}
+
+fn oscillation(tick: u64, period: u64) -> f32 {
+    if period == 0 {
+        return 0.0;
+    }
+    let phase = (tick % period) as f32 / period as f32 * std::f32::consts::TAU;
+    (phase.sin() + 1.0) * 0.5
+}
+
+fn mesh_config_from(config: &SimplicialConfig) -> MeshConfig {
+    MeshConfig {
+        width: config.width,
+        height: config.height,
+        spacing: config.spacing,
+        seed: config.seed,
+    }
 }
 
 fn prediction_report(predicted_agents: Vec<(usize, f32)>, expected: &[usize]) -> PredictionReport {
