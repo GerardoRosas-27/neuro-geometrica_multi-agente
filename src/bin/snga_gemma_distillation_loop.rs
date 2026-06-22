@@ -83,6 +83,37 @@ impl CurriculumStage {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+enum ExerciseKind {
+    Definition,
+    Paraphrase,
+    QuestionAnswer,
+    Analogy,
+    Correction,
+}
+
+impl ExerciseKind {
+    fn from_lesson_idx(idx: usize) -> Self {
+        match idx % 5 {
+            0 => Self::Definition,
+            1 => Self::Paraphrase,
+            2 => Self::QuestionAnswer,
+            3 => Self::Analogy,
+            _ => Self::Correction,
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Definition => "definicion",
+            Self::Paraphrase => "parafrasis",
+            Self::QuestionAnswer => "pregunta_respuesta",
+            Self::Analogy => "analogia",
+            Self::Correction => "correccion",
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 struct CurriculumProgress {
     stage: CurriculumStage,
@@ -204,19 +235,16 @@ impl DistillationApp {
     fn distill_step(&mut self) {
         let topics = self.progress.stage.topics();
         let topic = topics[self.progress.topic_idx % topics.len()];
+        let exercise = ExerciseKind::from_lesson_idx(self.progress.total_lessons);
         self.progress.topic_idx += 1;
 
-        let teacher_prompt = format!(
-            "Eres maestro de una red SNGA. Etapa: {}. Tema: {topic}. \
-             Escribe una sola frase didactica, concreta, maximo 18 palabras, sin lista.",
-            self.progress.stage.label()
-        );
+        let teacher_prompt = self.teacher_prompt(topic, exercise);
         let teacher_context = LinguisticContext {
             user_prompt: teacher_prompt,
-            inferred_intent: "ensenanza_linguistica".to_string(),
+            inferred_intent: format!("ensenanza_{}", exercise.label()),
             geometric_projection: self.network.project_active_state(8),
             memory_summary:
-                "Gemma actua como maestro linguistico; SNGA debe aprender la frase en su malla."
+                "Gemma actua como maestro linguistico; SNGA debe aprender lenguaje abierto en su malla."
                     .to_string(),
         };
         let teacher = self
@@ -224,11 +252,11 @@ impl DistillationApp {
             .generate(&teacher_context)
             .unwrap_or_else(|_| fallback_teacher(topic));
 
-        self.learn_lesson(topic, &teacher.text);
+        self.learn_lesson(topic, exercise, &teacher.text);
         let student = self.student_response(topic);
 
         self.messages
-            .push(("Gemma maestro".to_string(), teacher.text));
+            .push((format!("Gemma {}", exercise.label()), teacher.text));
         self.messages.push(("SNGA estudiante".to_string(), student));
         truncate_messages(&mut self.messages);
         self.progress.total_lessons += 1;
@@ -290,22 +318,61 @@ impl DistillationApp {
         }
     }
 
-    fn learn_lesson(&mut self, topic: &str, lesson: &str) {
+    fn teacher_prompt(&self, topic: &str, exercise: ExerciseKind) -> String {
+        let stage = self.progress.stage.label();
+        match exercise {
+            ExerciseKind::Definition => format!(
+                "Eres maestro de SNGA. Etapa {stage}. Tema: {topic}. Define el tema en una frase clara de maximo 20 palabras."
+            ),
+            ExerciseKind::Paraphrase => format!(
+                "Eres maestro de SNGA. Etapa {stage}. Tema: {topic}. Da dos parafrasis cortas separadas por ' | ', sin listas."
+            ),
+            ExerciseKind::QuestionAnswer => format!(
+                "Eres maestro de SNGA. Etapa {stage}. Tema: {topic}. Escribe exactamente: Q: una pregunta breve | A: una respuesta breve."
+            ),
+            ExerciseKind::Analogy => format!(
+                "Eres maestro de SNGA. Etapa {stage}. Tema: {topic}. Explica con una analogia simple en una frase corta."
+            ),
+            ExerciseKind::Correction => format!(
+                "Eres maestro de SNGA. Etapa {stage}. Tema: {topic}. Escribe: Error: una idea incorrecta | Correccion: la idea correcta."
+            ),
+        }
+    }
+
+    fn learn_lesson(&mut self, topic: &str, exercise: ExerciseKind, lesson: &str) {
         let topic_pattern = text_pattern(topic, self.network.agents.len());
         let lesson_pattern = text_pattern(lesson, self.network.agents.len());
+        let exercise_pattern = text_pattern(exercise.label(), self.network.agents.len());
         let mut fused = topic_pattern.clone();
         fused.extend(lesson_pattern.iter().copied());
+        fused.extend(exercise_pattern.iter().copied());
         fused.sort_unstable();
         fused.dedup();
 
         self.network.clear_activity();
         self.network.set_attention_goal(&lesson_pattern);
         self.network.inject_pattern(&topic_pattern, 1.15, 2);
+        self.network.inject_pattern(&exercise_pattern, 0.85, 1);
         self.network.inject_pattern(&lesson_pattern, 0.95, 1);
         self.network
             .learn_transition(&topic_pattern, &lesson_pattern);
         self.network
+            .learn_transition(&exercise_pattern, &lesson_pattern);
+        self.network
             .reinforce_coactivation_if_useful(&fused, 0.07, 0.92);
+        if let Some((question, answer)) = extract_qa_pair(lesson) {
+            let question_pattern = text_pattern(&question, self.network.agents.len());
+            let answer_pattern = text_pattern(&answer, self.network.agents.len());
+            let mut qa_fused = question_pattern.clone();
+            qa_fused.extend(answer_pattern.iter().copied());
+            qa_fused.extend(topic_pattern.iter().copied());
+            qa_fused.sort_unstable();
+            qa_fused.dedup();
+            self.network
+                .learn_transition(&question_pattern, &answer_pattern);
+            self.network
+                .reinforce_coactivation_if_useful(&qa_fused, 0.08, 0.95);
+        }
         for _ in 0..12 {
             self.network.step();
         }
@@ -433,6 +500,29 @@ fn fallback_teacher(topic: &str) -> snga::linguistic_engine::LinguisticResponse 
         ),
         engine: "fallback-teacher".to_string(),
     }
+}
+
+fn extract_qa_pair(lesson: &str) -> Option<(String, String)> {
+    let normalized = lesson.replace('\n', " ");
+    if let Some((question_part, answer_part)) = normalized.split_once("| A:") {
+        let question = question_part
+            .trim()
+            .trim_start_matches("Q:")
+            .trim()
+            .to_string();
+        let answer = answer_part.trim().to_string();
+        if !question.is_empty() && !answer.is_empty() {
+            return Some((question, answer));
+        }
+    }
+    if let Some((wrong, correction)) = normalized.split_once("| Correccion:") {
+        let question = wrong.trim().trim_start_matches("Error:").trim().to_string();
+        let answer = correction.trim().to_string();
+        if !question.is_empty() && !answer.is_empty() {
+            return Some((question, answer));
+        }
+    }
+    None
 }
 
 fn load_progress(path: &str) -> Option<CurriculumProgress> {
