@@ -385,6 +385,50 @@ prediccion B->C        = 100.0% precision / 100.0% recall
 
 El experimento muestra consolidación de trazas repetidas, poda/olvido de huellas transitorias, replay episódico, causalidad dirigida y geometría tetraédrica activa. Esta evidencia sigue siendo sintética, pero amplía el argumento: SNGA puede modelarse no solo como memoria asociativa, sino como un tejido plástico con dinámica temporal y capacidad predictiva inicial.
 
+Para verificar que el aprendizaje no consiste únicamente en cambiar pesos, sino también en deformar la geometría de la malla, se añadió `geometry_learning_experiment`. Este experimento mide distancias internas del concepto, distancia hacia distractores, energía libre y aristas asociativas antes y después del entrenamiento:
+
+```text
+before:
+  intra_distance      = 137.988
+  distractor_distance = 199.521
+  compactness         = 0.692
+  free_energy         = 16581.990
+  associative_edges   = 0
+
+after:
+  intra_distance      = 108.401
+  distractor_distance = 188.358
+  compactness         = 0.576
+  free_energy         = 1495.597
+  associative_edges   = 21
+  mean_weight         = 3.028
+```
+
+La distancia interna del concepto se redujo `21.44%`, la relación de compactación mejoró `16.79%` y la energía libre cayó `90.98%`. Esto apoya directamente la tesis geométrica: al aprender, la red no solo almacena asociaciones en pesos; también compacta regiones conceptuales y modifica el paisaje físico del complejo.
+
+Como consecuencia, el sustrato aprendido debe persistir. `persistent_substrate_experiment` valida que la geometría deformada, las aristas aprendidas y los pesos pueden guardarse y cargarse en una nueva instancia de red con la misma topología:
+
+```text
+save:
+  agents = 1200
+  edges  = 4022
+  causal = 0
+
+load:
+  agents = 1200
+  edges  = 4022
+  causal = 0
+
+geometry:
+  trained_distance = 112.753
+  loaded_distance  = 112.753
+  delta            = 0.000000
+
+recall_after_load = 100.0%
+```
+
+Esto confirma que el aprendizaje geométrico no se pierde al cerrar el proceso: el sistema conserva posiciones, profundidad, pesos, longitudes de reposo, aristas asociativas y causalidad. En ejecución, el visor opcional mantiene un buffer serializado y permite autoguardado/guardado manual del sustrato.
+
 Se evaluaron además tres variantes inspiradas en fractalidad orgánica y proporción áurea:
 
 ```text

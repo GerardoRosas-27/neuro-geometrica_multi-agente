@@ -1,6 +1,9 @@
 use crate::geometry::Vec2;
 use crate::mesh_engine::{MeshConfig, MeshTopology, SimplicialMeshEngine};
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::fs;
+use std::io;
+use std::path::Path;
 
 const ASSOCIATIVE_EDGE_THRESHOLD: f32 = 1.05;
 pub const GOLDEN_UTILITY_THRESHOLD: f32 = 0.618_034;
@@ -260,6 +263,13 @@ pub struct EnergyStats {
     pub total_free_energy: f32,
     pub active_agents: usize,
     pub active_spikes: usize,
+}
+
+#[derive(Clone, Debug)]
+pub struct PersistentStateReport {
+    pub agents: usize,
+    pub edges: usize,
+    pub causal_edges: usize,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1088,6 +1098,177 @@ impl SimplicialNetwork {
             contradiction_edges: self.contradiction_edges.len(),
             tetrahedra: self.tetrahedra.len(),
         }
+    }
+
+    pub fn save_persistent_state<P: AsRef<Path>>(
+        &self,
+        path: P,
+    ) -> io::Result<PersistentStateReport> {
+        if let Some(parent) = path.as_ref().parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(path, self.serialize_persistent_state())?;
+        Ok(PersistentStateReport {
+            agents: self.agents.len(),
+            edges: self.edges.len(),
+            causal_edges: self.causal_edges.len(),
+        })
+    }
+
+    pub fn load_persistent_state<P: AsRef<Path>>(
+        &mut self,
+        path: P,
+    ) -> io::Result<PersistentStateReport> {
+        let contents = fs::read_to_string(path)?;
+        self.apply_persistent_state(&contents)
+            .map_err(|message| io::Error::new(io::ErrorKind::InvalidData, message))
+    }
+
+    pub fn serialize_persistent_state(&self) -> String {
+        let mut out = String::new();
+        out.push_str("SNGA_PERSISTENT_STATE_V1\n");
+        out.push_str(&format!("agents {}\n", self.agents.len()));
+        for agent in &self.agents {
+            out.push_str(&format!(
+                "a {} {:.7} {:.7} {:.7}\n",
+                agent.id, agent.position.x, agent.position.y, agent.depth
+            ));
+        }
+
+        out.push_str(&format!("edges {}\n", self.edges.len()));
+        for (idx, edge) in self.edges.iter().enumerate() {
+            out.push_str(&format!(
+                "e {} {} {} {:.7} {:.7} {} {} {} {}\n",
+                idx,
+                edge.a,
+                edge.b,
+                edge.rest_length,
+                edge.weight,
+                edge.age,
+                edge.last_active_tick,
+                u8::from(edge.consolidated),
+                u8::from(edge.active)
+            ));
+        }
+
+        out.push_str(&format!("causal {}\n", self.causal_edges.len()));
+        let mut causal = self
+            .causal_edges
+            .iter()
+            .map(|(&(source, target), &weight)| (source, target, weight))
+            .collect::<Vec<_>>();
+        causal.sort_by_key(|(source, target, _)| (*source, *target));
+        for (source, target, weight) in causal {
+            out.push_str(&format!("c {} {} {:.7}\n", source, target, weight));
+        }
+        out.push_str("end\n");
+        out
+    }
+
+    pub fn apply_persistent_state(
+        &mut self,
+        contents: &str,
+    ) -> Result<PersistentStateReport, String> {
+        let mut lines = contents.lines();
+        if lines.next() != Some("SNGA_PERSISTENT_STATE_V1") {
+            return Err("version de estado SNGA invalida".to_string());
+        }
+
+        let agent_header = lines.next().ok_or("faltan agentes")?;
+        let agent_count = parse_count_header(agent_header, "agents")?;
+        if agent_count != self.agents.len() {
+            return Err(format!(
+                "conteo de agentes incompatible: estado={} red={}",
+                agent_count,
+                self.agents.len()
+            ));
+        }
+
+        for _ in 0..agent_count {
+            let line = lines.next().ok_or("faltan lineas de agentes")?;
+            let parts = line.split_whitespace().collect::<Vec<_>>();
+            if parts.len() != 5 || parts[0] != "a" {
+                return Err(format!("linea de agente invalida: {line}"));
+            }
+            let id = parse_usize(parts[1], "agent id")?;
+            if id >= self.agents.len() {
+                return Err(format!("agent id fuera de rango: {id}"));
+            }
+            self.agents[id].position = Vec2::new(
+                parse_f32(parts[2], "agent x")?,
+                parse_f32(parts[3], "agent y")?,
+            );
+            self.agents[id].depth = parse_f32(parts[4], "agent depth")?;
+        }
+
+        let edge_header = lines.next().ok_or("faltan aristas")?;
+        let edge_count = parse_count_header(edge_header, "edges")?;
+        for _ in 0..edge_count {
+            let line = lines.next().ok_or("faltan lineas de aristas")?;
+            let parts = line.split_whitespace().collect::<Vec<_>>();
+            if parts[0] != "e" {
+                return Err(format!("linea de arista invalida: {line}"));
+            }
+            let (idx, a, b, rest_idx, weight_idx, age_idx, tick_idx, consolidated_idx, active_idx) =
+                if parts.len() == 10 {
+                    (
+                        parse_usize(parts[1], "edge idx")?,
+                        parse_usize(parts[2], "edge a")?,
+                        parse_usize(parts[3], "edge b")?,
+                        4,
+                        5,
+                        6,
+                        7,
+                        8,
+                        9,
+                    )
+                } else if parts.len() == 8 {
+                    let idx = parse_usize(parts[1], "edge idx")?;
+                    let Some(edge) = self.edges.get(idx) else {
+                        return Err(format!("edge idx fuera de rango: {idx}"));
+                    };
+                    (idx, edge.a, edge.b, 2, 3, 4, 5, 6, 7)
+                } else {
+                    return Err(format!("linea de arista invalida: {line}"));
+                };
+            if a >= self.agents.len() || b >= self.agents.len() {
+                return Err(format!("arista fuera de rango: {a}->{b}"));
+            }
+            while idx >= self.edges.len() {
+                self.add_edge(a, b, parse_f32(parts[rest_idx], "edge rest_length")?, 1.0);
+            }
+            let edge = &mut self.edges[idx];
+            edge.rest_length = parse_f32(parts[rest_idx], "edge rest_length")?;
+            edge.weight = parse_f32(parts[weight_idx], "edge weight")?;
+            edge.age = parse_u32(parts[age_idx], "edge age")?;
+            edge.last_active_tick = parse_u64(parts[tick_idx], "edge tick")?;
+            edge.consolidated = parse_bool_flag(parts[consolidated_idx], "edge consolidated")?;
+            edge.active = parse_bool_flag(parts[active_idx], "edge active")?;
+        }
+
+        let causal_header = lines.next().ok_or("faltan causales")?;
+        let causal_count = parse_count_header(causal_header, "causal")?;
+        self.causal_edges.clear();
+        self.causal_adjacency.clear();
+        for _ in 0..causal_count {
+            let line = lines.next().ok_or("faltan lineas causales")?;
+            let parts = line.split_whitespace().collect::<Vec<_>>();
+            if parts.len() != 4 || parts[0] != "c" {
+                return Err(format!("linea causal invalida: {line}"));
+            }
+            let source = parse_usize(parts[1], "causal source")?;
+            let target = parse_usize(parts[2], "causal target")?;
+            let weight = parse_f32(parts[3], "causal weight")?;
+            if source < self.agents.len() && target < self.agents.len() {
+                self.set_causal_weight(source, target, weight);
+            }
+        }
+
+        Ok(PersistentStateReport {
+            agents: self.agents.len(),
+            edges: self.edges.len(),
+            causal_edges: self.causal_edges.len(),
+        })
     }
 
     pub fn enable_neural_oscillations(&mut self) {
@@ -1969,6 +2150,46 @@ fn oscillation(tick: u64, period: u64) -> f32 {
     }
     let phase = (tick % period) as f32 / period as f32 * std::f32::consts::TAU;
     (phase.sin() + 1.0) * 0.5
+}
+
+fn parse_count_header(line: &str, expected: &str) -> Result<usize, String> {
+    let parts = line.split_whitespace().collect::<Vec<_>>();
+    if parts.len() != 2 || parts[0] != expected {
+        return Err(format!("cabecera invalida para {expected}: {line}"));
+    }
+    parse_usize(parts[1], expected)
+}
+
+fn parse_usize(value: &str, label: &str) -> Result<usize, String> {
+    value
+        .parse::<usize>()
+        .map_err(|err| format!("{label} invalido '{value}': {err}"))
+}
+
+fn parse_u32(value: &str, label: &str) -> Result<u32, String> {
+    value
+        .parse::<u32>()
+        .map_err(|err| format!("{label} invalido '{value}': {err}"))
+}
+
+fn parse_u64(value: &str, label: &str) -> Result<u64, String> {
+    value
+        .parse::<u64>()
+        .map_err(|err| format!("{label} invalido '{value}': {err}"))
+}
+
+fn parse_f32(value: &str, label: &str) -> Result<f32, String> {
+    value
+        .parse::<f32>()
+        .map_err(|err| format!("{label} invalido '{value}': {err}"))
+}
+
+fn parse_bool_flag(value: &str, label: &str) -> Result<bool, String> {
+    match value {
+        "0" => Ok(false),
+        "1" => Ok(true),
+        _ => Err(format!("{label} invalido '{value}', esperado 0 o 1")),
+    }
 }
 
 fn mesh_config_from(config: &SimplicialConfig) -> MeshConfig {
