@@ -149,6 +149,18 @@ SNGA propone una separación funcional entre núcleo cognitivo y periferia ling�
 
 Esta división permite que el LLM haga lo que mejor sabe hacer: interpretar y producir lenguaje. SNGA asume la tarea complementaria: almacenar asociaciones multimodales, limitar la activación a regiones relevantes y ofrecer un estado conceptual estable que pueda condicionar al LLM.
 
+La integración periférica con un LLM pequeño se implementa como capa opcional, no como parte de la memoria del núcleo. El módulo `linguistic_engine.rs` define un adaptador para Ollama/Gemma (`gemma2:2b` por defecto) y el binario `snga_gemma_bridge` demuestra el flujo:
+
+```text
+prompt humano
+  -> activación SNGA / proyección geométrica
+  -> intención y resumen geométrico
+  -> Gemma periférico como renderizador lingüístico
+  -> respuesta en lenguaje natural
+```
+
+Si Gemma/Ollama no está disponible, el sistema usa un fallback simbólico de SNGA. Esto preserva la tesis central: el LLM no almacena la memoria conceptual; solo verbaliza el estado geométrico producido por la red.
+
 ### 3.4 Aprendizaje Multimodal Inicial
 
 La primera demostración implementada prueba una versión mínima de grounding multimodal. El sistema define conceptos sintéticos como `manzana` y `roca`. Cada concepto tiene rasgos separados por modalidad:
