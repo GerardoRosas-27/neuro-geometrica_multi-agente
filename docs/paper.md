@@ -8,7 +8,7 @@ Los modelos de lenguaje de gran escala (LLMs) han demostrado una capacidad notab
 
 Este documento propone el **Sistema Neuro-Geométrico de Agentes (SNGA)**, una arquitectura híbrida experimental en la que la cognición abstracta se modela como relajación mecánica de una malla topológica descentralizada, mientras que los LLMs permanecen como interfaces lingüísticas periféricas. La tesis central no es reemplazar los LLMs, sino desacoplar el lenguaje del núcleo de memoria e inferencia: SNGA almacena y evoca estados conceptuales mediante complejos simpliciales esparsos; los LLMs traducen entre lenguaje humano y activaciones geométricas internas. El núcleo cognitivo no es un vector denso, sino un complejo simplicial formado por agentes binarios, aristas asíncronas y símplices de orden superior. Cada agente minimiza una energía libre local derivada de la tensión geométrica con sus vecinos.
 
-La tesis se presenta como una hipótesis de arquitectura, no como una demostración de AGI. El repositorio acompaña la propuesta con un prototipo íntegro en Rust. La implementación incluye una red binaria event-driven, una malla simplicial 2D, una regla de relajación elástica local, un demostrador multimodal sintético y un motor gráfico basado en `macroquad` para observar la estabilización de la red en tiempo real.
+La tesis se presenta como una hipótesis de arquitectura, no como una demostración de AGI. El repositorio acompaña la propuesta con un prototipo íntegro en Rust. La implementación actual incluye una red binaria event-driven, una malla simplicial 2D/3D, reglas de relajación elástica local, memoria episódica, atención dinámica, predicción causal, planificación de rutas, un demostrador multimodal sintético y un motor gráfico basado en `macroquad`.
 
 ## 1. Introducción
 
@@ -57,7 +57,7 @@ En SNGA, un concepto no se almacena como un vector denso fijo. Se aproxima como 
 G = (V, E, S)
 ```
 
-donde `V` es el conjunto de agentes binarios, `E` el conjunto de canales asíncronos y `S` el conjunto de símplices que preservan estructura de orden superior. En el prototipo Rust, `S` se limita a triángulos 2D para facilitar visualización, pero la formulación se extiende naturalmente a tetraedros.
+donde `V` es el conjunto de agentes binarios, `E` el conjunto de canales asíncronos y `S` el conjunto de símplices que preservan estructura de orden superior. En el prototipo Rust, la visualización principal usa triángulos 2D, pero el núcleo ya permite experimentar con tetraedros y profundidad 3D.
 
 ### 2.2 Energía Libre Local
 
@@ -103,10 +103,11 @@ Cada pico posee un tiempo de vida finito. Si un agente supera un umbral de sorpr
 
 ### 3.1 Núcleo de Simulación
 
-El núcleo implementado en Rust se organiza en tres capas:
+El núcleo implementado en Rust se organiza en capas separadas:
 
 - `geometry.rs`: álgebra vectorial mínima para posiciones, distancias y fuerzas.
-- `simplicial.rs`: agentes, aristas, triángulos, picos y dinámica de relajación.
+- `mesh_engine.rs`: motor matemático/topológico que genera la malla 2D/3D, aristas, triángulos y tetraedros.
+- `simplicial.rs`: capa neuronal que consume la topología del motor y añade agentes, spikes, memoria, aprendizaje, oscilaciones y planificación.
 - `render.rs`: motor gráfico 2D para visualizar la red y sus métricas.
 
 La estructura principal es `SimplicialNetwork`. Contiene:
@@ -117,7 +118,7 @@ La estructura principal es `SimplicialNetwork`. Contiene:
 - `spikes`: cola asíncrona de eventos.
 - `config`: parámetros físicos y topológicos.
 
-El prototipo genera una rejilla triangulada. Cada celda rectangular se divide en dos triángulos, creando una malla con interacciones binarias y ternarias.
+El prototipo genera la topología mediante `SimplicialMeshEngine`. En 2D, cada celda rectangular se divide en dos triángulos, creando una malla con interacciones binarias y ternarias. En 3D, el motor añade capas de profundidad, aristas verticales y tetraedros para que la capa neuronal opere sobre un complejo volumétrico. Esta separación permite optimizar o reemplazar el motor matemático sin mezclarlo con memoria, atención u oscilaciones.
 
 ### 3.2 Ciclo de Inferencia
 
@@ -147,6 +148,18 @@ SNGA propone una separación funcional entre núcleo cognitivo y periferia ling�
 **Renderizador lingüístico de salida.** Un LLM decodificador generaría lenguaje a partir del paisaje geométrico estacionario. En el código actual, el renderizado es visual: muestra agentes activos, aristas excitadas, símplices, energía libre y una proyección simple de los agentes con mayor sorpresa.
 
 Esta división permite que el LLM haga lo que mejor sabe hacer: interpretar y producir lenguaje. SNGA asume la tarea complementaria: almacenar asociaciones multimodales, limitar la activación a regiones relevantes y ofrecer un estado conceptual estable que pueda condicionar al LLM.
+
+La integración periférica con un LLM pequeño se implementa como capa opcional, no como parte de la memoria del núcleo. El módulo `linguistic_engine.rs` define un adaptador para Ollama/Gemma (`gemma2:2b` por defecto) y el binario `snga_gemma_bridge` demuestra el flujo:
+
+```text
+prompt humano
+  -> activación SNGA / proyección geométrica
+  -> intención y resumen geométrico
+  -> Gemma periférico como renderizador lingüístico
+  -> respuesta en lenguaje natural
+```
+
+Si Gemma/Ollama no está disponible, el sistema usa un fallback simbólico de SNGA. Esto preserva la tesis central: el LLM no almacena la memoria conceptual; solo verbaliza el estado geométrico producido por la red.
 
 ### 3.4 Aprendizaje Multimodal Inicial
 
@@ -181,6 +194,73 @@ Una red de picos sin inhibición tiende a activar demasiadas regiones, análogo 
 
 La inhibición no elimina la memoria; limita la difusión global. Esto permite que una evocación active su vecindad conceptual sin contaminar toda la malla.
 
+### 3.6 Plasticidad, Ritmos, Replay y Causalidad
+
+La versión actual del núcleo añade mecanismos biomiméticos adicionales:
+
+- **Crecimiento estructural:** si dos agentes se coactivan y no existe arista asociativa, la red crea una nueva conexión.
+- **Consolidación:** conexiones reforzadas repetidamente se marcan como consolidadas y olvidan más lento.
+- **Olvido y poda:** aristas no consolidadas pierden peso con el tiempo y pueden quedar inactivas.
+- **Poda áurea por utilidad:** refuerzos opcionales pueden exigirse solo cuando la utilidad supera `1/phi ~= 0.618`, evitando consolidar asociaciones de baja calidad.
+- **Inhibición local:** además del presupuesto global top-k, existe inhibición por vecindad geométrica base para evitar hiperactivación local.
+- **Ritmos temporales:** el umbral de activación puede oscilar periódicamente para simular ventanas de excitabilidad.
+- **Memoria episódica y replay:** patrones recientes se almacenan como episodios y pueden reinyectarse durante fases de replay para reforzar trazas.
+- **Causalidad predictiva:** el sistema aprende transiciones dirigidas `causa -> efecto` y puede predecir agentes esperados desde un patrón causa.
+
+Estos mecanismos no sustituyen todavía a encoders reales de visión/audio/texto. Esos módulos se mantienen explícitamente como periferia futura. El objetivo actual es fortalecer el núcleo SNGA para que pueda recibir dichos encoders cuando estén disponibles.
+
+### 3.7 Operadores de Razonamiento Topológico
+
+Para pasar de asociación a razonamiento, el núcleo incorpora operadores que actúan sobre la malla sin recurrir a multiplicación matricial densa:
+
+- **Implicación causal dirigida:** una relación `A -> B` se almacena como transición orientada entre agentes.
+- **Inferencia transitiva:** cadenas `A -> B -> C` pueden consultarse como predicción `A -> C`, aunque el atajo no haya sido entrenado.
+- **Contradicción energética:** relaciones incompatibles aumentan la energía libre cuando se coactivan.
+- **Selección por inhibición:** rutas competidoras se limitan por presupuestos de activación y spikes.
+- **Optimización por flujo/evaporación:** rutas candidatas compiten; las rutas predictivas reciben depósito de conductancia y las rutas débiles se evaporan.
+
+En este marco, la lógica no aparece como reglas simbólicas externas, sino como dinámica de rutas, tensiones y estabilización topológica.
+
+La optimización de rutas se inspira en sistemas tipo *Physarum*: primero se permite una nube de caminos posibles y luego se refuerzan únicamente los caminos que llegan a estados esperados con menor costo. Las conexiones no usadas o menos predictivas pierden conductancia. Esto transforma una inferencia difusa con alto recall pero baja precisión en una ruta preferente de menor energía.
+
+### 3.8 Geometría 3D, Hiperbólica y Símplex de Orden Superior
+
+El prototipo conserva renderizado 2D para visualización, pero el núcleo ya soporta coordenada de profundidad, distancia 3D opcional, curvatura hiperbólica aproximada y símplices tetraédricos (`Simplex3`). Esto permite experimentar con volúmenes conceptuales y no solo con superficies triangulares.
+
+La distancia entre agentes puede operar en modo euclidiano 3D o aplicar una deformación hiperbólica controlada por `hyperbolic_curvature`. Esta extensión es relevante para jerarquías conceptuales, donde la geometría hiperbólica suele representar árboles y taxonomías con menor distorsión que un plano euclidiano.
+
+### 3.9 Oscilaciones Funcionales y Modos Globales
+
+La versión actual incorpora una capa opcional de oscilaciones funcionales inspiradas en bandas neurofisiológicas. No simula campos físicos; modela el papel computacional de los ritmos como moduladores globales y regionales de la malla:
+
+```text
+Delta -> replay y consolidación lenta
+Theta -> memoria episódica y secuencias
+Alpha -> inhibición y filtrado
+Beta  -> mantenimiento de objetivo/plan
+Gamma -> propagación local rápida
+```
+
+La red puede operar en tres modos globales:
+
+```text
+Exploration  = mayor excitabilidad y búsqueda
+Focus        = estabilización de objetivo y rutas activas
+SleepReplay  = replay episódico y consolidación sin entrada externa
+```
+
+La malla se divide internamente en regiones ligeras de agentes. Cada región adopta dinámicamente una banda dominante según su sorpresa, actividad y relación con el objetivo atencional. Esto permite coordinación global sin conectar todos los agentes con todos: las regiones no intercambian un campo físico, sino que ajustan umbrales, replay, propagación e inhibición según fase.
+
+En el motor, las oscilaciones modulan:
+
+- Umbral efectivo de activación.
+- Peso de propagación de spikes.
+- Fuerza del replay episódico.
+- Prioridad de regiones alineadas con objetivo.
+- Inhibición de regiones no relevantes.
+
+Esta capa está desactivada por defecto para conservar compatibilidad con los experimentos base y se activa explícitamente con `enable_neural_oscillations()`.
+
 ## 4. Complejidad y Eficiencia
 
 En atención densa, la interacción entre tokens escala como:
@@ -202,6 +282,30 @@ O(E_activos + S_activos)
 ```
 
 La diferencia arquitectónica es importante. Un transformer procesa capas completas incluso cuando solo una parte de la información es relevante. SNGA permite reposo nulo: agentes no excitados pueden permanecer sin cómputo hasta recibir un pico local.
+
+### 4.1 Comparación Teórica Frente a Transformers
+
+SNGA no debe interpretarse como "un transformer sin matrices". La diferencia central es más profunda: en un transformer, el lenguaje suele operar como sustrato principal del cómputo; en SNGA, el lenguaje es una interfaz periférica que activa y lee un núcleo geométrico. La ruta conceptual es:
+
+```text
+entrada lingüística
+  -> intención abstracta
+  -> rutas geométricas activas
+  -> minimización de energía / contradicción / causalidad
+  -> estado conceptual estabilizado
+  -> salida lingüística
+```
+
+En un transformer, buena parte del razonamiento queda distribuida en operaciones densas de atención y MLP sobre tokens. En SNGA, la hipótesis es que el entendimiento emerge de relaciones topológicas: rutas causales, jerarquías, tensión por contradicción, replay, inhibición y selección de caminos de baja energía. Por tanto, al escalar la red, el costo de inferencia no debería depender del número total de nodos, sino del subgrafo activo necesario para resolver la tarea.
+
+Esta diferencia permite formular una ventaja potencial:
+
+```text
+Transformer: costo asociado al procesamiento denso de secuencias y capas.
+SNGA: costo asociado a rutas activas, spikes y regiones geométricas relevantes.
+```
+
+Los experimentos actuales no demuestran superioridad general frente a LLMs. Sí muestran que SNGA puede resolver memoria asociativa, inferencia transitiva, contradicción energética, selección de rutas e intención lingüística de dominio pequeño sin recurrir a multiplicación matricial densa. La tesis fuerte es que, con mayor escala y mejores periféricos sensoriales, el núcleo SNGA podría ofrecer una forma más eficiente de grounding y razonamiento, mientras el lenguaje permanece como mecanismo de comunicación y no como centro del pensamiento.
 
 ## 5. Implementación Rust
 
@@ -280,6 +384,225 @@ El resultado indica que la malla puede almacenar miles de asociaciones sintétic
 
 Estos datos no permiten afirmar que SNGA sea superior a un LLM completo. Sí permiten una afirmación más acotada y alineada con la tesis híbrida: para almacenamiento y evocación de asociaciones multimodales discretas, una red geométrica esparsa puede servir como núcleo de memoria más eficiente que activar una red densa de lenguaje. En la validación actual se usa una fracción fija y pequeña de agentes activos (`32/180000`, aproximadamente `0.018%`) durante la evocación. El LLM, en esta visión, no desaparece; se acopla a SNGA para traducir entre símbolos humanos y estados geométricos.
 
+Finalmente, `advanced_experiment` valida los mecanismos biomiméticos extendidos:
+
+```text
+tetrahedra             = 374
+episodios              = 8
+aristas_causales       = 50
+aristas_consolidadas   = 20
+prediccion A->B        = 100.0% precision / 100.0% recall
+prediccion B->C        = 100.0% precision / 100.0% recall
+```
+
+El experimento muestra consolidación de trazas repetidas, poda/olvido de huellas transitorias, replay episódico, causalidad dirigida y geometría tetraédrica activa. Esta evidencia sigue siendo sintética, pero amplía el argumento: SNGA puede modelarse no solo como memoria asociativa, sino como un tejido plástico con dinámica temporal y capacidad predictiva inicial.
+
+Para verificar que el aprendizaje no consiste únicamente en cambiar pesos, sino también en deformar la geometría de la malla, se añadió `geometry_learning_experiment`. Este experimento mide distancias internas del concepto, distancia hacia distractores, energía libre y aristas asociativas antes y después del entrenamiento:
+
+```text
+before:
+  intra_distance      = 137.988
+  distractor_distance = 199.521
+  compactness         = 0.692
+  free_energy         = 16581.990
+  associative_edges   = 0
+
+after:
+  intra_distance      = 108.401
+  distractor_distance = 188.358
+  compactness         = 0.576
+  free_energy         = 1495.597
+  associative_edges   = 21
+  mean_weight         = 3.028
+```
+
+La distancia interna del concepto se redujo `21.44%`, la relación de compactación mejoró `16.79%` y la energía libre cayó `90.98%`. Esto apoya directamente la tesis geométrica: al aprender, la red no solo almacena asociaciones en pesos; también compacta regiones conceptuales y modifica el paisaje físico del complejo.
+
+Como consecuencia, el sustrato aprendido debe persistir. `persistent_substrate_experiment` valida que la geometría deformada, las aristas aprendidas y los pesos pueden guardarse y cargarse en una nueva instancia de red con la misma topología:
+
+```text
+save:
+  agents = 1200
+  edges  = 4022
+  causal = 0
+
+load:
+  agents = 1200
+  edges  = 4022
+  causal = 0
+
+geometry:
+  trained_distance = 112.753
+  loaded_distance  = 112.753
+  delta            = 0.000000
+
+recall_after_load = 100.0%
+```
+
+Esto confirma que el aprendizaje geométrico no se pierde al cerrar el proceso: el sistema conserva posiciones, profundidad, pesos, longitudes de reposo, aristas asociativas y causalidad. En ejecución, el visor opcional mantiene un buffer serializado y permite autoguardado/guardado manual del sustrato.
+
+Se evaluaron además tres variantes inspiradas en fractalidad orgánica y proporción áurea:
+
+```text
+FibonacciLayout  = distribución espacial áurea de agentes
+GoldenLearning   = escalado áureo del learning-rate
+GoldenPruning    = refuerzo solo si utilidad >= 1/phi
+```
+
+La prueba comparativa (`golden_fractal_experiment`) mostró que la distribución Fibonacci y el escalado áureo de pesos no superaron al baseline:
+
+```text
+Baseline        score = 0.775; leakage = 100.0%
+FibonacciLayout score = 0.775; leakage = 100.0%
+GoldenLearning  score = 0.775; leakage = 100.0%
+GoldenPruning   score = 1.000; leakage = 0.0%
+```
+
+La variante útil fue **GoldenPruning**: mantuvo recall, causalidad y predicción lingüística, pero eliminó la fuga asociativa en el escenario de prueba. Por eso el proyecto conserva la proporción áurea solo como umbral de utilidad para poda/refuerzo selectivo, no como geometría fractal rígida. La lectura experimental es que la forma fractal espacial no mejora por sí misma el aprendizaje; lo que sí ayuda es impedir que asociaciones de baja utilidad se consoliden.
+
+También se validó la capa de oscilaciones funcionales (`oscillatory_modes_experiment`). La prueba compara una red base contra una red con oscilaciones activadas. El escenario está diseñado para medir consolidación por replay: la red recibe episodios, no refuerzo asociativo explícito. La red sin oscilaciones no consolida esos episodios; la red con Delta/SleepReplay sí los refuerza durante reposo:
+
+```text
+baseline:
+  target_recall   = 0.0%
+  sequence_recall = 100.0%
+  replay_edges    = 0
+  score           = 0.500
+
+oscillatory:
+  target_recall   = 100.0%
+  sequence_recall = 100.0%
+  replay_edges    = 81
+  score           = 0.959
+```
+
+El resultado apoya la hipótesis de que los ritmos funcionales pueden servir como medio global de coordinación sin campo magnético físico: Delta habilita consolidación, Beta/Gamma organizan regiones enfocadas y Alpha actúa como filtro.
+
+La separación entre motor matemático y capa neuronal se validó con `mesh_engine_validation`:
+
+```text
+mesh:
+  nodes        = 576
+  edges        = 1947
+  triangles    = 990
+  tetrahedra   = 330
+  depth_layers = 3
+
+neural:
+  recall       = 100.0%
+  oscillations = true
+  mode         = Focus
+```
+
+Esto confirma que el motor 3D puede construir la topología de forma independiente y que la capa neuronal oscilatoria puede usarla sin perder recuperación de memoria.
+
+`reasoning_experiment` valida razonamiento topológico inicial mediante datos sintéticos donde las respuestas correctas no fueron entrenadas directamente:
+
+```text
+directo fuego->ruptura      = 0.0% recall
+transitivo fuego->ruptura   = 100.0% recall
+directo perro->animal       = 0.0% recall
+transitivo perro->animal    = 100.0% recall
+contradiccion frio/caliente = tension 25.000; delta energia 100.000
+```
+
+La lectura es importante: el sistema no memorizó el atajo `fuego -> ruptura` ni `perro -> animal`; los recuperó recorriendo rutas causales/jerárquicas dentro de la malla. Además, la coactivación de estados incompatibles (`frio` y `caliente`) elevó la energía libre, proporcionando una forma geométrica de contradicción.
+
+`reasoning_benchmark` escala esta prueba a miles de estructuras sintéticas y compara inferencia amplia contra rutas optimizadas por flujo/evaporación:
+
+```text
+causal_chains     = 5000
+hierarchy_chains  = 3000
+contradictions    = 3000
+
+causal:
+  broad_recall        = 100.0%
+  broad_precision     = 4.5%
+  optimized_recall    = 96.6%
+  optimized_precision = 96.7%
+
+jerarquia:
+  broad_recall        = 100.0%
+  broad_precision     = 11.7%
+  optimized_recall    = 100.0%
+  optimized_precision = 100.0%
+
+contradiccion:
+  tension_media       = 6.250
+  delta_energia_medio = 25.000
+```
+
+Estos resultados sugieren que la red puede pasar de "encontrar muchas rutas posibles" a "consolidar rutas útiles". El mecanismo no usa multiplicación matricial densa; opera sobre rutas, pesos locales, evaporación y energía libre.
+
+Como experimento temporal, `language_experiment` implementa un tokenizador de palabras y firmas contextuales n-grama que actúan como entrada/salida lingüística provisional para SNGA. El objetivo no es reemplazar al LLM periférico futuro, sino probar si la malla puede aprender regularidades discretas de secuencia:
+
+```text
+vocab                 = 36
+context_window        = 2
+eval_next_token top1  = 42.9%
+eval_next_token top3  = 59.5%
+eval_next_token top5  = 81.0%
+```
+
+La lectura es limitada pero útil: SNGA aprende transiciones lingüísticas locales y puede generar secuencias gramaticalmente simples dentro del dominio sintético. Sin embargo, no muestra todavía comprensión semántica abierta ni capacidades comparables a transformers. Este resultado refuerza la decisión arquitectónica de mantener el LLM como interfaz lingüística periférica en versiones futuras.
+
+Se añadió una segunda variante con **memoria de trabajo pre-lingüística**. En esta modalidad, antes de generar palabras, la red recibe una huella abstracta de la idea a expresar: determinante, sujeto, acción, objeto y lugar. Esta huella no es un LLM; es un estado topológico interno que organiza la intención antes de renderizarla en tokens. Con esta memoria de trabajo, el mismo experimento obtiene:
+
+```text
+train_sentences               = 3840
+vocab                         = 64
+eval_next_token top1          = 27.1%
+eval_next_token top3          = 52.9%
+eval_next_token top5          = 65.7%
+eval_with_working_memory top1 = 97.1%
+eval_with_working_memory top3 = 98.6%
+eval_with_working_memory top5 = 100.0%
+```
+
+La diferencia entre ambas pruebas es significativa. Sin memoria de trabajo, SNGA aprende regularidades locales pero tiende a producir frases genéricas. Con memoria de trabajo, la red dispone de un estado abstracto organizado y puede verbalizarlo de forma consistente incluso con frases más largas, adjetivos, adverbios y conectores causales/temporales. Esto apoya la hipótesis biológica del paper: el lenguaje funciona mejor como renderizador de una idea ya estructurada que como único sustrato del pensamiento.
+
+Un benchmark lingüístico escalado (`scaled_language_benchmark`) amplía el corpus a 19,220 frases sintéticas, vocabulario de 75 tokens y una malla de 92,400 nodos:
+
+```text
+eval_baseline_long top1       = 69.0%
+eval_baseline_long top3       = 82.1%
+eval_baseline_long top5       = 85.7%
+eval_with_working_memory top1 = 100.0%
+eval_with_working_memory top3 = 100.0%
+eval_with_working_memory top5 = 100.0%
+dialogue_coherence score      = 100.0% (10/10 casos)
+internal_language_probe       = ok
+```
+
+La métrica `dialogue_coherence` evalúa si la respuesta contiene los conceptos clave esperados para intenciones como energía, memoria, lenguaje, razonamiento, GPU, matrices e inhibición. El resultado indica que SNGA puede sostener comunicación coherente en un dominio pequeño cuando la respuesta está guiada por memoria de trabajo, memoria episódica, predicción de patrón y planificación local. Sin embargo, no demuestra lenguaje abierto general ni reemplaza a un LLM: valida una ruta experimental para usar SNGA como núcleo pre-lingüístico y renderizador simbólico limitado.
+
+Para evaluar la tesis híbrida con un LLM periférico real, se añadió `snga_llm_peripheral_benchmark`. La prueba usa códigos privados (`xq17`, `v9k2`, `p3lm`) que no pertenecen al conocimiento general del modelo lingüístico. SNGA aprende internamente qué significan y aprende también una cadena causal privada. Luego se comparan tres condiciones:
+
+```text
+SNGA inference     = memoria/inferencia interna de la malla
+Gemma only         = LLM periférico sin memoria privada SNGA
+SNGA + Gemma       = SNGA infiere; Gemma solo verbaliza
+```
+
+Resultado con `gemma2:2b` vía Ollama:
+
+```text
+snga_inference = 100.0%
+gemma_only     = 0.0%
+snga_plus_gemma= 100.0%
+```
+
+La lectura es acotada pero importante: no demuestra superioridad general frente a LLMs masivos, pero sí demuestra una clase de ventaja arquitectónica. Cuando la respuesta depende de memoria privada aprendida durante la vida del sistema, SNGA puede actuar como núcleo persistente de memoria/razonamiento y el LLM pequeño puede quedar reducido al papel de renderizador lingüístico.
+
+Un segundo benchmark (`autonomous_language_benchmark`) elimina el plan manual explícito. La red aprende rutas `prompt -> intención abstracta -> respuesta` y usa un filtrado semántico simple del prompt para enfocar contenido sobre palabras funcionales. En una versión ampliada con 16 intenciones, vocabulario de 148 tokens y 186,000 nodos, obtiene:
+
+```text
+intent_accuracy     = 89.6%
+response_coherence  = 89.6%
+```
+
+Esto indica que SNGA puede empezar a internalizar la memoria de trabajo: no solo verbaliza una idea dada, sino que infiere la intención abstracta desde la entrada del usuario dentro de un dominio pequeño ampliado. El resultado sigue lejos de un LLM general y todavía falla en algunas paráfrasis ambiguas, pero reduce la dependencia del plan externo y acerca el sistema a una arquitectura de conversación autónoma centrada en el núcleo geométrico.
+
 ## 7. Viabilidad hacia AGI
 
 SNGA no demuestra AGI por sí mismo. Su valor en esta dirección es que separa tres funciones que los LLMs actuales tienden a mezclar: representación conceptual persistente, inferencia dinámica y renderizado lingüístico. Esta separación podría ser relevante para AGI si el núcleo geométrico demuestra cuatro propiedades:
@@ -293,27 +616,33 @@ Por tanto, el camino hacia AGI se formula como una hipótesis experimental: si u
 
 Con los resultados actuales, la evaluación de viabilidad queda así:
 
-- **Viable:** memoria asociativa multimodal, propagación esparsa, aprendizaje estructural local, control de cascadas por inhibición.
-- **No demostrado:** razonamiento causal, lenguaje natural abierto, planificación, transferencia fuera de distribución y superioridad general frente a LLMs.
+- **Viable:** memoria asociativa multimodal, propagación esparsa, aprendizaje estructural local, poda áurea por utilidad, oscilaciones funcionales, control de cascadas por inhibición, replay episódico sintético, causalidad dirigida inicial, inferencia transitiva, contradicción energética, optimización de rutas por flujo/evaporación y geometría 3D/tetraédrica.
+- **No demostrado:** lenguaje natural abierto, planificación larga, transferencia fuera de distribución, grounding con sensores reales y superioridad general frente a LLMs.
 - **Hipótesis fuerte siguiente:** combinar SNGA con encoders reales y un LLM periférico podría reducir costo en tareas donde el LLM hoy funciona como memoria semántica, dejando al LLM como traductor, narrador y adaptador lingüístico.
 
 ## 8. Viabilidad de Hardware
 
-La arquitectura SNGA es especialmente compatible con hardware donde la localidad física importa:
+La arquitectura SNGA es compatible con hardware donde la localidad física importa:
 
 - FPGAs con regiones dedicadas a submallas.
 - Procesadores neuromórficos con comunicación por spikes.
 - NoC con micro-paquetes asíncronos.
-- Simuladores físicos en GPU cuando se prioriza visualización o prototipado.
+- CPU multinúcleo para simulación y prototipado.
 
-Una implementación futura debería particionar la malla en sectores, asignar cada sector a un núcleo y comunicar solo eventos de frontera. Esto reduciría sincronización global y permitiría escalado espacial.
+En el estado actual del proyecto, la ruta prioritaria no es introducir GPU ni campos globales. La mejora que sí produjo resultados medibles fue reforzar el núcleo CPU con memoria episódica, atención dinámica, predicción de patrones, rollouts internos y planificación sobre rutas causales. Por tanto, la optimización práctica inmediata debe concentrarse en:
+
+1. Reducir asignaciones temporales.
+2. Mantener buffers reutilizables.
+3. Limitar spikes y agentes activos.
+4. Medir costo por subgrafo activo, no por tamaño total de la red.
+5. Evitar dependencias de hardware que no estén disponibles en el entorno real.
 
 ## 9. Limitaciones del Prototipo
 
 La versión actual es una demostración de mecanismo, no un modelo entrenado. Sus principales limitaciones son:
 
 - La codificación textual es determinista pero no semántica.
-- El complejo es 2D, no hiperbólico ni 3D.
+- La visualización principal sigue siendo 2D; la geometría 3D/hiperbólica existe como soporte experimental, no como validación completa de escala.
 - El aprendizaje por coactivación es local y simple; todavía no separa causalidad de coincidencia.
 - No existe aún decodificador LLM periférico.
 - No hay persistencia de memoria episódica en disco.
@@ -329,15 +658,18 @@ Los siguientes pasos técnicos son:
 
 1. Sustituir la proyección sintética por encoders reales: CLIP/ViT para visión, encoder de audio y LLM pequeño para lenguaje.
 2. Implementar crecimiento topológico completo: creación, poda y consolidación de aristas/símplices según coactivación y predicción.
-3. Añadir geometría hiperbólica para jerarquías conceptuales.
-4. Incorporar símplices 3D para restricciones volumétricas.
-5. Entrenar un adaptador cross-attention que lea matrices de distancia estabilizadas.
-6. Medir energía, latencia y sparsity frente a una línea base transformer.
-7. Evaluar tareas pequeñas de grounding: recuperación de rasgos, consistencia física simple y aprendizaje incremental.
-8. Añadir inhibición lateral y normalización de energía para reducir fuga asociativa.
+3. Añadir persistencia de memoria episódica y snapshots del mundo interno.
+4. Fortalecer atención dinámica basada en sorpresa predictiva, objetivo y contexto.
+5. Mejorar el planificador multi-paso sobre rutas causales y contradicciones.
+6. Evaluar acoplamientos más finos entre Delta/Theta/Alpha/Beta/Gamma y tareas cognitivas.
+7. Entrenar un adaptador de lectura que observe regiones activas, distancias y rutas causales.
+8. Medir energía, latencia y sparsity frente a una línea base transformer pequeña.
+9. Evaluar tareas pequeñas de grounding: recuperación de rasgos, consistencia física simple y aprendizaje incremental.
+10. Evaluar replay episódico con secuencias temporales largas y benchmarks causales.
+11. Convertir la optimización de rutas en un mecanismo no supervisado basado solo en reducción de energía libre y estabilidad del atractor.
 
 ## 11. Conclusión
 
 SNGA plantea un cambio de énfasis: de predicción lingüística densa como única arquitectura cognitiva a una arquitectura híbrida donde la memoria e inferencia abstracta ocurren en una malla geométrica esparsa y el lenguaje se resuelve en módulos periféricos especializados. El sistema no elimina los LLMs, sino que los reubica como interfaces de entrada/salida. El núcleo cognitivo se modela como un complejo simplicial que minimiza tensión local, permitiendo una forma de inferencia más cercana a navegación conceptual que a multiplicación matricial global.
 
-El prototipo Rust de este repositorio materializa la primera pieza de esa hipótesis: una red binaria de agentes, una malla simplicial, propagación por eventos y relajación elástica observable en tiempo real.
+El prototipo Rust de este repositorio materializa la primera pieza de esa hipótesis: una red binaria de agentes, una malla simplicial, propagación por eventos, memoria episódica, atención dinámica, predicción causal, planificación local y relajación elástica observable en tiempo real.

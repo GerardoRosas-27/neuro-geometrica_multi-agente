@@ -138,5 +138,6 @@ fn experiment_config() -> SimplicialConfig {
         inhibition_decay: 0.18,
         max_spikes_per_step: 512,
         seed: 11,
+        ..SimplicialConfig::default()
     }
 }
