@@ -1,5 +1,8 @@
 use crate::geometry::Vec2;
 use rand::{rngs::StdRng, Rng, SeedableRng};
+use std::collections::HashSet;
+
+const PHI_INV: f32 = 0.618_034;
 
 #[derive(Clone, Copy, Debug)]
 pub struct MeshConfig {
@@ -7,6 +10,31 @@ pub struct MeshConfig {
     pub height: usize,
     pub spacing: f32,
     pub seed: u64,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct FractalMeshConfig {
+    pub levels: usize,
+    pub branches_per_region: usize,
+    pub target_dimension: f32,
+    pub target_nodes: usize,
+    pub base_radius: f32,
+    pub lateral_link_weight: f32,
+    pub parent_link_weight: f32,
+}
+
+impl Default for FractalMeshConfig {
+    fn default() -> Self {
+        Self {
+            levels: 4,
+            branches_per_region: 5,
+            target_dimension: 2.65,
+            target_nodes: 0,
+            base_radius: 0.0,
+            lateral_link_weight: 0.35,
+            parent_link_weight: 1.0,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -61,6 +89,169 @@ pub struct SimplicialMeshEngine;
 impl SimplicialMeshEngine {
     pub fn grid(config: MeshConfig) -> MeshTopology {
         Self::grid_3d(config, 1)
+    }
+
+    pub fn fractal_3d(config: MeshConfig, fractal: FractalMeshConfig) -> MeshTopology {
+        let mut rng = StdRng::seed_from_u64(config.seed);
+        let width = config.width.max(1) as f32;
+        let height = config.height.max(1) as f32;
+        let center = Vec2::new(width * config.spacing * 0.5, height * config.spacing * 0.5);
+        let radius = if fractal.base_radius > 0.0 {
+            fractal.base_radius
+        } else {
+            width.max(height) * config.spacing * 0.42
+        };
+        let branches = fractal.branches_per_region.clamp(2, 12);
+        let level_count = fractal.levels.clamp(1, 7);
+        let target_nodes = if fractal.target_nodes > 0 {
+            fractal.target_nodes.max(1)
+        } else {
+            usize::MAX
+        };
+        let dimension = fractal.target_dimension.clamp(1.2, 2.95);
+        let contraction = (branches as f32).powf(-1.0 / dimension);
+
+        let mut nodes = Vec::new();
+        nodes.push(MeshNode {
+            id: 0,
+            position: center,
+            depth: 0.0,
+        });
+
+        let mut levels = vec![vec![0_usize]];
+        let mut parent_of = vec![usize::MAX];
+        let mut edge_keys = HashSet::new();
+        let mut edges = Vec::new();
+        let mut simplices = Vec::new();
+        let mut tetrahedra = Vec::new();
+
+        for level in 1..=level_count {
+            if nodes.len() >= target_nodes {
+                break;
+            }
+            let parent_level = levels[level - 1].clone();
+            let mut current_level = Vec::new();
+            let scale = contraction.powi(level as i32);
+            let branch_radius = radius * scale;
+
+            for (parent_ord, &parent_id) in parent_level.iter().enumerate() {
+                let parent_position = nodes[parent_id].position;
+                let parent_depth = nodes[parent_id].depth;
+                let mut siblings = Vec::with_capacity(branches);
+
+                for branch in 0..branches {
+                    if nodes.len() >= target_nodes {
+                        break;
+                    }
+                    let child_id = nodes.len();
+                    let t = (branch as f32 + 0.5) / branches as f32;
+                    let z = 1.0 - 2.0 * t;
+                    let radial = (1.0 - z * z).sqrt();
+                    let theta = std::f32::consts::TAU
+                        * (branch as f32 * PHI_INV + parent_ord as f32 * PHI_INV * 0.5);
+                    let jitter = 1.0 + rng.gen_range(-0.04..0.04);
+                    let offset = Vec2::new(theta.cos() * radial, theta.sin() * radial)
+                        * branch_radius
+                        * jitter;
+
+                    nodes.push(MeshNode {
+                        id: child_id,
+                        position: parent_position + offset,
+                        depth: parent_depth + z * branch_radius * jitter,
+                    });
+                    parent_of.push(parent_id);
+                    current_level.push(child_id);
+                    siblings.push(child_id);
+
+                    push_edge(
+                        &nodes,
+                        &mut edges,
+                        &mut edge_keys,
+                        parent_id,
+                        child_id,
+                        fractal.parent_link_weight,
+                    );
+                }
+
+                for pair in siblings.windows(2) {
+                    let a = pair[0];
+                    let b = pair[1];
+                    push_edge(
+                        &nodes,
+                        &mut edges,
+                        &mut edge_keys,
+                        a,
+                        b,
+                        fractal.lateral_link_weight,
+                    );
+                    simplices.push(MeshSimplex2 {
+                        a: parent_id,
+                        b: a,
+                        c: b,
+                    });
+                }
+
+                if siblings.len() > 2 {
+                    let first = siblings[0];
+                    let last = siblings[siblings.len() - 1];
+                    push_edge(
+                        &nodes,
+                        &mut edges,
+                        &mut edge_keys,
+                        first,
+                        last,
+                        fractal.lateral_link_weight,
+                    );
+                    simplices.push(MeshSimplex2 {
+                        a: parent_id,
+                        b: last,
+                        c: first,
+                    });
+                }
+
+                for window in siblings.windows(3) {
+                    tetrahedra.push(MeshSimplex3 {
+                        a: parent_id,
+                        b: window[0],
+                        c: window[1],
+                        d: window[2],
+                    });
+                }
+            }
+
+            if current_level.is_empty() {
+                break;
+            }
+            levels.push(current_level);
+        }
+
+        for level in 2..levels.len() {
+            for &node_id in &levels[level] {
+                let parent = parent_of[node_id];
+                if parent == usize::MAX {
+                    continue;
+                }
+                let grandparent = parent_of[parent];
+                if grandparent == usize::MAX {
+                    continue;
+                }
+                push_edge(
+                    &nodes,
+                    &mut edges,
+                    &mut edge_keys,
+                    grandparent,
+                    node_id,
+                    fractal.lateral_link_weight * contraction,
+                );
+            }
+        }
+
+        MeshTopology {
+            nodes,
+            edges,
+            simplices,
+            tetrahedra,
+        }
     }
 
     pub fn grid_3d(config: MeshConfig, depth_layers: usize) -> MeshTopology {
@@ -156,6 +347,31 @@ impl SimplicialMeshEngine {
 
         topology
     }
+}
+
+fn push_edge(
+    nodes: &[MeshNode],
+    edges: &mut Vec<MeshEdge>,
+    edge_keys: &mut HashSet<(usize, usize)>,
+    a: usize,
+    b: usize,
+    weight: f32,
+) {
+    let key = if a < b { (a, b) } else { (b, a) };
+    if !edge_keys.insert(key) {
+        return;
+    }
+
+    let pa = nodes[a].position;
+    let pb = nodes[b].position;
+    let dz = nodes[b].depth - nodes[a].depth;
+    let rest_length = ((pb - pa).length_squared() + dz * dz).sqrt().max(1.0);
+    edges.push(MeshEdge {
+        a,
+        b,
+        rest_length,
+        weight,
+    });
 }
 
 impl MeshTopology {
