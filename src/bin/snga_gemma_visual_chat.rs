@@ -6,7 +6,7 @@ use snga::linguistic_engine::{
 use snga::simplicial::{SimplicialConfig, SimplicialNetwork};
 use std::env;
 
-const STATE_PATH: &str = "data/snga_gemma_visual_chat.snga";
+const STATE_PATH: &str = "data/snga_gemma_distilled_language.snga";
 const MAX_MESSAGES: usize = 64;
 const MAX_DRAW_EDGES: usize = 2_400;
 const MAX_DRAW_TRIANGLES: usize = 1_000;
@@ -562,39 +562,39 @@ fn infer_intent(prompt: &str) -> String {
 fn text_pattern(text: &str, nodes: usize) -> Vec<usize> {
     text.bytes()
         .enumerate()
-        .map(|(i, byte)| ((byte as usize * 37) + i * 53 + text.len() * 11) % nodes)
+        .map(|(i, byte)| ((byte as usize * 41) + i * 67 + text.len() * 13) % nodes)
         .collect()
 }
 
 fn visual_chat_config() -> SimplicialConfig {
     SimplicialConfig {
-        width: 34,
-        height: 22,
-        spacing: 15.0,
-        elasticity: 0.008,
+        width: 40,
+        height: 24,
+        spacing: 9.0,
+        elasticity: 0.007,
         damping: 0.86,
         activation_threshold: 0.64,
-        simplex_area_weight: 0.00025,
+        simplex_area_weight: 0.0002,
         max_active_agents: 128,
-        inhibition_decay: 0.06,
-        max_spikes_per_step: 256,
+        inhibition_decay: 0.05,
+        max_spikes_per_step: 384,
         local_inhibition_decay: 0.76,
         refractory_ticks: 0,
         rhythm_period: 16,
         rhythm_amplitude: 0.04,
-        forgetting_rate: 0.0008,
+        forgetting_rate: 0.0,
         prune_below_weight: 0.02,
         consolidate_after: 3,
-        consolidated_forgetting_scale: 0.08,
-        max_episodes: 256,
+        consolidated_forgetting_scale: 0.1,
+        max_episodes: 512,
         replay_interval: 8,
-        replay_batch: 6,
+        replay_batch: 8,
         replay_learning_rate: 0.06,
-        causal_learning_rate: 0.18,
+        causal_learning_rate: 0.20,
         contradiction_learning_rate: 0.2,
         contradiction_energy_weight: 1.0,
-        simplex3_weight: 0.00015,
+        simplex3_weight: 0.0001,
         hyperbolic_curvature: 0.0,
-        seed: 229,
+        seed: 313,
     }
 }
