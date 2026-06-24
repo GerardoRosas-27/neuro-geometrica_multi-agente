@@ -56,7 +56,7 @@ fn main() {
     );
 
     let (state_path, mut network) = loadable_network();
-    match network.load_persistent_state(state_path) {
+    match network.load_persistent_state(&state_path) {
         Ok(report) => {
             println!(
                 "SNGA console chat cargado: agentes={} aristas={} causales={}",
@@ -176,7 +176,7 @@ fn learn_interaction(network: &mut SimplicialNetwork, prompt: &str, topic: &str,
 
 fn save_state(network: &SimplicialNetwork, label: &str) {
     let (state_path, _) = state_path_and_config();
-    match network.save_persistent_state(state_path) {
+    match network.save_persistent_state(&state_path) {
         Ok(report) => println!(
             "[{label}] agentes={} aristas={} causales={}",
             report.agents, report.edges, report.causal_edges
@@ -311,16 +311,19 @@ fn compact_projection(projection: &ConceptProjection) -> String {
         .join(", ")
 }
 
-fn loadable_network() -> (&'static str, SimplicialNetwork) {
+fn loadable_network() -> (String, SimplicialNetwork) {
     let (state_path, config) = state_path_and_config();
     (state_path, SimplicialNetwork::grid_3d(config, 2))
 }
 
-fn state_path_and_config() -> (&'static str, SimplicialConfig) {
+fn state_path_and_config() -> (String, SimplicialConfig) {
+    if let Ok(path) = env::var("SNGA_STATE_PATH") {
+        return (path, scaled_config());
+    }
     if Path::new(SCALED_STATE_PATH).exists() {
-        (SCALED_STATE_PATH, scaled_config())
+        (SCALED_STATE_PATH.to_string(), scaled_config())
     } else {
-        (DISTILLED_STATE_PATH, distilled_config())
+        (DISTILLED_STATE_PATH.to_string(), distilled_config())
     }
 }
 
