@@ -1,5 +1,5 @@
 use crate::geometry::Vec2;
-use crate::mesh_engine::{MeshConfig, MeshTopology, SimplicialMeshEngine};
+use crate::mesh_engine::{FractalMeshConfig, MeshConfig, MeshTopology, SimplicialMeshEngine};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
 use std::io;
@@ -355,6 +355,11 @@ impl SimplicialNetwork {
 
     pub fn grid_3d(config: SimplicialConfig, depth_layers: usize) -> Self {
         let topology = SimplicialMeshEngine::grid_3d(mesh_config_from(&config), depth_layers);
+        Self::from_mesh_topology(config, topology)
+    }
+
+    pub fn fractal_3d(config: SimplicialConfig, fractal: FractalMeshConfig) -> Self {
+        let topology = SimplicialMeshEngine::fractal_3d(mesh_config_from(&config), fractal);
         Self::from_mesh_topology(config, topology)
     }
 
@@ -1124,6 +1129,15 @@ impl SimplicialNetwork {
             .map_err(|message| io::Error::new(io::ErrorKind::InvalidData, message))
     }
 
+    pub fn load_persistent_memory_state<P: AsRef<Path>>(
+        &mut self,
+        path: P,
+    ) -> io::Result<PersistentStateReport> {
+        let contents = fs::read_to_string(path)?;
+        self.apply_persistent_memory_state(&contents)
+            .map_err(|message| io::Error::new(io::ErrorKind::InvalidData, message))
+    }
+
     pub fn serialize_persistent_state(&self) -> String {
         let mut out = String::new();
         out.push_str("SNGA_PERSISTENT_STATE_V1\n");
@@ -1200,6 +1214,7 @@ impl SimplicialNetwork {
             );
             self.agents[id].depth = parse_f32(parts[4], "agent depth")?;
         }
+        self.recalibrate_simplex_targets();
 
         let edge_header = lines.next().ok_or("faltan aristas")?;
         let edge_count = parse_count_header(edge_header, "edges")?;
@@ -1244,6 +1259,96 @@ impl SimplicialNetwork {
             edge.last_active_tick = parse_u64(parts[tick_idx], "edge tick")?;
             edge.consolidated = parse_bool_flag(parts[consolidated_idx], "edge consolidated")?;
             edge.active = parse_bool_flag(parts[active_idx], "edge active")?;
+        }
+
+        let causal_header = lines.next().ok_or("faltan causales")?;
+        let causal_count = parse_count_header(causal_header, "causal")?;
+        self.causal_edges.clear();
+        self.causal_adjacency.clear();
+        for _ in 0..causal_count {
+            let line = lines.next().ok_or("faltan lineas causales")?;
+            let parts = line.split_whitespace().collect::<Vec<_>>();
+            if parts.len() != 4 || parts[0] != "c" {
+                return Err(format!("linea causal invalida: {line}"));
+            }
+            let source = parse_usize(parts[1], "causal source")?;
+            let target = parse_usize(parts[2], "causal target")?;
+            let weight = parse_f32(parts[3], "causal weight")?;
+            if source < self.agents.len() && target < self.agents.len() {
+                self.set_causal_weight(source, target, weight);
+            }
+        }
+
+        Ok(PersistentStateReport {
+            agents: self.agents.len(),
+            edges: self.edges.len(),
+            causal_edges: self.causal_edges.len(),
+        })
+    }
+
+    pub fn apply_persistent_memory_state(
+        &mut self,
+        contents: &str,
+    ) -> Result<PersistentStateReport, String> {
+        let mut lines = contents.lines();
+        if lines.next() != Some("SNGA_PERSISTENT_STATE_V1") {
+            return Err("version de estado SNGA invalida".to_string());
+        }
+
+        let agent_header = lines.next().ok_or("faltan agentes")?;
+        let agent_count = parse_count_header(agent_header, "agents")?;
+        if agent_count > self.agents.len() {
+            return Err(format!(
+                "conteo de agentes incompatible para memoria: estado={} red={}",
+                agent_count,
+                self.agents.len()
+            ));
+        }
+
+        for _ in 0..agent_count {
+            let line = lines.next().ok_or("faltan lineas de agentes")?;
+            let parts = line.split_whitespace().collect::<Vec<_>>();
+            if parts.len() != 5 || parts[0] != "a" {
+                return Err(format!("linea de agente invalida: {line}"));
+            }
+        }
+
+        let edge_header = lines.next().ok_or("faltan aristas")?;
+        let edge_count = parse_count_header(edge_header, "edges")?;
+        for _ in 0..edge_count {
+            let line = lines.next().ok_or("faltan lineas de aristas")?;
+            let parts = line.split_whitespace().collect::<Vec<_>>();
+            if parts[0] != "e" {
+                return Err(format!("linea de arista invalida: {line}"));
+            }
+            let (a, b, weight_idx, age_idx, tick_idx, consolidated_idx, active_idx) =
+                if parts.len() == 10 {
+                    (
+                        parse_usize(parts[2], "edge a")?,
+                        parse_usize(parts[3], "edge b")?,
+                        5,
+                        6,
+                        7,
+                        8,
+                        9,
+                    )
+                } else {
+                    return Err(format!("linea de arista invalida para memoria: {line}"));
+                };
+            if a >= self.agents.len() || b >= self.agents.len() || a == b {
+                continue;
+            }
+
+            let active = parse_bool_flag(parts[active_idx], "edge active")?;
+            if !active {
+                continue;
+            }
+
+            let weight = parse_f32(parts[weight_idx], "edge weight")?;
+            let age = parse_u32(parts[age_idx], "edge age")?;
+            let last_active_tick = parse_u64(parts[tick_idx], "edge tick")?;
+            let consolidated = parse_bool_flag(parts[consolidated_idx], "edge consolidated")?;
+            self.import_memory_edge(a, b, weight, age, last_active_tick, consolidated);
         }
 
         let causal_header = lines.next().ok_or("faltan causales")?;
@@ -1436,6 +1541,102 @@ impl SimplicialNetwork {
         edge_energy + simplex_energy + simplex3_energy + contradiction_energy
     }
 
+    pub fn anneal_active_edge_rest_lengths(&mut self, rate: f32, min_weight: f32) -> usize {
+        let rate = rate.clamp(0.0, 1.0);
+        if rate <= 0.0 {
+            return 0;
+        }
+
+        let mut adjusted = 0;
+        for idx in 0..self.edges.len() {
+            if !self.edges[idx].active || self.edges[idx].weight < min_weight {
+                continue;
+            }
+
+            let a = self.edges[idx].a;
+            let b = self.edges[idx].b;
+            let pa = self.agents[a].position;
+            let pb = self.agents[b].position;
+            let current_distance = self.agent_distance(a, b, pa, pb).max(1.0);
+            let edge = &mut self.edges[idx];
+            edge.rest_length += (current_distance - edge.rest_length) * rate;
+            adjusted += 1;
+        }
+        adjusted
+    }
+
+    pub fn prune_low_value_associative_edges(&mut self, limit: usize) -> usize {
+        if limit == 0 {
+            return 0;
+        }
+
+        let mut candidates = self
+            .edges
+            .iter()
+            .enumerate()
+            .filter(|(_, edge)| edge.active && edge.weight >= ASSOCIATIVE_EDGE_THRESHOLD)
+            .map(|(idx, edge)| {
+                let consolidation_bonus = if edge.consolidated { 10_000.0 } else { 0.0 };
+                let score = edge.weight + edge.age as f32 * 0.001 + consolidation_bonus;
+                (idx, score)
+            })
+            .collect::<Vec<_>>();
+        candidates.sort_by(|a, b| {
+            a.1.total_cmp(&b.1)
+                .then_with(|| self.edges[a.0].age.cmp(&self.edges[b.0].age))
+                .then_with(|| a.0.cmp(&b.0))
+        });
+
+        let mut remove = vec![false; self.edges.len()];
+        let mut removed = 0;
+        for (idx, _) in candidates.into_iter().take(limit) {
+            remove[idx] = true;
+            removed += 1;
+        }
+
+        if removed == 0 {
+            return 0;
+        }
+
+        let mut next_edges = Vec::with_capacity(self.edges.len() - removed);
+        for (idx, edge) in self.edges.drain(..).enumerate() {
+            if !remove[idx] {
+                next_edges.push(edge);
+            }
+        }
+        self.edges = next_edges;
+        self.rebuild_edge_indices();
+        removed
+    }
+
+    pub fn prune_low_value_causal_edges(&mut self, limit: usize) -> usize {
+        if limit == 0 {
+            return 0;
+        }
+
+        let mut candidates = self
+            .causal_edges
+            .iter()
+            .map(|(&(source, target), &weight)| ((source, target), weight))
+            .collect::<Vec<_>>();
+        candidates.sort_by(|a, b| {
+            a.1.total_cmp(&b.1)
+                .then_with(|| (a.0 .0, a.0 .1).cmp(&(b.0 .0, b.0 .1)))
+        });
+
+        let mut removed = 0;
+        for (key, _) in candidates.into_iter().take(limit) {
+            if self.causal_edges.remove(&key).is_some() {
+                removed += 1;
+            }
+        }
+
+        if removed > 0 {
+            self.rebuild_causal_adjacency();
+        }
+        removed
+    }
+
     fn add_edge(&mut self, a: usize, b: usize, rest_length: f32, weight: f32) {
         let edge_idx = self.edges.len();
         self.edges.push(Edge {
@@ -1451,6 +1652,58 @@ impl SimplicialNetwork {
         self.adjacency[a].push(edge_idx);
         self.adjacency[b].push(edge_idx);
         self.edge_lookup.insert(edge_key(a, b), edge_idx);
+    }
+
+    fn rebuild_edge_indices(&mut self) {
+        self.adjacency = vec![Vec::new(); self.agents.len()];
+        self.edge_lookup.clear();
+        for (idx, edge) in self.edges.iter().enumerate() {
+            if edge.a >= self.agents.len() || edge.b >= self.agents.len() {
+                continue;
+            }
+            self.adjacency[edge.a].push(idx);
+            self.adjacency[edge.b].push(idx);
+            self.edge_lookup.insert(edge_key(edge.a, edge.b), idx);
+        }
+    }
+
+    fn rebuild_causal_adjacency(&mut self) {
+        self.causal_adjacency.clear();
+        for (&(source, target), &weight) in &self.causal_edges {
+            upsert_weighted_neighbor(&mut self.causal_adjacency, source, target, weight);
+        }
+    }
+
+    fn import_memory_edge(
+        &mut self,
+        a: usize,
+        b: usize,
+        weight: f32,
+        age: u32,
+        last_active_tick: u64,
+        consolidated: bool,
+    ) {
+        let pa = self.agents[a].position;
+        let pb = self.agents[b].position;
+        let rest_length = self.agent_distance(a, b, pa, pb).max(1.0) * 0.92;
+        if let Some(&edge_idx) = self.edge_lookup.get(&edge_key(a, b)) {
+            let edge = &mut self.edges[edge_idx];
+            edge.rest_length = rest_length;
+            edge.weight = edge.weight.max(weight);
+            edge.age = edge.age.max(age);
+            edge.last_active_tick = edge.last_active_tick.max(last_active_tick);
+            edge.consolidated |= consolidated;
+            edge.active = true;
+            return;
+        }
+
+        self.add_edge(a, b, rest_length, weight);
+        if let Some(&edge_idx) = self.edge_lookup.get(&edge_key(a, b)) {
+            let edge = &mut self.edges[edge_idx];
+            edge.age = age;
+            edge.last_active_tick = last_active_tick;
+            edge.consolidated = consolidated;
+        }
     }
 
     fn initialize_oscillatory_regions(&mut self) {
@@ -1754,6 +2007,34 @@ impl SimplicialNetwork {
             d,
             target_volume,
         });
+    }
+
+    fn recalibrate_simplex_targets(&mut self) {
+        for idx in 0..self.simplices.len() {
+            let a = self.simplices[idx].a;
+            let b = self.simplices[idx].b;
+            let c = self.simplices[idx].c;
+            let target_area = triangle_area(
+                self.agents[a].position,
+                self.agents[b].position,
+                self.agents[c].position,
+            );
+            self.simplices[idx].target_area = target_area;
+        }
+
+        for idx in 0..self.tetrahedra.len() {
+            let a = self.tetrahedra[idx].a;
+            let b = self.tetrahedra[idx].b;
+            let c = self.tetrahedra[idx].c;
+            let d = self.tetrahedra[idx].d;
+            let target_volume = tetra_volume(
+                self.agent_point3(a),
+                self.agent_point3(b),
+                self.agent_point3(c),
+                self.agent_point3(d),
+            );
+            self.tetrahedra[idx].target_volume = target_volume;
+        }
     }
 
     fn propagate_spikes(&mut self) {

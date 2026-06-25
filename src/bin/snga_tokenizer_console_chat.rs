@@ -1,6 +1,7 @@
 use snga::simplicial::{ConceptProjection, SimplicialConfig, SimplicialNetwork};
 use std::collections::{BTreeSet, HashMap};
 use std::env;
+use std::hash::{Hash, Hasher};
 use std::io::{self, Write};
 use std::path::Path;
 use std::time::{Duration, Instant};
@@ -9,6 +10,17 @@ const SCALED_STATE_PATH: &str = "data/snga_scaled_gemma_language.snga";
 const DISTILLED_STATE_PATH: &str = "data/snga_gemma_distilled_language.snga";
 const SAVE_EVERY_INTERACTIONS: usize = 8;
 const SAVE_EVERY_SECONDS: u64 = 180;
+const PATTERN_SIZE: usize = 12;
+const LETTER_PATTERN_SIZE: usize = 7;
+
+#[derive(Clone, Copy)]
+enum Region {
+    FineLetters,
+    LocalSyllables,
+    MediumWords,
+    UpperSentences,
+    AssociativeMeaning,
+}
 
 #[derive(Clone)]
 struct Tokenizer {
@@ -56,7 +68,7 @@ fn main() {
     );
 
     let (state_path, mut network) = loadable_network();
-    match network.load_persistent_state(state_path) {
+    match network.load_persistent_state(&state_path) {
         Ok(report) => {
             println!(
                 "SNGA console chat cargado: agentes={} aristas={} causales={}",
@@ -73,18 +85,22 @@ fn main() {
     let mut last_save = Instant::now();
 
     let args = env::args().skip(1).collect::<Vec<_>>();
+    let learn_enabled = args.iter().any(|arg| arg == "--learn")
+        || env::var("SNGA_CHAT_LEARN").ok().as_deref() == Some("1");
     if args.first().map(String::as_str) == Some("--once") {
         let prompt = args.iter().skip(1).cloned().collect::<Vec<_>>().join(" ");
         println!("usuario> {prompt}");
         println!(
             "snga> {}",
-            answer(&mut network, &tokenizer, &candidates, &prompt)
+            answer(&mut network, &tokenizer, &candidates, &prompt, false)
         );
-        save_state(&network, "guardado tras --once");
         return;
     }
 
-    println!("Modo interactivo SNGA-only. Tokenizador + sustrato aprendido. Escribe 'salir' para guardar y terminar.");
+    println!(
+        "Modo interactivo SNGA-only. Tokenizador + sustrato aprendido. aprendizaje_chat={}. Escribe 'salir' para terminar.",
+        learn_enabled
+    );
     loop {
         print!("usuario> ");
         io::stdout().flush().ok();
@@ -102,15 +118,17 @@ fn main() {
         }
         println!(
             "snga> {}",
-            answer(&mut network, &tokenizer, &candidates, input)
+            answer(&mut network, &tokenizer, &candidates, input, learn_enabled)
         );
-        dirty_interactions += 1;
-        if dirty_interactions >= SAVE_EVERY_INTERACTIONS
-            || last_save.elapsed() >= Duration::from_secs(SAVE_EVERY_SECONDS)
-        {
-            save_state(&network, "checkpoint");
-            dirty_interactions = 0;
-            last_save = Instant::now();
+        if learn_enabled {
+            dirty_interactions += 1;
+            if dirty_interactions >= SAVE_EVERY_INTERACTIONS
+                || last_save.elapsed() >= Duration::from_secs(SAVE_EVERY_SECONDS)
+            {
+                save_state(&network, "checkpoint");
+                dirty_interactions = 0;
+                last_save = Instant::now();
+            }
         }
     }
 }
@@ -120,10 +138,11 @@ fn answer(
     tokenizer: &Tokenizer,
     candidates: &[ResponseCandidate],
     prompt: &str,
+    learn_enabled: bool,
 ) -> String {
     let topic = infer_topic(prompt);
     let prompt_pattern = prompt_pattern(prompt, tokenizer, network.agents.len());
-    let topic_pattern = text_pattern(topic, network.agents.len());
+    let topic_pattern = hierarchical_text_pattern("topic", topic, network.agents.len());
     let mut query = prompt_pattern.clone();
     query.extend(topic_pattern.iter().copied());
     query.sort_unstable();
@@ -135,7 +154,7 @@ fn answer(
         network.step();
     }
 
-    let predicted = network.predict_next_pattern(&topic_pattern, 1, 96);
+    let predicted = network.predict_next_pattern(&query, 1, 128);
     let projection = network.project_active_state(8);
     let best = score_candidates(&predicted, candidates, network.agents.len(), topic)
         .first()
@@ -143,7 +162,9 @@ fn answer(
         .unwrap_or(0);
 
     let symbolic_response = candidates[best].response;
-    learn_interaction(network, prompt, topic, symbolic_response);
+    if learn_enabled {
+        learn_interaction(network, prompt, topic, symbolic_response);
+    }
 
     format!(
         "{}\n  [motor=snga-tokenizer, tema={}, confianza={:.3}, activacion={}]",
@@ -155,9 +176,9 @@ fn answer(
 }
 
 fn learn_interaction(network: &mut SimplicialNetwork, prompt: &str, topic: &str, response: &str) {
-    let prompt_pattern = text_pattern(prompt, network.agents.len());
-    let topic_pattern = text_pattern(topic, network.agents.len());
-    let response_pattern = text_pattern(response, network.agents.len());
+    let prompt_pattern = hierarchical_text_pattern("input", prompt, network.agents.len());
+    let topic_pattern = hierarchical_text_pattern("topic", topic, network.agents.len());
+    let response_pattern = hierarchical_text_pattern("target", response, network.agents.len());
     let mut fused = prompt_pattern.clone();
     fused.extend(topic_pattern.iter().copied());
     fused.extend(response_pattern.iter().copied());
@@ -176,7 +197,7 @@ fn learn_interaction(network: &mut SimplicialNetwork, prompt: &str, topic: &str,
 
 fn save_state(network: &SimplicialNetwork, label: &str) {
     let (state_path, _) = state_path_and_config();
-    match network.save_persistent_state(state_path) {
+    match network.save_persistent_state(&state_path) {
         Ok(report) => println!(
             "[{label}] agentes={} aristas={} causales={}",
             report.agents, report.edges, report.causal_edges
@@ -196,15 +217,15 @@ fn score_candidates(
         .iter()
         .enumerate()
         .map(|(idx, candidate)| {
-            let topic = text_pattern(candidate.topic, nodes);
-            let response = text_pattern(candidate.response, nodes);
+            let topic = hierarchical_text_pattern("topic", candidate.topic, nodes);
+            let response = hierarchical_text_pattern("target", candidate.response, nodes);
             let score = topic
                 .iter()
                 .chain(response.iter())
                 .map(|agent| scores.get(agent).copied().unwrap_or(0.0))
                 .sum::<f32>();
             let topic_bonus = if candidate.topic == inferred_topic {
-                10_000.0
+                100_000.0
             } else {
                 0.0
             };
@@ -249,12 +270,57 @@ fn response_candidates() -> Vec<ResponseCandidate> {
             topic: "aprendizaje continuo sin olvidar",
             response: "El aprendizaje continuo consolida lo util, poda ruido y conserva el sustrato aprendido.",
         },
+        ResponseCandidate {
+            topic: "saludo basico",
+            response: "Hola. Soy SNGA funcionando con tokenizador y memoria en la malla fractal.",
+        },
+        ResponseCandidate {
+            topic: "identidad snga",
+            response: "Soy una red neuro geometrica: guardo rutas entre letras, palabras, oraciones y conceptos.",
+        },
+        ResponseCandidate {
+            topic: "casa como palabra",
+            response: "Casa es una palabra que nombra un lugar para vivir.",
+        },
+        ResponseCandidate {
+            topic: "miedo como emocion",
+            response: "Miedo es una emocion que aparece ante peligro, amenaza o incertidumbre.",
+        },
+        ResponseCandidate {
+            topic: "saludo como acto linguistico",
+            response: "Un saludo es una frase social breve para iniciar contacto, como hola.",
+        },
+        ResponseCandidate {
+            topic: "silaba como unidad sonora",
+            response: "Una silaba une sonidos de letras y ayuda a formar palabras.",
+        },
+        ResponseCandidate {
+            topic: "oracion con sujeto verbo objeto",
+            response: "Una oracion simple organiza sujeto, verbo y objeto para expresar una idea completa.",
+        },
     ]
 }
 
 fn infer_topic(prompt: &str) -> &'static str {
     let lower = prompt.to_lowercase();
-    if lower.contains("palabra") || lower.contains("simbolo") {
+    if lower.contains("hola") || lower.contains("buenos") || lower.contains("saludar") {
+        "saludo basico"
+    } else if lower.contains("quien eres")
+        || lower.contains("que eres")
+        || lower.contains("eres tu")
+    {
+        "identidad snga"
+    } else if lower.contains("casa") {
+        "casa como palabra"
+    } else if lower.contains("miedo") || lower.contains("emocion") {
+        "miedo como emocion"
+    } else if lower.contains("saludo") {
+        "saludo como acto linguistico"
+    } else if lower.contains("silaba") {
+        "silaba como unidad sonora"
+    } else if lower.contains("oracion") || lower.contains("sujeto") || lower.contains("verbo") {
+        "oracion con sujeto verbo objeto"
+    } else if lower.contains("palabra") || lower.contains("simbolo") {
         "palabra como simbolo estable"
     } else if lower.contains("frase") || lower.contains("oracion") {
         "frase como secuencia de intencion"
@@ -268,24 +334,170 @@ fn infer_topic(prompt: &str) -> &'static str {
         "plan a varios pasos"
     } else if lower.contains("memoria") || lower.contains("evento") {
         "memoria episodica de evento"
-    } else {
+    } else if lower.contains("aprendizaje")
+        || lower.contains("aprende")
+        || lower.contains("olvidar")
+    {
         "aprendizaje continuo sin olvidar"
+    } else {
+        "consulta abierta"
     }
 }
 
 fn prompt_pattern(prompt: &str, tokenizer: &Tokenizer, nodes: usize) -> Vec<usize> {
-    tokenizer
+    let mut pattern = tokenizer
         .encode(prompt)
         .into_iter()
         .enumerate()
         .map(|(i, token_id)| (token_id * 97 + i * 53 + prompt.len() * 11) % nodes)
+        .collect::<Vec<_>>();
+    pattern.extend(hierarchical_text_pattern("input", prompt, nodes));
+    pattern.sort_unstable();
+    pattern.dedup();
+    pattern
+}
+
+fn hierarchical_text_pattern(prefix: &str, text: &str, nodes: usize) -> Vec<usize> {
+    let mut out = text_pattern(prefix, text, nodes);
+    let normalized = normalize_text(text);
+    out.extend(regional_pattern(
+        prefix,
+        &normalized,
+        PATTERN_SIZE,
+        nodes,
+        text_region(&normalized),
+    ));
+    for (pos, ch) in normalized.chars().enumerate().take(24) {
+        out.extend(letter_pattern(ch, pos, nodes));
+    }
+    let words = normalized.split_whitespace().collect::<Vec<_>>();
+    for word in words.iter().take(12) {
+        out.extend(text_pattern("word", word, nodes));
+        out.extend(regional_pattern(
+            "word",
+            word,
+            PATTERN_SIZE,
+            nodes,
+            Region::MediumWords,
+        ));
+    }
+    for pair in words.windows(2) {
+        out.extend(text_pattern(
+            "word_pair",
+            &format!("{}_{}", pair[0], pair[1]),
+            nodes,
+        ));
+        out.extend(regional_pattern(
+            "word_pair",
+            &format!("{}_{}", pair[0], pair[1]),
+            PATTERN_SIZE,
+            nodes,
+            Region::UpperSentences,
+        ));
+    }
+    out.sort_unstable();
+    out.dedup();
+    out
+}
+
+fn text_pattern(prefix: &str, text: &str, nodes: usize) -> Vec<usize> {
+    (0..PATTERN_SIZE)
+        .map(|offset| {
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            prefix.hash(&mut hasher);
+            normalize_text(text).hash(&mut hasher);
+            offset.hash(&mut hasher);
+            hasher.finish() as usize % nodes
+        })
         .collect()
 }
 
-fn text_pattern(text: &str, nodes: usize) -> Vec<usize> {
-    text.bytes()
-        .enumerate()
-        .map(|(i, byte)| ((byte as usize * 41) + i * 67 + text.len() * 13) % nodes)
+fn letter_pattern(ch: char, pos: usize, nodes: usize) -> Vec<usize> {
+    let mut pattern = (0..LETTER_PATTERN_SIZE)
+        .map(|offset| {
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            "letter".hash(&mut hasher);
+            ch.hash(&mut hasher);
+            pos.hash(&mut hasher);
+            offset.hash(&mut hasher);
+            hasher.finish() as usize % nodes
+        })
+        .collect::<Vec<_>>();
+    pattern.extend(regional_pattern(
+        "letter",
+        &format!("{ch}_{pos}"),
+        LETTER_PATTERN_SIZE,
+        nodes,
+        Region::FineLetters,
+    ));
+    pattern.sort_unstable();
+    pattern.dedup();
+    pattern
+}
+
+fn regional_pattern(
+    prefix: &str,
+    value: &str,
+    size: usize,
+    nodes: usize,
+    region: Region,
+) -> Vec<usize> {
+    let (start, len) = region_bounds(region, nodes);
+    (0..size)
+        .map(|offset| {
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            "regional".hash(&mut hasher);
+            prefix.hash(&mut hasher);
+            normalize_text(value).hash(&mut hasher);
+            offset.hash(&mut hasher);
+            start + (hasher.finish() as usize % len.max(1))
+        })
+        .collect()
+}
+
+fn text_region(normalized: &str) -> Region {
+    let words = normalized.split_whitespace().count();
+    let chars = normalized.chars().filter(|ch| !ch.is_whitespace()).count();
+    if words <= 1 && chars <= 2 {
+        Region::LocalSyllables
+    } else if words <= 1 {
+        Region::MediumWords
+    } else if words <= 4 {
+        Region::UpperSentences
+    } else {
+        Region::AssociativeMeaning
+    }
+}
+
+fn region_bounds(region: Region, nodes: usize) -> (usize, usize) {
+    let (start, end) = match region {
+        Region::FineLetters => (0.00_f32, 0.20_f32),
+        Region::LocalSyllables => (0.20, 0.40),
+        Region::MediumWords => (0.40, 0.65),
+        Region::UpperSentences => (0.65, 0.85),
+        Region::AssociativeMeaning => (0.85, 1.00),
+    };
+    let start_idx = (nodes as f32 * start).floor() as usize;
+    let end_idx = (nodes as f32 * end).ceil() as usize;
+    (
+        start_idx.min(nodes.saturating_sub(1)),
+        end_idx.saturating_sub(start_idx).max(1),
+    )
+}
+
+fn normalize_text(text: &str) -> String {
+    text.to_lowercase()
+        .chars()
+        .map(|ch| match ch {
+            'á' | 'à' | 'ä' | 'â' => 'a',
+            'é' | 'è' | 'ë' | 'ê' => 'e',
+            'í' | 'ì' | 'ï' | 'î' => 'i',
+            'ó' | 'ò' | 'ö' | 'ô' => 'o',
+            'ú' | 'ù' | 'ü' | 'û' => 'u',
+            'ñ' => 'n',
+            other => other,
+        })
+        .filter(|ch| ch.is_ascii_alphanumeric() || ch.is_whitespace())
         .collect()
 }
 
@@ -311,16 +523,19 @@ fn compact_projection(projection: &ConceptProjection) -> String {
         .join(", ")
 }
 
-fn loadable_network() -> (&'static str, SimplicialNetwork) {
+fn loadable_network() -> (String, SimplicialNetwork) {
     let (state_path, config) = state_path_and_config();
     (state_path, SimplicialNetwork::grid_3d(config, 2))
 }
 
-fn state_path_and_config() -> (&'static str, SimplicialConfig) {
+fn state_path_and_config() -> (String, SimplicialConfig) {
+    if let Ok(path) = env::var("SNGA_STATE_PATH") {
+        return (path, scaled_config());
+    }
     if Path::new(SCALED_STATE_PATH).exists() {
-        (SCALED_STATE_PATH, scaled_config())
+        (SCALED_STATE_PATH.to_string(), scaled_config())
     } else {
-        (DISTILLED_STATE_PATH, distilled_config())
+        (DISTILLED_STATE_PATH.to_string(), distilled_config())
     }
 }
 
