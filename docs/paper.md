@@ -603,6 +603,244 @@ response_coherence  = 89.6%
 
 Esto indica que SNGA puede empezar a internalizar la memoria de trabajo: no solo verbaliza una idea dada, sino que infiere la intención abstracta desde la entrada del usuario dentro de un dominio pequeño ampliado. El resultado sigue lejos de un LLM general y todavía falla en algunas paráfrasis ambiguas, pero reduce la dependencia del plan externo y acerca el sistema a una arquitectura de conversación autónoma centrada en el núcleo geométrico.
 
+### 6.1 Sustrato Fractal, Currículo Lingüístico y Compresión Validada
+
+Después de los experimentos lingüísticos iniciales se evaluó una variante más cercana a la hipótesis biológica del proyecto: reemplazar la rejilla uniforme por un sustrato fractal jerárquico, organizar el lenguaje por regiones de escala y entrenar el núcleo con un maestro lingüístico externo solo durante la fase de datos. En esta modalidad, Gemma/Ollama no actúa como memoria ni como motor de conversación en inferencia; su papel es generar lotes de entrenamiento y exámenes curriculares. El estado aprendido queda dentro de SNGA.
+
+La topología fractal se genera mediante contracción jerárquica:
+
+```text
+s = branches^(-1 / D)
+D ~= 2.65
+```
+
+El generador `SimplicialMeshEngine::fractal_3d` permite fijar el número objetivo de nodos (`target_nodes`) y construir una malla multi-escala. La primera comparación entre una grilla 3D y una malla fractal estática mostró que la fractal podía conservar recall y precisión con menos nodos/aristas en una prueba pequeña:
+
+```text
+Grid3d:
+  nodes      = 1080
+  edges      = 3706
+  tetrahedra = 493
+  recall     = 100.0%
+  precision  = 100.0%
+  leakage    = 0.0%
+
+Fractal3d:
+  nodes      = 781
+  edges      = 2454
+  tetrahedra = 468
+  recall     = 100.0%
+  precision  = 100.0%
+  leakage    = 0.0%
+```
+
+Al transferir el estado lingüístico escalado previo (`snga_scaled_gemma_language.snga`) a la nueva malla fractal, la carga directa falló porque el estado persistido guardaba un conteo fijo de agentes. Para preservar la nueva geometría se añadió una carga de memoria (`load_persistent_memory_state`) que importa aristas y causalidad sin sobrescribir posiciones. Con una malla fractal de `5760` nodos, la memoria escalada se transfirió sin perder predicciones:
+
+```text
+grid_learned:
+  topics    = 12/12
+  questions = 6/6
+  relations = 5/5
+  conf      = 3.078 promedio
+
+fractal_learned:
+  topics    = 12/12
+  questions = 6/6
+  relations = 5/5
+  conf      = 3.078 promedio
+
+fractal_baseline:
+  topics    = 0/12
+  questions = 0/6
+  relations = 0/5
+```
+
+La transferencia inicial mantuvo conocimiento pero elevó la energía geométrica. Se implementó entonces un recocido local de longitudes de reposo (`anneal_active_edge_rest_lengths`) combinado con replay de prompts lingüísticos. En seis épocas, la energía bajó aproximadamente 45 veces sin degradar cobertura ni confianza:
+
+```text
+before:
+  coverage = 23/23
+  conf     = 3.078
+  energy   = 173445952.0
+
+after:
+  coverage = 23/23
+  conf     = 3.078
+  energy   = 3777787.5
+```
+
+Posteriormente se aplicó compresión validada. El criterio fue conservador: se podan aristas asociativas de baja utilidad por tandas, se recalcula la firma top-k de un conjunto de pruebas y solo se acepta la poda si la firma permanece idéntica. Con este procedimiento, el estado fractal comprimido preservó exactamente las 23 predicciones top-k evaluadas y redujo fuertemente tamaño y aristas:
+
+```text
+grid_original:
+  edges       = 609202
+  associative = 590013
+  file        = 36643830 bytes
+
+fractal_compressed:
+  edges       = 302110
+  associative = 270648
+  file        = 21420425 bytes
+
+knowledge:
+  cases              = 23
+  avg_overlap        = 100.0%
+  exact_topk_matches = 23/23
+```
+
+La siguiente etapa fue entrenar lingüística española en un currículo jerárquico con Gemma como maestro de datos:
+
+```text
+letras -> silabas -> palabras -> uniones_de_palabras -> oraciones
+       -> gramatica_basica -> espanol_medio
+```
+
+El binario `fractal_gemma_curriculum_trainer` genera lotes con Gemma, entrena SNGA, genera exámenes de etapa y permite avanzar si el maestro considera suficiente la señal de la red. El entrenamiento se reanuda desde progreso persistente:
+
+```text
+batches = 113
+lessons = 3613
+stage   = oraciones
+```
+
+Para imitar la organización cortical distribuida del lenguaje, se añadió una codificación regional compatible. La firma antigua se conserva para no olvidar el conocimiento previo, pero los nuevos patrones agregan componentes por región:
+
+```text
+0-20%   letras, grafemas, fonemas
+20-40%  silabas y combinaciones letra-sonido
+40-65%  palabras y raices
+65-85%  frases, oraciones y roles gramaticales
+85-100% significado, causa, intencion y contexto
+```
+
+La validación posterior mostró aprendizaje por etapas. La red entrenada supera al baseline fractal comprimido por margen amplio en confianza y overlap:
+
+```text
+letras:
+  trained  conf = 60.969  overlap = 4.9%
+  baseline conf = 2.346   overlap = 1.0%
+
+silabas:
+  trained  conf = 108.193 overlap = 14.5%
+  baseline conf = 3.483   overlap = 0.7%
+
+palabras/significado:
+  trained  conf = 224.077 overlap = 11.8%
+  baseline conf = 4.923   overlap = 1.6%
+
+frases:
+  trained  conf = 216.000 overlap = 19.5%
+  baseline conf = 4.998   overlap = 0.8%
+
+oraciones:
+  trained  conf = 417.000 overlap = 15.4%
+  baseline conf = 8.041   overlap = 1.5%
+
+semantica_media:
+  trained  conf = 286.526 overlap = 4.8%
+  baseline conf = 8.130   overlap = 1.1%
+```
+
+Algunos ejemplos concretos del probe amplio (`fractal_curriculum_broad_probe`) son:
+
+```text
+input    = "p a"
+expected = "pa"
+trained overlap  = 19.7%
+baseline overlap = 0.0%
+
+input    = "c a s a"
+expected = "casa lugar para vivir"
+trained overlap  = 13.9%
+baseline overlap = 0.9%
+
+input    = "nino corre"
+expected = "sujeto y verbo"
+trained overlap  = 19.5%
+baseline overlap = 0.3%
+
+input    = "el nino come pan"
+expected = "sujeto verbo objeto"
+trained overlap  = 16.1%
+baseline overlap = 2.0%
+```
+
+También se probó un razonamiento relacional controlado:
+
+```text
+Juan es padre de Ana.
+Ana es madre de Luis.
+=> Juan es abuelo de Luis.
+```
+
+El resultado fue mixto:
+
+```text
+reasoning_family_path:
+  juan -> ana -> luis
+  overlap_luis = 0.0%
+
+reasoning_family_conclusion:
+  juan_padre_ana + ana_madre_luis => juan_abuelo_luis
+  overlap = 16.7%
+```
+
+La lectura es que SNGA no demuestra todavía inferencia transitiva lingüística robusta en lenguaje abierto; sin embargo, sí muestra una señal parcial cuando se le proporciona una estructura relacional explícita. Esto separa dos capacidades: la red ya aprende rutas lingüísticas y asociaciones semánticas simples, pero necesita entrenamiento específico en reglas relacionales para generalizar razonamientos familiares, jerárquicos o lógicos.
+
+El crecimiento de conexiones fue un problema práctico. Durante el entrenamiento curricular, las aristas causales llegaron a varios millones. La poda causal validada resultó mucho más difícil que la poda asociativa: en un estado con `1,356,872` aristas causales solo pudieron eliminarse `654` sin cambiar la firma de validación. En cambio, la poda asociativa permitió grandes reducciones. Una compresión máxima sobre el currículo reciente redujo 800,000 aristas asociativas y preservó el conocimiento validado:
+
+```text
+before:
+  edges       = 1288157
+  associative = 1264807
+  causal      = 3698798
+  file        = 145948033 bytes
+
+after:
+  edges       = 488157
+  associative = 464807
+  causal      = 3698798
+  file        = 104750496 bytes
+  knowledge   = preserved
+```
+
+Finalmente se amplió el sustrato fractal de `5760` a `11520` nodos. La expansión conserva las rutas aprendidas usando `SNGA_PATTERN_NODES=5760` para las firmas heredadas, mientras deja espacio regional nuevo para aprendizaje posterior:
+
+```text
+expanded:
+  agents       = 11520
+  edges        = 506036
+  causal_edges = 3699245
+  energy       = 0.0
+
+validation:
+  letras              = 2/2
+  silabas             = 2/2
+  palabras            = 2/2
+  uniones_de_palabras = 2/2
+  oraciones           = 2/2
+  gramatica_basica    = 1/1
+  espanol_medio       = 1/1
+```
+
+La experiencia con el chat SNGA-tokenizador mostró una limitación adicional. El estado entrenado sí contenía conocimiento, pero el chat original no lo aprovechaba bien porque usaba una lista fija de respuestas, una función `infer_topic` demasiado estrecha y una codificación distinta de la usada por el currículo. Al alinear el chat con la codificación jerárquica/regional y evitar que `--once` guardara automáticamente, las respuestas mejoraron en consultas simples:
+
+```text
+hola
+-> Hola. Soy SNGA funcionando con tokenizador y memoria en la malla fractal.
+
+que es casa
+-> Casa es una palabra que nombra un lugar para vivir.
+
+que es miedo
+-> Miedo es una emocion que aparece ante peligro, amenaza o incertidumbre.
+
+que es un saludo
+-> Un saludo es una frase social breve para iniciar contacto, como hola.
+```
+
+Estos resultados deben interpretarse con cautela. La red muestra aprendizaje lingüístico estructural y señales iniciales de significado, pero todavía no posee generación abierta robusta. El sistema actual funciona mejor como memoria geométrica y selector de respuestas simbólicas que como generador autónomo de lenguaje natural. La dirección prometedora no es hacer que SNGA imite directamente a un LLM, sino usar la malla como sustrato persistente y causal, con una interfaz lingüística cada vez más alineada con sus regiones internas.
+
 ## 7. Viabilidad hacia AGI
 
 SNGA no demuestra AGI por sí mismo. Su valor en esta dirección es que separa tres funciones que los LLMs actuales tienden a mezclar: representación conceptual persistente, inferencia dinámica y renderizado lingüístico. Esta separación podría ser relevante para AGI si el núcleo geométrico demuestra cuatro propiedades:
@@ -649,6 +887,8 @@ La versión actual es una demostración de mecanismo, no un modelo entrenado. Su
 - El crecimiento topológico existe solo como refuerzo/creación de aristas, no como neurogénesis estructural completa.
 - La validación actual usa datos sintéticos; todavía no prueba visión, audio o lenguaje reales.
 - La fuga residual entre conceptos indica falta de mecanismos de inhibición y desambiguación causal.
+- En el currículo lingüístico fractal, las aristas causales crecen con rapidez y son difíciles de podar sin alterar firmas predictivas; esto sugiere que hace falta limitar causalidad por región, por etapa o por top-k durante el entrenamiento, no solo comprimir después.
+- El chat SNGA-tokenizador sigue siendo un renderizador simbólico de respuestas candidatas; aunque ya usa la codificación jerárquica/regional, no genera lenguaje abierto desde la malla con la flexibilidad de un LLM.
 
 Estas limitaciones son deliberadas: el objetivo inicial es aislar el principio operativo de relajación local y visualizarlo con claridad.
 
@@ -667,6 +907,8 @@ Los siguientes pasos técnicos son:
 9. Evaluar tareas pequeñas de grounding: recuperación de rasgos, consistencia física simple y aprendizaje incremental.
 10. Evaluar replay episódico con secuencias temporales largas y benchmarks causales.
 11. Convertir la optimización de rutas en un mecanismo no supervisado basado solo en reducción de energía libre y estabilidad del atractor.
+12. Mantener el currículo lingüístico fractal con regiones por escala, pero controlar la creación de causalidad durante el aprendizaje: presupuestos por región, consolidación solo tras exámenes y poda causal validada por firmas top-k.
+13. Desarrollar un decodificador SNGA-tokenizador más expresivo que lea patrones regionales y no dependa únicamente de respuestas simbólicas predefinidas.
 
 ## 11. Conclusión
 
