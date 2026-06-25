@@ -1297,7 +1297,7 @@ impl SimplicialNetwork {
 
         let agent_header = lines.next().ok_or("faltan agentes")?;
         let agent_count = parse_count_header(agent_header, "agents")?;
-        if agent_count != self.agents.len() {
+        if agent_count > self.agents.len() {
             return Err(format!(
                 "conteo de agentes incompatible para memoria: estado={} red={}",
                 agent_count,

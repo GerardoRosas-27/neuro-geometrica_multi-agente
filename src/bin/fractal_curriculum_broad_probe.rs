@@ -1,15 +1,13 @@
 use snga::mesh_engine::FractalMeshConfig;
 use snga::simplicial::{SimplicialConfig, SimplicialNetwork};
-use std::env;
 use std::hash::{Hash, Hasher};
 
-const BASE_STATE_PATH: &str = "data/snga_scaled_gemma_language_fractal_compressed.snga";
-const TRAINED_STATE_PATH: &str = "data/snga_fractal_gemma_spanish_curriculum.snga";
-const DEFAULT_AGENT_COUNT: usize = 5_760;
-const DEFAULT_PATTERN_NODES: usize = 5_760;
+const STATE_PATH: &str = "data/snga_fractal_gemma_spanish_curriculum_max_compressed.snga";
+const BASELINE_PATH: &str = "data/snga_scaled_gemma_language_fractal_compressed.snga";
+const AGENT_COUNT: usize = 5_760;
 const PATTERN_SIZE: usize = 12;
 const LETTER_PATTERN_SIZE: usize = 7;
-const TOP_K: usize = 32;
+const TOP_K: usize = 64;
 
 #[derive(Clone, Copy)]
 enum Region {
@@ -21,32 +19,29 @@ enum Region {
 }
 
 #[derive(Clone, Copy)]
-struct Case {
-    stage: &'static str,
-    unit: &'static str,
+struct ProbeCase {
+    group: &'static str,
     input: &'static str,
-    target: &'static str,
+    expected: &'static str,
 }
 
-#[derive(Default)]
-struct StageStats {
-    total: usize,
+#[derive(Default, Clone, Copy)]
+struct GroupStats {
+    cases: usize,
     nonzero: usize,
-    target_hits: usize,
+    hits: usize,
     confidence: f32,
     overlap: f32,
 }
 
 fn main() {
-    println!("SNGA fractal Gemma curriculum probe");
-    let trained_state_path =
-        env::var("SNGA_CURRICULUM_STATE_PATH").unwrap_or_else(|_| TRAINED_STATE_PATH.to_string());
+    println!("SNGA broad linguistic and reasoning probe");
 
-    let mut trained = SimplicialNetwork::fractal_3d(config(), fractal_mesh_config());
-    match trained.load_persistent_state(&trained_state_path) {
+    let mut network = SimplicialNetwork::fractal_3d(config(), fractal_mesh_config());
+    match network.load_persistent_state(STATE_PATH) {
         Ok(report) => println!(
-            "trained_loaded=true path={} agents={} edges={} causal_edges={}",
-            trained_state_path, report.agents, report.edges, report.causal_edges
+            "trained_loaded=true agents={} edges={} causal_edges={} state={}",
+            report.agents, report.edges, report.causal_edges, STATE_PATH
         ),
         Err(err) => {
             println!("trained_loaded=false error={err}");
@@ -55,106 +50,114 @@ fn main() {
     }
 
     let mut baseline = SimplicialNetwork::fractal_3d(config(), fractal_mesh_config());
-    match baseline.load_persistent_state(BASE_STATE_PATH) {
-        Ok(report) => println!(
-            "baseline_loaded=true agents={} edges={} causal_edges={}",
-            report.agents, report.edges, report.causal_edges
-        ),
-        Err(err) => {
-            println!("baseline_loaded=false error={err}");
-            println!("baseline_fallback=empty_fractal_same_size");
-        }
-    };
+    let _ = baseline.load_persistent_state(BASELINE_PATH);
 
-    let cases = validation_cases();
-    println!("cases={}", cases.len());
-    for stage in [
+    let cases = probe_cases();
+    for group in [
         "letras",
         "silabas",
-        "palabras",
-        "uniones_de_palabras",
+        "palabras_significado",
+        "frases",
         "oraciones",
-        "gramatica_basica",
-        "espanol_medio",
+        "gramatica",
+        "semantica_media",
     ] {
-        let trained_stats = eval_stage(&trained, &cases, stage);
-        let baseline_stats = eval_stage(&baseline, &cases, stage);
-        let trained_legacy_stats = eval_stage_legacy(&trained, &cases, stage);
-        print_stage("trained", stage, trained_stats);
-        print_stage("trained_legacy", stage, trained_legacy_stats);
-        print_stage("baseline", stage, baseline_stats);
+        let trained = eval_group(&network, &cases, group);
+        let base = eval_group(&baseline, &cases, group);
+        print_group("trained", group, trained);
+        print_group("baseline", group, base);
     }
 
-    print_network("trained", &trained);
-    print_network("baseline", &baseline);
+    controlled_family_reasoning(&network);
+    print_network("trained", &network);
 }
 
-fn eval_stage_legacy(network: &SimplicialNetwork, cases: &[Case], stage: &str) -> StageStats {
-    let mut stats = StageStats::default();
-    for case in cases.iter().filter(|case| case.stage == stage) {
-        stats.total += 1;
-        let input = legacy_hierarchical_text_pattern("input", case.input, network.agents.len());
-        let target = legacy_hierarchical_text_pattern("target", case.target, network.agents.len());
-        let predicted = network.predict_next_pattern(&input, 1, TOP_K);
-        let predicted_ids = predicted.iter().map(|(idx, _)| *idx).collect::<Vec<_>>();
-        let overlap = overlap_ratio(&predicted_ids, &target);
-        if !predicted.is_empty() {
-            stats.nonzero += 1;
-        }
-        if overlap > 0.0 {
-            stats.target_hits += 1;
-        }
-        stats.confidence += predicted.iter().map(|(_, score)| *score).sum::<f32>() / TOP_K as f32;
-        stats.overlap += overlap;
-    }
-    if stats.total > 0 {
-        stats.confidence /= stats.total as f32;
-        stats.overlap /= stats.total as f32;
-    }
-    stats
-}
-
-fn eval_stage(network: &SimplicialNetwork, cases: &[Case], stage: &str) -> StageStats {
-    let mut stats = StageStats::default();
-    for case in cases.iter().filter(|case| case.stage == stage) {
-        stats.total += 1;
+fn eval_group(network: &SimplicialNetwork, cases: &[ProbeCase], group: &str) -> GroupStats {
+    let mut stats = GroupStats::default();
+    for case in cases.iter().filter(|case| case.group == group) {
         let input = hierarchical_text_pattern("input", case.input, network.agents.len());
-        let target = hierarchical_text_pattern("target", case.target, network.agents.len());
+        let expected = hierarchical_text_pattern("target", case.expected, network.agents.len());
         let predicted = network.predict_next_pattern(&input, 1, TOP_K);
         let predicted_ids = predicted.iter().map(|(idx, _)| *idx).collect::<Vec<_>>();
-        let overlap = overlap_ratio(&predicted_ids, &target);
-        if !predicted.is_empty() {
-            stats.nonzero += 1;
-        }
-        if overlap > 0.0 {
-            stats.target_hits += 1;
-        }
-        stats.confidence += predicted.iter().map(|(_, score)| *score).sum::<f32>() / TOP_K as f32;
+        let overlap = overlap_ratio(&predicted_ids, &expected);
+        let confidence = predicted.iter().map(|(_, score)| *score).sum::<f32>() / TOP_K as f32;
+
+        stats.cases += 1;
+        stats.nonzero += usize::from(!predicted.is_empty());
+        stats.hits += usize::from(overlap > 0.0);
+        stats.confidence += confidence;
         stats.overlap += overlap;
+
         println!(
-            "case stage={} unit={:?} input={:?} target={:?} predicted={} overlap={:.1}%",
-            stage,
-            case.unit,
+            "case group={} input={:?} expected={:?} predicted={} conf={:.3} overlap={:.1}%",
+            group,
             case.input,
-            case.target,
+            case.expected,
             predicted.len(),
+            confidence,
             overlap * 100.0
         );
     }
-    if stats.total > 0 {
-        stats.confidence /= stats.total as f32;
-        stats.overlap /= stats.total as f32;
+
+    if stats.cases > 0 {
+        stats.confidence /= stats.cases as f32;
+        stats.overlap /= stats.cases as f32;
     }
     stats
 }
 
-fn print_stage(label: &str, stage: &str, stats: StageStats) {
+fn controlled_family_reasoning(base: &SimplicialNetwork) {
+    let mut net = base.clone();
+    let juan = concept_pattern("persona", "juan", net.agents.len());
+    let ana = concept_pattern("persona", "ana", net.agents.len());
+    let luis = concept_pattern("persona", "luis", net.agents.len());
+    let padre = concept_pattern("relacion", "padre", net.agents.len());
+    let madre = concept_pattern("relacion", "madre", net.agents.len());
+    let abuelo = concept_pattern("relacion", "abuelo", net.agents.len());
+
+    let juan_padre_ana = fact_pattern("juan", "padre", "ana", net.agents.len());
+    let ana_madre_luis = fact_pattern("ana", "madre", "luis", net.agents.len());
+    let juan_abuelo_luis = fact_pattern("juan", "abuelo", "luis", net.agents.len());
+
+    net.learn_transition(&juan, &juan_padre_ana);
+    net.learn_transition(&juan_padre_ana, &ana);
+    net.learn_transition(&ana, &ana_madre_luis);
+    net.learn_transition(&ana_madre_luis, &luis);
+    net.learn_transition(&padre, &abuelo);
+    net.learn_transition(&madre, &abuelo);
+    net.learn_transition(&juan_padre_ana, &juan_abuelo_luis);
+    net.learn_transition(&ana_madre_luis, &juan_abuelo_luis);
+
+    let path_prediction = net.infer_transitive_from(&juan, 4, TOP_K);
+    let conclusion_prediction = net.predict_next_pattern(&juan_padre_ana, 1, TOP_K);
+    let path_ids = path_prediction
+        .iter()
+        .map(|(idx, _)| *idx)
+        .collect::<Vec<_>>();
+    let conclusion_ids = conclusion_prediction
+        .iter()
+        .map(|(idx, _)| *idx)
+        .collect::<Vec<_>>();
+
     println!(
-        "{label}_{stage}: nonzero={}/{} target_hits={}/{} conf={:.3} target_overlap={:.1}%",
+        "reasoning_family_path: juan -> ana -> luis overlap_luis={:.1}% predicted={}",
+        overlap_ratio(&path_ids, &luis) * 100.0,
+        path_prediction.len()
+    );
+    println!(
+        "reasoning_family_conclusion: juan_padre_ana + ana_madre_luis => juan_abuelo_luis overlap={:.1}% predicted={}",
+        overlap_ratio(&conclusion_ids, &juan_abuelo_luis) * 100.0,
+        conclusion_prediction.len()
+    );
+}
+
+fn print_group(label: &str, group: &str, stats: GroupStats) {
+    println!(
+        "{label}_{group}: nonzero={}/{} hits={}/{} conf={:.3} overlap={:.1}%",
         stats.nonzero,
-        stats.total,
-        stats.target_hits,
-        stats.total,
+        stats.cases,
+        stats.hits,
+        stats.cases,
         stats.confidence,
         stats.overlap * 100.0
     );
@@ -173,79 +176,82 @@ fn print_network(label: &str, network: &SimplicialNetwork) {
     );
 }
 
-fn validation_cases() -> Vec<Case> {
+fn probe_cases() -> Vec<ProbeCase> {
     vec![
-        Case {
-            stage: "letras",
-            unit: "vocal a",
+        ProbeCase {
+            group: "letras",
             input: "a",
-            target: "vocal abierta",
+            expected: "vocal abierta",
         },
-        Case {
-            stage: "letras",
-            unit: "consonante m",
+        ProbeCase {
+            group: "letras",
             input: "m",
-            target: "consonante nasal",
+            expected: "consonante nasal",
         },
-        Case {
-            stage: "silabas",
-            unit: "ma",
+        ProbeCase {
+            group: "silabas",
             input: "m a",
-            target: "ma",
+            expected: "ma",
         },
-        Case {
-            stage: "silabas",
-            unit: "pa",
+        ProbeCase {
+            group: "silabas",
             input: "p a",
-            target: "pa",
+            expected: "pa",
         },
-        Case {
-            stage: "palabras",
-            unit: "casa",
+        ProbeCase {
+            group: "palabras_significado",
             input: "c a s a",
-            target: "casa lugar para vivir",
+            expected: "casa lugar para vivir",
         },
-        Case {
-            stage: "palabras",
-            unit: "nino",
+        ProbeCase {
+            group: "palabras_significado",
             input: "n i n o",
-            target: "nino persona pequena",
+            expected: "nino persona pequena",
         },
-        Case {
-            stage: "uniones_de_palabras",
-            unit: "nino corre",
+        ProbeCase {
+            group: "palabras_significado",
+            input: "p a n",
+            expected: "pan alimento",
+        },
+        ProbeCase {
+            group: "frases",
             input: "nino corre",
-            target: "sujeto y verbo",
+            expected: "sujeto y verbo",
         },
-        Case {
-            stage: "uniones_de_palabras",
-            unit: "come pan",
+        ProbeCase {
+            group: "frases",
             input: "come pan",
-            target: "verbo y objeto",
+            expected: "verbo y objeto",
         },
-        Case {
-            stage: "oraciones",
-            unit: "oracion simple",
+        ProbeCase {
+            group: "oraciones",
             input: "el nino come pan",
-            target: "sujeto verbo objeto",
+            expected: "sujeto verbo objeto",
         },
-        Case {
-            stage: "oraciones",
-            unit: "pregunta",
+        ProbeCase {
+            group: "oraciones",
             input: "que es una palabra",
-            target: "pregunta por definicion",
+            expected: "pregunta por definicion",
         },
-        Case {
-            stage: "gramatica_basica",
-            unit: "plural",
+        ProbeCase {
+            group: "gramatica",
             input: "los ninos comen",
-            target: "varios sujetos",
+            expected: "varios sujetos",
         },
-        Case {
-            stage: "espanol_medio",
-            unit: "causa",
+        ProbeCase {
+            group: "gramatica",
+            input: "el perro no ladra",
+            expected: "accion negada",
+        },
+        ProbeCase {
+            group: "semantica_media",
             input: "llueve entonces el suelo se moja",
-            target: "causa y efecto",
+            expected: "causa y efecto",
+        },
+        ProbeCase {
+            group: "semantica_media",
+            input: "si estudias aprendes",
+            expected: "condicion y resultado",
         },
     ]
 }
@@ -293,42 +299,6 @@ fn hierarchical_text_pattern(prefix: &str, text: &str, nodes: usize) -> Vec<usiz
     out
 }
 
-fn legacy_hierarchical_text_pattern(prefix: &str, text: &str, nodes: usize) -> Vec<usize> {
-    let mut out = pattern(prefix, text, nodes);
-    let normalized = normalize_text(text);
-    for (pos, ch) in normalized.chars().enumerate().take(24) {
-        out.extend(legacy_letter_pattern(ch, pos, nodes));
-    }
-    let words = normalized.split_whitespace().collect::<Vec<_>>();
-    for word in words.iter().take(12) {
-        out.extend(pattern("word", word, nodes));
-    }
-    for pair in words.windows(2) {
-        out.extend(pattern(
-            "word_pair",
-            &format!("{}_{}", pair[0], pair[1]),
-            nodes,
-        ));
-    }
-    out.sort_unstable();
-    out.dedup();
-    out
-}
-
-fn legacy_letter_pattern(ch: char, pos: usize, nodes: usize) -> Vec<usize> {
-    let nodes = pattern_nodes(nodes);
-    (0..LETTER_PATTERN_SIZE)
-        .map(|offset| {
-            let mut hasher = std::collections::hash_map::DefaultHasher::new();
-            "letter".hash(&mut hasher);
-            ch.hash(&mut hasher);
-            pos.hash(&mut hasher);
-            offset.hash(&mut hasher);
-            hasher.finish() as usize % nodes
-        })
-        .collect()
-}
-
 fn letter_pattern(ch: char, pos: usize, nodes: usize) -> Vec<usize> {
     let mut pattern = (0..LETTER_PATTERN_SIZE)
         .map(|offset| {
@@ -352,8 +322,21 @@ fn letter_pattern(ch: char, pos: usize, nodes: usize) -> Vec<usize> {
     pattern
 }
 
+fn concept_pattern(kind: &str, value: &str, nodes: usize) -> Vec<usize> {
+    regional_pattern(kind, value, PATTERN_SIZE, nodes, Region::AssociativeMeaning)
+}
+
+fn fact_pattern(left: &str, relation: &str, right: &str, nodes: usize) -> Vec<usize> {
+    regional_pattern(
+        "fact",
+        &format!("{left}_{relation}_{right}"),
+        PATTERN_SIZE,
+        nodes,
+        Region::AssociativeMeaning,
+    )
+}
+
 fn pattern(prefix: &str, value: &str, nodes: usize) -> Vec<usize> {
-    let nodes = pattern_nodes(nodes);
     (0..PATTERN_SIZE)
         .map(|offset| {
             let mut hasher = std::collections::hash_map::DefaultHasher::new();
@@ -441,28 +424,11 @@ fn fractal_mesh_config() -> FractalMeshConfig {
         levels: 7,
         branches_per_region: 5,
         target_dimension: 2.65,
-        target_nodes: agent_count(),
+        target_nodes: AGENT_COUNT,
         base_radius: 0.0,
         lateral_link_weight: 0.35,
         parent_link_weight: 1.0,
     }
-}
-
-fn agent_count() -> usize {
-    env::var("SNGA_AGENT_COUNT")
-        .ok()
-        .and_then(|value| value.parse::<usize>().ok())
-        .unwrap_or(DEFAULT_AGENT_COUNT)
-        .max(DEFAULT_AGENT_COUNT)
-}
-
-fn pattern_nodes(nodes: usize) -> usize {
-    env::var("SNGA_PATTERN_NODES")
-        .ok()
-        .and_then(|value| value.parse::<usize>().ok())
-        .unwrap_or(DEFAULT_PATTERN_NODES)
-        .min(nodes)
-        .max(1)
 }
 
 fn config() -> SimplicialConfig {

@@ -11,7 +11,8 @@ use std::time::Duration;
 const DEFAULT_BASE_STATE: &str = "data/snga_scaled_gemma_language_fractal_compressed.snga";
 const DEFAULT_STATE_PATH: &str = "data/snga_fractal_gemma_spanish_curriculum.snga";
 const DEFAULT_PROGRESS_PATH: &str = "data/snga_fractal_gemma_spanish_curriculum.progress";
-const AGENT_COUNT: usize = 5_760;
+const DEFAULT_AGENT_COUNT: usize = 5_760;
+const DEFAULT_PATTERN_NODES: usize = 5_760;
 const PATTERN_SIZE: usize = 12;
 const LETTER_PATTERN_SIZE: usize = 7;
 const DEFAULT_COMPRESS_EVERY: usize = 5;
@@ -206,7 +207,7 @@ fn main() {
         save_all(&network, &progress, &state_path, &progress_path, "batch");
         let stats = network.plasticity_stats();
         println!(
-            "batch={} stage={} stage_batches={} passes={} lessons={} exam_nonzero={}/{} exam_conf={:.3} gemma_advance={} edges={} assoc={} causal={} adjusted={} compressed_removed={} compressed_ok={} energy={:.1}",
+            "batch={} stage={} stage_batches={} passes={} lessons={} exam_nonzero={}/{} exam_conf={:.3} gemma_advance={} edges={} assoc={} causal={} adjusted={} compressed_assoc={} compressed_causal={} compressed_ok={} energy={:.1}",
             progress.batches,
             progress.stage.label(),
             progress.stage_batches,
@@ -220,7 +221,8 @@ fn main() {
             stats.associative_edges,
             stats.causal_edges,
             adjusted,
-            compression.removed,
+            compression.removed_associative,
+            compression.removed_causal,
             compression.knowledge_preserved,
             network.total_free_energy()
         );
@@ -407,17 +409,19 @@ fn run_exam(network: &SimplicialNetwork, exam: &[Lesson]) -> ExamScore {
 
 #[derive(Default)]
 struct CompressionReport {
-    removed: usize,
+    removed_associative: usize,
+    removed_causal: usize,
     knowledge_preserved: bool,
 }
 
 fn compress_network(network: &mut SimplicialNetwork, max_associative: usize) -> CompressionReport {
     let mut report = CompressionReport {
-        removed: 0,
+        removed_associative: 0,
+        removed_causal: 0,
         knowledge_preserved: true,
     };
     let reference = validation_signature(network);
-    let mut chunk = 80_000;
+    let mut chunk = 200_000;
 
     while network.plasticity_stats().associative_edges > max_associative && chunk > 0 {
         let before = network.clone();
@@ -427,14 +431,31 @@ fn compress_network(network: &mut SimplicialNetwork, max_associative: usize) -> 
         }
 
         if validation_signature(network) == reference {
-            report.removed += removed;
+            report.removed_associative += removed;
         } else {
             *network = before;
             chunk /= 2;
         }
     }
 
-    if report.removed > 0 {
+    let mut causal_chunk = 80_000;
+    let mut causal_attempts = 0;
+    while causal_chunk > 0 && causal_attempts < 8 {
+        causal_attempts += 1;
+        let before = network.clone();
+        let removed = network.prune_low_value_causal_edges(causal_chunk);
+        if removed == 0 {
+            break;
+        }
+        if validation_signature(network) == reference {
+            report.removed_causal += removed;
+        } else {
+            *network = before;
+            causal_chunk /= 2;
+        }
+    }
+
+    if report.removed_associative > 0 || report.removed_causal > 0 {
         network.anneal_active_edge_rest_lengths(1.0, 0.0);
         report.knowledge_preserved = validation_signature(network) == reference;
     }
@@ -442,17 +463,24 @@ fn compress_network(network: &mut SimplicialNetwork, max_associative: usize) -> 
 }
 
 fn validation_signature(network: &SimplicialNetwork) -> Vec<Vec<usize>> {
-    validation_lessons()
-        .iter()
-        .map(|lesson| {
-            let input = hierarchical_text_pattern("input", &lesson.input, network.agents.len());
-            network
-                .predict_next_pattern(&input, 1, 32)
-                .into_iter()
-                .map(|(idx, _)| idx)
-                .collect::<Vec<_>>()
-        })
-        .collect()
+    let mut signatures = Vec::new();
+    for lesson in validation_lessons() {
+        for regional in [true, false] {
+            let input = if regional {
+                hierarchical_text_pattern("input", &lesson.input, network.agents.len())
+            } else {
+                legacy_hierarchical_text_pattern("input", &lesson.input, network.agents.len())
+            };
+            signatures.push(
+                network
+                    .predict_next_pattern(&input, 1, 32)
+                    .into_iter()
+                    .map(|(idx, _)| idx)
+                    .collect::<Vec<_>>(),
+            );
+        }
+    }
+    signatures
 }
 
 fn validation_lessons() -> Vec<Lesson> {
@@ -699,6 +727,42 @@ fn hierarchical_text_pattern(prefix: &str, text: &str, nodes: usize) -> Vec<usiz
     out
 }
 
+fn legacy_hierarchical_text_pattern(prefix: &str, text: &str, nodes: usize) -> Vec<usize> {
+    let mut out = pattern(prefix, text, nodes);
+    let normalized = normalize_text(text);
+    for (pos, ch) in normalized.chars().enumerate().take(24) {
+        out.extend(legacy_letter_pattern(ch, pos, nodes));
+    }
+    let words = normalized.split_whitespace().collect::<Vec<_>>();
+    for word in words.iter().take(12) {
+        out.extend(pattern("word", word, nodes));
+    }
+    for pair in words.windows(2) {
+        out.extend(pattern(
+            "word_pair",
+            &format!("{}_{}", pair[0], pair[1]),
+            nodes,
+        ));
+    }
+    out.sort_unstable();
+    out.dedup();
+    out
+}
+
+fn legacy_letter_pattern(ch: char, pos: usize, nodes: usize) -> Vec<usize> {
+    let nodes = pattern_nodes(nodes);
+    (0..LETTER_PATTERN_SIZE)
+        .map(|offset| {
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            "letter".hash(&mut hasher);
+            ch.hash(&mut hasher);
+            pos.hash(&mut hasher);
+            offset.hash(&mut hasher);
+            hasher.finish() as usize % nodes
+        })
+        .collect()
+}
+
 fn letter_pattern(ch: char, pos: usize, nodes: usize) -> Vec<usize> {
     let mut pattern = (0..LETTER_PATTERN_SIZE)
         .map(|offset| {
@@ -723,6 +787,7 @@ fn letter_pattern(ch: char, pos: usize, nodes: usize) -> Vec<usize> {
 }
 
 fn pattern(prefix: &str, value: &str, nodes: usize) -> Vec<usize> {
+    let nodes = pattern_nodes(nodes);
     (0..PATTERN_SIZE)
         .map(|offset| {
             let mut hasher = std::collections::hash_map::DefaultHasher::new();
@@ -864,11 +929,28 @@ fn fractal_mesh_config() -> FractalMeshConfig {
         levels: 7,
         branches_per_region: 5,
         target_dimension: 2.65,
-        target_nodes: AGENT_COUNT,
+        target_nodes: agent_count(),
         base_radius: 0.0,
         lateral_link_weight: 0.35,
         parent_link_weight: 1.0,
     }
+}
+
+fn agent_count() -> usize {
+    env::var("SNGA_AGENT_COUNT")
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+        .unwrap_or(DEFAULT_AGENT_COUNT)
+        .max(DEFAULT_AGENT_COUNT)
+}
+
+fn pattern_nodes(nodes: usize) -> usize {
+    env::var("SNGA_PATTERN_NODES")
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+        .unwrap_or(DEFAULT_PATTERN_NODES)
+        .min(nodes)
+        .max(1)
 }
 
 fn config() -> SimplicialConfig {
