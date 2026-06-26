@@ -1609,6 +1609,62 @@ impl SimplicialNetwork {
         removed
     }
 
+    pub fn prune_low_value_associative_edges_in_range(
+        &mut self,
+        limit: usize,
+        start: usize,
+        end: usize,
+    ) -> usize {
+        if limit == 0 || start >= end {
+            return 0;
+        }
+
+        let mut candidates = self
+            .edges
+            .iter()
+            .enumerate()
+            .filter(|(_, edge)| {
+                edge.active
+                    && edge.weight >= ASSOCIATIVE_EDGE_THRESHOLD
+                    && edge.a >= start
+                    && edge.a < end
+                    && edge.b >= start
+                    && edge.b < end
+            })
+            .map(|(idx, edge)| {
+                let consolidation_bonus = if edge.consolidated { 10_000.0 } else { 0.0 };
+                let score = edge.weight + edge.age as f32 * 0.001 + consolidation_bonus;
+                (idx, score)
+            })
+            .collect::<Vec<_>>();
+        candidates.sort_by(|a, b| {
+            a.1.total_cmp(&b.1)
+                .then_with(|| self.edges[a.0].age.cmp(&self.edges[b.0].age))
+                .then_with(|| a.0.cmp(&b.0))
+        });
+
+        let mut remove = vec![false; self.edges.len()];
+        let mut removed = 0;
+        for (idx, _) in candidates.into_iter().take(limit) {
+            remove[idx] = true;
+            removed += 1;
+        }
+
+        if removed == 0 {
+            return 0;
+        }
+
+        let mut next_edges = Vec::with_capacity(self.edges.len() - removed);
+        for (idx, edge) in self.edges.drain(..).enumerate() {
+            if !remove[idx] {
+                next_edges.push(edge);
+            }
+        }
+        self.edges = next_edges;
+        self.rebuild_edge_indices();
+        removed
+    }
+
     pub fn prune_low_value_causal_edges(&mut self, limit: usize) -> usize {
         if limit == 0 {
             return 0;
@@ -1617,6 +1673,42 @@ impl SimplicialNetwork {
         let mut candidates = self
             .causal_edges
             .iter()
+            .map(|(&(source, target), &weight)| ((source, target), weight))
+            .collect::<Vec<_>>();
+        candidates.sort_by(|a, b| {
+            a.1.total_cmp(&b.1)
+                .then_with(|| (a.0 .0, a.0 .1).cmp(&(b.0 .0, b.0 .1)))
+        });
+
+        let mut removed = 0;
+        for (key, _) in candidates.into_iter().take(limit) {
+            if self.causal_edges.remove(&key).is_some() {
+                removed += 1;
+            }
+        }
+
+        if removed > 0 {
+            self.rebuild_causal_adjacency();
+        }
+        removed
+    }
+
+    pub fn prune_low_value_causal_edges_in_range(
+        &mut self,
+        limit: usize,
+        start: usize,
+        end: usize,
+    ) -> usize {
+        if limit == 0 || start >= end {
+            return 0;
+        }
+
+        let mut candidates = self
+            .causal_edges
+            .iter()
+            .filter(|(&(source, target), _)| {
+                source >= start && source < end && target >= start && target < end
+            })
             .map(|(&(source, target), &weight)| ((source, target), weight))
             .collect::<Vec<_>>();
         candidates.sort_by(|a, b| {
