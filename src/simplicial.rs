@@ -1729,6 +1729,47 @@ impl SimplicialNetwork {
         removed
     }
 
+    pub fn prune_low_value_causal_edges_from_range_except_targets(
+        &mut self,
+        limit: usize,
+        source_start: usize,
+        source_end: usize,
+        protected_targets: &[(usize, usize)],
+    ) -> usize {
+        if limit == 0 || source_start >= source_end {
+            return 0;
+        }
+
+        let mut candidates = self
+            .causal_edges
+            .iter()
+            .filter(|(&(source, target), _)| {
+                source >= source_start
+                    && source < source_end
+                    && !protected_targets
+                        .iter()
+                        .any(|(start, end)| target >= *start && target < *end)
+            })
+            .map(|(&(source, target), &weight)| ((source, target), weight))
+            .collect::<Vec<_>>();
+        candidates.sort_by(|a, b| {
+            a.1.total_cmp(&b.1)
+                .then_with(|| (a.0 .0, a.0 .1).cmp(&(b.0 .0, b.0 .1)))
+        });
+
+        let mut removed = 0;
+        for (key, _) in candidates.into_iter().take(limit) {
+            if self.causal_edges.remove(&key).is_some() {
+                removed += 1;
+            }
+        }
+
+        if removed > 0 {
+            self.rebuild_causal_adjacency();
+        }
+        removed
+    }
+
     fn add_edge(&mut self, a: usize, b: usize, rest_length: f32, weight: f32) {
         let edge_idx = self.edges.len();
         self.edges.push(Edge {
