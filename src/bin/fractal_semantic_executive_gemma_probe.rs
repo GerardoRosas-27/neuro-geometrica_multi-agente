@@ -199,11 +199,12 @@ fn print_summary(label: &str, report: EvalReport) {
 fn print_network(label: &str, network: &SimplicialNetwork) {
     let stats = network.plasticity_stats();
     println!(
-        "{label}_network: nodes={} edges={} associative={} consolidated={} causal={} energy={:.1}",
+        "{label}_network: nodes={} edges={} associative={} consolidated={} cells={} causal={} energy={:.1}",
         network.agents.len(),
         stats.active_edges,
         stats.associative_edges,
         stats.consolidated_edges,
+        stats.semantic_cells,
         stats.causal_edges,
         network.total_free_energy()
     );
@@ -308,6 +309,34 @@ fn regional_pattern(
 ) -> Vec<usize> {
     let (start, len) = region_range(region, nodes);
     let normalized = normalize_text(value);
+    let mut out = pattern_in_range(region, prefix, &normalized, size, start, len);
+    if let Some(legacy_region_size) = legacy_region_size(nodes) {
+        let legacy_start = region as usize * legacy_region_size;
+        if legacy_start < nodes {
+            let legacy_len = legacy_region_size.min(nodes - legacy_start).max(1);
+            out.extend(pattern_in_range(
+                region,
+                prefix,
+                &normalized,
+                size,
+                legacy_start,
+                legacy_len,
+            ));
+            out.sort_unstable();
+            out.dedup();
+        }
+    }
+    out
+}
+
+fn pattern_in_range(
+    region: Region,
+    prefix: &str,
+    normalized: &str,
+    size: usize,
+    start: usize,
+    len: usize,
+) -> Vec<usize> {
     (0..size)
         .map(|offset| {
             let mut hasher = std::collections::hash_map::DefaultHasher::new();
@@ -331,8 +360,21 @@ fn inferred_region_size(nodes: usize) -> usize {
     (nodes / REGION_COUNT).max(DEFAULT_REGION_SIZE)
 }
 
+fn legacy_region_size(nodes: usize) -> Option<usize> {
+    let current = inferred_region_size(nodes);
+    env::var("SNGA_SEMEXEC_LEGACY_REGION_SIZE")
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+        .filter(|size| *size > 0 && *size != current && *size * REGION_COUNT <= nodes)
+}
+
 fn total_nodes() -> usize {
-    DEFAULT_REGION_SIZE * REGION_COUNT
+    env::var("SNGA_SEMEXEC_REGION_SIZE")
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+        .unwrap_or(DEFAULT_REGION_SIZE)
+        .max(DEFAULT_REGION_SIZE)
+        * REGION_COUNT
 }
 
 fn ids(predicted: &[(usize, f32)]) -> Vec<usize> {

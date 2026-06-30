@@ -72,6 +72,11 @@ struct EvalReport {
     confidence: f32,
 }
 
+struct SemanticFeatureDetector {
+    role: &'static str,
+    pattern: Vec<usize>,
+}
+
 #[derive(Clone, Copy, Debug)]
 enum BridgeStrategy {
     ChainOnly,
@@ -215,7 +220,7 @@ fn main() {
 
         let stats = network.plasticity_stats();
         println!(
-            "batch={} lessons={} gemma_fallback={} eval_input_concept={}/{} eval_input_frame={}/{} eval_frame_verbal={}/{} eval_verify={}/{} conf={:.3} edges={} assoc={} causal={} adjusted={} compressed_assoc={} compressed_causal={} compressed_ok={} energy={:.1}",
+            "batch={} lessons={} gemma_fallback={} eval_input_concept={}/{} eval_input_frame={}/{} eval_frame_verbal={}/{} eval_verify={}/{} conf={:.3} edges={} assoc={} cells={} causal={} adjusted={} compressed_assoc={} compressed_causal={} compressed_ok={} energy={:.1}",
             progress.batches,
             progress.lessons,
             used_fallback,
@@ -230,6 +235,7 @@ fn main() {
             eval.confidence,
             stats.active_edges,
             stats.associative_edges,
+            stats.semantic_cells,
             stats.causal_edges,
             adjusted,
             compression.removed_associative,
@@ -359,6 +365,16 @@ fn train_adapter_lesson(
         PATTERN_SIZE,
         network.agents.len(),
     );
+    let feature_detectors = semantic_feature_detectors(network.agents.len(), lesson);
+    train_semantic_feature_detectors(
+        network,
+        &feature_detectors,
+        &llm_input,
+        &input_intent,
+        &concept,
+        &control,
+        &planner,
+    );
 
     network.learn_transition(&llm_input, &input_intent);
     network.learn_transition(&input_intent, &concept);
@@ -429,6 +445,15 @@ fn train_adapter_lesson(
         [&llm_output, &verification, &concept, &control],
         0.04,
     );
+    train_predictive_error_corrections(
+        network,
+        &llm_input,
+        &concept,
+        &planner,
+        &verbal,
+        &llm_output,
+        &verification,
+    );
 
     network.clear_activity();
     network.set_attention_goal(&planner);
@@ -442,6 +467,115 @@ fn train_adapter_lesson(
     }
     network.clear_attention_goal();
     network.clear_activity();
+}
+
+fn semantic_feature_detectors(
+    nodes: usize,
+    lesson: &AdapterLesson,
+) -> Vec<SemanticFeatureDetector> {
+    let mut detectors = vec![
+        SemanticFeatureDetector {
+            role: "intent",
+            pattern: regional_pattern(
+                Region::LinguisticSlot,
+                "feature_intent",
+                &lesson.linguistic_intent,
+                PATTERN_SIZE,
+                nodes,
+            ),
+        },
+        SemanticFeatureDetector {
+            role: "control",
+            pattern: regional_pattern(
+                Region::SemanticControl,
+                "feature_control",
+                &lesson.control_task,
+                PATTERN_SIZE,
+                nodes,
+            ),
+        },
+        SemanticFeatureDetector {
+            role: "frame",
+            pattern: regional_pattern(
+                Region::WorkingMemory,
+                "feature_frame",
+                &lesson.response_frame,
+                PATTERN_SIZE,
+                nodes,
+            ),
+        },
+    ];
+
+    for keyword in semantic_keywords(lesson).into_iter().take(8) {
+        detectors.push(SemanticFeatureDetector {
+            role: "keyword",
+            pattern: regional_pattern(
+                Region::ConceptBinder,
+                "feature_keyword",
+                &keyword,
+                PATTERN_SIZE,
+                nodes,
+            ),
+        });
+    }
+    detectors
+}
+
+fn train_semantic_feature_detectors(
+    network: &mut SimplicialNetwork,
+    detectors: &[SemanticFeatureDetector],
+    llm_input: &Vec<usize>,
+    input_intent: &Vec<usize>,
+    concept: &Vec<usize>,
+    control: &Vec<usize>,
+    planner: &Vec<usize>,
+) {
+    for detector in detectors {
+        for _ in 0..3 {
+            network.learn_transition(llm_input, &detector.pattern);
+            network.learn_transition(input_intent, &detector.pattern);
+            network.learn_transition(&detector.pattern, concept);
+            network.learn_transition(&detector.pattern, control);
+            if detector.role == "frame" || detector.role == "control" {
+                network.learn_transition(&detector.pattern, planner);
+            }
+        }
+        reinforce_fused(network, [llm_input, &detector.pattern, concept], 0.06);
+        reinforce_fused(
+            network,
+            [&detector.pattern, concept, control, planner],
+            0.055,
+        );
+    }
+
+    let detector_union = detectors
+        .iter()
+        .flat_map(|detector| detector.pattern.iter().copied())
+        .collect::<Vec<_>>();
+    if detector_union.is_empty() {
+        return;
+    }
+
+    let detector_union = compact_bridge_pattern(&detector_union, 96);
+    network.reinforce_coactivation_if_useful(&detector_union, 0.05, 0.94);
+    network.learn_from_prediction_error(llm_input, &detector_union, 1, 192, 0.08);
+    network.learn_from_prediction_error(&detector_union, concept, 1, 192, 0.08);
+    network.learn_from_prediction_error(&detector_union, planner, 2, 192, 0.06);
+}
+
+fn train_predictive_error_corrections(
+    network: &mut SimplicialNetwork,
+    llm_input: &Vec<usize>,
+    concept: &Vec<usize>,
+    planner: &Vec<usize>,
+    verbal: &Vec<usize>,
+    llm_output: &Vec<usize>,
+    verification: &Vec<usize>,
+) {
+    network.learn_from_prediction_error(llm_input, concept, 3, 128, 0.12);
+    network.learn_from_prediction_error(llm_input, planner, 7, 256, 0.10);
+    network.learn_from_prediction_error(planner, verbal, 2, 128, 0.08);
+    network.learn_from_prediction_error(llm_output, verification, 1, 128, 0.08);
 }
 
 fn train_direct_input_bridge(

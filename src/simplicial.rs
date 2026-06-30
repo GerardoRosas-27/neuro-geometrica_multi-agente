@@ -2,10 +2,18 @@ use crate::geometry::Vec2;
 use crate::mesh_engine::{FractalMeshConfig, MeshConfig, MeshTopology, SimplicialMeshEngine};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
+use std::hash::{Hash, Hasher};
 use std::io;
 use std::path::Path;
 
 const ASSOCIATIVE_EDGE_THRESHOLD: f32 = 1.05;
+const ASSOCIATIVE_CELL_THRESHOLD: f32 = 1.10;
+const FOCUS_EDGE_LEARNING_SCALE: f32 = 250.0;
+const FOCUS_EDGE_MAX: f32 = 10_000.0;
+const FOCUS_PROMOTION_TOP_TARGETS: usize = 512;
+const MAX_FOCUS_SOURCE_VERTICES: usize = 16;
+const MAX_FOCUS_TARGET_VERTICES: usize = 16;
+const MAX_ASSOCIATIVE_CELL_VERTICES: usize = 96;
 pub const GOLDEN_UTILITY_THRESHOLD: f32 = 0.618_034;
 const OSCILLATORY_REGION_SIZE: usize = 64;
 
@@ -63,6 +71,18 @@ pub struct Simplex3 {
     pub c: usize,
     pub d: usize,
     pub target_volume: f32,
+}
+
+#[derive(Clone, Debug)]
+pub struct SemanticCell {
+    pub id: usize,
+    pub vertices: Vec<usize>,
+    pub edges: Vec<usize>,
+    pub weight: f32,
+    pub age: u32,
+    pub last_active_tick: u64,
+    pub active: bool,
+    pub payload: Vec<u8>,
 }
 
 #[derive(Clone, Debug)]
@@ -247,6 +267,7 @@ pub struct PlasticityStats {
     pub active_edges: usize,
     pub associative_edges: usize,
     pub consolidated_edges: usize,
+    pub semantic_cells: usize,
     pub episodes: usize,
     pub causal_edges: usize,
     pub contradiction_edges: usize,
@@ -325,12 +346,17 @@ pub struct SimplicialNetwork {
     pub edges: Vec<Edge>,
     pub simplices: Vec<Simplex2>,
     pub tetrahedra: Vec<Simplex3>,
+    pub semantic_cells: Vec<SemanticCell>,
     pub spikes: VecDeque<Spike>,
     pub config: SimplicialConfig,
     adjacency: Vec<Vec<usize>>,
+    agent_to_cells: Vec<Vec<usize>>,
     edge_lookup: HashMap<(usize, usize), usize>,
+    cell_lookup: HashMap<Vec<usize>, usize>,
     causal_edges: HashMap<(usize, usize), f32>,
     causal_adjacency: HashMap<usize, Vec<(usize, f32)>>,
+    focus_edges: HashMap<(usize, usize), f32>,
+    focus_adjacency: HashMap<usize, Vec<(usize, f32)>>,
     contradiction_edges: HashMap<(usize, usize), f32>,
     episodes: VecDeque<Episode>,
     last_episode_pattern: Vec<usize>,
@@ -377,14 +403,19 @@ impl SimplicialNetwork {
 
         let mut network = Self {
             adjacency: vec![Vec::new(); agents.len()],
+            agent_to_cells: vec![Vec::new(); agents.len()],
             agents,
             edges: Vec::new(),
             simplices: Vec::new(),
             tetrahedra: Vec::new(),
+            semantic_cells: Vec::new(),
             spikes: VecDeque::new(),
             edge_lookup: HashMap::new(),
+            cell_lookup: HashMap::new(),
             causal_edges: HashMap::new(),
             causal_adjacency: HashMap::new(),
+            focus_edges: HashMap::new(),
+            focus_adjacency: HashMap::new(),
             contradiction_edges: HashMap::new(),
             episodes: VecDeque::new(),
             last_episode_pattern: Vec::new(),
@@ -456,6 +487,7 @@ impl SimplicialNetwork {
                 self.reinforce_pair(a, b, learning_rate);
             }
         }
+        self.reinforce_semantic_cell(pattern, learning_rate);
     }
 
     pub fn reinforce_coactivation_if_useful(
@@ -502,6 +534,42 @@ impl SimplicialNetwork {
         upsert_weighted_neighbor(&mut self.causal_adjacency, source, target, weight);
     }
 
+    fn reinforce_focus_transition(&mut self, source: &[usize], target: &[usize], gain: f32) {
+        if gain <= 0.0 {
+            return;
+        }
+        let source = sample_vertices(
+            compact_pattern(source, self.agents.len()),
+            MAX_FOCUS_SOURCE_VERTICES,
+        );
+        let target = sample_vertices(
+            compact_pattern(target, self.agents.len()),
+            MAX_FOCUS_TARGET_VERTICES,
+        );
+        if source.is_empty() || target.is_empty() {
+            return;
+        }
+
+        let delta = (gain * FOCUS_EDGE_LEARNING_SCALE).max(1.0);
+        for from in source {
+            for &to in &target {
+                if from == to {
+                    continue;
+                }
+                let weight = self.focus_edges.entry((from, to)).or_insert(0.0);
+                *weight = (*weight + delta).min(FOCUS_EDGE_MAX);
+                upsert_weighted_neighbor(&mut self.focus_adjacency, from, to, *weight);
+            }
+        }
+    }
+
+    fn rebuild_focus_adjacency(&mut self) {
+        self.focus_adjacency.clear();
+        for (&(source, target), &weight) in &self.focus_edges {
+            upsert_weighted_neighbor(&mut self.focus_adjacency, source, target, weight);
+        }
+    }
+
     pub fn learn_contradiction(&mut self, left: &[usize], right: &[usize]) {
         let lr = self.config.contradiction_learning_rate;
         for &a in left {
@@ -530,7 +598,6 @@ impl SimplicialNetwork {
                 }
             }
         }
-
         let mut predicted = scores.into_iter().collect::<Vec<_>>();
         predicted.sort_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
         predicted.truncate(limit);
@@ -571,14 +638,23 @@ impl SimplicialNetwork {
                     *all_scores.entry(target).or_insert(0.0) += score;
                     *next.entry(target).or_insert(0.0) += score;
                 }
+                if let Some(focus_neighbors) = self.focus_adjacency.get(&source) {
+                    for &(target, weight) in focus_neighbors {
+                        if source_set.contains(&target) {
+                            continue;
+                        }
+                        let score = source_score * weight;
+                        *all_scores.entry(target).or_insert(0.0) += score;
+                    }
+                }
             }
-
             if next.is_empty() {
                 break;
             }
             frontier = next;
         }
 
+        self.promote_focus_representatives(cause, cause, &mut all_scores);
         let mut predicted = all_scores.into_iter().collect::<Vec<_>>();
         predicted.sort_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
         predicted.truncate(limit);
@@ -633,6 +709,7 @@ impl SimplicialNetwork {
             frontier = next;
         }
 
+        self.promote_focus_representatives(cause, cause, &mut frontier);
         let mut predicted = frontier.into_iter().collect::<Vec<_>>();
         predicted.sort_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
         predicted.truncate(limit);
@@ -786,7 +863,6 @@ impl SimplicialNetwork {
                 *scores.entry(idx).or_insert(0.0) += score;
             }
         }
-
         for episode in &self.episodes {
             let context_similarity = pattern_similarity(current, &episode.context);
             if context_similarity <= 0.0 {
@@ -836,6 +912,49 @@ impl SimplicialNetwork {
             recall,
             prediction_error: 1.0 - ((precision + recall) * 0.5),
         }
+    }
+
+    pub fn learn_from_prediction_error(
+        &mut self,
+        current: &[usize],
+        expected: &[usize],
+        horizon: usize,
+        limit: usize,
+        learning_rate: f32,
+    ) -> PatternPredictionReport {
+        let report = self.evaluate_pattern_prediction(current, expected, horizon, limit);
+        if report.prediction_error <= f32::EPSILON {
+            return report;
+        }
+
+        let predicted = report
+            .predicted_pattern
+            .iter()
+            .map(|(idx, _)| *idx)
+            .collect::<HashSet<_>>();
+        let missed = expected
+            .iter()
+            .copied()
+            .filter(|idx| !predicted.contains(idx))
+            .collect::<Vec<_>>();
+        if missed.is_empty() {
+            return report;
+        }
+
+        let repeats = 1 + (report.prediction_error * 4.0).ceil() as usize;
+        for _ in 0..repeats {
+            self.learn_transition(current, &missed);
+        }
+        let mut corrective_cell = Vec::with_capacity(current.len() + expected.len());
+        corrective_cell.extend_from_slice(current);
+        corrective_cell.extend_from_slice(expected);
+        let corrective_cell = compact_pattern(&corrective_cell, self.agents.len());
+        let gain = learning_rate * report.prediction_error.max(0.05);
+        self.reinforce_focus_transition(current, &missed, gain);
+        self.reinforce_focus_transition(current, expected, gain * 0.5);
+        self.reinforce_coactivation(&missed, gain * 0.75);
+        self.reinforce_coactivation(&corrective_cell, gain);
+        report
     }
 
     pub fn retrieve_episodes(&self, query: &[usize], limit: usize) -> EpisodicRecall {
@@ -1098,6 +1217,11 @@ impl SimplicialNetwork {
                 .iter()
                 .filter(|edge| edge.active && edge.consolidated)
                 .count(),
+            semantic_cells: self
+                .semantic_cells
+                .iter()
+                .filter(|cell| cell.active && cell.weight >= ASSOCIATIVE_CELL_THRESHOLD)
+                .count(),
             episodes: self.episodes.len(),
             causal_edges: self.causal_edges.len(),
             contradiction_edges: self.contradiction_edges.len(),
@@ -1174,6 +1298,32 @@ impl SimplicialNetwork {
         causal.sort_by_key(|(source, target, _)| (*source, *target));
         for (source, target, weight) in causal {
             out.push_str(&format!("c {} {} {:.7}\n", source, target, weight));
+        }
+        out.push_str(&format!("cells {}\n", self.semantic_cells.len()));
+        for cell in &self.semantic_cells {
+            out.push_str(&format!(
+                "s {} {:.7} {} {} {} {}",
+                cell.id,
+                cell.weight,
+                cell.age,
+                cell.last_active_tick,
+                u8::from(cell.active),
+                cell.vertices.len()
+            ));
+            for vertex in &cell.vertices {
+                out.push_str(&format!(" {vertex}"));
+            }
+            out.push_str(&format!(" {}\n", bytes_to_hex(&cell.payload)));
+        }
+        out.push_str(&format!("focus {}\n", self.focus_edges.len()));
+        let mut focus = self
+            .focus_edges
+            .iter()
+            .map(|(&(source, target), &weight)| (source, target, weight))
+            .collect::<Vec<_>>();
+        focus.sort_by_key(|(source, target, _)| (*source, *target));
+        for (source, target, weight) in focus {
+            out.push_str(&format!("f {} {} {:.7}\n", source, target, weight));
         }
         out.push_str("end\n");
         out
@@ -1278,6 +1428,7 @@ impl SimplicialNetwork {
                 self.set_causal_weight(source, target, weight);
             }
         }
+        self.apply_optional_semantic_cells(&mut lines)?;
 
         Ok(PersistentStateReport {
             agents: self.agents.len(),
@@ -1368,6 +1519,7 @@ impl SimplicialNetwork {
                 self.set_causal_weight(source, target, weight);
             }
         }
+        self.apply_optional_semantic_cells(&mut lines)?;
 
         Ok(PersistentStateReport {
             agents: self.agents.len(),
@@ -1798,6 +1950,7 @@ impl SimplicialNetwork {
             self.adjacency[edge.b].push(idx);
             self.edge_lookup.insert(edge_key(edge.a, edge.b), idx);
         }
+        self.rebuild_cell_indices();
     }
 
     fn rebuild_causal_adjacency(&mut self) {
@@ -1982,6 +2135,291 @@ impl SimplicialNetwork {
             distance.max(1.0) * 0.92,
             ASSOCIATIVE_EDGE_THRESHOLD + learning_rate.max(0.05),
         );
+    }
+
+    fn reinforce_semantic_cell(&mut self, pattern: &[usize], learning_rate: f32) {
+        let vertices = bounded_cell_vertices(compact_pattern(pattern, self.agents.len()));
+        if vertices.len() < 3 {
+            return;
+        }
+
+        if let Some(&cell_idx) = self.cell_lookup.get(&vertices) {
+            let cell = &mut self.semantic_cells[cell_idx];
+            cell.active = true;
+            cell.weight = (cell.weight + learning_rate * vertices.len() as f32 * 0.05).min(5.0);
+            cell.age = cell.age.saturating_add(1);
+            cell.last_active_tick = self.tick;
+            return;
+        }
+
+        let id = self.semantic_cells.len();
+        let edges = self.collect_cell_edges(&vertices);
+        let payload = semantic_cell_payload(&vertices);
+        self.semantic_cells.push(SemanticCell {
+            id,
+            vertices: vertices.clone(),
+            edges,
+            weight: ASSOCIATIVE_CELL_THRESHOLD + learning_rate.max(0.03),
+            age: 1,
+            last_active_tick: self.tick,
+            active: true,
+            payload,
+        });
+        self.cell_lookup.insert(vertices.clone(), id);
+        for vertex in vertices {
+            if vertex < self.agent_to_cells.len() {
+                self.agent_to_cells[vertex].push(id);
+            }
+        }
+    }
+
+    fn collect_cell_edges(&self, vertices: &[usize]) -> Vec<usize> {
+        let mut edges = Vec::new();
+        for i in 0..vertices.len() {
+            for j in (i + 1)..vertices.len() {
+                if let Some(&edge_idx) = self.edge_lookup.get(&edge_key(vertices[i], vertices[j])) {
+                    edges.push(edge_idx);
+                }
+            }
+        }
+        edges.sort_unstable();
+        edges.dedup();
+        edges
+    }
+
+    fn rebuild_cell_indices(&mut self) {
+        self.agent_to_cells = vec![Vec::new(); self.agents.len()];
+        self.cell_lookup.clear();
+        for idx in 0..self.semantic_cells.len() {
+            let vertices = bounded_cell_vertices(compact_pattern(
+                &self.semantic_cells[idx].vertices,
+                self.agents.len(),
+            ));
+            let edges = self.collect_cell_edges(&vertices);
+            self.semantic_cells[idx].id = idx;
+            self.semantic_cells[idx].vertices = vertices.clone();
+            self.semantic_cells[idx].edges = edges;
+            self.cell_lookup.insert(vertices.clone(), idx);
+            for vertex in vertices {
+                if vertex < self.agent_to_cells.len() {
+                    self.agent_to_cells[vertex].push(idx);
+                }
+            }
+        }
+    }
+
+    fn import_semantic_cell(
+        &mut self,
+        vertices: Vec<usize>,
+        weight: f32,
+        age: u32,
+        last_active_tick: u64,
+        active: bool,
+        payload: Vec<u8>,
+    ) {
+        let vertices = bounded_cell_vertices(compact_pattern(&vertices, self.agents.len()));
+        if vertices.len() < 3 {
+            return;
+        }
+        if let Some(&cell_idx) = self.cell_lookup.get(&vertices) {
+            let cell = &mut self.semantic_cells[cell_idx];
+            cell.weight = cell.weight.max(weight);
+            cell.age = cell.age.max(age);
+            cell.last_active_tick = cell.last_active_tick.max(last_active_tick);
+            cell.active |= active;
+            if cell.payload.is_empty() && !payload.is_empty() {
+                cell.payload = payload;
+            }
+            return;
+        }
+
+        let id = self.semantic_cells.len();
+        let edges = self.collect_cell_edges(&vertices);
+        let payload = if payload.is_empty() {
+            semantic_cell_payload(&vertices)
+        } else {
+            payload
+        };
+        self.semantic_cells.push(SemanticCell {
+            id,
+            vertices: vertices.clone(),
+            edges,
+            weight,
+            age,
+            last_active_tick,
+            active,
+            payload,
+        });
+        self.cell_lookup.insert(vertices.clone(), id);
+        for vertex in vertices {
+            if vertex < self.agent_to_cells.len() {
+                self.agent_to_cells[vertex].push(id);
+            }
+        }
+    }
+
+    fn apply_optional_semantic_cells<'a, I>(&mut self, lines: &mut I) -> Result<(), String>
+    where
+        I: Iterator<Item = &'a str>,
+    {
+        self.semantic_cells.clear();
+        self.agent_to_cells = vec![Vec::new(); self.agents.len()];
+        self.cell_lookup.clear();
+        self.focus_edges.clear();
+        self.focus_adjacency.clear();
+
+        let Some(header) = lines.next() else {
+            return Ok(());
+        };
+        if header == "end" {
+            return Ok(());
+        }
+
+        let cell_count = parse_count_header(header, "cells")?;
+        for _ in 0..cell_count {
+            let line = lines.next().ok_or("faltan lineas de celdas")?;
+            let parts = line.split_whitespace().collect::<Vec<_>>();
+            if parts.len() < 8 || parts[0] != "s" {
+                return Err(format!("linea de celda invalida: {line}"));
+            }
+
+            let weight = parse_f32(parts[2], "cell weight")?;
+            let age = parse_u32(parts[3], "cell age")?;
+            let last_active_tick = parse_u64(parts[4], "cell tick")?;
+            let active = parse_bool_flag(parts[5], "cell active")?;
+            let vertex_count = parse_usize(parts[6], "cell vertices")?;
+            let expected_len = 8 + vertex_count;
+            if parts.len() != expected_len {
+                return Err(format!("linea de celda invalida: {line}"));
+            }
+
+            let mut vertices = Vec::with_capacity(vertex_count);
+            for idx in 0..vertex_count {
+                vertices.push(parse_usize(parts[7 + idx], "cell vertex")?);
+            }
+            let payload = hex_to_bytes(parts[7 + vertex_count])?;
+            self.import_semantic_cell(vertices, weight, age, last_active_tick, active, payload);
+        }
+
+        match lines.next() {
+            Some("end") | None => Ok(()),
+            Some(header) if header.starts_with("focus ") => {
+                let focus_count = parse_count_header(header, "focus")?;
+                for _ in 0..focus_count {
+                    let line = lines.next().ok_or("faltan lineas de foco")?;
+                    let parts = line.split_whitespace().collect::<Vec<_>>();
+                    if parts.len() != 4 || parts[0] != "f" {
+                        return Err(format!("linea de foco invalida: {line}"));
+                    }
+                    let source = parse_usize(parts[1], "focus source")?;
+                    let target = parse_usize(parts[2], "focus target")?;
+                    let weight = parse_f32(parts[3], "focus weight")?.clamp(0.0, FOCUS_EDGE_MAX);
+                    if source < self.agents.len() && target < self.agents.len() && weight > 0.0 {
+                        self.focus_edges.insert((source, target), weight);
+                    }
+                }
+                self.rebuild_focus_adjacency();
+                match lines.next() {
+                    Some("end") | None => Ok(()),
+                    Some(line) => Err(format!("seccion final invalida: {line}")),
+                }
+            }
+            Some(line) => Err(format!("seccion final invalida: {line}")),
+        }
+    }
+
+    fn add_semantic_cell_scores(
+        &self,
+        sources: &[usize],
+        excluded: &[usize],
+        scale: f32,
+        scores: &mut HashMap<usize, f32>,
+    ) {
+        if scale <= 0.0 || self.semantic_cells.is_empty() {
+            return;
+        }
+
+        let source_set = sources.iter().copied().collect::<HashSet<_>>();
+        let excluded = excluded.iter().copied().collect::<HashSet<_>>();
+        let mut visited_cells = HashSet::<usize>::new();
+
+        for &source in sources {
+            if source >= self.agent_to_cells.len() {
+                continue;
+            }
+            for &cell_idx in &self.agent_to_cells[source] {
+                if !visited_cells.insert(cell_idx) {
+                    continue;
+                }
+                let Some(cell) = self.semantic_cells.get(cell_idx) else {
+                    continue;
+                };
+                if !cell.active || cell.weight < ASSOCIATIVE_CELL_THRESHOLD {
+                    continue;
+                }
+
+                let overlap = cell
+                    .vertices
+                    .iter()
+                    .filter(|idx| source_set.contains(idx))
+                    .count();
+                if overlap == 0 {
+                    continue;
+                }
+
+                let gain = cell.weight * scale * (overlap as f32).sqrt();
+                for &target in &cell.vertices {
+                    if !excluded.contains(&target) {
+                        *scores.entry(target).or_insert(0.0) += gain;
+                    }
+                }
+            }
+        }
+    }
+
+    fn promote_focus_representatives(
+        &self,
+        seeds: &[usize],
+        excluded: &[usize],
+        scores: &mut HashMap<usize, f32>,
+    ) {
+        if self.focus_adjacency.is_empty() {
+            return;
+        }
+
+        let excluded = excluded.iter().copied().collect::<HashSet<_>>();
+        let max_score = scores
+            .values()
+            .copied()
+            .max_by(|a, b| a.total_cmp(b))
+            .unwrap_or(1.0)
+            .max(1.0);
+        let mut representatives = HashMap::<usize, f32>::new();
+        for &seed in seeds {
+            let Some(neighbors) = self.focus_adjacency.get(&seed) else {
+                continue;
+            };
+            for &(target, weight) in neighbors {
+                if excluded.contains(&target) {
+                    continue;
+                }
+                let normalized = (weight / FOCUS_EDGE_MAX).clamp(0.0, 1.0);
+                let promoted = max_score * (1.5 + normalized);
+                representatives
+                    .entry(target)
+                    .and_modify(|score| *score = (*score).max(promoted))
+                    .or_insert(promoted);
+            }
+        }
+
+        let mut representatives = representatives.into_iter().collect::<Vec<_>>();
+        representatives.sort_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        representatives.truncate(FOCUS_PROMOTION_TOP_TARGETS);
+
+        for (target, promoted) in representatives {
+            let score = scores.entry(target).or_insert(0.0);
+            *score = (*score).max(promoted);
+        }
     }
 
     fn record_episode(&mut self, pattern: &[usize], strength: f32) {
@@ -2204,6 +2642,26 @@ impl SimplicialNetwork {
                         edge.weight
                             * self.attention_weight(neighbor)
                             * self.oscillatory_weight(neighbor),
+                        Spike {
+                            source: spike.target,
+                            target: neighbor,
+                            ttl: spike.ttl - 1,
+                        },
+                    ));
+                }
+            }
+
+            if spike.ttl > 1 {
+                let mut cell_scores = HashMap::new();
+                self.add_semantic_cell_scores(
+                    &[spike.target],
+                    &[spike.source, spike.target],
+                    0.30,
+                    &mut cell_scores,
+                );
+                for (neighbor, score) in cell_scores {
+                    next.push((
+                        score * self.attention_weight(neighbor) * self.oscillatory_weight(neighbor),
                         Spike {
                             source: spike.target,
                             target: neighbor,
@@ -2544,6 +3002,63 @@ fn compact_pattern(pattern: &[usize], agent_count: usize) -> Vec<usize> {
     compact.sort_unstable();
     compact.dedup();
     compact
+}
+
+fn bounded_cell_vertices(vertices: Vec<usize>) -> Vec<usize> {
+    if vertices.len() <= MAX_ASSOCIATIVE_CELL_VERTICES {
+        return vertices;
+    }
+
+    let last = vertices.len() - 1;
+    let max_last = MAX_ASSOCIATIVE_CELL_VERTICES - 1;
+    let mut bounded = (0..MAX_ASSOCIATIVE_CELL_VERTICES)
+        .map(|idx| vertices[idx * last / max_last])
+        .collect::<Vec<_>>();
+    bounded.sort_unstable();
+    bounded.dedup();
+    bounded
+}
+
+fn sample_vertices(vertices: Vec<usize>, limit: usize) -> Vec<usize> {
+    if limit == 0 || vertices.len() <= limit {
+        return vertices;
+    }
+
+    let last = vertices.len() - 1;
+    let max_last = limit - 1;
+    let mut sampled = (0..limit)
+        .map(|idx| vertices[idx * last / max_last])
+        .collect::<Vec<_>>();
+    sampled.sort_unstable();
+    sampled.dedup();
+    sampled
+}
+
+fn semantic_cell_payload(vertices: &[usize]) -> Vec<u8> {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    vertices.hash(&mut hasher);
+    hasher.finish().to_le_bytes().to_vec()
+}
+
+fn bytes_to_hex(bytes: &[u8]) -> String {
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        out.push_str(&format!("{byte:02x}"));
+    }
+    out
+}
+
+fn hex_to_bytes(value: &str) -> Result<Vec<u8>, String> {
+    if value.len() % 2 != 0 {
+        return Err(format!("payload hex invalido: {value}"));
+    }
+    let mut bytes = Vec::with_capacity(value.len() / 2);
+    for idx in (0..value.len()).step_by(2) {
+        let byte = u8::from_str_radix(&value[idx..idx + 2], 16)
+            .map_err(|err| format!("payload hex invalido '{value}': {err}"))?;
+        bytes.push(byte);
+    }
+    Ok(bytes)
 }
 
 fn pattern_similarity(left: &[usize], right: &[usize]) -> f32 {

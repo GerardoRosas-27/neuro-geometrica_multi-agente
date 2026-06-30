@@ -115,6 +115,9 @@ La estructura principal es `SimplicialNetwork`. Contiene:
 - `agents`: vértices binarios con posición, velocidad, activación y sorpresa.
 - `edges`: restricciones elásticas de distancia.
 - `simplices`: triángulos con área objetivo.
+- `tetrahedra`: símplices 3D con volumen objetivo.
+- `semantic_cells`: celdas asociativas de orden superior que agrupan patrones compuestos.
+- `focus_edges`: rutas de representantes conceptuales que promueven nodos esperados al ranking estricto.
 - `spikes`: cola asíncrona de eventos.
 - `config`: parámetros físicos y topológicos.
 
@@ -206,6 +209,9 @@ La versión actual del núcleo añade mecanismos biomiméticos adicionales:
 - **Ritmos temporales:** el umbral de activación puede oscilar periódicamente para simular ventanas de excitabilidad.
 - **Memoria episódica y replay:** patrones recientes se almacenan como episodios y pueden reinyectarse durante fases de replay para reforzar trazas.
 - **Causalidad predictiva:** el sistema aprende transiciones dirigidas `causa -> efecto` y puede predecir agentes esperados desde un patrón causa.
+- **Celdas semánticas de orden superior:** patrones coactivados se consolidan en `SemanticCell`, una celda poligonal/hiperrelacional con vértices, aristas, peso, edad y payload compacto.
+- **Aprendizaje por error predictivo:** cuando una predicción no contiene agentes esperados, la red refuerza transiciones correctivas, crea celdas compuestas y registra representantes de foco.
+- **Representantes de foco:** rutas `focus` persistentes seleccionan nodos esperados dentro de una región amplia, permitiendo que el conocimiento pase de recall difuso a top-k estricto.
 
 Estos mecanismos no sustituyen todavía a encoders reales de visión/audio/texto. Esos módulos se mantienen explícitamente como periferia futura. El objetivo actual es fortalecer el núcleo SNGA para que pueda recibir dichos encoders cuando estén disponibles.
 
@@ -260,6 +266,37 @@ En el motor, las oscilaciones modulan:
 - Inhibición de regiones no relevantes.
 
 Esta capa está desactivada por defecto para conservar compatibilidad con los experimentos base y se activa explícitamente con `enable_neural_oscillations()`.
+
+### 3.10 Celdas Semánticas, Detectores Locales y Foco de Atractor
+
+La actualización más reciente añade una capa explícita para pasar de asociaciones por pares a conocimiento compuesto. La red ya no aprende solo aristas `i-j` o transiciones causales `A -> B`; también puede consolidar regiones de orden superior:
+
+```text
+input lingüístico
+  -> detectores locales de rasgo/intención/frame
+  -> SemanticCell compuesta
+  -> concepto / control / plan
+  -> representantes de foco para ranking top-k
+```
+
+Las `SemanticCell` funcionan como caras/celdas asociativas dinámicas. No son matrices ni tensores densos: son listas de vértices y aristas con índices inversos `agent_to_cells`. Si una consulta toca varios vértices de una celda, la celda resuena y distribuye score al resto de sus vértices. Esto modela una idea cercana a detectores V1/V2: rasgos locales simples se combinan en una configuración compuesta estable.
+
+El adaptador semántico-ejecutivo entrena detectores pequeños y reutilizables:
+
+```text
+feature_intent   -> intención lingüística
+feature_control  -> tarea de control semántico
+feature_frame    -> marco de respuesta / memoria de trabajo
+feature_keyword  -> rasgos léxicos relevantes
+```
+
+Estos detectores conectan la entrada textual con conceptos internos, control ejecutivo y planificador. Cuando la evaluación predice una región amplia correcta pero no logra incluir el concepto esperado en el top-k estricto, `learn_from_prediction_error` crea rutas correctivas. La corrección tiene tres efectos:
+
+1. Refuerza transiciones dirigidas hacia los agentes esperados que faltaron.
+2. Crea o fortalece una `SemanticCell` que une entrada y objetivo.
+3. Registra `focus_edges` persistentes desde representantes de entrada hacia representantes del objetivo.
+
+En inferencia, los `focus_edges` no sustituyen a la dinámica causal. Se aplican como una etapa final de promoción solo en inferencia transitiva/exact-hop, no en `predict_next_pattern`. Esta restricción fue importante: una versión más agresiva contaminaba la verificación de salida. La versión estable promueve como máximo `512` representantes por consulta y conserva intacta la ruta de verificación.
 
 ## 4. Complejidad y Eficiencia
 
@@ -841,6 +878,100 @@ que es un saludo
 
 Estos resultados deben interpretarse con cautela. La red muestra aprendizaje lingüístico estructural y señales iniciales de significado, pero todavía no posee generación abierta robusta. El sistema actual funciona mejor como memoria geométrica y selector de respuestas simbólicas que como generador autónomo de lenguaje natural. La dirección prometedora no es hacer que SNGA imite directamente a un LLM, sino usar la malla como sustrato persistente y causal, con una interfaz lingüística cada vez más alineada con sus regiones internas.
 
+### 6.8 Sustrato Semántico-Ejecutivo con Celdas y Representantes de Foco
+
+Después del currículo lingüístico fractal se construyó un sustrato semántico-ejecutivo de mayor escala. El objetivo fue separar regiones funcionales análogas a un sistema cortical simplificado:
+
+```text
+semantic_hub_atl        -> integración conceptual abstracta
+concept_binder          -> unión de rasgos dispersos
+semantic_control        -> selección contextual y desambiguación
+executive_logic_dlpfc   -> reglas, restricciones y alternativas
+working_memory          -> mantenimiento de metas y contexto
+planner                 -> pasos de respuesta / plan
+control_gate            -> inhibición de significados no pertinentes
+visual/auditory/somatic/linguistic/episodic slots -> periferia futura
+```
+
+El estado base semántico-ejecutivo contiene `98,304` agentes distribuidos en 12 regiones. Sobre este sustrato se entrenó un adaptador lingüístico con Gemma como maestro/fallback de datos, pero la memoria resultante queda persistida dentro de SNGA. El probe final evalúa cinco tareas pequeñas:
+
+```text
+"que es una manzana roja"
+"planea cena vegetariana sin carne"
+"banco en el parque"
+"si llueve que pasa con el suelo"
+"explica tu plan antes de responder"
+```
+
+La línea base entrenada antes de introducir celdas semánticas y representantes de foco mostraba buena verificación y verbalización, pero no lograba concentrar concepto ni frame en el top-k estricto:
+
+```text
+baseline_adapter:
+  input_to_concept_hits      = 0/5
+  input_to_concept_wide_hits = 4/5
+  input_to_frame_hits        = 0/5
+  frame_to_verbal_hits       = 5/5
+  output_to_verification     = 5/5
+  confidence                 = 630211477504.000
+```
+
+La introducción progresiva de celdas y detectores produjo una mejora acumulativa:
+
+```text
+solo SemanticCell:
+  cells      = 40
+  confidence = 648475770880.000
+
+detectores + error predictivo, 2 lecciones:
+  cells      = 94
+  confidence = 695367630848.000
+
+detectores + error predictivo, 5 lecciones:
+  cells                  = 232
+  input_to_concept_wide  = 5/5
+  confidence             = 801984806912.000
+```
+
+El hallazgo importante fue que la red ya estaba llegando a la región semántica correcta, pero el conocimiento quedaba distribuido fuera del top-k estricto. Es decir, había recall amplio pero faltaba una selección de representantes. Para resolverlo se añadió una memoria de foco persistente (`focus_edges`) entrenada por error predictivo. La versión final guardada en `data/snga_fractal_semantic_executive_gemma_adapter.snga` contiene:
+
+```text
+trained_network:
+  nodes        = 98304
+  edges        = 5670449
+  associative  = 5376075
+  causal       = 2748979
+  cells        = 241
+  focus        = 5812
+  energy       = 122422520.0
+```
+
+El probe oficial posterior a la optimización obtuvo:
+
+```text
+trained_summary:
+  input_to_concept_hits       = 5/5
+  input_to_concept_wide_hits  = 5/5
+  input_to_frame_hits         = 5/5
+  frame_to_verbal_hits        = 5/5
+  output_to_verification_hits = 5/5
+  input_to_concept_overlap    = 100.0%
+  input_to_frame_overlap      = 100.0%
+  frame_to_verbal_overlap     = 14.7%
+  output_to_verify_overlap    = 100.0%
+  confidence                  = 13111338729472.000
+```
+
+La comparación es significativa para la hipótesis del paper. Los mecanismos de celdas y detectores mejoraron recall amplio; los representantes de foco con promoción controlada convirtieron ese recall en ranking estricto sin perder verificación. Una variante inicial de foco demasiado agresiva obtuvo `input_to_concept=5/5` e `input_to_frame=5/5`, pero degradó `output_to_verification` a `2/5`; la versión estable limita la promoción a inferencia transitiva/exact-hop y deja `predict_next_pattern` sin contaminación. Esta separación sugiere una división funcional útil:
+
+```text
+SemanticCell      -> agrupación asociativa de alto orden
+FeatureDetector   -> ancla local reusable de rasgo/intención/frame
+focus_edges       -> selección explícita de representantes top-k
+predict_next      -> verificación/salida sin promoción de foco
+```
+
+El resultado no demuestra comprensión lingüística abierta. Sí muestra una propiedad nueva del sustrato: puede aprender una región semántica amplia y luego aprender representantes discretos para consultarla con precisión, manteniendo separadas memoria conceptual, inferencia de foco y verificación de salida.
+
 ## 7. Viabilidad hacia AGI
 
 SNGA no demuestra AGI por sí mismo. Su valor en esta dirección es que separa tres funciones que los LLMs actuales tienden a mezclar: representación conceptual persistente, inferencia dinámica y renderizado lingüístico. Esta separación podría ser relevante para AGI si el núcleo geométrico demuestra cuatro propiedades:
@@ -854,7 +985,7 @@ Por tanto, el camino hacia AGI se formula como una hipótesis experimental: si u
 
 Con los resultados actuales, la evaluación de viabilidad queda así:
 
-- **Viable:** memoria asociativa multimodal, propagación esparsa, aprendizaje estructural local, poda áurea por utilidad, oscilaciones funcionales, control de cascadas por inhibición, replay episódico sintético, causalidad dirigida inicial, inferencia transitiva, contradicción energética, optimización de rutas por flujo/evaporación y geometría 3D/tetraédrica.
+- **Viable:** memoria asociativa multimodal, propagación esparsa, aprendizaje estructural local, celdas semánticas de alto orden, detectores locales de rasgo/intención/frame, representantes de foco top-k, poda áurea por utilidad, oscilaciones funcionales, control de cascadas por inhibición, replay episódico sintético, causalidad dirigida inicial, inferencia transitiva, contradicción energética, optimización de rutas por flujo/evaporación y geometría 3D/tetraédrica.
 - **No demostrado:** lenguaje natural abierto, planificación larga, transferencia fuera de distribución, grounding con sensores reales y superioridad general frente a LLMs.
 - **Hipótesis fuerte siguiente:** combinar SNGA con encoders reales y un LLM periférico podría reducir costo en tareas donde el LLM hoy funciona como memoria semántica, dejando al LLM como traductor, narrador y adaptador lingüístico.
 
@@ -889,6 +1020,8 @@ La versión actual es una demostración de mecanismo, no un modelo entrenado. Su
 - La fuga residual entre conceptos indica falta de mecanismos de inhibición y desambiguación causal.
 - En el currículo lingüístico fractal, las aristas causales crecen con rapidez y son difíciles de podar sin alterar firmas predictivas; esto sugiere que hace falta limitar causalidad por región, por etapa o por top-k durante el entrenamiento, no solo comprimir después.
 - El chat SNGA-tokenizador sigue siendo un renderizador simbólico de respuestas candidatas; aunque ya usa la codificación jerárquica/regional, no genera lenguaje abierto desde la malla con la flexibilidad de un LLM.
+- Las celdas semánticas y los `focus_edges` resuelven el ranking estricto en el probe semántico-ejecutivo actual, pero añaden nuevas estructuras persistentes que deben ser reguladas para evitar crecimiento excesivo, sobreajuste al conjunto de validación o contaminación de rutas de verificación.
+- Los resultados `5/5` del sustrato semántico-ejecutivo se obtienen en cinco casos sintéticos/controlados. No prueban generalización lingüística abierta; prueban que la arquitectura puede convertir recall amplio en representantes top-k cuando el dominio está bien anclado.
 
 Estas limitaciones son deliberadas: el objetivo inicial es aislar el principio operativo de relajación local y visualizarlo con claridad.
 
@@ -909,6 +1042,8 @@ Los siguientes pasos técnicos son:
 11. Convertir la optimización de rutas en un mecanismo no supervisado basado solo en reducción de energía libre y estabilidad del atractor.
 12. Mantener el currículo lingüístico fractal con regiones por escala, pero controlar la creación de causalidad durante el aprendizaje: presupuestos por región, consolidación solo tras exámenes y poda causal validada por firmas top-k.
 13. Desarrollar un decodificador SNGA-tokenizador más expresivo que lea patrones regionales y no dependa únicamente de respuestas simbólicas predefinidas.
+14. Regular `SemanticCell` y `focus_edges` con presupuestos por región, consolidación por repetición y poda validada, para conservar el beneficio de ranking estricto sin crecimiento no controlado.
+15. Evaluar el sustrato semántico-ejecutivo con paráfrasis no vistas y tareas fuera de las cinco frases de validación actuales.
 
 ## 11. Conclusión
 
