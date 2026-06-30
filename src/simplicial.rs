@@ -1,5 +1,8 @@
 use crate::geometry::Vec2;
 use crate::mesh_engine::{FractalMeshConfig, MeshConfig, MeshTopology, SimplicialMeshEngine};
+use crate::relational_field::{
+    CollapseReport, ObserverId, RelationalFieldConfig, RelationalFieldSubstrate, SimplexPhaseReport,
+};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
 use std::hash::{Hash, Hasher};
@@ -363,6 +366,9 @@ pub struct SimplicialNetwork {
     attention_goal: Vec<usize>,
     attention_context: HashMap<usize, f32>,
     world_snapshots: VecDeque<WorldSnapshot>,
+    relational_field: Option<RelationalFieldSubstrate>,
+    relational_observer: Option<ObserverId>,
+    relational_observer_phase: f32,
     oscillations_enabled: bool,
     brain_mode: BrainMode,
     agent_regions: Vec<usize>,
@@ -422,6 +428,9 @@ impl SimplicialNetwork {
             attention_goal: Vec::new(),
             attention_context: HashMap::new(),
             world_snapshots: VecDeque::new(),
+            relational_field: None,
+            relational_observer: None,
+            relational_observer_phase: 0.0,
             oscillations_enabled: false,
             brain_mode: BrainMode::Exploration,
             agent_regions: Vec::new(),
@@ -1011,6 +1020,127 @@ impl SimplicialNetwork {
 
     pub fn clear_attention_goal(&mut self) {
         self.attention_goal.clear();
+    }
+
+    pub fn enable_relational_field(&mut self, config: RelationalFieldConfig) {
+        self.relational_field = Some(RelationalFieldSubstrate::new(config));
+    }
+
+    pub fn relational_field(&self) -> Option<&RelationalFieldSubstrate> {
+        self.relational_field.as_ref()
+    }
+
+    pub fn relational_field_mut(&mut self) -> Option<&mut RelationalFieldSubstrate> {
+        self.relational_field.as_mut()
+    }
+
+    pub fn relational_relation_count(&self) -> usize {
+        self.relational_field
+            .as_ref()
+            .map(RelationalFieldSubstrate::relation_count)
+            .unwrap_or(0)
+    }
+
+    pub fn set_relational_observer(&mut self, observer: ObserverId, phase: f32) {
+        self.relational_observer = Some(observer);
+        self.relational_observer_phase = phase;
+    }
+
+    pub fn clear_relational_observer(&mut self) {
+        self.relational_observer = None;
+        self.relational_observer_phase = 0.0;
+    }
+
+    pub fn reinforce_relational_relation(
+        &mut self,
+        observer: ObserverId,
+        a: usize,
+        b: usize,
+        phase: f32,
+        prediction_success: f32,
+    ) -> bool {
+        let Some(field) = self.relational_field.as_mut() else {
+            return false;
+        };
+        if a >= self.agents.len() || b >= self.agents.len() || a == b {
+            return false;
+        }
+        field.reinforce_relation(observer, a, b, phase, prediction_success);
+        true
+    }
+
+    pub fn reinforce_relational_pattern(
+        &mut self,
+        observer: ObserverId,
+        pattern: &[usize],
+        phase: f32,
+        prediction_success: f32,
+    ) -> usize {
+        let pattern = compact_pattern(pattern, self.agents.len());
+        let mut reinforced = 0;
+        for i in 0..pattern.len() {
+            for j in (i + 1)..pattern.len() {
+                if self.reinforce_relational_relation(
+                    observer,
+                    pattern[i],
+                    pattern[j],
+                    phase,
+                    prediction_success,
+                ) {
+                    reinforced += 1;
+                }
+            }
+        }
+        reinforced
+    }
+
+    pub fn reinforce_relational_links(
+        &mut self,
+        observer: ObserverId,
+        sources: &[usize],
+        targets: &[usize],
+        phase: f32,
+        prediction_success: f32,
+    ) -> usize {
+        let sources = compact_pattern(sources, self.agents.len());
+        let targets = compact_pattern(targets, self.agents.len());
+        let mut reinforced = 0;
+        for source in sources {
+            for &target in &targets {
+                if self.reinforce_relational_relation(
+                    observer,
+                    source,
+                    target,
+                    phase,
+                    prediction_success,
+                ) {
+                    reinforced += 1;
+                }
+            }
+        }
+        reinforced
+    }
+
+    pub fn observe_relational_pattern(
+        &mut self,
+        pattern: &[usize],
+        limit: usize,
+    ) -> Option<CollapseReport> {
+        let observer = self.relational_observer?;
+        let field = self.relational_field.as_mut()?;
+        Some(field.observe_pattern(observer, pattern, self.relational_observer_phase, limit))
+    }
+
+    pub fn relational_simplex_phase_report(
+        &self,
+        observer: ObserverId,
+        a: usize,
+        b: usize,
+        c: usize,
+    ) -> Option<SimplexPhaseReport> {
+        self.relational_field
+            .as_ref()?
+            .simplex_phase_report(observer, a, b, c)
     }
 
     pub fn attention_report(&self, limit: usize) -> AttentionReport {
@@ -1639,6 +1769,9 @@ impl SimplicialNetwork {
         self.propagate_spikes();
         self.relax_geometry();
         self.maintain_plasticity();
+        if let Some(field) = self.relational_field.as_mut() {
+            field.step_decay();
+        }
         self.decay_activation();
         self.stats()
     }
@@ -2641,7 +2774,8 @@ impl SimplicialNetwork {
                     next.push((
                         edge.weight
                             * self.attention_weight(neighbor)
-                            * self.oscillatory_weight(neighbor),
+                            * self.oscillatory_weight(neighbor)
+                            * self.relational_spike_weight(spike.target, neighbor),
                         Spike {
                             source: spike.target,
                             target: neighbor,
@@ -2661,7 +2795,10 @@ impl SimplicialNetwork {
                 );
                 for (neighbor, score) in cell_scores {
                     next.push((
-                        score * self.attention_weight(neighbor) * self.oscillatory_weight(neighbor),
+                        score
+                            * self.attention_weight(neighbor)
+                            * self.oscillatory_weight(neighbor)
+                            * self.relational_spike_weight(spike.target, neighbor),
                         Spike {
                             source: spike.target,
                             target: neighbor,
@@ -2729,6 +2866,23 @@ impl SimplicialNetwork {
             .unwrap_or(0.0)
             .min(1.5);
         goal_gain * (1.0 + context_gain * 0.35) * self.oscillatory_weight(agent_id)
+    }
+
+    fn relational_spike_weight(&self, source: usize, target: usize) -> f32 {
+        let Some(observer) = self.relational_observer else {
+            return 1.0;
+        };
+        let Some(field) = &self.relational_field else {
+            return 1.0;
+        };
+        let Some(modulation) =
+            field.modulation(observer, source, target, self.relational_observer_phase)
+        else {
+            return 1.0;
+        };
+        // Unknown relations remain neutral. Known relations become contextual gates:
+        // aligned high-probability relations pass; incompatible phases are strongly damped.
+        (0.05 + modulation * 1.35).clamp(0.02, 1.25)
     }
 
     fn apply_lateral_inhibition(&mut self) {

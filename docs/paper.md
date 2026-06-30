@@ -298,6 +298,185 @@ Estos detectores conectan la entrada textual con conceptos internos, control eje
 
 En inferencia, los `focus_edges` no sustituyen a la dinámica causal. Se aplican como una etapa final de promoción solo en inferencia transitiva/exact-hop, no en `predict_next_pattern`. Esta restricción fue importante: una versión más agresiva contaminaba la verificación de salida. La versión estable promueve como máximo `512` representantes por consulta y conserva intacta la ruta de verificación.
 
+### 3.11 RQF-SNGA: Sustrato Simplicial de Campo Relacional
+
+La nueva hipótesis de trabajo extiende SNGA con un sustrato inspirado en principios relacionales de la mecánica cuántica, sin afirmar que el sistema sea cuántico físico ni que la cuántica implique conciencia. La tesis arquitectónica es más precisa: si en una descripción relacional las propiedades no pertenecen de forma absoluta a los objetos, sino que aparecen en interacciones, entonces una arquitectura cognitiva puede evitar representar el significado como estado intrínseco de un nodo. El significado puede emerger como coherencia local entre relaciones observadas.
+
+Esta capa se denomina provisionalmente **RQF-SNGA** (*Relational Quantum-Field Simplicial SNGA*) o **Sustrato Simplicial de Campo Relacional**. La unidad básica ya no es solo el agente ni la arista, sino el estado de una relación respecto a un observador:
+
+```text
+psi_ij^O = A_ij^O * exp(i * phi_ij^O)
+```
+
+donde `i` y `j` son agentes, `O` es el observador/contexto, `A` es amplitud relacional, `phi` es fase contextual, `|psi|^2` funciona como probabilidad de activación y la fase permite interferencia constructiva o destructiva. En código, esta idea se implementa inicialmente en `relational_field.rs` mediante relaciones con:
+
+```text
+RelationalState {
+  amplitude,
+  phase,
+  coherence,
+  uncertainty,
+  last_observed_tick
+}
+```
+
+El punto conceptual es que un nodo como `banco` no almacena un significado absoluto. Para un observador financiero puede resonar con `dinero`, `credito` e `institucion`; para un observador de parque puede resonar con `sentarse`, `madera` y `parque`. Ambas descripciones pueden coexistir porque pertenecen a marcos relacionales distintos. La operación de inferencia se interpreta como colapso local computacional, no como colapso físico:
+
+```text
+entrada + observador O
+  -> relaciones psi_ij^O vecinas
+  -> interferencia de fases compatibles
+  -> supresión de fases incompatibles
+  -> patrón estabilizado relativo a O
+```
+
+RQF-SNGA conserva el sustrato geométrico de SNGA, pero añade una capa de campo encima de aristas y celdas. La energía libre puede ampliarse con términos relacionales:
+
+```text
+F_total =
+  F_geometrica
+  + F_interferencia
+  + F_incertidumbre
+  + F_coherencia_simplex
+```
+
+Un término simple de interferencia puede definirse como:
+
+```text
+F_interferencia = sum A_ij^O * (1 - cos(phi_ij^O - phi_O))
+```
+
+Para un triángulo semántico `(i, j, k)`, los símplices miden si las fases cierran de forma coherente:
+
+```text
+C_ijk^O = cos(phi_ij^O + phi_jk^O + phi_ki^O)
+```
+
+Si el ciclo de fases cierra, la celda tiene baja tensión. Si no cierra, aparece contradicción, ambigüedad o necesidad de otro observador contextual. Esta formulación encaja naturalmente con los complejos simpliciales existentes: los triángulos y tetraedros dejan de ser solo restricciones de área/volumen y pasan a ser detectores de coherencia relacional.
+
+El aprendizaje sigue siendo local:
+
+```text
+si una relación predice correctamente:
+  aumentar amplitud
+  alinear fase con el observador
+  subir coherencia
+  reducir incertidumbre
+
+si una relación falla:
+  reducir amplitud
+  desplazar fase
+  bajar coherencia
+  aumentar incertidumbre
+```
+
+Esta regla mantiene la filosofía del proyecto: no hay retropropagación global ni tabla densa de atención. El conocimiento se estabiliza como patrón de relaciones observables. El prototipo inicial incluye un experimento ejecutable con:
+
+```text
+cargo run --bin relational_field_substrate_experiment
+```
+
+El objetivo de ese experimento no es demostrar ventaja general, sino validar una propiedad mínima: el mismo nodo puede colapsar hacia significados distintos según el observador relacional, y los símplices pueden medir coherencia de fase entre relaciones compatibles o incompatibles.
+
+Para comparar esta hipótesis contra el sustrato SNGA previo, se añadió un benchmark más amplio:
+
+```text
+cargo run --bin relational_field_comparison_benchmark
+```
+
+La prueba entrena 12 palabras ambiguas con 24 marcos de significado. Cada palabra comparte el mismo nodo conceptual de entrada, pero debe resolverse de forma distinta según el observador/contexto. El benchmark compara tres condiciones:
+
+```text
+RQF-SNGA observer_relational = campo relacional con observador explícito
+legacy_snga_cue_only        = sustrato SNGA previo usando solo la clave ambigua
+legacy_snga_cue_and_context = sustrato SNGA previo usando clave + contexto explícito
+```
+
+Esta comparación no mide lenguaje general ni razonamiento abierto. Mide una propiedad específica: separación de significados competidores cuando la misma clave semántica debe colapsar hacia marcos incompatibles.
+
+### 3.12 Integración Híbrida: SNGA Dice Qué Rutas Existen, RQF Dice Qué Rutas Son Reales Para El Observador
+
+La conclusión de diseño posterior al benchmark es no reemplazar `SimplicialNetwork`, sino integrar `RelationalFieldSubstrate` como capa opcional de modulación contextual. La separación de responsabilidades queda así:
+
+```text
+SNGA:
+  memoria estructural
+  rutas causales
+  aristas y símplices
+  relajación geométrica
+  atractores
+  replay e inhibición
+
+RQF:
+  observador/contexto
+  fase relacional
+  amplitud contextual
+  coherencia e incertidumbre
+  interferencia constructiva/destructiva
+  reducción de fuga semántica
+```
+
+En código, `SimplicialNetwork` ahora puede contener un campo relacional opcional:
+
+```text
+SimplicialNetwork {
+  agents,
+  edges,
+  simplices,
+  tetrahedra,
+  semantic_cells,
+  spikes,
+  causal_edges,
+  focus_edges,
+  episodes,
+  relational_field: Option<RelationalFieldSubstrate>
+}
+```
+
+Cuando la capa RQF no está activada, la red conserva el comportamiento anterior. Cuando se activa, la propagación por aristas sigue usando el sustrato geométrico existente, pero cada spike recibe una compuerta relacional:
+
+```text
+spike_score =
+  edge_weight
+  * attention_weight
+  * oscillatory_weight
+  * relational_spike_weight
+```
+
+donde:
+
+```text
+relational_spike_weight ~= |psi_ij^O|^2 * max(0, cos(phi_ij^O - phi_O))
+```
+
+La decisión arquitectónica es importante: RQF no crea las rutas físicas de la malla; las filtra según el observador. Por eso el lema operativo de la versión híbrida es:
+
+```text
+SNGA dice qué rutas existen.
+RQF dice qué rutas son reales para este observador.
+```
+
+El comando de entrenamiento del sustrato híbrido es:
+
+```text
+cargo run --bin snga_hybrid_rqf_relational_trainer
+```
+
+Por defecto escribe:
+
+```text
+data/snga_hybrid_rqf_relational.snga
+data/snga_hybrid_rqf_relational.rqf
+```
+
+También acepta variables de entorno:
+
+```text
+SNGA_HYBRID_RQF_OUTPUT
+SNGA_HYBRID_RQF_FIELD_OUTPUT
+SNGA_HYBRID_RQF_EPOCHS
+```
+
 ## 4. Complejidad y Eficiencia
 
 En atención densa, la interacción entre tokens escala como:
@@ -514,6 +693,90 @@ oscillatory:
 ```
 
 El resultado apoya la hipótesis de que los ritmos funcionales pueden servir como medio global de coordinación sin campo magnético físico: Delta habilita consolidación, Beta/Gamma organizan regiones enfocadas y Alpha actúa como filtro.
+
+También se añadió un benchmark específico para el nuevo sustrato relacional (`relational_field_comparison_benchmark`). La prueba usa 12 términos ambiguos (`banco`, `planta`, `raton`, `cola`, `carta`, `vela`, `sierra`, `copa`, `radio`, `red`, `llave`, `corriente`) y 24 marcos semánticos incompatibles. El objetivo es comparar si el significado se separa mejor cuando el marco de referencia se modela como observador relacional en vez de como otro patrón de entrada dentro del sustrato previo.
+
+Resultado de referencia:
+
+```text
+RQF-SNGA comparison benchmark
+cases=12 frames=24 training_epochs=18 symbols=108 rqf_relations=264
+
+rqf_observer_relational:
+  accuracy              = 100.0%
+  purity                = 100.0%
+  leakage               = 0.0%
+  simplex_coherence     = 1.000
+  incompatible_tension  = 0.754
+
+legacy_snga_cue_only:
+  accuracy              = 0.0%
+  purity                = 50.0%
+  leakage               = 50.0%
+
+legacy_snga_cue_and_context:
+  accuracy              = 100.0%
+  purity                = 66.7%
+  leakage               = 33.3%
+```
+
+La lectura es acotada pero relevante. El sustrato previo con contexto explícito puede elegir el marco correcto, pero conserva fuga hacia el significado competidor porque la clave ambigua refuerza ambos sentidos en el mismo espacio asociativo. El sustrato RQF-SNGA separa los estados por observador: conserva el acierto y reduce la fuga a cero en este escenario sintético. Además, los símplices compatibles cierran fase con coherencia máxima, mientras que los incompatibles acumulan tensión. Esto sugiere una mejora real para tareas donde el problema central no es recordar más asociaciones, sino mantener realidades semánticas relativas sin mezclarlas prematuramente.
+
+Después de integrar RQF dentro de `SimplicialNetwork`, se añadió `hybrid_relational_simplicial_benchmark`. Esta prueba compara cuatro condiciones sobre el mismo conjunto de 12 ambigüedades:
+
+```text
+1. SNGA puro
+2. RQF puro
+3. SNGA + contexto explícito
+4. SNGA + RQF integrado
+```
+
+Resultado de referencia:
+
+```text
+SNGA + RQF hybrid relational benchmark
+cases=12 frames=24 epochs=18 symbols=108 hybrid_relations=5472
+
+1_snga_puro:
+  accuracy              = 0.0%
+  purity                = 50.0%
+  leakage               = 50.0%
+  active_agents         = 28.0
+  spikes                = 288.0
+  energy                = 1461905.125
+  stability             = 0.515
+
+2_rqf_puro:
+  accuracy              = 100.0%
+  purity                = 100.0%
+  leakage               = 0.0%
+  active_agents         = 3.0
+  spikes                = 0.0
+  energy                = 0.000
+  stability             = 1.000
+  incompatible_tension  = 0.754
+
+3_snga_contexto_explicito:
+  accuracy              = 0.0%
+  purity                = 50.0%
+  leakage               = 50.0%
+  active_agents         = 32.0
+  spikes                = 288.0
+  energy                = 1460082.500
+  stability             = 0.516
+
+4_snga_rqf_integrado:
+  accuracy              = 100.0%
+  purity                = 100.0%
+  leakage               = 0.0%
+  active_agents         = 24.0
+  spikes                = 288.0
+  energy                = 1459284.375
+  stability             = 0.511
+  incompatible_tension  = 0.754
+```
+
+La condición `RQF puro` resuelve la ambigüedad con máxima limpieza, pero no usa cuerpo geométrico, spikes ni atractores físicos. La condición `SNGA+RQF integrado` es más importante para la tesis del proyecto: conserva la malla y la propagación por eventos, pero reduce la fuga semántica a cero y usa menos agentes activos que la condición con contexto explícito. La estabilidad aún no mejora; queda como métrica a optimizar en siguientes iteraciones mediante acoplamiento más fino entre fase relacional, inhibición y relajación geométrica.
 
 La separación entre motor matemático y capa neuronal se validó con `mesh_engine_validation`:
 
@@ -985,7 +1248,7 @@ Por tanto, el camino hacia AGI se formula como una hipótesis experimental: si u
 
 Con los resultados actuales, la evaluación de viabilidad queda así:
 
-- **Viable:** memoria asociativa multimodal, propagación esparsa, aprendizaje estructural local, celdas semánticas de alto orden, detectores locales de rasgo/intención/frame, representantes de foco top-k, poda áurea por utilidad, oscilaciones funcionales, control de cascadas por inhibición, replay episódico sintético, causalidad dirigida inicial, inferencia transitiva, contradicción energética, optimización de rutas por flujo/evaporación y geometría 3D/tetraédrica.
+- **Viable:** memoria asociativa multimodal, propagación esparsa, aprendizaje estructural local, celdas semánticas de alto orden, detectores locales de rasgo/intención/frame, representantes de foco top-k, poda áurea por utilidad, oscilaciones funcionales, sustrato relacional RQF para desambiguación por observador, control de cascadas por inhibición, replay episódico sintético, causalidad dirigida inicial, inferencia transitiva, contradicción energética, optimización de rutas por flujo/evaporación y geometría 3D/tetraédrica.
 - **No demostrado:** lenguaje natural abierto, planificación larga, transferencia fuera de distribución, grounding con sensores reales y superioridad general frente a LLMs.
 - **Hipótesis fuerte siguiente:** combinar SNGA con encoders reales y un LLM periférico podría reducir costo en tareas donde el LLM hoy funciona como memoria semántica, dejando al LLM como traductor, narrador y adaptador lingüístico.
 
@@ -1022,6 +1285,7 @@ La versión actual es una demostración de mecanismo, no un modelo entrenado. Su
 - El chat SNGA-tokenizador sigue siendo un renderizador simbólico de respuestas candidatas; aunque ya usa la codificación jerárquica/regional, no genera lenguaje abierto desde la malla con la flexibilidad de un LLM.
 - Las celdas semánticas y los `focus_edges` resuelven el ranking estricto en el probe semántico-ejecutivo actual, pero añaden nuevas estructuras persistentes que deben ser reguladas para evitar crecimiento excesivo, sobreajuste al conjunto de validación o contaminación de rutas de verificación.
 - Los resultados `5/5` del sustrato semántico-ejecutivo se obtienen en cinco casos sintéticos/controlados. No prueban generalización lingüística abierta; prueban que la arquitectura puede convertir recall amplio en representantes top-k cuando el dominio está bien anclado.
+- El benchmark RQF-SNGA demuestra ventaja en ambigüedad sintética con observadores definidos a mano. La versión híbrida ya reduce fuga dentro de `SimplicialNetwork`, pero todavía no mejora estabilidad del atractor y no prueba que los observadores puedan emerger solos desde datos reales ni que la mejora se conserve en lenguaje abierto, percepción multimodal o tareas con ruido adversarial.
 
 Estas limitaciones son deliberadas: el objetivo inicial es aislar el principio operativo de relajación local y visualizarlo con claridad.
 
@@ -1044,9 +1308,10 @@ Los siguientes pasos técnicos son:
 13. Desarrollar un decodificador SNGA-tokenizador más expresivo que lea patrones regionales y no dependa únicamente de respuestas simbólicas predefinidas.
 14. Regular `SemanticCell` y `focus_edges` con presupuestos por región, consolidación por repetición y poda validada, para conservar el beneficio de ranking estricto sin crecimiento no controlado.
 15. Evaluar el sustrato semántico-ejecutivo con paráfrasis no vistas y tareas fuera de las cinco frases de validación actuales.
+16. Aprender observadores/contextos desde datos en vez de declararlos manualmente, y ajustar la compuerta RQF para mejorar estabilidad del atractor además de reducir fuga semántica.
 
 ## 11. Conclusión
 
 SNGA plantea un cambio de énfasis: de predicción lingüística densa como única arquitectura cognitiva a una arquitectura híbrida donde la memoria e inferencia abstracta ocurren en una malla geométrica esparsa y el lenguaje se resuelve en módulos periféricos especializados. El sistema no elimina los LLMs, sino que los reubica como interfaces de entrada/salida. El núcleo cognitivo se modela como un complejo simplicial que minimiza tensión local, permitiendo una forma de inferencia más cercana a navegación conceptual que a multiplicación matricial global.
 
-El prototipo Rust de este repositorio materializa la primera pieza de esa hipótesis: una red binaria de agentes, una malla simplicial, propagación por eventos, memoria episódica, atención dinámica, predicción causal, planificación local y relajación elástica observable en tiempo real.
+El prototipo Rust de este repositorio materializa la primera pieza de esa hipótesis: una red binaria de agentes, una malla simplicial, propagación por eventos, memoria episódica, atención dinámica, predicción causal, planificación local y relajación elástica observable en tiempo real. La extensión RQF-SNGA añade una segunda pieza: el significado puede modelarse como estado relacional respecto a un observador, con amplitud, fase, coherencia e incertidumbre. En el benchmark sintético de ambigüedad, esta capa conserva el acierto del sustrato previo contextual y reduce la fuga semántica, lo que justifica investigarla como mecanismo de desambiguación y control de interferencia antes de afirmar ventajas generales.
