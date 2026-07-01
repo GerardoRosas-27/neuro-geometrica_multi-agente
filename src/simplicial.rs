@@ -613,6 +613,20 @@ impl SimplicialNetwork {
         predicted
     }
 
+    pub fn causal_edges_snapshot(&self) -> Vec<(usize, usize, f32)> {
+        let mut edges = self
+            .causal_edges
+            .iter()
+            .map(|(&(source, target), &weight)| (source, target, weight))
+            .collect::<Vec<_>>();
+        edges.sort_by(|a, b| {
+            (a.0, a.1)
+                .cmp(&(b.0, b.1))
+                .then_with(|| b.2.total_cmp(&a.2))
+        });
+        edges
+    }
+
     pub fn infer_transitive_from(
         &self,
         cause: &[usize],

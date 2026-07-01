@@ -1,10 +1,19 @@
-# SNGA: Sistema Neuro-Geometrico de Agentes
+# SNGA -> CDT-RQM
 
-Prototipo Rust para explorar una arquitectura neuro-geométrica multi-agente basada en complejos simpliciales, propagación binaria por eventos y minimización local de energía libre.
+Prototipo Rust para entrenar memoria causal en SNGA y consolidarla en un sustrato CDT-RQM compacto.
 
 El paper técnico ampliado está en [`docs/paper.md`](docs/paper.md).
 
-Tesis central: SNGA no busca ser "un transformer sin matrices". El lenguaje es una interfaz periférica; el núcleo de memoria y razonamiento vive en una malla geométrica esparsa que activa rutas, minimiza tensión y selecciona caminos útiles.
+Tesis consolidada: **SNGA entrena, CDT-RQM ejecuta**. SNGA aprende rutas causales binarias; CDT-RQM las cristaliza como hardware causal foliado + software relacional RQM; Graphity comprime la geometría sin perder memoria.
+
+Ruta oficial:
+
+```text
+1. Entrenar en SNGA.
+2. Migrar a CDT-RQM.
+3. Aplicar annealing Graphity.
+4. Ejecutar inferencia en CDT-RQM consolidado.
+```
 
 ## Ejecutar
 
@@ -13,11 +22,50 @@ Requisitos:
 - Rust estable.
 - Cargo.
 
-Comando:
+Comando principal de consolidación:
 
 ```powershell
-cargo run
+cargo run --bin snga_to_cdt_rqm_consolidate
 ```
+
+Genera:
+
+```text
+data/cdt_rqm_consolidated_from_snga.cdt_rqm
+```
+
+Suite comparativa SNGA vs CDT-RQM consolidado:
+
+```powershell
+cargo run --bin snga_vs_cdt_rqm_consolidated_tests
+```
+
+Perfil de cómputo, aristas, nodos activos y eficiencia:
+
+```powershell
+cargo run --bin snga_vs_cdt_rqm_profile
+```
+
+## Resultados Consolidados
+
+```text
+SNGA:
+  accuracy = 100.0%
+  purity   = 94.0%
+  leakage  = 6.0%
+  active_edges = 3600
+
+CDT-RQM:
+  accuracy = 100.0%
+  purity   = 96.4%
+  leakage  = 3.6%
+  active_edges = 334
+  causality_violations = 0
+```
+
+CDT-RQM conserva la memoria de SNGA con menor fuga y mucha menos geometría activa.
+
+## Experimentos Históricos
 
 Experimento sin ventana para medir aprendizaje multimodal sintético:
 
