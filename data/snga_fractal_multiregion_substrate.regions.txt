@@ -1,0 +1,19 @@
+SNGA_MULTIREGION_SUBSTRATE_V1
+region_size=11520
+total_nodes=92160
+
+linguistic=0..11519 # simbolos, letras, silabas, palabras, frases y oraciones ya entrenadas
+visual=11520..23039 # rasgos visuales futuros: forma, color, textura, objetos
+auditory=23040..34559 # rasgos sonoros futuros: fonemas, timbre, ritmo, fuentes
+motor=34560..46079 # acciones posibles futuras y programas motores
+parietal=46080..57599 # espacio, orden, cantidad, comparacion y ubicacion
+hippocampal=57600..69119 # episodios, mapas relacionales rapidos y contexto
+prefrontal=69120..80639 # objetivos, reglas activas, pasos intermedios y plan temporal
+basal_ganglia=80640..92159 # seleccion, gating e inhibicion de rutas de accion
+
+flows:
+visual -> parietal -> prefrontal -> motor
+linguistic -> prefrontal
+hippocampal -> prefrontal
+prefrontal -> basal_ganglia -> motor
+prefrontal -> linguistic

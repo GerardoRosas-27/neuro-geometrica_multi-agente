@@ -442,7 +442,8 @@ fn regional_pattern(
     nodes: usize,
     region: Region,
 ) -> Vec<usize> {
-    let (start, len) = region_bounds(region, nodes);
+    let coding_nodes = linguistic_nodes(nodes);
+    let (start, len) = region_bounds(region, coding_nodes);
     (0..size)
         .map(|offset| {
             let mut hasher = std::collections::hash_map::DefaultHasher::new();
@@ -483,6 +484,15 @@ fn region_bounds(region: Region, nodes: usize) -> (usize, usize) {
         start_idx.min(nodes.saturating_sub(1)),
         end_idx.saturating_sub(start_idx).max(1),
     )
+}
+
+fn linguistic_nodes(nodes: usize) -> usize {
+    env::var("SNGA_LINGUISTIC_NODES")
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+        .unwrap_or(nodes)
+        .min(nodes)
+        .max(1)
 }
 
 fn normalize_text(text: &str) -> String {
