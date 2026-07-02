@@ -133,12 +133,28 @@ impl CdtGraphitySubstrate {
             rng: StdRng::seed_from_u64(config.seed ^ 0xA53A_9EED),
         };
 
+        let dense_limit = 2_000_000_usize;
         for slice in 0..substrate.config.slices {
             let ids = substrate.slice_nodes(slice);
-            for i in 0..ids.len() {
-                for j in (i + 1)..ids.len() {
-                    if rng.gen::<f32>() <= substrate.config.initial_spatial_connectivity {
-                        substrate.add_edge(ids[i], ids[j], CdtGraphityEdgeKind::Spatial, 0.35);
+            let pair_count = ids.len().saturating_mul(ids.len().saturating_sub(1)) / 2;
+            if pair_count < dense_limit {
+                for i in 0..ids.len() {
+                    for j in (i + 1)..ids.len() {
+                        if rng.gen::<f32>() <= substrate.config.initial_spatial_connectivity {
+                            substrate.add_edge(ids[i], ids[j], CdtGraphityEdgeKind::Spatial, 0.35);
+                        }
+                    }
+                }
+            } else {
+                let samples = ((pair_count as f32) * substrate.config.initial_spatial_connectivity)
+                    .round()
+                    .max(ids.len() as f32 * substrate.config.target_spatial_degree as f32 * 0.5)
+                    as usize;
+                for _ in 0..samples {
+                    let a = ids[rng.gen_range(0..ids.len())];
+                    let b = ids[rng.gen_range(0..ids.len())];
+                    if a != b {
+                        substrate.add_edge(a, b, CdtGraphityEdgeKind::Spatial, 0.35);
                     }
                 }
             }
@@ -147,9 +163,24 @@ impl CdtGraphitySubstrate {
         for slice in 0..substrate.config.slices.saturating_sub(1) {
             let current = substrate.slice_nodes(slice);
             let next = substrate.slice_nodes(slice + 1);
-            for &a in &current {
-                for &b in &next {
-                    if rng.gen::<f32>() <= substrate.config.initial_temporal_connectivity {
+            let pair_count = current.len().saturating_mul(next.len());
+            if pair_count < dense_limit {
+                for &a in &current {
+                    for &b in &next {
+                        if rng.gen::<f32>() <= substrate.config.initial_temporal_connectivity {
+                            substrate.add_edge(a, b, CdtGraphityEdgeKind::Temporal, 0.35);
+                        }
+                    }
+                }
+            } else {
+                let samples = ((pair_count as f32) * substrate.config.initial_temporal_connectivity)
+                    .round()
+                    .max(current.len() as f32 * substrate.config.target_temporal_degree as f32)
+                    as usize;
+                for _ in 0..samples {
+                    let a = current[rng.gen_range(0..current.len())];
+                    let b = next[rng.gen_range(0..next.len())];
+                    if a != b {
                         substrate.add_edge(a, b, CdtGraphityEdgeKind::Temporal, 0.35);
                     }
                 }
@@ -173,6 +204,73 @@ impl CdtGraphitySubstrate {
         for node in &mut self.nodes {
             node.activation = false;
             node.surprise = 0.0;
+        }
+    }
+
+    pub fn add_foliated_block(&mut self, block_slices: usize) -> usize {
+        let block_slices = block_slices.max(1);
+        let start_slice = self.config.slices;
+        let start_node = self.nodes.len();
+        let nodes_per_slice = self.config.nodes_per_slice.max(1);
+        let new_nodes = block_slices * nodes_per_slice;
+
+        self.nodes.reserve(new_nodes);
+        self.adjacency.reserve(new_nodes);
+        for offset in 0..new_nodes {
+            let id = start_node + offset;
+            self.nodes.push(CdtGraphityNode {
+                id,
+                slice: start_slice + offset / nodes_per_slice,
+                activation: false,
+                surprise: 0.0,
+            });
+            self.adjacency.push(Vec::new());
+        }
+        self.config.slices += block_slices;
+
+        // Bridge the old frontier into the new block without changing old IDs.
+        if start_slice > 0 {
+            self.sample_temporal_edges_between_slices(start_slice - 1, start_slice);
+        }
+        for slice in start_slice..self.config.slices {
+            self.sample_spatial_edges_in_slice(slice);
+            if slice + 1 < self.config.slices {
+                self.sample_temporal_edges_between_slices(slice, slice + 1);
+            }
+        }
+        self.rebuild_cdt_tetrahedra();
+        start_slice
+    }
+
+    fn sample_spatial_edges_in_slice(&mut self, slice: usize) {
+        let ids = self.slice_nodes(slice);
+        if ids.len() < 2 {
+            return;
+        }
+        let samples = (ids.len() * self.config.target_spatial_degree.max(1)).max(1);
+        for _ in 0..samples {
+            let a = ids[self.rng.gen_range(0..ids.len())];
+            let b = ids[self.rng.gen_range(0..ids.len())];
+            if a != b {
+                self.add_edge(a, b, CdtGraphityEdgeKind::Spatial, 0.25);
+            }
+        }
+    }
+
+    fn sample_temporal_edges_between_slices(&mut self, source_slice: usize, target_slice: usize) {
+        if source_slice + 1 != target_slice {
+            return;
+        }
+        let sources = self.slice_nodes(source_slice);
+        let targets = self.slice_nodes(target_slice);
+        if sources.is_empty() || targets.is_empty() {
+            return;
+        }
+        let samples = (sources.len() * self.config.target_temporal_degree.max(1)).max(1);
+        for _ in 0..samples {
+            let a = sources[self.rng.gen_range(0..sources.len())];
+            let b = targets[self.rng.gen_range(0..targets.len())];
+            self.add_edge(a, b, CdtGraphityEdgeKind::Temporal, 0.25);
         }
     }
 

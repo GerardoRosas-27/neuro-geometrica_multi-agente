@@ -1935,3 +1935,39 @@ Entrenar en SNGA
 ```
 
 Los resultados actuales muestran que CDT-RQM puede igualar el accuracy de SNGA, reducir fuga y usar una geometría activa mucho más compacta. La conclusión técnica es clara: para este proyecto, la dirección principal ya no es expandir SNGA indefinidamente, sino usar SNGA para enseñar y CDT-RQM para ejecutar.
+
+Además de la ruta de migración, el repositorio incluye un entrenamiento CDT-RQM desde cero con Gemma como periférico lingüístico:
+
+```text
+cargo run --bin cdt_rqm_gemma_boundary_concept_trainer
+```
+
+El experimento enseña la pregunta sobre cómo codificar conceptos independientes del lenguaje. En modo offline de referencia:
+
+```text
+concept_hits = 96/104
+rqm_relations = 5057
+active_edges = 399
+causality_violations = 0
+anneal: accuracy 100.0% -> 100.0%, leakage 0.0% -> 0.0%, regge 13370.750 -> 1955.000
+```
+
+La lectura es que CDT-RQM puede arrancar en blanco: el concepto se guarda como nudo relacional interno, el lenguaje queda limitado a frontera y Gemma actúa como maestro/renderizador periférico.
+
+También se añadió un entrenador infinito de conceptos puros, relaciones causales, habilidades y memoria episódica:
+
+```text
+cargo run --bin cdt_rqm_infinite_concept_trainer
+```
+
+Este binario entrena directamente sobre CDT-RQM, sin pasar por SNGA. Su currículo alterna:
+
+```text
+conceptos puros -> atributos topológicos
+relaciones causales -> rutas temporales CDT
+habilidades -> secuencias de transformaciones
+episodios -> hechos y consolidaciones
+correlaciones -> enlaces relacionales débiles
+```
+
+El estado se guarda por lotes en `data/cdt_rqm_infinite_concepts.cdt_rqm` y el progreso en `data/cdt_rqm_infinite_concepts.progress`.

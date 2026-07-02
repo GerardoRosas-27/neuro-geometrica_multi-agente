@@ -627,6 +627,25 @@ impl SimplicialNetwork {
         edges
     }
 
+    pub fn causal_edges_snapshot_limited(
+        &self,
+        limit: usize,
+        min_weight: f32,
+    ) -> Vec<(usize, usize, f32)> {
+        let mut edges = self
+            .causal_edges
+            .iter()
+            .filter(|(_, &weight)| weight >= min_weight)
+            .map(|(&(source, target), &weight)| (source, target, weight))
+            .collect::<Vec<_>>();
+        edges.sort_by(|a, b| {
+            b.2.total_cmp(&a.2)
+                .then_with(|| (a.0, a.1).cmp(&(b.0, b.1)))
+        });
+        edges.truncate(limit);
+        edges
+    }
+
     pub fn infer_transitive_from(
         &self,
         cause: &[usize],

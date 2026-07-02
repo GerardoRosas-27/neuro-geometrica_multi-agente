@@ -46,6 +46,33 @@ Perfil de cómputo, aristas, nodos activos y eficiencia:
 cargo run --bin snga_vs_cdt_rqm_profile
 ```
 
+Entrenamiento CDT-RQM desde cero con Gemma como periférico lingüístico:
+
+```powershell
+cargo run --bin cdt_rqm_gemma_boundary_concept_trainer
+```
+
+Modo sin Ollama/Gemma, usando enseñanza fallback:
+
+```powershell
+cargo run --bin cdt_rqm_gemma_boundary_concept_trainer -- --offline-fallback
+```
+
+Este entrenamiento crea un sustrato CDT-RQM en blanco, codifica un concepto como nudo interno independiente del lenguaje y usa el periférico lingüístico solo como operador de frontera.
+
+Entrenamiento infinito de conceptos, causalidad, habilidades y episodios en CDT-RQM:
+
+```powershell
+cargo run --bin cdt_rqm_infinite_concept_trainer
+```
+
+Guarda por lotes en:
+
+```text
+data/cdt_rqm_infinite_concepts.cdt_rqm
+data/cdt_rqm_infinite_concepts.progress
+```
+
 ## Resultados Consolidados
 
 ```text

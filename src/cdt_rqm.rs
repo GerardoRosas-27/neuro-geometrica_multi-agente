@@ -279,6 +279,10 @@ impl CdtRqmUniverseSubstrate {
         self.software.relation_count()
     }
 
+    pub fn grow_foliated_block(&mut self, block_slices: usize) -> usize {
+        self.hardware.add_foliated_block(block_slices)
+    }
+
     pub fn save_consolidated_state<P: AsRef<Path>>(&self, path: P) -> io::Result<()> {
         if let Some(parent) = path.as_ref().parent() {
             fs::create_dir_all(parent)?;
