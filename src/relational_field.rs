@@ -345,6 +345,12 @@ impl RelationalFieldSubstrate {
         fs::write(path, self.serialize_persistent_state())
     }
 
+    pub fn load_persistent_state<P: AsRef<Path>>(&mut self, path: P) -> io::Result<()> {
+        let contents = fs::read_to_string(path)?;
+        self.apply_persistent_state(&contents)
+            .map_err(|message| io::Error::new(io::ErrorKind::InvalidData, message))
+    }
+
     pub fn serialize_persistent_state(&self) -> String {
         let mut out = String::new();
         out.push_str("SNGA_RQF_RELATIONAL_FIELD_V1\n");
@@ -384,6 +390,61 @@ impl RelationalFieldSubstrate {
         }
         out.push_str("end\n");
         out
+    }
+
+    pub fn apply_persistent_state(&mut self, contents: &str) -> Result<(), String> {
+        let mut lines = contents.lines();
+        if lines.next() != Some("SNGA_RQF_RELATIONAL_FIELD_V1") {
+            return Err("version RQF invalida".to_string());
+        }
+        let tick_line = lines.next().ok_or("falta tick RQF")?;
+        let parts = tick_line.split_whitespace().collect::<Vec<_>>();
+        if parts.len() != 2 || parts[0] != "tick" {
+            return Err(format!("tick RQF invalido: {tick_line}"));
+        }
+        self.tick = parse_u64(parts[1], "tick")?;
+
+        let config_line = lines.next().ok_or("falta config RQF")?;
+        let parts = config_line.split_whitespace().collect::<Vec<_>>();
+        if parts.len() != 9 || parts[0] != "config" {
+            return Err(format!("config RQF invalida: {config_line}"));
+        }
+        self.config = RelationalFieldConfig {
+            amplitude_learning_rate: parse_f32(parts[1], "amplitude_lr")?,
+            phase_learning_rate: parse_f32(parts[2], "phase_lr")?,
+            coherence_learning_rate: parse_f32(parts[3], "coherence_lr")?,
+            uncertainty_learning_rate: parse_f32(parts[4], "uncertainty_lr")?,
+            amplitude_decay: parse_f32(parts[5], "amplitude_decay")?,
+            coherence_decay: parse_f32(parts[6], "coherence_decay")?,
+            uncertainty_recovery: parse_f32(parts[7], "uncertainty_recovery")?,
+            activation_threshold: parse_f32(parts[8], "activation_threshold")?,
+        };
+
+        let relations_header = lines.next().ok_or("faltan relaciones RQF")?;
+        let relation_count = parse_count_header(relations_header, "relations")?;
+        self.relations.clear();
+        for _ in 0..relation_count {
+            let line = lines.next().ok_or("faltan lineas RQF")?;
+            let parts = line.split_whitespace().collect::<Vec<_>>();
+            if parts.len() != 9 || parts[0] != "r" {
+                return Err(format!("relacion RQF invalida: {line}"));
+            }
+            self.relations.insert(
+                RelationKey {
+                    observer: ObserverId(parse_usize(parts[1], "observer")?),
+                    a: parse_usize(parts[2], "a")?,
+                    b: parse_usize(parts[3], "b")?,
+                },
+                RelationalState {
+                    amplitude: parse_f32(parts[4], "amplitude")?,
+                    phase: parse_f32(parts[5], "phase")?,
+                    coherence: parse_f32(parts[6], "coherence")?,
+                    uncertainty: parse_f32(parts[7], "uncertainty")?,
+                    last_observed_tick: parse_u64(parts[8], "last_tick")?,
+                },
+            );
+        }
+        Ok(())
     }
 
     fn oriented_phase(&self, observer: ObserverId, source: usize, target: usize) -> Option<f32> {
@@ -430,4 +491,30 @@ fn normalize_phase(phase: f32) -> f32 {
 
 fn phase_delta(from: f32, to: f32) -> f32 {
     normalize_phase(to - from)
+}
+
+fn parse_count_header(line: &str, label: &str) -> Result<usize, String> {
+    let parts = line.split_whitespace().collect::<Vec<_>>();
+    if parts.len() != 2 || parts[0] != label {
+        return Err(format!("cabecera {label} invalida: {line}"));
+    }
+    parse_usize(parts[1], label)
+}
+
+fn parse_usize(value: &str, label: &str) -> Result<usize, String> {
+    value
+        .parse::<usize>()
+        .map_err(|err| format!("{label} invalido: {err}"))
+}
+
+fn parse_u64(value: &str, label: &str) -> Result<u64, String> {
+    value
+        .parse::<u64>()
+        .map_err(|err| format!("{label} invalido: {err}"))
+}
+
+fn parse_f32(value: &str, label: &str) -> Result<f32, String> {
+    value
+        .parse::<f32>()
+        .map_err(|err| format!("{label} invalido: {err}"))
 }

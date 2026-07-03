@@ -1,4 +1,5 @@
 use crate::cdt_graphity::{CdtGraphityConfig, CdtGraphityStepReport, CdtGraphitySubstrate};
+use crate::entanglement::{EntanglementConfig, EntanglementField, EntanglementReport};
 use crate::relational_field::{
     CollapseReport, ObserverId, RelationalFieldConfig, RelationalFieldSubstrate,
 };
@@ -34,6 +35,7 @@ pub struct CdtRqmStepReport {
     pub expected_from_rqm: Vec<usize>,
     pub hardware_prediction_score: f32,
     pub software_candidates: usize,
+    pub entanglement: Option<EntanglementReport>,
 }
 
 #[derive(Clone, Debug)]
@@ -55,6 +57,7 @@ pub struct CdtRqmAnnealReport {
 pub struct CdtRqmUniverseSubstrate {
     pub hardware: CdtGraphitySubstrate,
     pub software: RelationalFieldSubstrate,
+    pub entanglement: Option<EntanglementField>,
     pub config: CdtRqmConfig,
 }
 
@@ -63,8 +66,34 @@ impl CdtRqmUniverseSubstrate {
         Self {
             hardware: CdtGraphitySubstrate::graphity_hot_start(config.cdt),
             software: RelationalFieldSubstrate::new(config.rqm),
+            entanglement: None,
             config,
         }
+    }
+
+    pub fn enable_entanglement(&mut self, config: EntanglementConfig) {
+        self.entanglement = Some(EntanglementField::new(config));
+    }
+
+    pub fn entanglement_summary(&self) -> Option<EntanglementReport> {
+        self.entanglement.as_ref().map(EntanglementField::summary)
+    }
+
+    pub fn observe_entanglement_correlation(&mut self, a: usize, b: usize, benefit: f32) -> bool {
+        self.entanglement
+            .as_mut()
+            .map(|field| field.observe_correlation(a, b, benefit))
+            .unwrap_or(false)
+    }
+
+    pub fn inject_entanglement_conflict(
+        &mut self,
+        a: usize,
+        b: usize,
+    ) -> Option<EntanglementReport> {
+        self.entanglement
+            .as_mut()
+            .map(|field| field.inject_conflict(a, b))
     }
 
     pub fn train_observed_transition(
@@ -252,12 +281,16 @@ impl CdtRqmUniverseSubstrate {
             observer_phase,
             self.config.max_quantum_candidates,
         );
-        let expected_from_rqm = collapse
+        let mut expected_from_rqm = collapse
             .candidates
             .iter()
             .map(|candidate| candidate.agent)
             .collect::<Vec<_>>();
         let software_candidates = collapse.candidates.len();
+        let entanglement = self
+            .entanglement
+            .as_mut()
+            .map(|field| field.synchronize_candidates(boundary, &mut expected_from_rqm));
         let cdt = self.hardware.step(&expected_from_rqm);
         let hardware_prediction_score = if expected_from_rqm.is_empty() {
             0.0
@@ -272,6 +305,7 @@ impl CdtRqmUniverseSubstrate {
             expected_from_rqm,
             hardware_prediction_score,
             software_candidates,
+            entanglement,
         }
     }
 
@@ -288,6 +322,12 @@ impl CdtRqmUniverseSubstrate {
             fs::create_dir_all(parent)?;
         }
         fs::write(path, self.serialize_consolidated_state())
+    }
+
+    pub fn load_consolidated_state<P: AsRef<Path>>(&mut self, path: P) -> io::Result<()> {
+        let contents = fs::read_to_string(path)?;
+        self.apply_consolidated_state(&contents)
+            .map_err(|message| io::Error::new(io::ErrorKind::InvalidData, message))
     }
 
     pub fn serialize_consolidated_state(&self) -> String {
@@ -307,14 +347,46 @@ impl CdtRqmUniverseSubstrate {
             self.hardware.temperature,
             self.hardware.causality_violations()
         ));
+        if let Some(report) = self.entanglement_summary() {
+            out.push_str(&format!(
+                "entanglement active_links={} mean_coherence={:.7} mean_entropy={:.7}\n",
+                report.active_links, report.mean_coherence, report.mean_entropy
+            ));
+        }
         out.push_str("hardware_begin\n");
         out.push_str(&self.hardware.serialize_persistent_state());
         out.push_str("hardware_end\n");
         out.push_str("software_begin\n");
         out.push_str(&self.software.serialize_persistent_state());
         out.push_str("software_end\n");
+        if let Some(entanglement) = &self.entanglement {
+            out.push_str("entanglement_begin\n");
+            out.push_str(&entanglement.serialize_persistent_state());
+            out.push_str("entanglement_end\n");
+        }
         out.push_str("end\n");
         out
+    }
+
+    pub fn apply_consolidated_state(&mut self, contents: &str) -> Result<(), String> {
+        let mut lines = contents.lines();
+        if lines.next() != Some("SNGA_CDT_RQM_CONSOLIDATED_STATE_V1") {
+            return Err("version consolidada CDT-RQM invalida".to_string());
+        }
+        let _summary = lines.next().ok_or("falta resumen consolidado")?;
+        let rest = lines.collect::<Vec<_>>().join("\n");
+        let hardware =
+            section(&rest, "hardware_begin", "hardware_end").ok_or("falta seccion hardware")?;
+        let software =
+            section(&rest, "software_begin", "software_end").ok_or("falta seccion software")?;
+        self.hardware.apply_persistent_state(&hardware)?;
+        self.software.apply_persistent_state(&software)?;
+        if let Some(entanglement) = section(&rest, "entanglement_begin", "entanglement_end") {
+            let mut field = EntanglementField::new(EntanglementConfig::default());
+            field.apply_persistent_state(&entanglement)?;
+            self.entanglement = Some(field);
+        }
+        Ok(())
     }
 
     fn validation_scores(
@@ -355,4 +427,11 @@ impl CdtRqmUniverseSubstrate {
             leakage_sum / validation.len().max(1) as f32,
         )
     }
+}
+
+fn section(contents: &str, begin: &str, end: &str) -> Option<String> {
+    let start = contents.find(begin)? + begin.len();
+    let tail = &contents[start..];
+    let stop = tail.find(end)?;
+    Some(tail[..stop].trim_matches('\n').to_string())
 }

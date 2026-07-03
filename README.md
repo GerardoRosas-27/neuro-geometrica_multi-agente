@@ -73,6 +73,12 @@ data/cdt_rqm_infinite_concepts.cdt_rqm
 data/cdt_rqm_infinite_concepts.progress
 ```
 
+Benchmark de arquitectura completa: CDT-RQM+EPR con LLM como periférico de entrada/salida:
+
+```powershell
+cargo run --bin cdt_rqm_epr_llm_peripheral_benchmark -- --offline-fallback
+```
+
 ## Resultados Consolidados
 
 ```text

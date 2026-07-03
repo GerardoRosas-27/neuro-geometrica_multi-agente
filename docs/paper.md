@@ -1372,6 +1372,151 @@ efficiency:
 
 La lectura de perfil es más fuerte que una comparación de accuracy. Ambos sustratos alcanzan 100%, pero CDT-RQM lo hace con menos nodos totales, menos nodos activos promedio, mucha menos geometría activa y menor fuga. La eficiencia por arista activa aumenta aproximadamente un orden de magnitud. Esta métrica sugiere que la ventaja principal de CDT-RQM no es “saber más” que SNGA, sino **consolidar el mismo conocimiento en un hardware causal mucho más compacto y menos contaminado**.
 
+### EPR Temporal: Enlaces Lógicos No Métricos
+
+Se añadió una capa opcional de entrelazamiento temporal EPR que no modifica la geometría CDT. Los enlaces EPR son punteros lógicos no métricos: sincronizan candidatos RQM entre atractores distantes, pero no crean aristas espaciales ni temporales en el hardware causal.
+
+El benchmark:
+
+```text
+cargo run --bin cdt_rqm_epr_profile
+```
+
+compara CDT-RQM sin EPR contra CDT-RQM+EPR en pares de atractores distantes:
+
+```text
+baseline_cdt_rqm:
+  latency_avg          = 5.00
+  leakage_avg          = 2.9%
+  active_edges         = 506
+  regge                = 3153.750
+  relations            = 574
+  epr_links            = 0
+  causality_violations = 0
+
+epr_cdt_rqm:
+  latency_avg          = 1.00
+  leakage_avg          = 0.0%
+  active_edges         = 155
+  regge                = 966.250
+  relations            = 0
+  epr_links            = 95
+  epr_coherence        = 0.710
+  epr_entropy          = 0.000
+  causality_violations = 0
+
+latency_gain_avg = 4.00
+
+epr_fuse:
+  before_links = 95
+  after_links  = 91
+  pruned       = 4
+```
+
+El resultado muestra que EPR temporal puede actuar como autopista lógica: reduce la latencia promedio de sincronización de `5` pasos a `1` paso, sin aumentar fuga y sin violar la foliación CDT. El fusible entrópico también funciona: al inyectar conflictos, poda enlaces no locales sin afectar la geometría causal. La conclusión práctica es que EPR debe permanecer como cuarta capa separada:
+
+```text
+CDT = hardware causal
+RQM = software relacional
+EPR = sincronización lógica no métrica
+Graphity = poda/enfriamiento
+```
+
+La arquitectura completa con periférico lingüístico se evaluó con:
+
+```text
+cargo run --bin cdt_rqm_epr_llm_peripheral_benchmark -- --offline-fallback
+```
+
+En esta prueba, el LLM/periférico solo normaliza la entrada y verbaliza la salida. El conocimiento se entrena y recupera desde CDT-RQM+EPR:
+
+```text
+CDT-RQM+EPR with LLM peripheral benchmark
+offline=true
+lessons=4
+epochs=12
+concept_accuracy  = 100.0%
+response_accuracy = 100.0%
+lexical_score     = 100.0%
+latency_avg       = 1.00
+
+substrate:
+  active_edges          = 829
+  regge                 = 5153.250
+  rqm_relations         = 5177
+  epr_links             = 128
+  epr_coherence         = 1.000
+  epr_entropy           = 0.000
+  causality_violations  = 0
+```
+
+Este resultado valida la separación buscada: el LLM actúa como interfaz lingüística de frontera, mientras que el concepto y la respuesta viven en el sustrato CDT-RQM+EPR. La latencia promedio queda en un paso y la causalidad CDT no se viola.
+
+### Entrenamiento Continuo CDT-RQM+EPR y Sueño Graphity
+
+Para pasar de benchmarks puntuales a entrenamiento continuo, se añadió:
+
+```text
+cargo run --bin cdt_rqm_epr_small_sleep_trainer
+```
+
+El currículo alterna conceptos, causalidad, habilidades, episodios y correlaciones. Cada cierto número de lotes ejecuta una fase de sueño Graphity: intenta podar/enfriar el hardware CDT y solo guarda si la memoria RQM validada no se degrada.
+
+Tras detener una corrida de entrenamiento, el estado guardado fue:
+
+```text
+batch = 110
+samples = 880
+
+conceptos     = 160
+causalidad    = 240
+habilidades   = 160
+episodios     = 160
+correlaciones = 160
+
+substrate:
+  nodes                = 8192
+  slices               = 4
+  relations            = 3312
+  active_edges         = 3445
+  regge                = 21315.250
+  temperature          = 1.500
+  causality_violations = 0
+
+EPR:
+  active_links    = 175
+  mean_coherence  = 1.000
+  mean_entropy    = 0.000
+```
+
+La lectura es que el sustrato ya acumula conocimiento distribuido y mantiene enlaces EPR coherentes sin contradicción. La temperatura alta indica fase plástica: el sustrato sigue aprendiendo y todavía no necesitó crecer. Antes de continuar el entrenamiento se ejecutó una fase de sueño independiente:
+
+```text
+cargo run --bin cdt_rqm_epr_sleep_consolidate
+```
+
+Resultado:
+
+```text
+memory:
+  accuracy = 100.0% -> 100.0%
+  leakage  = 0.7%   -> 0.7%
+
+Graphity:
+  attempts = 4
+  accepted = 1
+  regge    = 21315.2 -> 20887.5
+  edges    = 3445 -> 3342
+  causality_violations = 0
+
+EPR:
+  links     = 175 -> 175
+  coherence = 1.000 -> 1.000
+  entropy   = 0.000 -> 0.000
+```
+
+Esto confirma que el sueño Graphity puede consolidar parcialmente el hardware sin perder conocimiento ni romper EPR. La poda fue moderada: eliminó 103 aristas activas y redujo Regge, manteniendo intacta la memoria validada.
+
 La separación entre motor matemático y capa neuronal se validó con `mesh_engine_validation`:
 
 ```text

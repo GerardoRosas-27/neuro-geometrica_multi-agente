@@ -529,6 +529,12 @@ impl CdtGraphitySubstrate {
         fs::write(path, self.serialize_persistent_state())
     }
 
+    pub fn load_persistent_state<P: AsRef<Path>>(&mut self, path: P) -> io::Result<()> {
+        let contents = fs::read_to_string(path)?;
+        self.apply_persistent_state(&contents)
+            .map_err(|message| io::Error::new(io::ErrorKind::InvalidData, message))
+    }
+
     pub fn serialize_persistent_state(&self) -> String {
         let mut out = String::new();
         out.push_str("SNGA_CDT_GRAPHITY_STATE_V1\n");
@@ -595,6 +601,135 @@ impl CdtGraphitySubstrate {
         }
         out.push_str("end\n");
         out
+    }
+
+    pub fn apply_persistent_state(&mut self, contents: &str) -> Result<(), String> {
+        let mut lines = contents.lines();
+        if lines.next() != Some("SNGA_CDT_GRAPHITY_STATE_V1") {
+            return Err("version CDT Graphity invalida".to_string());
+        }
+
+        let config_line = lines.next().ok_or("falta config CDT")?;
+        let parts = config_line.split_whitespace().collect::<Vec<_>>();
+        if parts.len() != 14 || parts[0] != "config" {
+            return Err(format!("config CDT invalida: {config_line}"));
+        }
+        self.config = CdtGraphityConfig {
+            slices: parse_usize(parts[1], "slices")?,
+            nodes_per_slice: parse_usize(parts[2], "nodes_per_slice")?,
+            initial_spatial_connectivity: parse_f32(parts[3], "initial_spatial")?,
+            initial_temporal_connectivity: parse_f32(parts[4], "initial_temporal")?,
+            target_spatial_degree: parse_usize(parts[5], "target_spatial_degree")?,
+            target_temporal_degree: parse_usize(parts[6], "target_temporal_degree")?,
+            target_tetrahedra_per_edge: parse_usize(parts[7], "target_tetrahedra_per_edge")?,
+            cooling_rate: parse_f32(parts[8], "cooling_rate")?,
+            heating_rate: parse_f32(parts[9], "heating_rate")?,
+            reinforcement_rate: parse_f32(parts[10], "reinforcement_rate")?,
+            prune_threshold: parse_f32(parts[11], "prune_threshold")?,
+            max_new_edges_per_step: parse_usize(parts[12], "max_new_edges")?,
+            seed: parse_u64(parts[13], "seed")?,
+        };
+        self.rng = StdRng::seed_from_u64(self.config.seed ^ 0xA53A_9EED);
+
+        let tick_line = lines.next().ok_or("falta tick CDT")?;
+        let parts = tick_line.split_whitespace().collect::<Vec<_>>();
+        if parts.len() != 2 || parts[0] != "tick" {
+            return Err(format!("tick CDT invalido: {tick_line}"));
+        }
+        self.tick = parse_u64(parts[1], "tick")?;
+
+        let temp_line = lines.next().ok_or("falta temperatura CDT")?;
+        let parts = temp_line.split_whitespace().collect::<Vec<_>>();
+        if parts.len() != 2 || parts[0] != "temperature" {
+            return Err(format!("temperatura CDT invalida: {temp_line}"));
+        }
+        self.temperature = parse_f32(parts[1], "temperature")?;
+
+        let nodes_header = lines.next().ok_or("faltan nodos CDT")?;
+        let node_count = parse_count_header(nodes_header, "nodes")?;
+        self.nodes.clear();
+        self.nodes.reserve(node_count);
+        for _ in 0..node_count {
+            let line = lines.next().ok_or("faltan lineas de nodos CDT")?;
+            let parts = line.split_whitespace().collect::<Vec<_>>();
+            if parts.len() != 5 || parts[0] != "n" {
+                return Err(format!("nodo CDT invalido: {line}"));
+            }
+            self.nodes.push(CdtGraphityNode {
+                id: parse_usize(parts[1], "node id")?,
+                slice: parse_usize(parts[2], "node slice")?,
+                activation: parse_flag(parts[3], "node active")?,
+                surprise: parse_f32(parts[4], "node surprise")?,
+            });
+        }
+
+        let edges_header = lines.next().ok_or("faltan aristas CDT")?;
+        let edge_count = parse_count_header(edges_header, "edges")?;
+        self.edges.clear();
+        self.edges.reserve(edge_count);
+        for _ in 0..edge_count {
+            let line = lines.next().ok_or("faltan lineas de aristas CDT")?;
+            let parts = line.split_whitespace().collect::<Vec<_>>();
+            if parts.len() != 8 || parts[0] != "e" {
+                return Err(format!("arista CDT invalida: {line}"));
+            }
+            let kind = match parts[4] {
+                "spatial" => CdtGraphityEdgeKind::Spatial,
+                "temporal" => CdtGraphityEdgeKind::Temporal,
+                other => return Err(format!("tipo de arista CDT invalido: {other}")),
+            };
+            self.edges.push(CdtGraphityEdge {
+                a: parse_usize(parts[2], "edge a")?,
+                b: parse_usize(parts[3], "edge b")?,
+                kind,
+                stability: parse_f32(parts[5], "edge stability")?,
+                prediction_error: parse_f32(parts[6], "edge error")?,
+                active: parse_flag(parts[7], "edge active")?,
+            });
+        }
+
+        let tetra_header = lines.next().ok_or("faltan tetraedros CDT")?;
+        let tetra_count = parse_count_header(tetra_header, "tetrahedra")?;
+        self.tetrahedra.clear();
+        self.tetrahedra.reserve(tetra_count);
+        for _ in 0..tetra_count {
+            let line = lines.next().ok_or("faltan lineas de tetraedros CDT")?;
+            let parts = line.split_whitespace().collect::<Vec<_>>();
+            if parts.len() != 7 || parts[0] != "t" {
+                return Err(format!("tetraedro CDT invalido: {line}"));
+            }
+            let kind = match parts[6] {
+                "t31" => CdtSimplexKind::T31,
+                "t22" => CdtSimplexKind::T22,
+                other => return Err(format!("tipo de tetraedro invalido: {other}")),
+            };
+            self.tetrahedra.push(CdtGraphitySimplex3 {
+                vertices: [
+                    parse_usize(parts[2], "tetra a")?,
+                    parse_usize(parts[3], "tetra b")?,
+                    parse_usize(parts[4], "tetra c")?,
+                    parse_usize(parts[5], "tetra d")?,
+                ],
+                kind,
+            });
+        }
+
+        self.rebuild_indices();
+        Ok(())
+    }
+
+    fn rebuild_indices(&mut self) {
+        self.edge_lookup.clear();
+        self.adjacency = vec![Vec::new(); self.nodes.len()];
+        for (idx, edge) in self.edges.iter().enumerate() {
+            self.edge_lookup.insert(edge_key(edge.a, edge.b), idx);
+            if edge.a < self.adjacency.len() {
+                self.adjacency[edge.a].push(idx);
+            }
+            if edge.b < self.adjacency.len() {
+                self.adjacency[edge.b].push(idx);
+            }
+        }
     }
 
     fn add_edge(&mut self, a: usize, b: usize, kind: CdtGraphityEdgeKind, stability: f32) -> bool {
@@ -907,5 +1042,39 @@ fn edge_key(a: usize, b: usize) -> (usize, usize) {
         (a, b)
     } else {
         (b, a)
+    }
+}
+
+fn parse_count_header(line: &str, label: &str) -> Result<usize, String> {
+    let parts = line.split_whitespace().collect::<Vec<_>>();
+    if parts.len() != 2 || parts[0] != label {
+        return Err(format!("cabecera {label} invalida: {line}"));
+    }
+    parse_usize(parts[1], label)
+}
+
+fn parse_usize(value: &str, label: &str) -> Result<usize, String> {
+    value
+        .parse::<usize>()
+        .map_err(|err| format!("{label} invalido: {err}"))
+}
+
+fn parse_u64(value: &str, label: &str) -> Result<u64, String> {
+    value
+        .parse::<u64>()
+        .map_err(|err| format!("{label} invalido: {err}"))
+}
+
+fn parse_f32(value: &str, label: &str) -> Result<f32, String> {
+    value
+        .parse::<f32>()
+        .map_err(|err| format!("{label} invalido: {err}"))
+}
+
+fn parse_flag(value: &str, label: &str) -> Result<bool, String> {
+    match value {
+        "0" => Ok(false),
+        "1" => Ok(true),
+        _ => Err(format!("{label} invalido: {value}")),
     }
 }
