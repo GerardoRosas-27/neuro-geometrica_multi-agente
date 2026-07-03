@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Clone, Copy, Debug)]
 pub struct EntanglementConfig {
@@ -128,15 +128,19 @@ impl EntanglementField {
         let mut report = EntanglementReport::default();
         let mut budget = self.config.max_syncs_per_step;
         let existing = candidates.clone();
+        // O(1) membership lookups instead of repeated linear scans over the
+        // candidate/seed lists inside the sync loop.
+        let seed_set = seeds.iter().copied().collect::<HashSet<usize>>();
+        let mut present = candidates.iter().copied().collect::<HashSet<usize>>();
 
         for &seed in seeds.iter().chain(existing.iter()) {
             if budget == 0 {
                 break;
             }
-            let Some(link_indices) = self.adjacency.get(&seed).cloned() else {
+            let Some(link_indices) = self.adjacency.get(&seed) else {
                 continue;
             };
-            for idx in link_indices {
+            for &idx in link_indices {
                 if budget == 0 {
                     break;
                 }
@@ -145,9 +149,9 @@ impl EntanglementField {
                     continue;
                 }
                 let remote = if link.a == seed { link.b } else { link.a };
-                let compatible = candidates.contains(&seed) || seeds.contains(&seed);
+                let compatible = present.contains(&seed) || seed_set.contains(&seed);
                 if compatible {
-                    if !candidates.contains(&remote) {
+                    if present.insert(remote) {
                         candidates.push(remote);
                     }
                     link.coherence = (link.coherence + self.config.coherence_gain).min(1.0);

@@ -98,6 +98,10 @@ pub struct RelationalFieldSubstrate {
     pub config: RelationalFieldConfig,
     pub tick: u64,
     relations: HashMap<RelationKey, RelationalState>,
+    // Adjacency index: (observer, node) -> neighbor nodes. Lets `observe_pattern`
+    // visit only the relations incident to each seed instead of scanning the
+    // whole relation map (O(seeds * degree) instead of O(seeds * relations)).
+    neighbor_index: HashMap<(usize, usize), Vec<usize>>,
 }
 
 impl RelationalFieldSubstrate {
@@ -106,6 +110,7 @@ impl RelationalFieldSubstrate {
             config,
             tick: 0,
             relations: HashMap::new(),
+            neighbor_index: HashMap::new(),
         }
     }
 
@@ -177,6 +182,16 @@ impl RelationalFieldSubstrate {
             a: left,
             b: right,
         };
+        if !self.relations.contains_key(&key) {
+            self.neighbor_index
+                .entry((observer.0, left))
+                .or_default()
+                .push(right);
+            self.neighbor_index
+                .entry((observer.0, right))
+                .or_default()
+                .push(left);
+        }
         let state = self.relations.entry(key).or_default();
         let success = prediction_success.clamp(0.0, 1.0);
         let failure = 1.0 - success;
@@ -218,6 +233,7 @@ impl RelationalFieldSubstrate {
         limit: usize,
     ) -> CollapseReport {
         self.tick = self.tick.wrapping_add(1);
+        let tick = self.tick;
         let observer_phase = normalize_phase(observer_phase);
         let seeds = compact_pattern(seeds);
         let seed_set = seeds.iter().copied().collect::<HashSet<_>>();
@@ -228,17 +244,25 @@ impl RelationalFieldSubstrate {
         let mut observations = 0_usize;
 
         for seed in &seeds {
-            for (key, state) in self.relations.iter_mut() {
-                if key.observer != observer || (key.a != *seed && key.b != *seed) {
-                    continue;
-                }
-                let target = if key.a == *seed { key.b } else { key.a };
+            let Some(neighbors) = self.neighbor_index.get(&(observer.0, *seed)) else {
+                continue;
+            };
+            for &target in neighbors {
                 if seed_set.contains(&target) {
                     continue;
                 }
+                let (ka, kb) = ordered_pair(*seed, target);
+                let key = RelationKey {
+                    observer,
+                    a: ka,
+                    b: kb,
+                };
+                let Some(state) = self.relations.get_mut(&key) else {
+                    continue;
+                };
 
-                state.last_observed_tick = self.tick;
-                let oriented_phase = if key.a == *seed {
+                state.last_observed_tick = tick;
+                let oriented_phase = if ka == *seed {
                     state.phase
                 } else {
                     -state.phase
@@ -423,6 +447,7 @@ impl RelationalFieldSubstrate {
         let relations_header = lines.next().ok_or("faltan relaciones RQF")?;
         let relation_count = parse_count_header(relations_header, "relations")?;
         self.relations.clear();
+        self.neighbor_index.clear();
         for _ in 0..relation_count {
             let line = lines.next().ok_or("faltan lineas RQF")?;
             let parts = line.split_whitespace().collect::<Vec<_>>();
@@ -444,7 +469,22 @@ impl RelationalFieldSubstrate {
                 },
             );
         }
+        self.rebuild_neighbor_index();
         Ok(())
+    }
+
+    fn rebuild_neighbor_index(&mut self) {
+        self.neighbor_index.clear();
+        for key in self.relations.keys() {
+            self.neighbor_index
+                .entry((key.observer.0, key.a))
+                .or_default()
+                .push(key.b);
+            self.neighbor_index
+                .entry((key.observer.0, key.b))
+                .or_default()
+                .push(key.a);
+        }
     }
 
     fn oriented_phase(&self, observer: ObserverId, source: usize, target: usize) -> Option<f32> {

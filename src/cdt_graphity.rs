@@ -104,6 +104,10 @@ pub struct CdtGraphitySubstrate {
     tick: u64,
     edge_lookup: HashMap<(usize, usize), usize>,
     adjacency: Vec<Vec<usize>>,
+    // Cached per-slice node membership (ascending node id). Avoids scanning every
+    // node on each `slice_nodes` call, which is invoked repeatedly per step by
+    // `rebuild_cdt_tetrahedra`. Only rebuilt when nodes/slices change.
+    slice_members: Vec<Vec<usize>>,
     rng: StdRng,
 }
 
@@ -130,8 +134,10 @@ impl CdtGraphitySubstrate {
             tick: 0,
             edge_lookup: HashMap::new(),
             adjacency: vec![Vec::new(); node_count],
+            slice_members: Vec::new(),
             rng: StdRng::seed_from_u64(config.seed ^ 0xA53A_9EED),
         };
+        substrate.rebuild_slice_members();
 
         let dense_limit = 2_000_000_usize;
         for slice in 0..substrate.config.slices {
@@ -227,6 +233,7 @@ impl CdtGraphitySubstrate {
             self.adjacency.push(Vec::new());
         }
         self.config.slices += block_slices;
+        self.rebuild_slice_members();
 
         // Bridge the old frontier into the new block without changing old IDs.
         if start_slice > 0 {
@@ -719,6 +726,7 @@ impl CdtGraphitySubstrate {
     }
 
     fn rebuild_indices(&mut self) {
+        self.rebuild_slice_members();
         self.edge_lookup.clear();
         self.adjacency = vec![Vec::new(); self.nodes.len()];
         for (idx, edge) in self.edges.iter().enumerate() {
@@ -772,11 +780,25 @@ impl CdtGraphitySubstrate {
     }
 
     fn slice_nodes(&self, slice: usize) -> Vec<usize> {
-        self.nodes
+        self.slice_members
+            .get(slice)
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    fn rebuild_slice_members(&mut self) {
+        let slice_count = self
+            .nodes
             .iter()
-            .filter(|node| node.slice == slice)
-            .map(|node| node.id)
-            .collect()
+            .map(|node| node.slice + 1)
+            .max()
+            .unwrap_or(0)
+            .max(self.config.slices);
+        let mut members = vec![Vec::new(); slice_count];
+        for node in &self.nodes {
+            members[node.slice].push(node.id);
+        }
+        self.slice_members = members;
     }
 
     fn temporal_target_from(&self, edge: &CdtGraphityEdge, source: usize) -> Option<usize> {
@@ -916,35 +938,101 @@ impl CdtGraphitySubstrate {
         for slice in 0..self.config.slices.saturating_sub(1) {
             let current = self.slice_nodes(slice);
             let next = self.slice_nodes(slice + 1);
+            if current.len() < 2 || next.is_empty() {
+                continue;
+            }
+
+            // Forward active-edge adjacency from `current` (slice) to `next`
+            // (slice + 1). Edges crossing to the next slice are temporal by
+            // construction, so this reproduces `has_active_edge(source, candidate)`
+            // for these node pairs while touching only the sparse set of active
+            // incident edges instead of scanning every (triple x next) pair.
+            let next_slice = slice + 1;
+            let mut next_index = HashMap::with_capacity(next.len());
+            for (position, &node) in next.iter().enumerate() {
+                next_index.insert(node, position);
+            }
+            let mut fwd: HashMap<usize, HashSet<usize>> = HashMap::new();
+            for &c in &current {
+                for &edge_idx in &self.adjacency[c] {
+                    let edge = &self.edges[edge_idx];
+                    if !edge.active {
+                        continue;
+                    }
+                    let other = if edge.a == c { edge.b } else { edge.a };
+                    if other < self.nodes.len() && self.nodes[other].slice == next_slice {
+                        fwd.entry(c).or_default().insert(other);
+                    }
+                }
+            }
+
             for triple in current.windows(3) {
                 if self.tetrahedra.len() >= tetra_limit {
                     return;
                 }
-                if let Some(&future) = next.iter().find(|&&candidate| {
-                    triple
-                        .iter()
-                        .all(|&source| self.has_active_edge(source, candidate))
-                }) {
+                let (Some(s0), Some(s1), Some(s2)) = (
+                    fwd.get(&triple[0]),
+                    fwd.get(&triple[1]),
+                    fwd.get(&triple[2]),
+                ) else {
+                    continue;
+                };
+                // The original picked the first common future in `next` order,
+                // i.e. the intersection element with the smallest position.
+                let mut smallest = s0;
+                if s1.len() < smallest.len() {
+                    smallest = s1;
+                }
+                if s2.len() < smallest.len() {
+                    smallest = s2;
+                }
+                let mut future: Option<usize> = None;
+                let mut future_pos = usize::MAX;
+                for &candidate in smallest {
+                    if s0.contains(&candidate)
+                        && s1.contains(&candidate)
+                        && s2.contains(&candidate)
+                    {
+                        let pos = next_index[&candidate];
+                        if pos < future_pos {
+                            future_pos = pos;
+                            future = Some(candidate);
+                        }
+                    }
+                }
+                if let Some(future) = future {
                     self.tetrahedra.push(CdtGraphitySimplex3 {
                         vertices: [triple[0], triple[1], triple[2], future],
                         kind: CdtSimplexKind::T31,
                     });
                 }
             }
+
             for pair_current in current.windows(2) {
-                for pair_next in next.windows(2) {
-                    if self.tetrahedra.len() >= tetra_limit {
-                        return;
-                    }
-                    if self.has_active_edge(pair_current[0], pair_next[0])
-                        && self.has_active_edge(pair_current[1], pair_next[1])
-                    {
+                if self.tetrahedra.len() >= tetra_limit {
+                    return;
+                }
+                let (Some(f0), Some(f1)) =
+                    (fwd.get(&pair_current[0]), fwd.get(&pair_current[1]))
+                else {
+                    continue;
+                };
+                // Earliest consecutive pair (next[pos], next[pos + 1]) such that
+                // c0 -> next[pos] and c1 -> next[pos + 1] are both active edges.
+                let mut positions = f0
+                    .iter()
+                    .filter_map(|node| next_index.get(node).copied())
+                    .filter(|&pos| pos + 1 < next.len())
+                    .collect::<Vec<_>>();
+                positions.sort_unstable();
+                for pos in positions {
+                    if f1.contains(&next[pos + 1]) {
                         self.tetrahedra.push(CdtGraphitySimplex3 {
                             vertices: [
                                 pair_current[0],
                                 pair_current[1],
-                                pair_next[0],
-                                pair_next[1],
+                                next[pos],
+                                next[pos + 1],
                             ],
                             kind: CdtSimplexKind::T22,
                         });
@@ -953,13 +1041,6 @@ impl CdtGraphitySubstrate {
                 }
             }
         }
-    }
-
-    fn has_active_edge(&self, a: usize, b: usize) -> bool {
-        self.edge_lookup
-            .get(&edge_key(a, b))
-            .map(|&idx| self.edges[idx].active)
-            .unwrap_or(false)
     }
 
     fn propagate_activation(&mut self) {
