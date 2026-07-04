@@ -1,4 +1,4 @@
-use snga::relational_field::{
+use cdt_rqm_epr::relational_field::{
     CollapseReport, ObserverId, RelationalFieldConfig, RelationalFieldSubstrate,
 };
 use std::f32::consts::{FRAC_PI_2, PI};
@@ -28,7 +28,7 @@ fn main() {
     let park = substrate.observe_pattern(PARK_OBSERVER, &[BANCO], FRAC_PI_2, 5);
     let neutral = substrate.observe_pattern(NEUTRAL_OBSERVER, &[BANCO], 0.0, 5);
 
-    println!("RQF-SNGA relational field substrate experiment");
+    println!("CDT-RQM-EPR relational field substrate experiment");
     println!("relations={}", substrate.relation_count());
     print_report("observador_financiero", &financial);
     print_report("observador_parque", &park);

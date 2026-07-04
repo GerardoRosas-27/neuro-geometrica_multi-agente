@@ -1,8 +1,8 @@
 [package]
-name = "snga"
+name = "cdt_rqm_epr"
 version = "0.1.0"
 edition = "2021"
-description = "Sistema Neuro-Geometrico de Agentes: red binaria simplicial con minimizacion local de energia libre"
+description = "Sustrato CDT-RQM-EPR: hardware causal, software relacional, EPR computacional y seleccion energetica"
 license = "MIT"
 
 [dependencies]

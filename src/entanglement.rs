@@ -237,7 +237,7 @@ impl EntanglementField {
 
     pub fn serialize_persistent_state(&self) -> String {
         let mut out = String::new();
-        out.push_str("SNGA_EPR_ENTANGLEMENT_STATE_V1\n");
+        out.push_str("CDT_RQM_EPR_ENTANGLEMENT_STATE_V1\n");
         out.push_str(&format!("tick {}\n", self.tick));
         out.push_str(&format!(
             "config {} {} {:.7} {:.7} {:.7} {:.7} {:.7} {:.7}\n",
@@ -270,7 +270,8 @@ impl EntanglementField {
 
     pub fn apply_persistent_state(&mut self, contents: &str) -> Result<(), String> {
         let mut lines = contents.lines();
-        if lines.next() != Some("SNGA_EPR_ENTANGLEMENT_STATE_V1") {
+        let version = lines.next();
+        if version != Some("CDT_RQM_EPR_ENTANGLEMENT_STATE_V1") {
             return Err("version EPR invalida".to_string());
         }
         let tick_line = lines.next().ok_or("falta tick EPR")?;

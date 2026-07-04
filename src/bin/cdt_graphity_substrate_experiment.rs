@@ -1,4 +1,4 @@
-use snga::cdt_graphity::{CdtGraphityConfig, CdtGraphitySubstrate};
+use cdt_rqm_epr::cdt_graphity::{CdtGraphityConfig, CdtGraphitySubstrate};
 
 #[derive(Clone)]
 struct CausalLesson {
@@ -105,8 +105,8 @@ fn evaluate_predictions(substrate: &CdtGraphitySubstrate, lessons: &[CausalLesso
 }
 
 fn edge_reduction(
-    initial: &snga::cdt_graphity::CdtGraphityStepReport,
-    final_report: &snga::cdt_graphity::CdtGraphityStepReport,
+    initial: &cdt_rqm_epr::cdt_graphity::CdtGraphityStepReport,
+    final_report: &cdt_rqm_epr::cdt_graphity::CdtGraphityStepReport,
 ) -> f32 {
     1.0 - final_report.active_edges as f32 / initial.active_edges.max(1) as f32
 }

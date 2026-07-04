@@ -873,7 +873,7 @@ impl CdtGraphitySubstrate {
 
     pub fn serialize_persistent_state(&self) -> String {
         let mut out = String::new();
-        out.push_str("SNGA_CDT_GRAPHITY_STATE_V1\n");
+        out.push_str("CDT_RQM_EPR_GRAPHITY_STATE_V1\n");
         out.push_str(&format!(
             "config {} {} {:.7} {:.7} {} {} {} {:.7} {:.7} {:.7} {:.7} {} {}\n",
             self.config.slices,
@@ -941,7 +941,8 @@ impl CdtGraphitySubstrate {
 
     pub fn apply_persistent_state(&mut self, contents: &str) -> Result<(), String> {
         let mut lines = contents.lines();
-        if lines.next() != Some("SNGA_CDT_GRAPHITY_STATE_V1") {
+        let version = lines.next();
+        if version != Some("CDT_RQM_EPR_GRAPHITY_STATE_V1") {
             return Err("version CDT Graphity invalida".to_string());
         }
 

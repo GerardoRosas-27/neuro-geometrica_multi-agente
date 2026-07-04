@@ -1,6 +1,6 @@
-use snga::cdt_graphity::{CdtGraphityConfig, CdtGraphitySubstrate};
-use snga::cdt_rqm::{CdtRqmConfig, CdtRqmUniverseSubstrate};
-use snga::relational_field::{ObserverId, RelationalFieldConfig};
+use cdt_rqm_epr::cdt_graphity::{CdtGraphityConfig, CdtGraphitySubstrate};
+use cdt_rqm_epr::cdt_rqm::{CdtRqmConfig, CdtRqmUniverseSubstrate};
+use cdt_rqm_epr::relational_field::{ObserverId, RelationalFieldConfig};
 
 #[derive(Clone)]
 struct Lesson {

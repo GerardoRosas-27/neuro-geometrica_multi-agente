@@ -1,7 +1,7 @@
-use snga::cdt_graphity::CdtGraphityConfig;
-use snga::cdt_rqm::{CdtRqmConfig, CdtRqmUniverseSubstrate};
-use snga::entanglement::EntanglementConfig;
-use snga::relational_field::{ObserverId, RelationalFieldConfig};
+use cdt_rqm_epr::cdt_graphity::CdtGraphityConfig;
+use cdt_rqm_epr::cdt_rqm::{CdtRqmConfig, CdtRqmUniverseSubstrate};
+use cdt_rqm_epr::entanglement::EntanglementConfig;
+use cdt_rqm_epr::relational_field::{ObserverId, RelationalFieldConfig};
 
 const NODES_PER_SLICE: usize = 128;
 const ATTEMPTS: usize = 48;
@@ -202,7 +202,7 @@ fn evaluate(substrate: &CdtRqmUniverseSubstrate, lessons: &[Lesson]) -> Metrics 
     metrics
 }
 
-fn score(report: &snga::relational_field::CollapseReport, targets: &[usize]) -> f32 {
+fn score(report: &cdt_rqm_epr::relational_field::CollapseReport, targets: &[usize]) -> f32 {
     report
         .candidates
         .iter()

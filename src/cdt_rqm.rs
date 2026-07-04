@@ -143,7 +143,7 @@ impl CdtRqmUniverseSubstrate {
         report
     }
 
-    pub fn migrate_snga_causal_edges<I>(
+    pub fn migrate_causal_edges<I>(
         &mut self,
         observer: ObserverId,
         observer_phase: f32,
@@ -425,7 +425,7 @@ impl CdtRqmUniverseSubstrate {
             .filter(|edge| edge.active)
             .count();
         let mut out = String::new();
-        out.push_str("SNGA_CDT_RQM_CONSOLIDATED_STATE_V1\n");
+        out.push_str("CDT_RQM_EPR_CONSOLIDATED_STATE_V1\n");
         out.push_str(&format!(
             "summary relations={} active_edges={} regge={:.7} temperature={:.7} causality_violations={}\n",
             self.relation_count(),
@@ -471,7 +471,8 @@ impl CdtRqmUniverseSubstrate {
 
     pub fn apply_consolidated_state(&mut self, contents: &str) -> Result<(), String> {
         let mut lines = contents.lines();
-        if lines.next() != Some("SNGA_CDT_RQM_CONSOLIDATED_STATE_V1") {
+        let version = lines.next();
+        if version != Some("CDT_RQM_EPR_CONSOLIDATED_STATE_V1") {
             return Err("version consolidada CDT-RQM invalida".to_string());
         }
         let _summary = lines.next().ok_or("falta resumen consolidado")?;
