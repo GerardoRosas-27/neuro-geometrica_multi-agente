@@ -225,8 +225,82 @@ impl CdtRqmUniverseSubstrate {
         let mut best_edges = initial_edges;
 
         for _ in 0..attempts {
+            for use_hawking_radiation in [false, true] {
+                let mut candidate = best.clone();
+                if use_hawking_radiation {
+                    candidate.hardware.hawking_radiation_step(&protected_edges);
+                } else {
+                    candidate.hardware.anneal_geometry_step(&protected_edges);
+                }
+                let (accuracy, leakage) = candidate.validation_scores(validation);
+                let regge = candidate.hardware.regge_action();
+                let edges = candidate
+                    .hardware
+                    .edges
+                    .iter()
+                    .filter(|edge| edge.active)
+                    .count();
+                let preserves_memory =
+                    accuracy + 0.0001 >= best_accuracy && leakage <= best_leakage + 0.0001;
+                let improves_geometry = regge < best_regge || edges < best_edges;
+                if preserves_memory && improves_geometry {
+                    best = candidate;
+                    best_accuracy = accuracy;
+                    best_leakage = leakage;
+                    best_regge = regge;
+                    best_edges = edges;
+                    accepted += 1;
+                }
+            }
+        }
+
+        *self = best;
+        CdtRqmAnnealReport {
+            attempts,
+            accepted,
+            initial_accuracy,
+            final_accuracy: best_accuracy,
+            initial_leakage,
+            final_leakage: best_leakage,
+            initial_regge,
+            final_regge: best_regge,
+            initial_edges,
+            final_edges: best_edges,
+            causality_violations: self.hardware.causality_violations(),
+        }
+    }
+
+    pub fn hawking_radiation_after_migration(
+        &mut self,
+        validation: &[(ObserverId, f32, Vec<usize>, Vec<usize>, Vec<usize>)],
+        attempts: usize,
+    ) -> CdtRqmAnnealReport {
+        let (initial_accuracy, initial_leakage) = self.validation_scores(validation);
+        let initial_regge = self.hardware.regge_action();
+        let initial_edges = self
+            .hardware
+            .edges
+            .iter()
+            .filter(|edge| edge.active)
+            .count();
+        let protected_edges = validation
+            .iter()
+            .flat_map(|(_, _, cue, expected, _)| {
+                cue.iter()
+                    .flat_map(move |source| expected.iter().map(move |target| (*source, *target)))
+            })
+            .collect::<Vec<_>>();
+
+        let mut accepted = 0;
+        let mut best = self.clone();
+        let mut best_accuracy = initial_accuracy;
+        let mut best_leakage = initial_leakage;
+        let mut best_regge = initial_regge;
+        let mut best_edges = initial_edges;
+
+        for _ in 0..attempts {
             let mut candidate = best.clone();
-            candidate.hardware.anneal_geometry_step(&protected_edges);
+            candidate.hardware.hawking_radiation_step(&protected_edges);
             let (accuracy, leakage) = candidate.validation_scores(validation);
             let regge = candidate.hardware.regge_action();
             let edges = candidate

@@ -424,6 +424,95 @@ impl CdtGraphitySubstrate {
         }
     }
 
+    pub fn hawking_radiation_step(
+        &mut self,
+        protected_edges: &[(usize, usize)],
+    ) -> CdtGraphityStepReport {
+        self.tick = self.tick.wrapping_add(1);
+        let protected = protected_edges
+            .iter()
+            .map(|&(a, b)| edge_key(a, b))
+            .collect::<HashSet<_>>();
+        let mut incident = vec![0_usize; self.edges.len()];
+
+        for tetra in &self.tetrahedra {
+            for i in 0..tetra.vertices.len() {
+                for j in (i + 1)..tetra.vertices.len() {
+                    if let Some(&edge_idx) = self
+                        .edge_lookup
+                        .get(&edge_key(tetra.vertices[i], tetra.vertices[j]))
+                    {
+                        if self.edges[edge_idx].active {
+                            incident[edge_idx] += 1;
+                        }
+                    }
+                }
+            }
+        }
+
+        let active_edges = self.edges.iter().filter(|edge| edge.active).count().max(1);
+        let mass_density = active_edges as f32 / self.nodes.len().max(1) as f32;
+        let hawking_temperature = self.temperature.clamp(0.05, 1.5) / (1.0 + mass_density.sqrt());
+        let mut pruned_edges = 0;
+
+        for (idx, edge) in self.edges.iter_mut().enumerate() {
+            if !edge.active || protected.contains(&edge_key(edge.a, edge.b)) {
+                continue;
+            }
+            let target = match edge.kind {
+                CdtGraphityEdgeKind::Spatial => self.config.target_tetrahedra_per_edge,
+                CdtGraphityEdgeKind::Temporal => self.config.target_tetrahedra_per_edge + 1,
+            };
+            let curvature_entropy = target.abs_diff(incident[idx]) as f32 / target.max(1) as f32;
+            let kind_bias = match edge.kind {
+                CdtGraphityEdgeKind::Spatial => 0.10,
+                CdtGraphityEdgeKind::Temporal => 0.03,
+            };
+            let edge_entropy =
+                edge.prediction_error + (1.0 - edge.stability) * 0.50 + curvature_entropy * 0.60;
+            let radiation_pressure = edge_entropy * (0.75 + hawking_temperature) + kind_bias;
+            if radiation_pressure > 0.78 || edge.stability < self.config.prune_threshold * 0.75 {
+                edge.active = false;
+                pruned_edges += 1;
+            } else {
+                edge.prediction_error *= 1.0 - self.config.cooling_rate * 0.75;
+                edge.stability = (edge.stability + self.config.cooling_rate * 0.15).min(1.0);
+            }
+        }
+
+        self.temperature = (self.temperature * (1.0 - self.config.cooling_rate * 0.5))
+            .max(hawking_temperature * 0.5);
+        self.rebuild_cdt_tetrahedra();
+        let regge_action = self.regge_action();
+        CdtGraphityStepReport {
+            tick: self.tick,
+            free_energy: regge_action * 0.015 + self.temperature * 0.05,
+            regge_action,
+            prediction_error: 0.0,
+            temperature: self.temperature,
+            active_nodes: self
+                .nodes
+                .iter()
+                .filter(|node| node.surprise > 0.05)
+                .count(),
+            active_edges: self.edges.iter().filter(|edge| edge.active).count(),
+            spatial_edges: self
+                .edges
+                .iter()
+                .filter(|edge| edge.active && edge.kind == CdtGraphityEdgeKind::Spatial)
+                .count(),
+            temporal_edges: self
+                .edges
+                .iter()
+                .filter(|edge| edge.active && edge.kind == CdtGraphityEdgeKind::Temporal)
+                .count(),
+            tetrahedra: self.tetrahedra.len(),
+            pruned_edges,
+            proposed_edges: 0,
+            causality_violations: self.causality_violations(),
+        }
+    }
+
     pub fn step(&mut self, expected_next: &[usize]) -> CdtGraphityStepReport {
         self.tick = self.tick.wrapping_add(1);
         let active = self.active_pattern();
@@ -780,10 +869,7 @@ impl CdtGraphitySubstrate {
     }
 
     fn slice_nodes(&self, slice: usize) -> Vec<usize> {
-        self.slice_members
-            .get(slice)
-            .cloned()
-            .unwrap_or_default()
+        self.slice_members.get(slice).cloned().unwrap_or_default()
     }
 
     fn rebuild_slice_members(&mut self) {
@@ -989,9 +1075,7 @@ impl CdtGraphitySubstrate {
                 let mut future: Option<usize> = None;
                 let mut future_pos = usize::MAX;
                 for &candidate in smallest {
-                    if s0.contains(&candidate)
-                        && s1.contains(&candidate)
-                        && s2.contains(&candidate)
+                    if s0.contains(&candidate) && s1.contains(&candidate) && s2.contains(&candidate)
                     {
                         let pos = next_index[&candidate];
                         if pos < future_pos {
@@ -1012,8 +1096,7 @@ impl CdtGraphitySubstrate {
                 if self.tetrahedra.len() >= tetra_limit {
                     return;
                 }
-                let (Some(f0), Some(f1)) =
-                    (fwd.get(&pair_current[0]), fwd.get(&pair_current[1]))
+                let (Some(f0), Some(f1)) = (fwd.get(&pair_current[0]), fwd.get(&pair_current[1]))
                 else {
                     continue;
                 };
@@ -1028,12 +1111,7 @@ impl CdtGraphitySubstrate {
                 for pos in positions {
                     if f1.contains(&next[pos + 1]) {
                         self.tetrahedra.push(CdtGraphitySimplex3 {
-                            vertices: [
-                                pair_current[0],
-                                pair_current[1],
-                                next[pos],
-                                next[pos + 1],
-                            ],
+                            vertices: [pair_current[0], pair_current[1], next[pos], next[pos + 1]],
                             kind: CdtSimplexKind::T22,
                         });
                         break;
