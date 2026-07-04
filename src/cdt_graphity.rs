@@ -601,6 +601,101 @@ impl CdtGraphitySubstrate {
             .sum()
     }
 
+    pub fn cosmological_regge_action(&self, lambda: f32) -> f32 {
+        self.regge_action() - lambda.max(0.0) * self.tetrahedra.len() as f32
+    }
+
+    pub fn cosmological_constant_step(
+        &mut self,
+        protected_edges: &[(usize, usize)],
+        lambda: f32,
+    ) -> CdtGraphityStepReport {
+        self.tick = self.tick.wrapping_add(1);
+        let lambda = lambda.clamp(0.0, 2.0);
+        let protected = protected_edges
+            .iter()
+            .map(|&(a, b)| edge_key(a, b))
+            .collect::<HashSet<_>>();
+        let mut incident = vec![0_usize; self.edges.len()];
+
+        for tetra in &self.tetrahedra {
+            for i in 0..tetra.vertices.len() {
+                for j in (i + 1)..tetra.vertices.len() {
+                    if let Some(&edge_idx) = self
+                        .edge_lookup
+                        .get(&edge_key(tetra.vertices[i], tetra.vertices[j]))
+                    {
+                        if self.edges[edge_idx].active {
+                            incident[edge_idx] += 1;
+                        }
+                    }
+                }
+            }
+        }
+
+        let mut pruned_edges = 0;
+        for (idx, edge) in self.edges.iter_mut().enumerate() {
+            if !edge.active || protected.contains(&edge_key(edge.a, edge.b)) {
+                continue;
+            }
+            let target = match edge.kind {
+                CdtGraphityEdgeKind::Spatial => self.config.target_tetrahedra_per_edge,
+                CdtGraphityEdgeKind::Temporal => self.config.target_tetrahedra_per_edge + 1,
+            };
+            let support = incident[idx] as f32 / target.max(1) as f32;
+            let deficit = (1.0 - support).max(0.0);
+            let volume_reward = lambda * support.min(1.5) * 0.20;
+            let kind_pressure = match edge.kind {
+                CdtGraphityEdgeKind::Spatial => 0.10,
+                CdtGraphityEdgeKind::Temporal => 0.04,
+            };
+            let instability = edge.prediction_error
+                + deficit * 0.55
+                + (1.0 - edge.stability) * 0.30
+                + kind_pressure
+                - volume_reward;
+            if instability > 0.58 || edge.stability < self.config.prune_threshold * 0.90 {
+                edge.active = false;
+                pruned_edges += 1;
+            } else {
+                edge.stability =
+                    (edge.stability + self.config.cooling_rate * (0.18 + lambda * 0.04)).min(1.0);
+                edge.prediction_error *= 1.0 - self.config.cooling_rate * (0.65 + lambda * 0.05);
+            }
+        }
+
+        self.temperature *= 1.0 - self.config.cooling_rate * (0.75 + lambda * 0.05);
+        self.rebuild_cdt_tetrahedra();
+        let regge_action = self.regge_action();
+        CdtGraphityStepReport {
+            tick: self.tick,
+            free_energy: self.cosmological_regge_action(lambda) * 0.015 + self.temperature * 0.05,
+            regge_action,
+            prediction_error: 0.0,
+            temperature: self.temperature,
+            active_nodes: self
+                .nodes
+                .iter()
+                .filter(|node| node.surprise > 0.05)
+                .count(),
+            active_edges: self.edges.iter().filter(|edge| edge.active).count(),
+            spatial_edges: self
+                .edges
+                .iter()
+                .filter(|edge| edge.active && edge.kind == CdtGraphityEdgeKind::Spatial)
+                .count(),
+            temporal_edges: self
+                .edges
+                .iter()
+                .filter(|edge| edge.active && edge.kind == CdtGraphityEdgeKind::Temporal)
+                .count(),
+            tetrahedra: self.tetrahedra.len(),
+            pruned_edges,
+            proposed_edges: 0,
+            causality_violations: self.causality_violations(),
+        }
+    }
+
     pub fn causality_violations(&self) -> usize {
         self.edges
             .iter()

@@ -223,17 +223,28 @@ impl CdtRqmUniverseSubstrate {
         let mut best_leakage = initial_leakage;
         let mut best_regge = initial_regge;
         let mut best_edges = initial_edges;
+        let lambda = auto_cosmological_lambda(&self.hardware);
+        let mut best_lambda_action = self.hardware.cosmological_regge_action(lambda);
 
         for _ in 0..attempts {
-            for use_hawking_radiation in [false, true] {
+            for move_kind in [0_u8, 1, 2] {
                 let mut candidate = best.clone();
-                if use_hawking_radiation {
-                    candidate.hardware.hawking_radiation_step(&protected_edges);
-                } else {
-                    candidate.hardware.anneal_geometry_step(&protected_edges);
+                match move_kind {
+                    0 => {
+                        candidate.hardware.anneal_geometry_step(&protected_edges);
+                    }
+                    1 => {
+                        candidate.hardware.hawking_radiation_step(&protected_edges);
+                    }
+                    _ => {
+                        candidate
+                            .hardware
+                            .cosmological_constant_step(&protected_edges, lambda);
+                    }
                 }
                 let (accuracy, leakage) = candidate.validation_scores(validation);
                 let regge = candidate.hardware.regge_action();
+                let lambda_action = candidate.hardware.cosmological_regge_action(lambda);
                 let edges = candidate
                     .hardware
                     .edges
@@ -242,12 +253,14 @@ impl CdtRqmUniverseSubstrate {
                     .count();
                 let preserves_memory =
                     accuracy + 0.0001 >= best_accuracy && leakage <= best_leakage + 0.0001;
-                let improves_geometry = regge < best_regge || edges < best_edges;
+                let improves_geometry =
+                    regge < best_regge || edges < best_edges || lambda_action < best_lambda_action;
                 if preserves_memory && improves_geometry {
                     best = candidate;
                     best_accuracy = accuracy;
                     best_leakage = leakage;
                     best_regge = regge;
+                    best_lambda_action = lambda_action;
                     best_edges = edges;
                     accepted += 1;
                 }
@@ -508,4 +521,10 @@ fn section(contents: &str, begin: &str, end: &str) -> Option<String> {
     let tail = &contents[start..];
     let stop = tail.find(end)?;
     Some(tail[..stop].trim_matches('\n').to_string())
+}
+
+fn auto_cosmological_lambda(hardware: &CdtGraphitySubstrate) -> f32 {
+    let volume = hardware.tetrahedra.len().max(1) as f32;
+    let curvature_density = hardware.regge_action() / volume;
+    (0.05 / (1.0 + curvature_density / 16.0)).clamp(0.005, 0.05)
 }
