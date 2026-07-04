@@ -199,6 +199,42 @@ impl EntanglementField {
         report
     }
 
+    pub fn region_entropy(&self, region: &[usize]) -> f32 {
+        let region = region.iter().copied().collect::<HashSet<_>>();
+        if region.is_empty() {
+            return 0.0;
+        }
+        self.links
+            .iter()
+            .filter(|link| link.active && region.contains(&link.a) && region.contains(&link.b))
+            .map(link_entropy)
+            .sum()
+    }
+
+    pub fn boundary_area(&self, region: &[usize]) -> usize {
+        let region = region.iter().copied().collect::<HashSet<_>>();
+        if region.is_empty() {
+            return 0;
+        }
+        self.links
+            .iter()
+            .filter(|link| link.active && (region.contains(&link.a) ^ region.contains(&link.b)))
+            .count()
+    }
+
+    pub fn holographic_area_law_ratio(&self, region: &[usize], area_coupling: f32) -> f32 {
+        let area = self.boundary_area(region).max(1) as f32;
+        self.region_entropy(region) / (area_coupling.max(f32::EPSILON) * area)
+    }
+
+    pub fn active_links_touching(&self, region: &[usize]) -> usize {
+        let region = region.iter().copied().collect::<HashSet<_>>();
+        self.links
+            .iter()
+            .filter(|link| link.active && (region.contains(&link.a) || region.contains(&link.b)))
+            .count()
+    }
+
     pub fn serialize_persistent_state(&self) -> String {
         let mut out = String::new();
         out.push_str("SNGA_EPR_ENTANGLEMENT_STATE_V1\n");
@@ -321,6 +357,18 @@ fn ordered_pair(a: usize, b: usize) -> (usize, usize) {
     } else {
         (b, a)
     }
+}
+
+fn link_entropy(link: &EntanglementLink) -> f32 {
+    let p = (link.coherence * (1.0 - link.entropy)).clamp(0.0, 1.0);
+    binary_entropy(p)
+}
+
+fn binary_entropy(p: f32) -> f32 {
+    if !(0.0..=1.0).contains(&p) || p <= f32::EPSILON || 1.0 - p <= f32::EPSILON {
+        return 0.0;
+    }
+    -p * p.ln() - (1.0 - p) * (1.0 - p).ln()
 }
 
 fn parse_count_header(line: &str, label: &str) -> Result<usize, String> {

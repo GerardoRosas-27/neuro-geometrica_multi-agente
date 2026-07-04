@@ -94,6 +94,15 @@ pub struct CdtGraphityStepReport {
     pub causality_violations: usize,
 }
 
+#[derive(Clone, Copy, Debug, Default)]
+pub struct MeraScaleReport {
+    pub scale: usize,
+    pub coarse_regions: usize,
+    pub mean_region_entropy: f32,
+    pub mean_boundary_area: f32,
+    pub compression_ratio: f32,
+}
+
 #[derive(Clone, Debug)]
 pub struct CdtGraphitySubstrate {
     pub config: CdtGraphityConfig,
@@ -603,6 +612,142 @@ impl CdtGraphitySubstrate {
 
     pub fn cosmological_regge_action(&self, lambda: f32) -> f32 {
         self.regge_action() - lambda.max(0.0) * self.tetrahedra.len() as f32
+    }
+
+    pub fn active_edge_count(&self) -> usize {
+        self.edges.iter().filter(|edge| edge.active).count()
+    }
+
+    pub fn active_spatial_edge_count(&self) -> usize {
+        self.edges
+            .iter()
+            .filter(|edge| edge.active && edge.kind == CdtGraphityEdgeKind::Spatial)
+            .count()
+    }
+
+    pub fn active_temporal_edge_count(&self) -> usize {
+        self.edges
+            .iter()
+            .filter(|edge| edge.active && edge.kind == CdtGraphityEdgeKind::Temporal)
+            .count()
+    }
+
+    pub fn active_edge_entropy(&self) -> f32 {
+        self.edges
+            .iter()
+            .filter(|edge| edge.active)
+            .map(|edge| binary_entropy(edge.stability.clamp(0.0, 1.0)))
+            .sum()
+    }
+
+    pub fn criticality_index(&self) -> f32 {
+        let active_edges = self.active_edge_count() as f32;
+        let nodes = self.nodes.len().max(1) as f32;
+        let target_degree =
+            (self.config.target_spatial_degree + self.config.target_temporal_degree).max(1) as f32;
+        let alpha_eff = active_edges / (nodes * target_degree);
+        alpha_eff * nodes.sqrt()
+    }
+
+    pub fn criticality_distance(&self) -> f32 {
+        (self.criticality_index() - 1.0).abs()
+    }
+
+    pub fn geometrogenesis_order_parameter(&self) -> f32 {
+        let active_edges = self.active_edge_count().max(1) as f32;
+        let local_edges = self
+            .edges
+            .iter()
+            .filter(|edge| {
+                edge.active && self.nodes[edge.a].slice.abs_diff(self.nodes[edge.b].slice) <= 1
+            })
+            .count() as f32;
+        local_edges / active_edges
+    }
+
+    pub fn discrete_regge_deficit_action(&self) -> f32 {
+        let mut incident = vec![0_usize; self.edges.len()];
+        for tetra in &self.tetrahedra {
+            for i in 0..tetra.vertices.len() {
+                for j in (i + 1)..tetra.vertices.len() {
+                    if let Some(&edge_idx) = self
+                        .edge_lookup
+                        .get(&edge_key(tetra.vertices[i], tetra.vertices[j]))
+                    {
+                        if self.edges[edge_idx].active {
+                            incident[edge_idx] += 1;
+                        }
+                    }
+                }
+            }
+        }
+
+        self.edges
+            .iter()
+            .enumerate()
+            .filter(|(_, edge)| edge.active)
+            .map(|(idx, edge)| {
+                let target = match edge.kind {
+                    CdtGraphityEdgeKind::Spatial => self.config.target_tetrahedra_per_edge,
+                    CdtGraphityEdgeKind::Temporal => self.config.target_tetrahedra_per_edge + 1,
+                }
+                .max(1) as f32;
+                let theta = std::f32::consts::TAU / target;
+                let deficit = (std::f32::consts::TAU - incident[idx] as f32 * theta).abs();
+                let length = match edge.kind {
+                    CdtGraphityEdgeKind::Spatial => 1.0,
+                    CdtGraphityEdgeKind::Temporal => 1.25,
+                };
+                length * deficit
+            })
+            .sum()
+    }
+
+    pub fn landauer_cost(&self, pruned_edges: usize, temperature: f32) -> f32 {
+        const KB: f32 = 1.0;
+        pruned_edges as f32 * KB * temperature.max(0.0) * std::f32::consts::LN_2
+    }
+
+    pub fn mera_scale_summary(&self, scale: usize) -> MeraScaleReport {
+        let scale = scale.max(1);
+        let mut coarse_regions = 0_usize;
+        let mut entropy_sum = 0.0_f32;
+        let mut boundary_sum = 0_usize;
+
+        for slice in 0..self.config.slices {
+            let ids = self.slice_nodes(slice);
+            for chunk in ids.chunks(scale) {
+                if chunk.is_empty() {
+                    continue;
+                }
+                coarse_regions += 1;
+                let region = chunk.iter().copied().collect::<HashSet<_>>();
+                let mut internal = 0_usize;
+                let mut boundary = 0_usize;
+                for edge in &self.edges {
+                    if !edge.active {
+                        continue;
+                    }
+                    let a_in = region.contains(&edge.a);
+                    let b_in = region.contains(&edge.b);
+                    if a_in && b_in {
+                        internal += 1;
+                    } else if a_in || b_in {
+                        boundary += 1;
+                    }
+                }
+                entropy_sum += (internal as f32 + 1.0).ln();
+                boundary_sum += boundary;
+            }
+        }
+
+        MeraScaleReport {
+            scale,
+            coarse_regions,
+            mean_region_entropy: entropy_sum / coarse_regions.max(1) as f32,
+            mean_boundary_area: boundary_sum as f32 / coarse_regions.max(1) as f32,
+            compression_ratio: coarse_regions as f32 / self.nodes.len().max(1) as f32,
+        }
     }
 
     pub fn cosmological_constant_step(
@@ -1265,6 +1410,13 @@ fn prediction_error(predicted: &[(usize, f32)], expected: &[usize]) -> f32 {
         .filter(|idx| predicted.contains(idx))
         .count();
     1.0 - matched as f32 / expected.len().max(1) as f32
+}
+
+fn binary_entropy(p: f32) -> f32 {
+    if !(0.0..=1.0).contains(&p) || p <= f32::EPSILON || 1.0 - p <= f32::EPSILON {
+        return 0.0;
+    }
+    -p * p.ln() - (1.0 - p) * (1.0 - p).ln()
 }
 
 fn orient_edge(

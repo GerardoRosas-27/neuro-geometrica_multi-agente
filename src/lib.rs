@@ -1,5 +1,6 @@
 pub mod cdt_graphity;
 pub mod cdt_rqm;
+pub mod cdt_rqm_experimental;
 pub mod entanglement;
 pub mod geometry;
 pub mod linguistic_engine;

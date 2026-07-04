@@ -451,6 +451,20 @@ impl CdtRqmUniverseSubstrate {
             out.push_str(&entanglement.serialize_persistent_state());
             out.push_str("entanglement_end\n");
         }
+        out.push_str("observables_begin\n");
+        let active = self.hardware.active_pattern();
+        out.push_str(
+            &crate::cdt_rqm_experimental::ExperimentalPhysicsObservables::from_substrate(
+                self,
+                ObserverId(0),
+                0.0,
+                &active,
+                0.0,
+                0.0,
+            )
+            .serialize_summary(),
+        );
+        out.push_str("observables_end\n");
         out.push_str("end\n");
         out
     }
