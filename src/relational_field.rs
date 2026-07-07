@@ -98,6 +98,10 @@ pub struct RelationalFieldSubstrate {
     pub config: RelationalFieldConfig,
     pub tick: u64,
     relations: HashMap<RelationKey, RelationalState>,
+    // Adjacency index: (observer, node) -> neighbor nodes. Lets `observe_pattern`
+    // visit only the relations incident to each seed instead of scanning the
+    // whole relation map (O(seeds * degree) instead of O(seeds * relations)).
+    neighbor_index: HashMap<(usize, usize), Vec<usize>>,
 }
 
 impl RelationalFieldSubstrate {
@@ -106,11 +110,16 @@ impl RelationalFieldSubstrate {
             config,
             tick: 0,
             relations: HashMap::new(),
+            neighbor_index: HashMap::new(),
         }
     }
 
     pub fn relation_count(&self) -> usize {
         self.relations.len()
+    }
+
+    pub fn relation_entries(&self) -> impl Iterator<Item = (RelationKey, RelationalState)> + '_ {
+        self.relations.iter().map(|(key, state)| (*key, *state))
     }
 
     pub fn relation_state(
@@ -177,6 +186,16 @@ impl RelationalFieldSubstrate {
             a: left,
             b: right,
         };
+        if !self.relations.contains_key(&key) {
+            self.neighbor_index
+                .entry((observer.0, left))
+                .or_default()
+                .push(right);
+            self.neighbor_index
+                .entry((observer.0, right))
+                .or_default()
+                .push(left);
+        }
         let state = self.relations.entry(key).or_default();
         let success = prediction_success.clamp(0.0, 1.0);
         let failure = 1.0 - success;
@@ -218,6 +237,7 @@ impl RelationalFieldSubstrate {
         limit: usize,
     ) -> CollapseReport {
         self.tick = self.tick.wrapping_add(1);
+        let tick = self.tick;
         let observer_phase = normalize_phase(observer_phase);
         let seeds = compact_pattern(seeds);
         let seed_set = seeds.iter().copied().collect::<HashSet<_>>();
@@ -228,17 +248,25 @@ impl RelationalFieldSubstrate {
         let mut observations = 0_usize;
 
         for seed in &seeds {
-            for (key, state) in self.relations.iter_mut() {
-                if key.observer != observer || (key.a != *seed && key.b != *seed) {
-                    continue;
-                }
-                let target = if key.a == *seed { key.b } else { key.a };
+            let Some(neighbors) = self.neighbor_index.get(&(observer.0, *seed)) else {
+                continue;
+            };
+            for &target in neighbors {
                 if seed_set.contains(&target) {
                     continue;
                 }
+                let (ka, kb) = ordered_pair(*seed, target);
+                let key = RelationKey {
+                    observer,
+                    a: ka,
+                    b: kb,
+                };
+                let Some(state) = self.relations.get_mut(&key) else {
+                    continue;
+                };
 
-                state.last_observed_tick = self.tick;
-                let oriented_phase = if key.a == *seed {
+                state.last_observed_tick = tick;
+                let oriented_phase = if ka == *seed {
                     state.phase
                 } else {
                     -state.phase
@@ -345,9 +373,15 @@ impl RelationalFieldSubstrate {
         fs::write(path, self.serialize_persistent_state())
     }
 
+    pub fn load_persistent_state<P: AsRef<Path>>(&mut self, path: P) -> io::Result<()> {
+        let contents = fs::read_to_string(path)?;
+        self.apply_persistent_state(&contents)
+            .map_err(|message| io::Error::new(io::ErrorKind::InvalidData, message))
+    }
+
     pub fn serialize_persistent_state(&self) -> String {
         let mut out = String::new();
-        out.push_str("SNGA_RQF_RELATIONAL_FIELD_V1\n");
+        out.push_str("CDT_RQM_EPR_RELATIONAL_FIELD_V1\n");
         out.push_str(&format!("tick {}\n", self.tick));
         out.push_str(&format!(
             "config {:.7} {:.7} {:.7} {:.7} {:.7} {:.7} {:.7} {:.7}\n",
@@ -384,6 +418,78 @@ impl RelationalFieldSubstrate {
         }
         out.push_str("end\n");
         out
+    }
+
+    pub fn apply_persistent_state(&mut self, contents: &str) -> Result<(), String> {
+        let mut lines = contents.lines();
+        let version = lines.next();
+        if version != Some("CDT_RQM_EPR_RELATIONAL_FIELD_V1") {
+            return Err("version RQF invalida".to_string());
+        }
+        let tick_line = lines.next().ok_or("falta tick RQF")?;
+        let parts = tick_line.split_whitespace().collect::<Vec<_>>();
+        if parts.len() != 2 || parts[0] != "tick" {
+            return Err(format!("tick RQF invalido: {tick_line}"));
+        }
+        self.tick = parse_u64(parts[1], "tick")?;
+
+        let config_line = lines.next().ok_or("falta config RQF")?;
+        let parts = config_line.split_whitespace().collect::<Vec<_>>();
+        if parts.len() != 9 || parts[0] != "config" {
+            return Err(format!("config RQF invalida: {config_line}"));
+        }
+        self.config = RelationalFieldConfig {
+            amplitude_learning_rate: parse_f32(parts[1], "amplitude_lr")?,
+            phase_learning_rate: parse_f32(parts[2], "phase_lr")?,
+            coherence_learning_rate: parse_f32(parts[3], "coherence_lr")?,
+            uncertainty_learning_rate: parse_f32(parts[4], "uncertainty_lr")?,
+            amplitude_decay: parse_f32(parts[5], "amplitude_decay")?,
+            coherence_decay: parse_f32(parts[6], "coherence_decay")?,
+            uncertainty_recovery: parse_f32(parts[7], "uncertainty_recovery")?,
+            activation_threshold: parse_f32(parts[8], "activation_threshold")?,
+        };
+
+        let relations_header = lines.next().ok_or("faltan relaciones RQF")?;
+        let relation_count = parse_count_header(relations_header, "relations")?;
+        self.relations.clear();
+        self.neighbor_index.clear();
+        for _ in 0..relation_count {
+            let line = lines.next().ok_or("faltan lineas RQF")?;
+            let parts = line.split_whitespace().collect::<Vec<_>>();
+            if parts.len() != 9 || parts[0] != "r" {
+                return Err(format!("relacion RQF invalida: {line}"));
+            }
+            self.relations.insert(
+                RelationKey {
+                    observer: ObserverId(parse_usize(parts[1], "observer")?),
+                    a: parse_usize(parts[2], "a")?,
+                    b: parse_usize(parts[3], "b")?,
+                },
+                RelationalState {
+                    amplitude: parse_f32(parts[4], "amplitude")?,
+                    phase: parse_f32(parts[5], "phase")?,
+                    coherence: parse_f32(parts[6], "coherence")?,
+                    uncertainty: parse_f32(parts[7], "uncertainty")?,
+                    last_observed_tick: parse_u64(parts[8], "last_tick")?,
+                },
+            );
+        }
+        self.rebuild_neighbor_index();
+        Ok(())
+    }
+
+    fn rebuild_neighbor_index(&mut self) {
+        self.neighbor_index.clear();
+        for key in self.relations.keys() {
+            self.neighbor_index
+                .entry((key.observer.0, key.a))
+                .or_default()
+                .push(key.b);
+            self.neighbor_index
+                .entry((key.observer.0, key.b))
+                .or_default()
+                .push(key.a);
+        }
     }
 
     fn oriented_phase(&self, observer: ObserverId, source: usize, target: usize) -> Option<f32> {
@@ -430,4 +536,30 @@ fn normalize_phase(phase: f32) -> f32 {
 
 fn phase_delta(from: f32, to: f32) -> f32 {
     normalize_phase(to - from)
+}
+
+fn parse_count_header(line: &str, label: &str) -> Result<usize, String> {
+    let parts = line.split_whitespace().collect::<Vec<_>>();
+    if parts.len() != 2 || parts[0] != label {
+        return Err(format!("cabecera {label} invalida: {line}"));
+    }
+    parse_usize(parts[1], label)
+}
+
+fn parse_usize(value: &str, label: &str) -> Result<usize, String> {
+    value
+        .parse::<usize>()
+        .map_err(|err| format!("{label} invalido: {err}"))
+}
+
+fn parse_u64(value: &str, label: &str) -> Result<u64, String> {
+    value
+        .parse::<u64>()
+        .map_err(|err| format!("{label} invalido: {err}"))
+}
+
+fn parse_f32(value: &str, label: &str) -> Result<f32, String> {
+    value
+        .parse::<f32>()
+        .map_err(|err| format!("{label} invalido: {err}"))
 }

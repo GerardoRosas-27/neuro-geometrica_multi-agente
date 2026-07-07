@@ -1,9 +1,11 @@
 pub mod cdt_graphity;
 pub mod cdt_rqm;
-pub mod geometry;
-pub mod linguistic_engine;
-pub mod mesh_engine;
-pub mod multimodal;
+pub mod cdt_rqm_experimental;
+pub mod entanglement;
+pub mod native_thermo_rqm_epr;
+pub mod native_thermodynamic_cdt;
+pub mod native_thermodynamic_engine;
 pub mod relational_field;
-pub mod render;
-pub mod simplicial;
+mod relational_guidance;
+pub mod substrate_adapter;
+pub mod thermodynamic_substrate;

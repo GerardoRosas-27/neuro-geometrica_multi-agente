@@ -94,6 +94,15 @@ pub struct CdtGraphityStepReport {
     pub causality_violations: usize,
 }
 
+#[derive(Clone, Copy, Debug, Default)]
+pub struct MeraScaleReport {
+    pub scale: usize,
+    pub coarse_regions: usize,
+    pub mean_region_entropy: f32,
+    pub mean_boundary_area: f32,
+    pub compression_ratio: f32,
+}
+
 #[derive(Clone, Debug)]
 pub struct CdtGraphitySubstrate {
     pub config: CdtGraphityConfig,
@@ -104,6 +113,10 @@ pub struct CdtGraphitySubstrate {
     tick: u64,
     edge_lookup: HashMap<(usize, usize), usize>,
     adjacency: Vec<Vec<usize>>,
+    // Cached per-slice node membership (ascending node id). Avoids scanning every
+    // node on each `slice_nodes` call, which is invoked repeatedly per step by
+    // `rebuild_cdt_tetrahedra`. Only rebuilt when nodes/slices change.
+    slice_members: Vec<Vec<usize>>,
     rng: StdRng,
 }
 
@@ -130,15 +143,33 @@ impl CdtGraphitySubstrate {
             tick: 0,
             edge_lookup: HashMap::new(),
             adjacency: vec![Vec::new(); node_count],
+            slice_members: Vec::new(),
             rng: StdRng::seed_from_u64(config.seed ^ 0xA53A_9EED),
         };
+        substrate.rebuild_slice_members();
 
+        let dense_limit = 2_000_000_usize;
         for slice in 0..substrate.config.slices {
             let ids = substrate.slice_nodes(slice);
-            for i in 0..ids.len() {
-                for j in (i + 1)..ids.len() {
-                    if rng.gen::<f32>() <= substrate.config.initial_spatial_connectivity {
-                        substrate.add_edge(ids[i], ids[j], CdtGraphityEdgeKind::Spatial, 0.35);
+            let pair_count = ids.len().saturating_mul(ids.len().saturating_sub(1)) / 2;
+            if pair_count < dense_limit {
+                for i in 0..ids.len() {
+                    for j in (i + 1)..ids.len() {
+                        if rng.gen::<f32>() <= substrate.config.initial_spatial_connectivity {
+                            substrate.add_edge(ids[i], ids[j], CdtGraphityEdgeKind::Spatial, 0.35);
+                        }
+                    }
+                }
+            } else {
+                let samples = ((pair_count as f32) * substrate.config.initial_spatial_connectivity)
+                    .round()
+                    .max(ids.len() as f32 * substrate.config.target_spatial_degree as f32 * 0.5)
+                    as usize;
+                for _ in 0..samples {
+                    let a = ids[rng.gen_range(0..ids.len())];
+                    let b = ids[rng.gen_range(0..ids.len())];
+                    if a != b {
+                        substrate.add_edge(a, b, CdtGraphityEdgeKind::Spatial, 0.35);
                     }
                 }
             }
@@ -147,9 +178,24 @@ impl CdtGraphitySubstrate {
         for slice in 0..substrate.config.slices.saturating_sub(1) {
             let current = substrate.slice_nodes(slice);
             let next = substrate.slice_nodes(slice + 1);
-            for &a in &current {
-                for &b in &next {
-                    if rng.gen::<f32>() <= substrate.config.initial_temporal_connectivity {
+            let pair_count = current.len().saturating_mul(next.len());
+            if pair_count < dense_limit {
+                for &a in &current {
+                    for &b in &next {
+                        if rng.gen::<f32>() <= substrate.config.initial_temporal_connectivity {
+                            substrate.add_edge(a, b, CdtGraphityEdgeKind::Temporal, 0.35);
+                        }
+                    }
+                }
+            } else {
+                let samples = ((pair_count as f32) * substrate.config.initial_temporal_connectivity)
+                    .round()
+                    .max(current.len() as f32 * substrate.config.target_temporal_degree as f32)
+                    as usize;
+                for _ in 0..samples {
+                    let a = current[rng.gen_range(0..current.len())];
+                    let b = next[rng.gen_range(0..next.len())];
+                    if a != b {
                         substrate.add_edge(a, b, CdtGraphityEdgeKind::Temporal, 0.35);
                     }
                 }
@@ -173,6 +219,74 @@ impl CdtGraphitySubstrate {
         for node in &mut self.nodes {
             node.activation = false;
             node.surprise = 0.0;
+        }
+    }
+
+    pub fn add_foliated_block(&mut self, block_slices: usize) -> usize {
+        let block_slices = block_slices.max(1);
+        let start_slice = self.config.slices;
+        let start_node = self.nodes.len();
+        let nodes_per_slice = self.config.nodes_per_slice.max(1);
+        let new_nodes = block_slices * nodes_per_slice;
+
+        self.nodes.reserve(new_nodes);
+        self.adjacency.reserve(new_nodes);
+        for offset in 0..new_nodes {
+            let id = start_node + offset;
+            self.nodes.push(CdtGraphityNode {
+                id,
+                slice: start_slice + offset / nodes_per_slice,
+                activation: false,
+                surprise: 0.0,
+            });
+            self.adjacency.push(Vec::new());
+        }
+        self.config.slices += block_slices;
+        self.rebuild_slice_members();
+
+        // Bridge the old frontier into the new block without changing old IDs.
+        if start_slice > 0 {
+            self.sample_temporal_edges_between_slices(start_slice - 1, start_slice);
+        }
+        for slice in start_slice..self.config.slices {
+            self.sample_spatial_edges_in_slice(slice);
+            if slice + 1 < self.config.slices {
+                self.sample_temporal_edges_between_slices(slice, slice + 1);
+            }
+        }
+        self.rebuild_cdt_tetrahedra();
+        start_slice
+    }
+
+    fn sample_spatial_edges_in_slice(&mut self, slice: usize) {
+        let ids = self.slice_nodes(slice);
+        if ids.len() < 2 {
+            return;
+        }
+        let samples = (ids.len() * self.config.target_spatial_degree.max(1)).max(1);
+        for _ in 0..samples {
+            let a = ids[self.rng.gen_range(0..ids.len())];
+            let b = ids[self.rng.gen_range(0..ids.len())];
+            if a != b {
+                self.add_edge(a, b, CdtGraphityEdgeKind::Spatial, 0.25);
+            }
+        }
+    }
+
+    fn sample_temporal_edges_between_slices(&mut self, source_slice: usize, target_slice: usize) {
+        if source_slice + 1 != target_slice {
+            return;
+        }
+        let sources = self.slice_nodes(source_slice);
+        let targets = self.slice_nodes(target_slice);
+        if sources.is_empty() || targets.is_empty() {
+            return;
+        }
+        let samples = (sources.len() * self.config.target_temporal_degree.max(1)).max(1);
+        for _ in 0..samples {
+            let a = sources[self.rng.gen_range(0..sources.len())];
+            let b = targets[self.rng.gen_range(0..targets.len())];
+            self.add_edge(a, b, CdtGraphityEdgeKind::Temporal, 0.25);
         }
     }
 
@@ -319,6 +433,95 @@ impl CdtGraphitySubstrate {
         }
     }
 
+    pub fn hawking_radiation_step(
+        &mut self,
+        protected_edges: &[(usize, usize)],
+    ) -> CdtGraphityStepReport {
+        self.tick = self.tick.wrapping_add(1);
+        let protected = protected_edges
+            .iter()
+            .map(|&(a, b)| edge_key(a, b))
+            .collect::<HashSet<_>>();
+        let mut incident = vec![0_usize; self.edges.len()];
+
+        for tetra in &self.tetrahedra {
+            for i in 0..tetra.vertices.len() {
+                for j in (i + 1)..tetra.vertices.len() {
+                    if let Some(&edge_idx) = self
+                        .edge_lookup
+                        .get(&edge_key(tetra.vertices[i], tetra.vertices[j]))
+                    {
+                        if self.edges[edge_idx].active {
+                            incident[edge_idx] += 1;
+                        }
+                    }
+                }
+            }
+        }
+
+        let active_edges = self.edges.iter().filter(|edge| edge.active).count().max(1);
+        let mass_density = active_edges as f32 / self.nodes.len().max(1) as f32;
+        let hawking_temperature = self.temperature.clamp(0.05, 1.5) / (1.0 + mass_density.sqrt());
+        let mut pruned_edges = 0;
+
+        for (idx, edge) in self.edges.iter_mut().enumerate() {
+            if !edge.active || protected.contains(&edge_key(edge.a, edge.b)) {
+                continue;
+            }
+            let target = match edge.kind {
+                CdtGraphityEdgeKind::Spatial => self.config.target_tetrahedra_per_edge,
+                CdtGraphityEdgeKind::Temporal => self.config.target_tetrahedra_per_edge + 1,
+            };
+            let curvature_entropy = target.abs_diff(incident[idx]) as f32 / target.max(1) as f32;
+            let kind_bias = match edge.kind {
+                CdtGraphityEdgeKind::Spatial => 0.10,
+                CdtGraphityEdgeKind::Temporal => 0.03,
+            };
+            let edge_entropy =
+                edge.prediction_error + (1.0 - edge.stability) * 0.50 + curvature_entropy * 0.60;
+            let radiation_pressure = edge_entropy * (0.75 + hawking_temperature) + kind_bias;
+            if radiation_pressure > 0.78 || edge.stability < self.config.prune_threshold * 0.75 {
+                edge.active = false;
+                pruned_edges += 1;
+            } else {
+                edge.prediction_error *= 1.0 - self.config.cooling_rate * 0.75;
+                edge.stability = (edge.stability + self.config.cooling_rate * 0.15).min(1.0);
+            }
+        }
+
+        self.temperature = (self.temperature * (1.0 - self.config.cooling_rate * 0.5))
+            .max(hawking_temperature * 0.5);
+        self.rebuild_cdt_tetrahedra();
+        let regge_action = self.regge_action();
+        CdtGraphityStepReport {
+            tick: self.tick,
+            free_energy: regge_action * 0.015 + self.temperature * 0.05,
+            regge_action,
+            prediction_error: 0.0,
+            temperature: self.temperature,
+            active_nodes: self
+                .nodes
+                .iter()
+                .filter(|node| node.surprise > 0.05)
+                .count(),
+            active_edges: self.edges.iter().filter(|edge| edge.active).count(),
+            spatial_edges: self
+                .edges
+                .iter()
+                .filter(|edge| edge.active && edge.kind == CdtGraphityEdgeKind::Spatial)
+                .count(),
+            temporal_edges: self
+                .edges
+                .iter()
+                .filter(|edge| edge.active && edge.kind == CdtGraphityEdgeKind::Temporal)
+                .count(),
+            tetrahedra: self.tetrahedra.len(),
+            pruned_edges,
+            proposed_edges: 0,
+            causality_violations: self.causality_violations(),
+        }
+    }
+
     pub fn step(&mut self, expected_next: &[usize]) -> CdtGraphityStepReport {
         self.tick = self.tick.wrapping_add(1);
         let active = self.active_pattern();
@@ -407,6 +610,237 @@ impl CdtGraphitySubstrate {
             .sum()
     }
 
+    pub fn cosmological_regge_action(&self, lambda: f32) -> f32 {
+        self.regge_action() - lambda.max(0.0) * self.tetrahedra.len() as f32
+    }
+
+    pub fn active_edge_count(&self) -> usize {
+        self.edges.iter().filter(|edge| edge.active).count()
+    }
+
+    pub fn active_spatial_edge_count(&self) -> usize {
+        self.edges
+            .iter()
+            .filter(|edge| edge.active && edge.kind == CdtGraphityEdgeKind::Spatial)
+            .count()
+    }
+
+    pub fn active_temporal_edge_count(&self) -> usize {
+        self.edges
+            .iter()
+            .filter(|edge| edge.active && edge.kind == CdtGraphityEdgeKind::Temporal)
+            .count()
+    }
+
+    pub fn active_edge_entropy(&self) -> f32 {
+        self.edges
+            .iter()
+            .filter(|edge| edge.active)
+            .map(|edge| binary_entropy(edge.stability.clamp(0.0, 1.0)))
+            .sum()
+    }
+
+    pub fn criticality_index(&self) -> f32 {
+        let active_edges = self.active_edge_count() as f32;
+        let nodes = self.nodes.len().max(1) as f32;
+        let target_degree =
+            (self.config.target_spatial_degree + self.config.target_temporal_degree).max(1) as f32;
+        let alpha_eff = active_edges / (nodes * target_degree);
+        alpha_eff * nodes.sqrt()
+    }
+
+    pub fn criticality_distance(&self) -> f32 {
+        (self.criticality_index() - 1.0).abs()
+    }
+
+    pub fn geometrogenesis_order_parameter(&self) -> f32 {
+        let active_edges = self.active_edge_count().max(1) as f32;
+        let local_edges = self
+            .edges
+            .iter()
+            .filter(|edge| {
+                edge.active && self.nodes[edge.a].slice.abs_diff(self.nodes[edge.b].slice) <= 1
+            })
+            .count() as f32;
+        local_edges / active_edges
+    }
+
+    pub fn discrete_regge_deficit_action(&self) -> f32 {
+        let mut incident = vec![0_usize; self.edges.len()];
+        for tetra in &self.tetrahedra {
+            for i in 0..tetra.vertices.len() {
+                for j in (i + 1)..tetra.vertices.len() {
+                    if let Some(&edge_idx) = self
+                        .edge_lookup
+                        .get(&edge_key(tetra.vertices[i], tetra.vertices[j]))
+                    {
+                        if self.edges[edge_idx].active {
+                            incident[edge_idx] += 1;
+                        }
+                    }
+                }
+            }
+        }
+
+        self.edges
+            .iter()
+            .enumerate()
+            .filter(|(_, edge)| edge.active)
+            .map(|(idx, edge)| {
+                let target = match edge.kind {
+                    CdtGraphityEdgeKind::Spatial => self.config.target_tetrahedra_per_edge,
+                    CdtGraphityEdgeKind::Temporal => self.config.target_tetrahedra_per_edge + 1,
+                }
+                .max(1) as f32;
+                let theta = std::f32::consts::TAU / target;
+                let deficit = (std::f32::consts::TAU - incident[idx] as f32 * theta).abs();
+                let length = match edge.kind {
+                    CdtGraphityEdgeKind::Spatial => 1.0,
+                    CdtGraphityEdgeKind::Temporal => 1.25,
+                };
+                length * deficit
+            })
+            .sum()
+    }
+
+    pub fn landauer_cost(&self, pruned_edges: usize, temperature: f32) -> f32 {
+        const KB: f32 = 1.0;
+        pruned_edges as f32 * KB * temperature.max(0.0) * std::f32::consts::LN_2
+    }
+
+    pub fn mera_scale_summary(&self, scale: usize) -> MeraScaleReport {
+        let scale = scale.max(1);
+        let mut coarse_regions = 0_usize;
+        let mut entropy_sum = 0.0_f32;
+        let mut boundary_sum = 0_usize;
+
+        for slice in 0..self.config.slices {
+            let ids = self.slice_nodes(slice);
+            for chunk in ids.chunks(scale) {
+                if chunk.is_empty() {
+                    continue;
+                }
+                coarse_regions += 1;
+                let region = chunk.iter().copied().collect::<HashSet<_>>();
+                let mut internal = 0_usize;
+                let mut boundary = 0_usize;
+                for edge in &self.edges {
+                    if !edge.active {
+                        continue;
+                    }
+                    let a_in = region.contains(&edge.a);
+                    let b_in = region.contains(&edge.b);
+                    if a_in && b_in {
+                        internal += 1;
+                    } else if a_in || b_in {
+                        boundary += 1;
+                    }
+                }
+                entropy_sum += (internal as f32 + 1.0).ln();
+                boundary_sum += boundary;
+            }
+        }
+
+        MeraScaleReport {
+            scale,
+            coarse_regions,
+            mean_region_entropy: entropy_sum / coarse_regions.max(1) as f32,
+            mean_boundary_area: boundary_sum as f32 / coarse_regions.max(1) as f32,
+            compression_ratio: coarse_regions as f32 / self.nodes.len().max(1) as f32,
+        }
+    }
+
+    pub fn cosmological_constant_step(
+        &mut self,
+        protected_edges: &[(usize, usize)],
+        lambda: f32,
+    ) -> CdtGraphityStepReport {
+        self.tick = self.tick.wrapping_add(1);
+        let lambda = lambda.clamp(0.0, 2.0);
+        let protected = protected_edges
+            .iter()
+            .map(|&(a, b)| edge_key(a, b))
+            .collect::<HashSet<_>>();
+        let mut incident = vec![0_usize; self.edges.len()];
+
+        for tetra in &self.tetrahedra {
+            for i in 0..tetra.vertices.len() {
+                for j in (i + 1)..tetra.vertices.len() {
+                    if let Some(&edge_idx) = self
+                        .edge_lookup
+                        .get(&edge_key(tetra.vertices[i], tetra.vertices[j]))
+                    {
+                        if self.edges[edge_idx].active {
+                            incident[edge_idx] += 1;
+                        }
+                    }
+                }
+            }
+        }
+
+        let mut pruned_edges = 0;
+        for (idx, edge) in self.edges.iter_mut().enumerate() {
+            if !edge.active || protected.contains(&edge_key(edge.a, edge.b)) {
+                continue;
+            }
+            let target = match edge.kind {
+                CdtGraphityEdgeKind::Spatial => self.config.target_tetrahedra_per_edge,
+                CdtGraphityEdgeKind::Temporal => self.config.target_tetrahedra_per_edge + 1,
+            };
+            let support = incident[idx] as f32 / target.max(1) as f32;
+            let deficit = (1.0 - support).max(0.0);
+            let volume_reward = lambda * support.min(1.5) * 0.20;
+            let kind_pressure = match edge.kind {
+                CdtGraphityEdgeKind::Spatial => 0.10,
+                CdtGraphityEdgeKind::Temporal => 0.04,
+            };
+            let instability = edge.prediction_error
+                + deficit * 0.55
+                + (1.0 - edge.stability) * 0.30
+                + kind_pressure
+                - volume_reward;
+            if instability > 0.58 || edge.stability < self.config.prune_threshold * 0.90 {
+                edge.active = false;
+                pruned_edges += 1;
+            } else {
+                edge.stability =
+                    (edge.stability + self.config.cooling_rate * (0.18 + lambda * 0.04)).min(1.0);
+                edge.prediction_error *= 1.0 - self.config.cooling_rate * (0.65 + lambda * 0.05);
+            }
+        }
+
+        self.temperature *= 1.0 - self.config.cooling_rate * (0.75 + lambda * 0.05);
+        self.rebuild_cdt_tetrahedra();
+        let regge_action = self.regge_action();
+        CdtGraphityStepReport {
+            tick: self.tick,
+            free_energy: self.cosmological_regge_action(lambda) * 0.015 + self.temperature * 0.05,
+            regge_action,
+            prediction_error: 0.0,
+            temperature: self.temperature,
+            active_nodes: self
+                .nodes
+                .iter()
+                .filter(|node| node.surprise > 0.05)
+                .count(),
+            active_edges: self.edges.iter().filter(|edge| edge.active).count(),
+            spatial_edges: self
+                .edges
+                .iter()
+                .filter(|edge| edge.active && edge.kind == CdtGraphityEdgeKind::Spatial)
+                .count(),
+            temporal_edges: self
+                .edges
+                .iter()
+                .filter(|edge| edge.active && edge.kind == CdtGraphityEdgeKind::Temporal)
+                .count(),
+            tetrahedra: self.tetrahedra.len(),
+            pruned_edges,
+            proposed_edges: 0,
+            causality_violations: self.causality_violations(),
+        }
+    }
+
     pub fn causality_violations(&self) -> usize {
         self.edges
             .iter()
@@ -431,9 +865,15 @@ impl CdtGraphitySubstrate {
         fs::write(path, self.serialize_persistent_state())
     }
 
+    pub fn load_persistent_state<P: AsRef<Path>>(&mut self, path: P) -> io::Result<()> {
+        let contents = fs::read_to_string(path)?;
+        self.apply_persistent_state(&contents)
+            .map_err(|message| io::Error::new(io::ErrorKind::InvalidData, message))
+    }
+
     pub fn serialize_persistent_state(&self) -> String {
         let mut out = String::new();
-        out.push_str("SNGA_CDT_GRAPHITY_STATE_V1\n");
+        out.push_str("CDT_RQM_EPR_GRAPHITY_STATE_V1\n");
         out.push_str(&format!(
             "config {} {} {:.7} {:.7} {} {} {} {:.7} {:.7} {:.7} {:.7} {} {}\n",
             self.config.slices,
@@ -499,6 +939,137 @@ impl CdtGraphitySubstrate {
         out
     }
 
+    pub fn apply_persistent_state(&mut self, contents: &str) -> Result<(), String> {
+        let mut lines = contents.lines();
+        let version = lines.next();
+        if version != Some("CDT_RQM_EPR_GRAPHITY_STATE_V1") {
+            return Err("version CDT Graphity invalida".to_string());
+        }
+
+        let config_line = lines.next().ok_or("falta config CDT")?;
+        let parts = config_line.split_whitespace().collect::<Vec<_>>();
+        if parts.len() != 14 || parts[0] != "config" {
+            return Err(format!("config CDT invalida: {config_line}"));
+        }
+        self.config = CdtGraphityConfig {
+            slices: parse_usize(parts[1], "slices")?,
+            nodes_per_slice: parse_usize(parts[2], "nodes_per_slice")?,
+            initial_spatial_connectivity: parse_f32(parts[3], "initial_spatial")?,
+            initial_temporal_connectivity: parse_f32(parts[4], "initial_temporal")?,
+            target_spatial_degree: parse_usize(parts[5], "target_spatial_degree")?,
+            target_temporal_degree: parse_usize(parts[6], "target_temporal_degree")?,
+            target_tetrahedra_per_edge: parse_usize(parts[7], "target_tetrahedra_per_edge")?,
+            cooling_rate: parse_f32(parts[8], "cooling_rate")?,
+            heating_rate: parse_f32(parts[9], "heating_rate")?,
+            reinforcement_rate: parse_f32(parts[10], "reinforcement_rate")?,
+            prune_threshold: parse_f32(parts[11], "prune_threshold")?,
+            max_new_edges_per_step: parse_usize(parts[12], "max_new_edges")?,
+            seed: parse_u64(parts[13], "seed")?,
+        };
+        self.rng = StdRng::seed_from_u64(self.config.seed ^ 0xA53A_9EED);
+
+        let tick_line = lines.next().ok_or("falta tick CDT")?;
+        let parts = tick_line.split_whitespace().collect::<Vec<_>>();
+        if parts.len() != 2 || parts[0] != "tick" {
+            return Err(format!("tick CDT invalido: {tick_line}"));
+        }
+        self.tick = parse_u64(parts[1], "tick")?;
+
+        let temp_line = lines.next().ok_or("falta temperatura CDT")?;
+        let parts = temp_line.split_whitespace().collect::<Vec<_>>();
+        if parts.len() != 2 || parts[0] != "temperature" {
+            return Err(format!("temperatura CDT invalida: {temp_line}"));
+        }
+        self.temperature = parse_f32(parts[1], "temperature")?;
+
+        let nodes_header = lines.next().ok_or("faltan nodos CDT")?;
+        let node_count = parse_count_header(nodes_header, "nodes")?;
+        self.nodes.clear();
+        self.nodes.reserve(node_count);
+        for _ in 0..node_count {
+            let line = lines.next().ok_or("faltan lineas de nodos CDT")?;
+            let parts = line.split_whitespace().collect::<Vec<_>>();
+            if parts.len() != 5 || parts[0] != "n" {
+                return Err(format!("nodo CDT invalido: {line}"));
+            }
+            self.nodes.push(CdtGraphityNode {
+                id: parse_usize(parts[1], "node id")?,
+                slice: parse_usize(parts[2], "node slice")?,
+                activation: parse_flag(parts[3], "node active")?,
+                surprise: parse_f32(parts[4], "node surprise")?,
+            });
+        }
+
+        let edges_header = lines.next().ok_or("faltan aristas CDT")?;
+        let edge_count = parse_count_header(edges_header, "edges")?;
+        self.edges.clear();
+        self.edges.reserve(edge_count);
+        for _ in 0..edge_count {
+            let line = lines.next().ok_or("faltan lineas de aristas CDT")?;
+            let parts = line.split_whitespace().collect::<Vec<_>>();
+            if parts.len() != 8 || parts[0] != "e" {
+                return Err(format!("arista CDT invalida: {line}"));
+            }
+            let kind = match parts[4] {
+                "spatial" => CdtGraphityEdgeKind::Spatial,
+                "temporal" => CdtGraphityEdgeKind::Temporal,
+                other => return Err(format!("tipo de arista CDT invalido: {other}")),
+            };
+            self.edges.push(CdtGraphityEdge {
+                a: parse_usize(parts[2], "edge a")?,
+                b: parse_usize(parts[3], "edge b")?,
+                kind,
+                stability: parse_f32(parts[5], "edge stability")?,
+                prediction_error: parse_f32(parts[6], "edge error")?,
+                active: parse_flag(parts[7], "edge active")?,
+            });
+        }
+
+        let tetra_header = lines.next().ok_or("faltan tetraedros CDT")?;
+        let tetra_count = parse_count_header(tetra_header, "tetrahedra")?;
+        self.tetrahedra.clear();
+        self.tetrahedra.reserve(tetra_count);
+        for _ in 0..tetra_count {
+            let line = lines.next().ok_or("faltan lineas de tetraedros CDT")?;
+            let parts = line.split_whitespace().collect::<Vec<_>>();
+            if parts.len() != 7 || parts[0] != "t" {
+                return Err(format!("tetraedro CDT invalido: {line}"));
+            }
+            let kind = match parts[6] {
+                "t31" => CdtSimplexKind::T31,
+                "t22" => CdtSimplexKind::T22,
+                other => return Err(format!("tipo de tetraedro invalido: {other}")),
+            };
+            self.tetrahedra.push(CdtGraphitySimplex3 {
+                vertices: [
+                    parse_usize(parts[2], "tetra a")?,
+                    parse_usize(parts[3], "tetra b")?,
+                    parse_usize(parts[4], "tetra c")?,
+                    parse_usize(parts[5], "tetra d")?,
+                ],
+                kind,
+            });
+        }
+
+        self.rebuild_indices();
+        Ok(())
+    }
+
+    fn rebuild_indices(&mut self) {
+        self.rebuild_slice_members();
+        self.edge_lookup.clear();
+        self.adjacency = vec![Vec::new(); self.nodes.len()];
+        for (idx, edge) in self.edges.iter().enumerate() {
+            self.edge_lookup.insert(edge_key(edge.a, edge.b), idx);
+            if edge.a < self.adjacency.len() {
+                self.adjacency[edge.a].push(idx);
+            }
+            if edge.b < self.adjacency.len() {
+                self.adjacency[edge.b].push(idx);
+            }
+        }
+    }
+
     fn add_edge(&mut self, a: usize, b: usize, kind: CdtGraphityEdgeKind, stability: f32) -> bool {
         if !self.is_valid_edge(a, b, kind) {
             return false;
@@ -539,11 +1110,22 @@ impl CdtGraphitySubstrate {
     }
 
     fn slice_nodes(&self, slice: usize) -> Vec<usize> {
-        self.nodes
+        self.slice_members.get(slice).cloned().unwrap_or_default()
+    }
+
+    fn rebuild_slice_members(&mut self) {
+        let slice_count = self
+            .nodes
             .iter()
-            .filter(|node| node.slice == slice)
-            .map(|node| node.id)
-            .collect()
+            .map(|node| node.slice + 1)
+            .max()
+            .unwrap_or(0)
+            .max(self.config.slices);
+        let mut members = vec![Vec::new(); slice_count];
+        for node in &self.nodes {
+            members[node.slice].push(node.id);
+        }
+        self.slice_members = members;
     }
 
     fn temporal_target_from(&self, edge: &CdtGraphityEdge, source: usize) -> Option<usize> {
@@ -683,36 +1265,94 @@ impl CdtGraphitySubstrate {
         for slice in 0..self.config.slices.saturating_sub(1) {
             let current = self.slice_nodes(slice);
             let next = self.slice_nodes(slice + 1);
+            if current.len() < 2 || next.is_empty() {
+                continue;
+            }
+
+            // Forward active-edge adjacency from `current` (slice) to `next`
+            // (slice + 1). Edges crossing to the next slice are temporal by
+            // construction, so this reproduces `has_active_edge(source, candidate)`
+            // for these node pairs while touching only the sparse set of active
+            // incident edges instead of scanning every (triple x next) pair.
+            let next_slice = slice + 1;
+            let mut next_index = HashMap::with_capacity(next.len());
+            for (position, &node) in next.iter().enumerate() {
+                next_index.insert(node, position);
+            }
+            let mut fwd: HashMap<usize, HashSet<usize>> = HashMap::new();
+            for &c in &current {
+                for &edge_idx in &self.adjacency[c] {
+                    let edge = &self.edges[edge_idx];
+                    if !edge.active {
+                        continue;
+                    }
+                    let other = if edge.a == c { edge.b } else { edge.a };
+                    if other < self.nodes.len() && self.nodes[other].slice == next_slice {
+                        fwd.entry(c).or_default().insert(other);
+                    }
+                }
+            }
+
             for triple in current.windows(3) {
                 if self.tetrahedra.len() >= tetra_limit {
                     return;
                 }
-                if let Some(&future) = next.iter().find(|&&candidate| {
-                    triple
-                        .iter()
-                        .all(|&source| self.has_active_edge(source, candidate))
-                }) {
+                let (Some(s0), Some(s1), Some(s2)) = (
+                    fwd.get(&triple[0]),
+                    fwd.get(&triple[1]),
+                    fwd.get(&triple[2]),
+                ) else {
+                    continue;
+                };
+                // The original picked the first common future in `next` order,
+                // i.e. the intersection element with the smallest position.
+                let mut smallest = s0;
+                if s1.len() < smallest.len() {
+                    smallest = s1;
+                }
+                if s2.len() < smallest.len() {
+                    smallest = s2;
+                }
+                let mut future: Option<usize> = None;
+                let mut future_pos = usize::MAX;
+                for &candidate in smallest {
+                    if s0.contains(&candidate) && s1.contains(&candidate) && s2.contains(&candidate)
+                    {
+                        let pos = next_index[&candidate];
+                        if pos < future_pos {
+                            future_pos = pos;
+                            future = Some(candidate);
+                        }
+                    }
+                }
+                if let Some(future) = future {
                     self.tetrahedra.push(CdtGraphitySimplex3 {
                         vertices: [triple[0], triple[1], triple[2], future],
                         kind: CdtSimplexKind::T31,
                     });
                 }
             }
+
             for pair_current in current.windows(2) {
-                for pair_next in next.windows(2) {
-                    if self.tetrahedra.len() >= tetra_limit {
-                        return;
-                    }
-                    if self.has_active_edge(pair_current[0], pair_next[0])
-                        && self.has_active_edge(pair_current[1], pair_next[1])
-                    {
+                if self.tetrahedra.len() >= tetra_limit {
+                    return;
+                }
+                let (Some(f0), Some(f1)) = (fwd.get(&pair_current[0]), fwd.get(&pair_current[1]))
+                else {
+                    continue;
+                };
+                // Earliest consecutive pair (next[pos], next[pos + 1]) such that
+                // c0 -> next[pos] and c1 -> next[pos + 1] are both active edges.
+                let mut positions = f0
+                    .iter()
+                    .filter_map(|node| next_index.get(node).copied())
+                    .filter(|&pos| pos + 1 < next.len())
+                    .collect::<Vec<_>>();
+                positions.sort_unstable();
+                for pos in positions {
+                    if f1.contains(&next[pos + 1]) {
                         self.tetrahedra.push(CdtGraphitySimplex3 {
-                            vertices: [
-                                pair_current[0],
-                                pair_current[1],
-                                pair_next[0],
-                                pair_next[1],
-                            ],
+                            vertices: [pair_current[0], pair_current[1], next[pos], next[pos + 1]],
                             kind: CdtSimplexKind::T22,
                         });
                         break;
@@ -720,13 +1360,6 @@ impl CdtGraphitySubstrate {
                 }
             }
         }
-    }
-
-    fn has_active_edge(&self, a: usize, b: usize) -> bool {
-        self.edge_lookup
-            .get(&edge_key(a, b))
-            .map(|&idx| self.edges[idx].active)
-            .unwrap_or(false)
     }
 
     fn propagate_activation(&mut self) {
@@ -780,6 +1413,13 @@ fn prediction_error(predicted: &[(usize, f32)], expected: &[usize]) -> f32 {
     1.0 - matched as f32 / expected.len().max(1) as f32
 }
 
+fn binary_entropy(p: f32) -> f32 {
+    if !(0.0..=1.0).contains(&p) || p <= f32::EPSILON || 1.0 - p <= f32::EPSILON {
+        return 0.0;
+    }
+    -p * p.ln() - (1.0 - p) * (1.0 - p).ln()
+}
+
 fn orient_edge(
     nodes: &[CdtGraphityNode],
     a: usize,
@@ -809,5 +1449,39 @@ fn edge_key(a: usize, b: usize) -> (usize, usize) {
         (a, b)
     } else {
         (b, a)
+    }
+}
+
+fn parse_count_header(line: &str, label: &str) -> Result<usize, String> {
+    let parts = line.split_whitespace().collect::<Vec<_>>();
+    if parts.len() != 2 || parts[0] != label {
+        return Err(format!("cabecera {label} invalida: {line}"));
+    }
+    parse_usize(parts[1], label)
+}
+
+fn parse_usize(value: &str, label: &str) -> Result<usize, String> {
+    value
+        .parse::<usize>()
+        .map_err(|err| format!("{label} invalido: {err}"))
+}
+
+fn parse_u64(value: &str, label: &str) -> Result<u64, String> {
+    value
+        .parse::<u64>()
+        .map_err(|err| format!("{label} invalido: {err}"))
+}
+
+fn parse_f32(value: &str, label: &str) -> Result<f32, String> {
+    value
+        .parse::<f32>()
+        .map_err(|err| format!("{label} invalido: {err}"))
+}
+
+fn parse_flag(value: &str, label: &str) -> Result<bool, String> {
+    match value {
+        "0" => Ok(false),
+        "1" => Ok(true),
+        _ => Err(format!("{label} invalido: {value}")),
     }
 }
