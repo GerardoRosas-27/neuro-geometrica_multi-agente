@@ -342,7 +342,8 @@ fn evaluate(substrate: &NativeThermoRqmEprSubstrate, lessons: &[Lesson]) -> Metr
             score(&report.candidates, &lesson.remote),
             score(&report.candidates, &lesson.distractor),
         );
-        let action = trial.query(DEFAULT_OBSERVER, 0.0, &merge(&lesson.local, &lesson.action));
+        let action_cue = merge(&lesson.local, &lesson.action);
+        let action = trial.query(DEFAULT_OBSERVER, 0.0, &action_cue);
         metrics.record(
             score(&action.candidates, &lesson.remote),
             score(&action.candidates, &lesson.distractor),

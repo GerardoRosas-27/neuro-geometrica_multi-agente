@@ -282,14 +282,12 @@ impl NativeThermoRqmEprSubstrate {
             }
         };
 
+        let base_score_lookup = base_scores.iter().copied().collect::<HashMap<_, _>>();
         let mut candidates = candidate_ids
             .into_iter()
             .map(|agent| {
-                let relational_score = base_scores
-                    .iter()
-                    .find(|(candidate, _)| *candidate == agent)
-                    .map(|(_, score)| *score)
-                    .unwrap_or_else(|| {
+                let relational_score =
+                    base_score_lookup.get(&agent).copied().unwrap_or_else(|| {
                         self.relational_score(observer, observer_phase, seeds, agent)
                     });
                 let thermal_multiplier = if use_thermal {

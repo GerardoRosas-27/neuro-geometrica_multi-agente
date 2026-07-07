@@ -196,7 +196,269 @@ src/bin/native_thermodynamic_engine.rs
 
 ---
 
-## 4. Adaptador Legacy -> Nativo
+## 4. Ventajas Físico-Computacionales Del Motor Nativo
+
+El motor termodinámico nativo mejora al sustrato anterior porque convierte la inferencia en un problema local de relajación, muestreo y competencia energética. En vez de depender de pasos globales de geometría Graphity/Regge en cada consulta, usa un estado térmico vectorial por nodo y solo activa bloques impactados por la frontera y los candidatos.
+
+### 4.1 Cálculo Local Compilado
+
+El sustrato nativo compila un programa de muestreo:
+
+```text
+NativeSamplingProgram
+  blocks
+  schedule
+  node_to_block
+```
+
+En inferencia, el pulso termodinámico no recorre todo el universo si no hace falta:
+
+```text
+block_ids = scheduled_impacted_blocks(seeds, candidates)
+for block_id in block_ids:
+  sample_block(block)
+```
+
+Esto cambia el costo efectivo:
+
+```text
+legacy: O(relaciones observadas + paso CDT/Graphity + guía geométrica)
+nativo: O(relaciones vecinas + bloques impactados)
+```
+
+Evidencia:
+
+```text
+legacy_cdt_rqm_consolidated:
+  us_per_case=1280.029 a 1649.442
+
+native_thermodynamic_consolidated:
+  us_per_case=339.240 a 343.507
+
+ganancia_runtime=~3.7x a ~4.9x
+```
+
+### 4.2 Dinámica Termodinámica Tipo Langevin
+
+El estado térmico evoluciona como una discretización de Langevin con difusión, confinamiento, fuerza piloto y ruido térmico:
+
+```text
+laplacian_i = sum_j w_ij * (x_j - x_i)
+pilot_i     = amplitude_i * sin(phase_i) + activation_i
+force_i     = diffusion * laplacian_i
+            + pilot_gain * pilot_i
+            - confinement * x_i
+noise_i     = Normal(0, sqrt(2 * T_i * dt))
+x_i(t+dt)   = clamp(x_i + force_i * dt + noise_i)
+```
+
+La fase también fluye localmente:
+
+```text
+phase_flow_i = sum_j w_ij * sin(phase_j - phase_i + edge_phase_ij)
+phase_i'     = phase_i + phase_coupling * phase_flow_i * dt + x_i' * dt
+```
+
+Ventaja:
+
+```text
+La memoria no solo se recupera por score relacional.
+También se estabiliza por atracción térmica, difusión local y fase.
+```
+
+### 4.3 Energía Efectiva Local
+
+Cada nodo estima una energía efectiva:
+
+```text
+E_i = 0.5 * confinement * x_i^2
+    - force_i * x_i
+    + 0.5 * laplacian_i^2
+```
+
+Esto penaliza estados inestables y favorece atractores coherentes. La energía libre proxy usa una partición tipo Boltzmann:
+
+```text
+Z = sum_i exp(-E_i / T_i)
+F = -T * ln(Z)
+```
+
+Evidencia del entrenamiento limpio:
+
+```text
+batch=338804
+mean_energy=2.0188
+free_energy=-1.5608
+```
+
+El valor negativo de `free_energy` indica que el sistema encontró atractores térmicos con partición favorable. No es directamente comparable en escala con el Regge legacy, pero sí es útil para estabilidad interna del motor nativo.
+
+### 4.4 Muestreo Híbrido: Gaussian, Gibbs y Bernoulli
+
+El motor no usa un único método de actualización. Cada bloque puede muestrear con:
+
+```text
+Gaussian:
+  x' = x + force * dt + noise
+
+Gibbs:
+  proposal = tanh(force / T)
+  x' = proposal + jitter
+
+Bernoulli:
+  p = sigmoid(force / T)
+  x' -> {+1, -1}
+```
+
+Ventaja:
+
+```text
+Gaussian explora continuo.
+Gibbs estabiliza según energía/temperatura.
+Bernoulli fuerza decisiones discretas cuando conviene colapsar.
+```
+
+Esta mezcla explica por qué el motor aprende rápido y separa memorias con pocos nodos:
+
+```text
+nodes=640
+relations=3878
+epr_links=640
+accuracy=100.0%
+leakage=0.1%
+```
+
+### 4.5 Scoring Termodinámico
+
+La inferencia nativa combina score relacional con un multiplicador térmico:
+
+```text
+score_final(candidate) = relational_score * thermal_multiplier
+```
+
+Donde:
+
+```text
+thermal_multiplier =
+  1 + thermal_score_gain * (
+        tanh(state)
+      + 0.1 * amplitude
+      + 0.05 * exp(-energy / temperature)
+    )
+```
+
+Ventaja:
+
+```text
+Un candidato no gana solo por memoria relacional.
+Debe ser compatible con el estado térmico, la amplitud y la energía local.
+```
+
+Esto explica el aumento de margen:
+
+```text
+legacy margin global=127.464
+native margin global=420.909
+native clean final margin=691.721
+```
+
+### 4.6 Sueño Contrastivo Como Optimización
+
+El sueño nativo implementa una forma de optimización contrastiva:
+
+```text
+para cada memoria:
+  reforzar cue -> target
+  atenuar cue -> distractor explícito
+  atenuar cue -> remotos de otras memorias
+  relajar térmicamente
+  aceptar solo si accuracy no baja y leakage/margin mejora
+```
+
+Formalmente, el objetivo implícito es:
+
+```text
+min L = leakage
+      - margin_gain
+      + penalty(accuracy_drop)
+      + thermal_instability
+```
+
+El entrenamiento limpio muestra el efecto repetidamente:
+
+```text
+sleep=contrastive accepted=6
+accuracy=97.2% -> 100.0%
+leakage=7.7% -> 0.1%
+margin=946.210 -> 691.721
+```
+
+Aunque el margen puede bajar durante sueño, el sistema acepta porque elimina fuga y recupera accuracy. La reducción de leakage es prioritaria cuando la separación ya es suficiente.
+
+### 4.7 Evidencia Del Entrenamiento Desde Cero
+
+El entrenamiento limpio nativo fue ejecutado desde cero, sin cargar el checkpoint legacy:
+
+```powershell
+cargo run --release --bin native_thermo_clean_trainer
+```
+
+Estado final guardado:
+
+```text
+checkpoint=data/native_thermo_clean.cdt_native
+batch=338804
+samples=5420864
+semantic=1806954
+causal=903477
+skill=903477
+episodic=1806956
+sleep_runs=84701
+growths=0
+slices=4
+nodes=640
+relations=3878
+epr_links=640
+```
+
+Métricas finales:
+
+```text
+accuracy=100.0%
+leakage=0.1%
+margin=691.721
+mean_energy=2.0188
+free_energy=-1.5608
+relation_density=6.059
+epr_density=1.000
+```
+
+Interpretación:
+
+```text
+El motor termodinámico nativo aprende desde cero.
+No depende del checkpoint legacy para lograr baja fuga.
+No necesitó crecer: la densidad quedó bajo los umbrales.
+El sueño periódico mantiene el estado cerca del óptimo.
+```
+
+### 4.8 Resumen De Ventajas
+
+```text
+1. Menor costo de inferencia por bloques impactados.
+2. Relajación física local en vez de paso geométrico global.
+3. Score condicionado por energía y temperatura.
+4. Muestreo híbrido que combina exploración y colapso.
+5. Sueño contrastivo que separa memorias válidas entre sí.
+6. Entrenamiento limpio desde cero con checkpoint nativo.
+7. Mejor leakage, mejor margen y mayor velocidad que el baseline.
+```
+
+Por estas razones, el motor termodinámico nativo no es solo una versión más rápida. Es una arquitectura mejor optimizada para aprendizaje incremental, consolidación y recuperación robusta.
+
+---
+
+## 5. Adaptador Legacy -> Nativo
 
 El adaptador carga el checkpoint anterior y migra:
 
@@ -227,7 +489,7 @@ Esto conserva consultas por cualquier lado de una relación legacy no dirigida.
 
 ---
 
-## 5. Sueño Termodinámico Nativo
+## 6. Sueño Termodinámico Nativo
 
 El primer sueño nativo solo hacía replay positivo y atenuaba el distractor explícito de cada lección. Eso mejoraba memoria directa, acción, memoria tipada, cues parciales y ruido, pero dejaba más alto el caso `cross_distractor`.
 
@@ -282,7 +544,7 @@ decision=keep_native
 
 ---
 
-## 6. Comparación Principal: Legacy vs Nativo Dormido
+## 7. Comparación Principal: Legacy vs Nativo Dormido
 
 Comando:
 
@@ -326,7 +588,7 @@ energía proxy: nativo mucho menor en escala nativa
 
 ---
 
-## 7. Evaluación Amplia De Conocimiento
+## 8. Evaluación Amplia De Conocimiento
 
 Comando:
 
@@ -411,7 +673,7 @@ baja de 10.7% a 1.8% y queda mejor que el legacy.
 
 ---
 
-## 8. Datos De Aprendizaje
+## 9. Datos De Aprendizaje
 
 Los datos indican tres fases de aprendizaje:
 
@@ -452,7 +714,7 @@ El sueño no solo repite recuerdos; crea separación contextual. Esta fase es lo
 
 ---
 
-## 9. Qué Faltaba Respecto Al Sustrato Anterior
+## 10. Qué Faltaba Respecto Al Sustrato Anterior
 
 La función faltante no era inferencia relacional ni EPR. Esas ya estaban cubiertas.
 
@@ -491,7 +753,7 @@ cross_distractor leakage:
 
 ---
 
-## 10. Comandos Vigentes
+## 11. Comandos Vigentes
 
 Motor termodinámico consolidado:
 
@@ -531,7 +793,7 @@ cargo test --release
 
 ---
 
-## 11. Recomendación De Investigación
+## 12. Recomendación De Investigación
 
 Con los datos actuales, no se recomienda regresar al sustrato anterior como arquitectura principal.
 
@@ -560,7 +822,7 @@ keep_native value=preserves_loaded_training_and_improves_runtime
 
 ---
 
-## 12. Conclusión
+## 13. Conclusión
 
 El resultado central de esta etapa es que la arquitectura nativa deja de ser solo una optimización de rendimiento. Después de agregar sueño contrastivo, también supera al sustrato anterior en calidad de recuperación de conocimiento.
 
