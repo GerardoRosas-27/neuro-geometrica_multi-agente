@@ -3,6 +3,7 @@ use crate::entanglement::{EntanglementConfig, EntanglementField, EntanglementRep
 use crate::relational_field::{
     CollapseReport, ObserverId, RelationalFieldConfig, RelationalFieldSubstrate,
 };
+use crate::relational_guidance::RelationalGuidanceEngine;
 use std::fs;
 use std::io;
 use std::path::Path;
@@ -58,6 +59,7 @@ pub struct CdtRqmUniverseSubstrate {
     pub hardware: CdtGraphitySubstrate,
     pub software: RelationalFieldSubstrate,
     pub entanglement: Option<EntanglementField>,
+    guidance: RelationalGuidanceEngine,
     pub config: CdtRqmConfig,
 }
 
@@ -67,6 +69,7 @@ impl CdtRqmUniverseSubstrate {
             hardware: CdtGraphitySubstrate::graphity_hot_start(config.cdt),
             software: RelationalFieldSubstrate::new(config.rqm),
             entanglement: None,
+            guidance: RelationalGuidanceEngine::new(),
             config,
         }
     }
@@ -362,12 +365,15 @@ impl CdtRqmUniverseSubstrate {
         observer_phase: f32,
         boundary: &[usize],
     ) -> CdtRqmStepReport {
-        let collapse = self.software.observe_pattern(
+        let mut collapse = self.software.observe_pattern(
             observer,
             boundary,
             observer_phase,
             self.config.max_quantum_candidates,
         );
+        if !is_typed_memory_observer(observer) {
+            self.guidance.apply(&self.hardware, &mut collapse);
+        }
         let mut expected_from_rqm = collapse
             .candidates
             .iter()
@@ -542,4 +548,8 @@ fn auto_cosmological_lambda(hardware: &CdtGraphitySubstrate) -> f32 {
     let volume = hardware.tetrahedra.len().max(1) as f32;
     let curvature_density = hardware.regge_action() / volume;
     (0.05 / (1.0 + curvature_density / 16.0)).clamp(0.005, 0.05)
+}
+
+fn is_typed_memory_observer(observer: ObserverId) -> bool {
+    matches!(observer.0, 261_001..=261_004)
 }
