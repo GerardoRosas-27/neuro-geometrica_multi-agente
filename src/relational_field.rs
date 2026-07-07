@@ -118,6 +118,10 @@ impl RelationalFieldSubstrate {
         self.relations.len()
     }
 
+    pub fn relation_entries(&self) -> impl Iterator<Item = (RelationKey, RelationalState)> + '_ {
+        self.relations.iter().map(|(key, state)| (*key, *state))
+    }
+
     pub fn relation_state(
         &self,
         observer: ObserverId,

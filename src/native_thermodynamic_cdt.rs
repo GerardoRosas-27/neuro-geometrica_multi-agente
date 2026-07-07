@@ -196,6 +196,36 @@ impl NativeThermoCdtSubstrate {
         self.edge_a.len()
     }
 
+    pub fn replace_edges<I>(&mut self, edges: I)
+    where
+        I: IntoIterator<Item = (usize, usize, NativeCdtEdgeKind, f32, f32, f32)>,
+    {
+        self.edge_a.clear();
+        self.edge_b.clear();
+        self.edge_kind.clear();
+        self.edge_weight.clear();
+        self.edge_phase.clear();
+        self.edge_stability.clear();
+
+        let node_count = self.node_count();
+        for (a, b, kind, weight, phase, stability) in edges {
+            if a == b || a >= node_count || b >= node_count {
+                continue;
+            }
+            self.edge_a.push(a);
+            self.edge_b.push(b);
+            self.edge_kind.push(kind);
+            self.edge_weight.push(weight.max(0.0));
+            self.edge_phase.push(phase);
+            self.edge_stability.push(stability.clamp(0.0, 1.0));
+        }
+        if self.edge_a.is_empty() {
+            self.build_foliated_cdt_graph();
+        } else {
+            self.rebuild_adjacency();
+        }
+    }
+
     pub fn compile_sampling_program(&self, config: NativeSamplingConfig) -> NativeSamplingProgram {
         let config = NativeSamplingConfig {
             block_size: config.block_size.max(1),

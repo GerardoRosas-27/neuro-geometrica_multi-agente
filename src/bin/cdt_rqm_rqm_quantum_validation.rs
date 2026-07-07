@@ -1,7 +1,9 @@
 use cdt_rqm_epr::cdt_graphity::CdtGraphityConfig;
 use cdt_rqm_epr::cdt_rqm::{CdtRqmConfig, CdtRqmUniverseSubstrate};
 use cdt_rqm_epr::entanglement::EntanglementConfig;
-use cdt_rqm_epr::relational_field::{CandidateScore, CollapseReport, ObserverId, RelationalFieldConfig};
+use cdt_rqm_epr::relational_field::{
+    CandidateScore, CollapseReport, ObserverId, RelationalFieldConfig,
+};
 
 const NODES_PER_SLICE: usize = 128;
 

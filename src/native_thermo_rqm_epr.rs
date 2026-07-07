@@ -123,6 +123,70 @@ impl NativeThermoRqmEprSubstrate {
         self.relations.len()
     }
 
+    pub fn import_relation_state(
+        &mut self,
+        observer: ObserverId,
+        source: usize,
+        target: usize,
+        amplitude: f32,
+        phase: f32,
+        coherence: f32,
+        uncertainty: f32,
+        last_tick: u64,
+    ) {
+        if source == target {
+            return;
+        }
+        self.tick = self.tick.max(last_tick);
+        let key = RelationKey {
+            observer,
+            source,
+            target,
+        };
+        let relation = NativeRelation {
+            key,
+            amplitude: amplitude.clamp(0.0, 4.0),
+            phase: phase.rem_euclid(std::f32::consts::TAU),
+            coherence: coherence.clamp(0.0, 1.0),
+            uncertainty: uncertainty.clamp(0.0, 1.0),
+            last_tick,
+        };
+        if let Some(&idx) = self.relation_lookup.get(&key) {
+            self.relations[idx] = relation;
+            return;
+        }
+
+        let idx = self.relations.len();
+        self.relations.push(relation);
+        self.relation_lookup.insert(key, idx);
+        self.neighbor_index
+            .entry((observer.0, source))
+            .or_default()
+            .push(idx);
+    }
+
+    pub fn attenuate_relation(
+        &mut self,
+        observer: ObserverId,
+        source: usize,
+        target: usize,
+        amount: f32,
+    ) {
+        let Some(&idx) = self.relation_lookup.get(&RelationKey {
+            observer,
+            source,
+            target,
+        }) else {
+            return;
+        };
+        let amount = amount.clamp(0.0, 1.0);
+        let relation = &mut self.relations[idx];
+        relation.amplitude *= 1.0 - 0.35 * amount;
+        relation.coherence *= 1.0 - 0.20 * amount;
+        relation.uncertainty = (relation.uncertainty + 0.30 * amount).min(1.0);
+        relation.last_tick = self.tick;
+    }
+
     pub fn train_observed_transition(
         &mut self,
         observer: ObserverId,
