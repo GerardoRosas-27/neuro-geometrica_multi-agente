@@ -123,6 +123,23 @@ impl NativeThermoRqmEprSubstrate {
         self.relations.len()
     }
 
+    pub fn relation_entries(
+        &self,
+    ) -> impl Iterator<Item = (ObserverId, usize, usize, f32, f32, f32, f32, u64)> + '_ {
+        self.relations.iter().map(|relation| {
+            (
+                relation.key.observer,
+                relation.key.source,
+                relation.key.target,
+                relation.amplitude,
+                relation.phase,
+                relation.coherence,
+                relation.uncertainty,
+                relation.last_tick,
+            )
+        })
+    }
+
     pub fn import_relation_state(
         &mut self,
         observer: ObserverId,
