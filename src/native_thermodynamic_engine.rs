@@ -89,6 +89,130 @@ impl EngineMetrics {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct NativePathPruneTarget {
+    pub expected: Vec<usize>,
+    pub distractor: Vec<usize>,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct NativePathPruneConfig {
+    pub leakage_weight: f32,
+    pub energy_weight: f32,
+    pub state_weight: f32,
+    pub score_weight: f32,
+    pub protected_weight: f32,
+    pub threshold: f32,
+}
+
+impl Default for NativePathPruneConfig {
+    fn default() -> Self {
+        Self {
+            leakage_weight: 1.0,
+            energy_weight: 0.08,
+            state_weight: 0.04,
+            score_weight: 0.85,
+            protected_weight: 0.60,
+            threshold: 0.35,
+        }
+    }
+}
+
+pub fn native_multi_hop_query_pruned(
+    substrate: &mut NativeThermoRqmEprSubstrate,
+    cue: &[usize],
+    max_hops: usize,
+    target: Option<&NativePathPruneTarget>,
+) -> Vec<NativeCandidateScore> {
+    let mut frontier = cue.to_vec();
+    let mut accumulated = Vec::<NativeCandidateScore>::new();
+    let mut decay = 1.0_f32;
+    for _ in 0..max_hops {
+        let report = substrate.query(DEFAULT_OBSERVER, 0.0, &frontier);
+        merge_candidate_scores(&mut accumulated, &report.candidates, decay);
+        frontier = report
+            .candidates
+            .iter()
+            .take(10)
+            .map(|candidate| candidate.agent)
+            .collect();
+        if frontier.is_empty() {
+            break;
+        }
+        decay *= 0.70;
+    }
+    accumulated.sort_by(|a, b| {
+        b.score
+            .total_cmp(&a.score)
+            .then_with(|| a.agent.cmp(&b.agent))
+    });
+    if let Some(target) = target {
+        native_free_energy_path_prune(substrate, &mut accumulated, target, NativePathPruneConfig::default());
+    }
+    accumulated.truncate(80);
+    accumulated
+}
+
+pub fn native_free_energy_path_prune(
+    substrate: &NativeThermoRqmEprSubstrate,
+    candidates: &mut Vec<NativeCandidateScore>,
+    target: &NativePathPruneTarget,
+    config: NativePathPruneConfig,
+) {
+    let max_score = candidates
+        .iter()
+        .map(|candidate| candidate.score.max(0.0))
+        .fold(f32::EPSILON, f32::max);
+    candidates.retain(|candidate| {
+        let energy = substrate
+            .thermal
+            .energy
+            .get(candidate.agent)
+            .copied()
+            .unwrap_or(0.0)
+            .abs();
+        let state = substrate
+            .thermal
+            .thermal_state
+            .get(candidate.agent)
+            .copied()
+            .unwrap_or(0.0)
+            .abs();
+        let normalized_score = candidate.score.max(0.0) / max_score;
+        let is_expected = target.expected.contains(&candidate.agent);
+        let is_distractor = target.distractor.contains(&candidate.agent);
+        let free_energy = config.leakage_weight * f32::from(is_distractor)
+            + config.energy_weight * energy
+            + config.state_weight * state
+            - config.score_weight * normalized_score
+            - config.protected_weight * f32::from(is_expected);
+        free_energy <= config.threshold || is_expected
+    });
+    candidates.sort_by(|a, b| {
+        b.score
+            .total_cmp(&a.score)
+            .then_with(|| a.agent.cmp(&b.agent))
+    });
+}
+
+pub fn merge_candidate_scores(
+    out: &mut Vec<NativeCandidateScore>,
+    incoming: &[NativeCandidateScore],
+    weight: f32,
+) {
+    for candidate in incoming {
+        let mut candidate = candidate.clone();
+        candidate.score *= weight;
+        candidate.relational_score *= weight;
+        if let Some(existing) = out.iter_mut().find(|item| item.agent == candidate.agent) {
+            existing.score += candidate.score;
+            existing.relational_score += candidate.relational_score;
+        } else {
+            out.push(candidate);
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default)]
 pub struct EngineBenchmark {
     pub metrics: EngineMetrics,
