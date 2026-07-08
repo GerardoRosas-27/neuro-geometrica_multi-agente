@@ -147,7 +147,12 @@ pub fn native_multi_hop_query_pruned(
             .then_with(|| a.agent.cmp(&b.agent))
     });
     if let Some(target) = target {
-        native_free_energy_path_prune(substrate, &mut accumulated, target, NativePathPruneConfig::default());
+        native_free_energy_path_prune(
+            substrate,
+            &mut accumulated,
+            target,
+            NativePathPruneConfig::default(),
+        );
     }
     accumulated.truncate(80);
     accumulated
