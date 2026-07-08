@@ -739,6 +739,18 @@ fn phase4_stream() -> &'static [Item] {
             target: "dog",
             distractor: "fire",
         },
+        Item {
+            kind: LessonKind::Semantic,
+            cue: "eau",
+            target: "water",
+            distractor: "metal",
+        },
+        Item {
+            kind: LessonKind::Semantic,
+            cue: "feu",
+            target: "fire",
+            distractor: "plant",
+        },
     ]
 }
 
@@ -779,6 +791,18 @@ fn phase4_all() -> &'static [Item] {
             cue: "chien",
             target: "dog",
             distractor: "fire",
+        },
+        Item {
+            kind: LessonKind::Semantic,
+            cue: "eau",
+            target: "water",
+            distractor: "metal",
+        },
+        Item {
+            kind: LessonKind::Semantic,
+            cue: "feu",
+            target: "fire",
+            distractor: "plant",
         },
     ]
 }
