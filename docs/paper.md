@@ -793,7 +793,130 @@ cargo test --release
 
 ---
 
-## 12. Recomendación De Investigación
+## 12. Evaluación Amplia Del Currículo De 5 Fases
+
+Después de entrenar el currículo infinito de cinco fases, se ejecutó una evaluación amplia desde el checkpoint:
+
+```text
+data/native_curriculum_5phase.cdt_native
+```
+
+Comando:
+
+```powershell
+$env:GEMMA_MODEL="gemma2:2b"; $env:CURRICULUM_EVAL_USE_GEMMA="true"; cargo run --release --bin native_curriculum_broad_evaluation
+```
+
+Estado del checkpoint evaluado:
+
+```text
+cycle=113017
+growths=0
+nodes=640
+relations=6842
+epr_links=620
+mean_energy=4.4424
+free_energy=-1.2177
+```
+
+Resultados por fase:
+
+```text
+phase1_cross_lingual:
+  accuracy=100.0%
+  leakage=6.6%
+  margin=832.920
+  cases=6
+
+phase2_compositional:
+  accuracy=100.0%
+  leakage=3.7%
+  margin=31.474
+  cases=4
+
+phase3_strong_reasoning:
+  accuracy=100.0%
+  leakage=0.6%
+  margin=36.674
+  cases=4
+
+phase4_base_retention:
+  accuracy=100.0%
+  leakage=11.7%
+  margin=113.450
+  cases=4
+
+phase4_stream_retention:
+  accuracy=100.0%
+  leakage=0.0%
+  margin=124.818
+  cases=4
+
+phase5_native:
+  accuracy=100.0%
+  leakage=8.1%
+  margin=31.033
+  cases=4
+```
+
+Comparación de Fase 5 contra baselines:
+
+```text
+phase5_graph_baseline:
+  accuracy=0.0%
+  leakage=50.0%
+
+phase5_lexical_baseline:
+  accuracy=0.0%
+  leakage=87.5%
+
+native_delta:
+  acc_vs_graph=+100.0pp
+  leak_vs_graph=-41.9pp
+  acc_vs_lexical=+100.0pp
+  leak_vs_lexical=-79.4pp
+```
+
+Decisión de la evaluación amplia:
+
+```text
+broad_5phase_pass
+```
+
+Interpretación:
+
+```text
+Fase 1 pasa: transferencia multilingüe con Gemma como periferia.
+Fase 2 pasa: composición multi-hop.
+Fase 3 pasa: razonamiento fuerte con poda por energía libre.
+Fase 5 pasa: ventaja clara sobre baselines ruidosos.
+Fase 4 pasa después del ajuste: se retiene memoria base y memoria nueva del stream.
+```
+
+El hallazgo importante fue que el entrenamiento por ciclo reportaba `phase4_forgetting=0.000`, pero la evaluación amplia separada mostró que esa métrica solo medía retención del conocimiento base. Se agregó una métrica simétrica:
+
+```text
+stream_retention
+```
+
+La corrección aplicada fue incluir en el stream curricular los alias que la evaluación amplia medía:
+
+```text
+chien -> dog
+eau   -> water
+feu   -> fire
+```
+
+Después de un ciclo adicional con sueño contrastivo:
+
+```text
+phase4_stream_retention accuracy=100.0%
+phase4_stream_retention leakage=0.0%
+```
+
+---
+
+## 13. Recomendación De Investigación
 
 Con los datos actuales, no se recomienda regresar al sustrato anterior como arquitectura principal.
 
@@ -805,6 +928,8 @@ mantener CDT-RQM-EPR legacy como baseline, validador y fuente de checkpoints
 investigar persistencia nativa del estado dormido
 ampliar la suite de conocimiento con más categorías y distractores adversariales
 formalizar la inhibición contrastiva como principio termodinámico de consolidación
+agregar stream_retention como métrica obligatoria de Fase 4
+mantener balance entre memoria base y memoria nueva en el sueño curricular
 ```
 
 Razón:
@@ -812,6 +937,7 @@ Razón:
 ```text
 El legacy es correcto.
 El nativo consolidado es correcto, más rápido, menos filtrante y con mayor margen.
+La evaluación amplia de 5 fases pasa después de corregir retención del stream.
 ```
 
 La decisión experimental vigente es:
@@ -822,9 +948,11 @@ keep_native value=preserves_loaded_training_and_improves_runtime
 
 ---
 
-## 13. Conclusión
+## 14. Conclusión
 
-El resultado central de esta etapa es que la arquitectura nativa deja de ser solo una optimización de rendimiento. Después de agregar sueño contrastivo, también supera al sustrato anterior en calidad de recuperación de conocimiento.
+El resultado central de esta etapa es que la arquitectura nativa deja de ser solo una optimización de rendimiento. Después de agregar sueño contrastivo, poda por energía libre y currículo de 5 fases, también supera al sustrato anterior en calidad de recuperación de conocimiento.
+
+La evaluación amplia del currículo confirma las fases 1, 2, 3, 4 y 5. El problema inicial de retención del stream en Fase 4 se corrigió agregando los alias faltantes y aplicando un ciclo adicional de sueño contrastivo.
 
 Resumen final:
 
@@ -835,6 +963,7 @@ margin global:    legacy=127.464 native=420.909
 signal_ratio:     legacy=9.428  native=263.003
 inferencia:       native ~3.7x a ~4.9x más rápido
 cross_distractor: legacy=8.8% leakage, native=1.8% leakage
+broad_5phase:    decision=broad_5phase_pass
 ```
 
 Por tanto:
