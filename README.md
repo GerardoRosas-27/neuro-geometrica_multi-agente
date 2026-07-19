@@ -1,93 +1,126 @@
-# CDT-RQM-EPR
+# CDT-RQM-EPR · Sistema Operativo Cognitivo
 
-Sustrato experimental causal-relacional en Rust.
+Motor termodinámico nativo en Rust. El Transformer se conserva como periferia
+lingüística; CDT-RQM-EPR mantiene memoria, control, exploración, planificación y
+sueño.
 
-La rama actual conserva solo el sustrato **CDT-RQM-EPR**:
+## Motor unificado de espines y cognición
 
-- `CDT-Graphity`: hardware causal foliado.
-- `RQM`: software relacional dependiente del observador.
-- `EPR`: enlaces coherentes de correlación computacional.
-- `Dvali criticality`: control `alpha * N ~= 1`, species bound y temperatura `1 / sqrt(N)`.
-- `Ising/FEP`: selección energética, acción Regge discreta y compresión geométrica.
-
-El paper técnico está en:
-
-```text
-docs/paper.md
-```
-
-## Estado Consolidado
-
-El estado entrenado vigente es:
-
-```text
-data/cdt_rqm_evolutionary_kept.cdt_rqm
-```
-
-## Evaluar
+La arquitectura consolidada CDT–spin–RQM–EPR se ejecuta con:
 
 ```powershell
-cargo run --bin cdt_rqm_consolidated_evaluation
+cargo run --release --bin native_unified_spin_cognitive
 ```
 
-Resultado esperado actual:
+CDT mantiene la malla simplicial pyrochlore; la simetría guía la transferencia
+de aprendizaje; el líquido de espines aporta estado cuántico y entrelazamiento;
+RQM/EPR mantienen relaciones; la capa cognitiva compone únicamente conocimiento
+que supera el gate conjunto.
+
+Diseño y límites: `docs/unified_spin_cognitive_engine.md`.
+
+Entrenamiento sintético reanudable:
+
+```powershell
+$env:UNIFIED_TRAIN_HOURS="5"
+cargo run --release --bin native_unified_infinite_trainer
+```
+
+Guarda `latest.json`, milestones, métricas JSONL y resumen en
+`data/unified_infinite_training/`. Si existe un checkpoint compatible, continúa
+desde el último batch.
+
+### Datos y checkpoints no versionados
+
+Los datasets, métricas y checkpoints generados no se incluyen en GitHub. Para
+crearlos desde cero:
+
+```powershell
+$env:UNIFIED_TRAIN_HOURS="5"
+cargo run --release --bin native_unified_infinite_trainer
+```
+
+Se generarán:
 
 ```text
-suite=PASS
-normal accuracy=100.0%
-typed_memory accuracy=100.0%
-causality_violations=0
+data/unified_infinite_training/latest.json
+data/unified_infinite_training/checkpoints/
+data/unified_infinite_training/metrics.jsonl
+data/unified_infinite_training/summary.json
 ```
 
-## Entrenar / Continuar
-
-Entrenamiento continuo de conceptos, causalidad, habilidades y episodios:
+Para regenerar el estado visual/cognitivo nativo:
 
 ```powershell
-$env:CDT_RQM_INFINITE_OUTPUT="data/cdt_rqm_evolutionary_kept.cdt_rqm"; cargo run --bin cdt_rqm_infinite_concept_trainer
+cargo run --release --bin native_cognitive_sleep_visualizer
 ```
 
-Entrenamiento compacto con sueño/consolidación EPR:
+Esto crea `data/native_cognitive_desktop/`. Para reanudar desde un artefacto
+externo, cópialo a esas mismas rutas antes de ejecutar el entrenador.
+
+## Entrenamiento principal
+
+La aplicación comienza desde un sustrato limpio si no existe
+`data/native_cognitive_desktop/latest.json`, ejecuta sueño infinito y guarda al
+terminar cada fase:
 
 ```powershell
-$env:CDT_RQM_EPR_SMALL_OUTPUT="data/cdt_rqm_evolutionary_kept.cdt_rqm"; cargo run --bin cdt_rqm_epr_small_sleep_trainer
+cargo run --release --bin native_cognitive_sleep_visualizer
 ```
 
-Consolidación tipo sueño sobre estado existente:
+Fases:
 
-```powershell
-$env:CDT_RQM_EPR_SLEEP_STATE="data/cdt_rqm_evolutionary_kept.cdt_rqm"; cargo run --bin cdt_rqm_epr_sleep_consolidate
-```
+1. observación wake;
+2. inducción automática de esquemas;
+3. consolidación térmica;
+4. exploración OOD;
+5. validación, commit o rollback.
 
-## Validadores Conservados
-
-```powershell
-cargo run --bin cdt_rqm_consolidated_evaluation
-cargo run --bin cdt_rqm_epr_information_validation
-cargo run --bin cdt_rqm_rqm_quantum_validation
-cargo run --bin cdt_rqm_lambda_regge_validation
-cargo run --bin cdt_rqm_thermo_time_validation
-cargo run --bin cdt_rqm_self_awareness_validation
-cargo run --bin cdt_rqm_hawking_prune_validation
-cargo run --bin cdt_graphity_substrate_experiment
-```
-
-## Arquitectura
+Persistencia:
 
 ```text
-boundary activa + observador
-  -> RQM collapse relativo
-  -> EPR synchronization
-  -> CDT causal step
-  -> Graphity / Regge / FEP
-  -> estado compacto validado por memoria
+data/native_cognitive_desktop/latest.json
+data/native_cognitive_desktop/checkpoints/*.cdt_native
+data/native_cognitive_desktop/checkpoints/*.cognitive.json
 ```
 
-El criterio de conservación de mejoras es:
+Controles:
 
 ```text
-preservar memoria
-reducir energia/fuga/costo
-no inflar geometria
-mantener causality_violations = 0
+Tab       2D / 3D
+Espacio   pausa
+E         mostrar relaciones
+S         guardado manual
+Esc       guardar y salir
 ```
+
+## Transformer y pesos
+
+Los pesos paginados, shards, catálogo y tokenizador se conservan en:
+
+```text
+data/native_tinyllama_paged_thermo/
+data/native_gemma2_paged_thermo/
+```
+
+Reconstrucción o inspección GGUF:
+
+```powershell
+cargo run --release --bin native_gguf_paged_thermo -- --model tinyllama:1.1b-chat-v1-q4_0 --output data/native_tinyllama_paged_thermo --lazy
+```
+
+Periferia lingüística Rust:
+
+```powershell
+cargo run --release --bin native_hybrid_assistant
+```
+
+Visualizador Transformer/CDT conservado:
+
+```powershell
+cargo run --release --bin native_thermo_visualizer
+```
+
+Los checkpoints, memorias, datasets, entrenadores y evaluadores del currículo
+legacy fueron eliminados. El único estado de entrenamiento persistente vigente
+es el generado por `native_cognitive_sleep_visualizer`.

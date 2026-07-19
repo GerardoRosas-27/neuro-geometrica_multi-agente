@@ -58,6 +58,7 @@ pub struct NativeSamplingProgram {
     pub blocks: Vec<NativeSamplingBlock>,
     pub schedule: Vec<usize>,
     node_to_block: Vec<usize>,
+    schedule_rank: Vec<usize>,
     pub config: NativeSamplingConfig,
 }
 
@@ -112,6 +113,34 @@ pub struct NativeThermoCdtReport {
     pub max_abs_state: f32,
 }
 
+#[derive(Clone, Copy, Debug, Default)]
+struct ThermalStats {
+    count: usize,
+    state_sum: f64,
+    state_sq_sum: f64,
+    amplitude_sum: f64,
+    energy_sum: f64,
+    partition_sum: f64,
+    active_nodes: usize,
+    max_abs_state: f32,
+}
+
+impl ThermalStats {
+    #[inline(always)]
+    fn merge(self, other: Self) -> Self {
+        Self {
+            count: self.count + other.count,
+            state_sum: self.state_sum + other.state_sum,
+            state_sq_sum: self.state_sq_sum + other.state_sq_sum,
+            amplitude_sum: self.amplitude_sum + other.amplitude_sum,
+            energy_sum: self.energy_sum + other.energy_sum,
+            partition_sum: self.partition_sum + other.partition_sum,
+            active_nodes: self.active_nodes + other.active_nodes,
+            max_abs_state: self.max_abs_state.max(other.max_abs_state),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct NativeThermoCdtSubstrate {
     pub config: NativeThermoCdtConfig,
@@ -132,6 +161,8 @@ pub struct NativeThermoCdtSubstrate {
     adjacency_edges: Vec<usize>,
     previous_state: Vec<f32>,
     previous_phase: Vec<f32>,
+    neighborhood_marks: Vec<u32>,
+    neighborhood_generation: u32,
     tick: u64,
     rng: Xoshiro256PlusPlus,
 }
@@ -177,6 +208,8 @@ impl NativeThermoCdtSubstrate {
             adjacency_edges: Vec::new(),
             previous_state: vec![0.0; nodes],
             previous_phase: vec![0.0; nodes],
+            neighborhood_marks: vec![0; nodes],
+            neighborhood_generation: 0,
             tick: 0,
             rng,
         };
@@ -194,6 +227,34 @@ impl NativeThermoCdtSubstrate {
 
     pub fn edge_count(&self) -> usize {
         self.edge_a.len()
+    }
+
+    /// Añade slices completos conservando los estados de todos los nodos existentes.
+    /// La topología se recompila para incorporar los nodos nuevos.
+    pub fn grow_slices(&mut self, additional_slices: usize) -> usize {
+        if additional_slices == 0 {
+            return 0;
+        }
+        let old_nodes = self.node_count();
+        let old_tick = self.tick;
+        let old_rng = self.rng.clone();
+        let mut config = self.config;
+        config.slices = config.slices.saturating_add(additional_slices);
+        let mut expanded = Self::new(config);
+        expanded.thermal_state[..old_nodes].copy_from_slice(&self.thermal_state);
+        expanded.amplitude[..old_nodes].copy_from_slice(&self.amplitude);
+        expanded.phase[..old_nodes].copy_from_slice(&self.phase);
+        expanded.temperature[..old_nodes].copy_from_slice(&self.temperature);
+        expanded.pilot_force[..old_nodes].copy_from_slice(&self.pilot_force);
+        expanded.energy[..old_nodes].copy_from_slice(&self.energy);
+        expanded.activation[..old_nodes].copy_from_slice(&self.activation);
+        expanded.previous_state[..old_nodes].copy_from_slice(&self.previous_state);
+        expanded.previous_phase[..old_nodes].copy_from_slice(&self.previous_phase);
+        expanded.tick = old_tick;
+        expanded.rng = old_rng;
+        let added = expanded.node_count().saturating_sub(old_nodes);
+        *self = expanded;
+        added
     }
 
     pub fn replace_edges<I>(&mut self, edges: I)
@@ -271,10 +332,15 @@ impl NativeThermoCdtSubstrate {
             }
         }
 
+        let mut schedule_rank = vec![usize::MAX; blocks.len()];
+        for (rank, &block) in schedule.iter().enumerate() {
+            schedule_rank[block] = schedule_rank[block].min(rank);
+        }
         NativeSamplingProgram {
             blocks,
             schedule,
             node_to_block,
+            schedule_rank,
             config,
         }
     }
@@ -290,15 +356,29 @@ impl NativeThermoCdtSubstrate {
     }
 
     pub fn local_neighborhood(
-        &self,
+        &mut self,
         seeds: &[usize],
         candidates: &[usize],
         max_nodes: usize,
     ) -> Vec<usize> {
-        let mut window = Vec::with_capacity(max_nodes.min(self.node_count()));
+        self.neighborhood_generation = self.neighborhood_generation.wrapping_add(1);
+        if self.neighborhood_generation == 0 {
+            self.neighborhood_marks.fill(0);
+            self.neighborhood_generation = 1;
+        }
+        let generation = self.neighborhood_generation;
+        let node_count = self.node_count();
+        let limit = max_nodes.min(node_count);
+        let mut window = Vec::with_capacity(limit);
         for &node in seeds.iter().chain(candidates.iter()) {
-            push_unique_limited(&mut window, node, max_nodes, self.node_count());
-            if node >= self.node_count() {
+            push_marked_limited(
+                &mut window,
+                &mut self.neighborhood_marks,
+                generation,
+                node,
+                limit,
+            );
+            if node >= node_count {
                 continue;
             }
             for cursor in self.adjacency_offsets[node]..self.adjacency_offsets[node + 1] {
@@ -308,8 +388,14 @@ impl NativeThermoCdtSubstrate {
                 } else {
                     self.edge_a[edge]
                 };
-                push_unique_limited(&mut window, other, max_nodes, self.node_count());
-                if window.len() >= max_nodes {
+                push_marked_limited(
+                    &mut window,
+                    &mut self.neighborhood_marks,
+                    generation,
+                    other,
+                    limit,
+                );
+                if window.len() >= limit {
                     return window;
                 }
             }
@@ -581,105 +667,96 @@ impl NativeThermoCdtSubstrate {
     }
 
     pub fn report(&self) -> NativeThermoCdtReport {
-        let n = self.node_count().max(1) as f32;
-        let mean_state = self.thermal_state.par_iter().copied().sum::<f32>() / n;
-        let state_variance = self
-            .thermal_state
-            .par_iter()
-            .map(|state| {
-                let centered = *state - mean_state;
-                centered * centered
+        const PARALLEL_REPORT_THRESHOLD: usize = 8_192;
+        let stats = if self.node_count() < PARALLEL_REPORT_THRESHOLD {
+            (0..self.node_count()).fold(ThermalStats::default(), |stats, node| {
+                stats.merge(self.node_stats(node))
             })
-            .sum::<f32>()
-            / n;
-        let mean_amplitude = self.amplitude.par_iter().copied().sum::<f32>() / n;
-        let mean_energy = self.energy.par_iter().copied().sum::<f32>() / n;
-        let max_abs_state = self
-            .thermal_state
-            .par_iter()
-            .map(|state| state.abs())
-            .reduce(|| 0.0, f32::max);
-        let partition = self
-            .energy
-            .par_iter()
-            .zip(self.temperature.par_iter())
-            .map(|(energy, temp)| (-energy / temp.max(EPSILON)).exp())
-            .sum::<f32>()
-            .max(EPSILON);
-        let active_nodes = self
-            .activation
-            .par_iter()
-            .filter(|value| **value > 0.05)
-            .count();
+        } else {
+            (0..self.node_count())
+                .into_par_iter()
+                .map(|node| self.node_stats(node))
+                .reduce(ThermalStats::default, ThermalStats::merge)
+        };
+        let n = stats.count.max(1) as f64;
+        let mean_state = stats.state_sum / n;
+        let state_variance = (stats.state_sq_sum / n - mean_state * mean_state).max(0.0);
+        let partition = stats.partition_sum.max(EPSILON as f64);
 
         NativeThermoCdtReport {
             tick: self.tick,
             nodes: self.node_count(),
             edges: self.edge_count(),
-            mean_state,
-            state_variance,
-            mean_amplitude,
-            mean_energy,
-            free_energy_proxy: -self.config.temperature.max(EPSILON) * partition.ln(),
-            active_nodes,
-            max_abs_state,
+            mean_state: mean_state as f32,
+            state_variance: state_variance as f32,
+            mean_amplitude: (stats.amplitude_sum / n) as f32,
+            mean_energy: (stats.energy_sum / n) as f32,
+            free_energy_proxy: -self.config.temperature.max(EPSILON) * partition.ln() as f32,
+            active_nodes: stats.active_nodes,
+            max_abs_state: stats.max_abs_state,
         }
     }
 
     pub fn report_local(&self, window: &[usize]) -> NativeThermoCdtReport {
-        let mut count = 0_usize;
-        let mut mean_state = 0.0_f32;
-        let mut mean_energy = 0.0_f32;
-        let mut mean_amplitude = 0.0_f32;
-        let mut max_abs_state = 0.0_f32;
-        let mut active_nodes = 0_usize;
-        for &node in window {
-            if node >= self.node_count() {
-                continue;
-            }
-            count += 1;
-            mean_state += self.thermal_state[node];
-            mean_energy += self.energy[node];
-            mean_amplitude += self.amplitude[node];
-            max_abs_state = max_abs_state.max(self.thermal_state[node].abs());
-            active_nodes += usize::from(self.activation[node] > 0.05);
+        let mut stats = ThermalStats::default();
+        for &node in window.iter().filter(|&&node| node < self.node_count()) {
+            stats = stats.merge(self.node_stats(node));
         }
-        let n = count.max(1) as f32;
-        mean_state /= n;
-        mean_energy /= n;
-        mean_amplitude /= n;
-
-        let mut state_variance = 0.0_f32;
-        let mut partition = 0.0_f32;
-        for &node in window {
-            if node >= self.node_count() {
-                continue;
-            }
-            let centered = self.thermal_state[node] - mean_state;
-            state_variance += centered * centered;
-            partition += (-self.energy[node] / self.temperature[node].max(EPSILON)).exp();
-        }
-        state_variance /= n;
+        let n = stats.count.max(1) as f64;
+        let mean_state = stats.state_sum / n;
+        let state_variance = (stats.state_sq_sum / n - mean_state * mean_state).max(0.0);
 
         NativeThermoCdtReport {
             tick: self.tick,
             nodes: self.node_count(),
             edges: self.edge_count(),
-            mean_state,
-            state_variance,
-            mean_amplitude,
-            mean_energy,
-            free_energy_proxy: -self.config.temperature.max(EPSILON) * partition.max(EPSILON).ln(),
-            active_nodes,
-            max_abs_state,
+            mean_state: mean_state as f32,
+            state_variance: state_variance as f32,
+            mean_amplitude: (stats.amplitude_sum / n) as f32,
+            mean_energy: (stats.energy_sum / n) as f32,
+            free_energy_proxy: -self.config.temperature.max(EPSILON)
+                * stats.partition_sum.max(EPSILON as f64).ln() as f32,
+            active_nodes: stats.active_nodes,
+            max_abs_state: stats.max_abs_state,
         }
     }
 
-    fn inject_local_node(&mut self, node: usize, amplitude: f32, phase: f32, activation: f32) {
+    #[inline(always)]
+    fn node_stats(&self, node: usize) -> ThermalStats {
+        let state = self.thermal_state[node];
+        let energy = self.energy[node];
+        ThermalStats {
+            count: 1,
+            state_sum: state as f64,
+            state_sq_sum: (state as f64) * (state as f64),
+            amplitude_sum: self.amplitude[node] as f64,
+            energy_sum: energy as f64,
+            partition_sum: (-energy / self.temperature[node].max(EPSILON)).exp() as f64,
+            active_nodes: usize::from(self.activation[node] > 0.05),
+            max_abs_state: state.abs(),
+        }
+    }
+
+    /// Inyección local (pilot). Pisa fase y toma max de amplitud/activación.
+    pub fn inject_local_node(&mut self, node: usize, amplitude: f32, phase: f32, activation: f32) {
         if node < self.node_count() {
             self.amplitude[node] = self.amplitude[node].max(amplitude.max(0.0));
             self.phase[node] = phase;
             self.activation[node] = self.activation[node].max(activation.max(0.0));
+        }
+    }
+
+    /// Inyección débil tipo energía de vacío: mezcla fase, no fuerza colapso.
+    pub fn inject_vacuum_node(&mut self, node: usize, amplitude: f32, phase: f32, activation: f32) {
+        if node < self.node_count() {
+            let activation = activation.max(0.0);
+            let amount = activation.clamp(0.0, 1.0);
+            self.amplitude[node] = self.amplitude[node].max(amplitude.max(0.0));
+            let cur = self.phase[node];
+            let sin = (1.0 - amount) * cur.sin() + amount * phase.sin();
+            let cos = (1.0 - amount) * cur.cos() + amount * phase.cos();
+            self.phase[node] = sin.atan2(cos).rem_euclid(std::f32::consts::TAU);
+            self.activation[node] = self.activation[node].max(activation);
         }
     }
 
@@ -872,7 +949,8 @@ impl NativeThermoCdtSubstrate {
 impl NativeSamplingProgram {
     pub fn impacted_blocks(&self, seeds: &[usize], candidates: &[usize]) -> Vec<usize> {
         let mut blocks = Vec::with_capacity(self.config.max_blocks_per_pulse);
-        for &node in seeds.iter().chain(candidates.iter()) {
+        // Las semillas tienen prioridad absoluta y conservan su orden.
+        for &node in seeds {
             if node >= self.node_to_block.len() {
                 continue;
             }
@@ -884,24 +962,52 @@ impl NativeSamplingProgram {
                 self.blocks.len(),
             );
             if blocks.len() >= self.config.max_blocks_per_pulse {
-                break;
+                return blocks;
             }
         }
+        // Antes se ordenaban todos los candidate ids para escoger sus primeros
+        // bloques. Mantener un top-K por id mínimo produce el mismo conjunto sin
+        // ordenar el vector completo.
+        let remaining = self.config.max_blocks_per_pulse - blocks.len();
+        let mut candidate_blocks = Vec::<(usize, usize)>::with_capacity(remaining);
+        for &node in candidates {
+            if node >= self.node_to_block.len() {
+                continue;
+            }
+            let block = self.node_to_block[node];
+            if blocks.contains(&block) {
+                continue;
+            }
+            if let Some((_, min_node)) = candidate_blocks
+                .iter_mut()
+                .find(|(existing, _)| *existing == block)
+            {
+                *min_node = (*min_node).min(node);
+                continue;
+            }
+            if candidate_blocks.len() < remaining {
+                candidate_blocks.push((block, node));
+                continue;
+            }
+            if let Some((worst_index, _)) = candidate_blocks
+                .iter()
+                .enumerate()
+                .max_by_key(|(_, (_, min_node))| *min_node)
+            {
+                if node < candidate_blocks[worst_index].1 {
+                    candidate_blocks[worst_index] = (block, node);
+                }
+            }
+        }
+        candidate_blocks.sort_unstable_by_key(|(_, min_node)| *min_node);
+        blocks.extend(candidate_blocks.into_iter().map(|(block, _)| block));
         blocks
     }
 
     pub fn scheduled_impacted_blocks(&self, seeds: &[usize], candidates: &[usize]) -> Vec<usize> {
-        let impacted = self.impacted_blocks(seeds, candidates);
-        let mut ordered = Vec::with_capacity(impacted.len());
-        for &block in &self.schedule {
-            if impacted.contains(&block) && !ordered.contains(&block) {
-                ordered.push(block);
-                if ordered.len() >= impacted.len() {
-                    break;
-                }
-            }
-        }
-        ordered
+        let mut impacted = self.impacted_blocks(seeds, candidates);
+        impacted.sort_by_key(|&block| self.schedule_rank[block]);
+        impacted
     }
 }
 
@@ -960,6 +1066,21 @@ fn push_unique_limited(out: &mut Vec<usize>, node: usize, max_nodes: usize, node
 }
 
 #[inline(always)]
+fn push_marked_limited(
+    out: &mut Vec<usize>,
+    marks: &mut [u32],
+    generation: u32,
+    node: usize,
+    max_nodes: usize,
+) {
+    if out.len() >= max_nodes || node >= marks.len() || marks[node] == generation {
+        return;
+    }
+    marks[node] = generation;
+    out.push(node);
+}
+
+#[inline(always)]
 fn sigmoid(x: f32) -> f32 {
     1.0 / (1.0 + (-x.clamp(-20.0, 20.0)).exp())
 }
@@ -984,6 +1105,23 @@ mod tests {
             substrate.adjacency_offsets.len(),
             substrate.node_count() + 1
         );
+    }
+
+    #[test]
+    fn native_cdt_grows_without_moving_existing_state() {
+        let mut substrate = NativeThermoCdtSubstrate::new(NativeThermoCdtConfig {
+            slices: 2,
+            nodes_per_slice: 8,
+            ..NativeThermoCdtConfig::default()
+        });
+        substrate.thermal_state[3] = 1.25;
+        substrate.amplitude[3] = 0.75;
+        assert_eq!(substrate.grow_slices(2), 16);
+        assert_eq!(substrate.node_count(), 32);
+        assert_eq!(substrate.config.slices, 4);
+        assert_eq!(substrate.thermal_state[3], 1.25);
+        assert_eq!(substrate.amplitude[3], 0.75);
+        assert_eq!(substrate.adjacency_offsets.len(), 33);
     }
 
     #[test]

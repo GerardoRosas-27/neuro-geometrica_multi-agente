@@ -1,973 +1,596 @@
-# Motor Termodinámico Nativo CDT-RQM-EPR
+# Motor Unificado CDT–Spin–RQM–EPR–Cognición
 
-## Sustrato Causal-Relacional Consolidado con Sueño Contrastivo
+## 1. Resumen
 
-### Resumen
-
-Este documento actualiza el estado de la investigación después de migrar el sustrato anterior `CDT-RQM-EPR` hacia una arquitectura de **motor termodinámico nativo**. La conclusión experimental actual es:
-
-```text
-Recomendación: continuar la investigación con el motor termodinámico nativo.
-El sustrato anterior debe conservarse como baseline, fuente de checkpoints y validador.
-```
-
-La arquitectura vigente combina:
+El repositorio conserva el motor CDT-RQM-EPR histórico como compatibilidad y
+añade un orquestador unificado cuya arquitectura vigente es:
 
 ```text
-checkpoint CDT-RQM-EPR entrenado
-  -> adaptador de migración legacy->native
-  -> NativeThermoCdtSubstrate
-  -> NativeThermoRqmEprSubstrate
-  -> sueño termodinámico contrastivo
-  -> evaluación amplia de conocimiento consolidado
+CDT simplicial pyrochlore
+  -> líquido de espines XXZ
+  -> RQM de amplitud/fase
+  -> EPR predictivo
+  -> capa cognitiva relacional
+  -> gate de conocimiento consolidado
 ```
 
-El estado entrenado usado como fuente sigue siendo:
+El resultado histórico del currículo legacy se conserva en este documento. La
+nueva hipótesis evaluada es más limitada: la simetría guía cómo se comparte y
+consolida aprendizaje, mientras la composición cognitiva ocurre en una capa
+relacional más abstracta. No se afirma conciencia ni cognición general.
+
+## 2. Arquitectura
 
 ```text
-data/cdt_rqm_evolutionary_kept.cdt_rqm
+boundary + observador
+  -> scoring relacional nativo
+  -> pulsos térmicos CDT
+  -> sincronización EPR opcional
+  -> selección por energía libre
+  -> sueño A (consolidación)
+  -> sueño B (propuestas prospectivas)
+  -> limpieza de residuo R/S/Z
+  -> fluctuación geométrica débil
+  -> puentes EPR verificados
+  -> consolidación final + gate
 ```
 
-El comando principal del motor consolidado es:
-
-```powershell
-cargo run --release --bin native_thermodynamic_engine
-```
-
-La evaluación amplia de conocimiento se ejecuta con:
-
-```powershell
-cargo run --release --bin consolidated_knowledge_evaluation
-```
-
----
-
-## 1. Hipótesis Actual
-
-La hipótesis inicial era que la memoria útil podía vivir en una geometría causal dinámica, no en un vector denso. Los resultados recientes refinan esa hipótesis:
+Módulos del crate:
 
 ```text
-La memoria útil se puede migrar desde una geometría CDT-RQM-EPR legacy
-hacia un motor termodinámico nativo, siempre que exista una fase de sueño
-que consolide no solo recuerdos positivos, sino también competencia contrastiva.
-```
-
-El criterio de conservación de una mejora es:
-
-```text
-accuracy no baja
-leakage baja o se conserva
-margin sube o se conserva
-causality_violations = 0 en el baseline causal
-runtime baja o se conserva
-el conocimiento entrenado permanece recuperable
-```
-
----
-
-## 2. Sustrato Anterior: CDT-RQM-EPR
-
-El sustrato anterior conserva tres capas principales:
-
-```text
-CDT-Graphity  -> hardware causal foliado
-RQM           -> software relacional dependiente del observador
-EPR           -> enlaces coherentes de correlación computacional
-```
-
-El flujo de inferencia legacy es:
-
-```text
-boundary + observer
-  -> RelationalFieldSubstrate::observe_pattern
-  -> RelationalGuidanceEngine::apply
-  -> EntanglementField::synchronize_candidates
-  -> CdtGraphitySubstrate::step
-```
-
-La pieza importante que el motor nativo no tenía inicialmente era:
-
-```text
-RelationalGuidanceEngine
-```
-
-Esta capa reordena candidatos usando soporte geométrico, flujo causal, costo Regge, potencial cuántico local y memoria capilar. En la práctica ayuda a reducir candidatos válidos pero fuera de contexto.
-
-### Baseline Consolidado
-
-Comando:
-
-```powershell
-cargo run --release --bin cdt_rqm_consolidated_evaluation
-```
-
-Resultado actual sobre `data/cdt_rqm_evolutionary_kept.cdt_rqm`:
-
-```text
-normal:             accuracy=100.0% leakage=9.9%  margin=105.170 prediction_error=0.936
-action_conditioned: accuracy=100.0% leakage=12.3% margin=121.340 prediction_error=0.830
-typed_memory:       accuracy=100.0% leakage=8.1%  margin=1.924   prediction_error=0.940
-contradiction_probe:accuracy=100.0% leakage=9.9%  margin=105.170 prediction_error=0.936
-
-geometry:
-  edges=6509
-  relations=4928
-  regge=26103.500
-  deficit_regge=40941.949
-  free_energy=193.979
-  criticality_distance=35.756
-  compute_cost=10.940
-  causality_violations=0
-
-dvali:
-  N=6509.0
-  alpha=0.000154
-  alphaN=1.000
-  T_N=0.0124
-  memory_burden=0.406
-
-epr:
-  active_links=250
-  mean_coherence=1.000
-  mean_entropy=0.000
-
-suite=PASS
-```
-
-Interpretación:
-
-```text
-El sustrato anterior sigue siendo correcto y estable.
-Su mayor valor actual es servir como baseline, checkpoint y mecanismo de validación causal.
-```
-
----
-
-## 3. Motor Termodinámico Nativo
-
-El motor nativo consolida las capas anteriores en una arquitectura más directa:
-
-```text
-NativeThermoCdtSubstrate
-  thermal_state
-  amplitude
-  phase
-  temperature
-  energy
-  activation
-  compiled sampling program
-
-NativeThermoRqmEprSubstrate
-  relations
-  relation_lookup
-  neighbor_index
-  EntanglementField
-  thermal scoring
-```
-
-El núcleo de consulta es:
-
-```text
-query(observer, phase, seeds)
-  -> relational_candidate_scores
-  -> EPR sync cuando hay ambigüedad
-  -> pulse_compiled_pilot
-  -> thermal_multiplier
-  -> candidate ranking
-```
-
-La migración desde el sustrato anterior se implementa en:
-
-```text
-src/substrate_adapter.rs
-```
-
-La API consolidada está en:
-
-```text
+src/native_thermodynamic_cdt.rs
+src/native_thermo_rqm_epr.rs
 src/native_thermodynamic_engine.rs
+src/entanglement.rs
+src/relational_field.rs   # ObserverId
+src/residue_budget.rs
+src/residue_vacuum_fluctuation.rs
+src/residue_vacuum_bridge.rs
+src/plasticity_controller.rs
 ```
 
-El CLI productivo está en:
+## 3. Checkpoints
 
 ```text
-src/bin/native_thermodynamic_engine.rs
-```
-
----
-
-## 4. Ventajas Físico-Computacionales Del Motor Nativo
-
-El motor termodinámico nativo mejora al sustrato anterior porque convierte la inferencia en un problema local de relajación, muestreo y competencia energética. En vez de depender de pasos globales de geometría Graphity/Regge en cada consulta, usa un estado térmico vectorial por nodo y solo activa bloques impactados por la frontera y los candidatos.
-
-### 4.1 Cálculo Local Compilado
-
-El sustrato nativo compila un programa de muestreo:
-
-```text
-NativeSamplingProgram
-  blocks
-  schedule
-  node_to_block
-```
-
-En inferencia, el pulso termodinámico no recorre todo el universo si no hace falta:
-
-```text
-block_ids = scheduled_impacted_blocks(seeds, candidates)
-for block_id in block_ids:
-  sample_block(block)
-```
-
-Esto cambia el costo efectivo:
-
-```text
-legacy: O(relaciones observadas + paso CDT/Graphity + guía geométrica)
-nativo: O(relaciones vecinas + bloques impactados)
-```
-
-Evidencia:
-
-```text
-legacy_cdt_rqm_consolidated:
-  us_per_case=1280.029 a 1649.442
-
-native_thermodynamic_consolidated:
-  us_per_case=339.240 a 343.507
-
-ganancia_runtime=~3.7x a ~4.9x
-```
-
-### 4.2 Dinámica Termodinámica Tipo Langevin
-
-El estado térmico evoluciona como una discretización de Langevin con difusión, confinamiento, fuerza piloto y ruido térmico:
-
-```text
-laplacian_i = sum_j w_ij * (x_j - x_i)
-pilot_i     = amplitude_i * sin(phase_i) + activation_i
-force_i     = diffusion * laplacian_i
-            + pilot_gain * pilot_i
-            - confinement * x_i
-noise_i     = Normal(0, sqrt(2 * T_i * dt))
-x_i(t+dt)   = clamp(x_i + force_i * dt + noise_i)
-```
-
-La fase también fluye localmente:
-
-```text
-phase_flow_i = sum_j w_ij * sin(phase_j - phase_i + edge_phase_ij)
-phase_i'     = phase_i + phase_coupling * phase_flow_i * dt + x_i' * dt
-```
-
-Ventaja:
-
-```text
-La memoria no solo se recupera por score relacional.
-También se estabiliza por atracción térmica, difusión local y fase.
-```
-
-### 4.3 Energía Efectiva Local
-
-Cada nodo estima una energía efectiva:
-
-```text
-E_i = 0.5 * confinement * x_i^2
-    - force_i * x_i
-    + 0.5 * laplacian_i^2
-```
-
-Esto penaliza estados inestables y favorece atractores coherentes. La energía libre proxy usa una partición tipo Boltzmann:
-
-```text
-Z = sum_i exp(-E_i / T_i)
-F = -T * ln(Z)
-```
-
-Evidencia del entrenamiento limpio:
-
-```text
-batch=338804
-mean_energy=2.0188
-free_energy=-1.5608
-```
-
-El valor negativo de `free_energy` indica que el sistema encontró atractores térmicos con partición favorable. No es directamente comparable en escala con el Regge legacy, pero sí es útil para estabilidad interna del motor nativo.
-
-### 4.4 Muestreo Híbrido: Gaussian, Gibbs y Bernoulli
-
-El motor no usa un único método de actualización. Cada bloque puede muestrear con:
-
-```text
-Gaussian:
-  x' = x + force * dt + noise
-
-Gibbs:
-  proposal = tanh(force / T)
-  x' = proposal + jitter
-
-Bernoulli:
-  p = sigmoid(force / T)
-  x' -> {+1, -1}
-```
-
-Ventaja:
-
-```text
-Gaussian explora continuo.
-Gibbs estabiliza según energía/temperatura.
-Bernoulli fuerza decisiones discretas cuando conviene colapsar.
-```
-
-Esta mezcla explica por qué el motor aprende rápido y separa memorias con pocos nodos:
-
-```text
-nodes=640
-relations=3878
-epr_links=640
-accuracy=100.0%
-leakage=0.1%
-```
-
-### 4.5 Scoring Termodinámico
-
-La inferencia nativa combina score relacional con un multiplicador térmico:
-
-```text
-score_final(candidate) = relational_score * thermal_multiplier
-```
-
-Donde:
-
-```text
-thermal_multiplier =
-  1 + thermal_score_gain * (
-        tanh(state)
-      + 0.1 * amplitude
-      + 0.05 * exp(-energy / temperature)
-    )
-```
-
-Ventaja:
-
-```text
-Un candidato no gana solo por memoria relacional.
-Debe ser compatible con el estado térmico, la amplitud y la energía local.
-```
-
-Esto explica el aumento de margen:
-
-```text
-legacy margin global=127.464
-native margin global=420.909
-native clean final margin=691.721
-```
-
-### 4.6 Sueño Contrastivo Como Optimización
-
-El sueño nativo implementa una forma de optimización contrastiva:
-
-```text
-para cada memoria:
-  reforzar cue -> target
-  atenuar cue -> distractor explícito
-  atenuar cue -> remotos de otras memorias
-  relajar térmicamente
-  aceptar solo si accuracy no baja y leakage/margin mejora
-```
-
-Formalmente, el objetivo implícito es:
-
-```text
-min L = leakage
-      - margin_gain
-      + penalty(accuracy_drop)
-      + thermal_instability
-```
-
-El entrenamiento limpio muestra el efecto repetidamente:
-
-```text
-sleep=contrastive accepted=6
-accuracy=97.2% -> 100.0%
-leakage=7.7% -> 0.1%
-margin=946.210 -> 691.721
-```
-
-Aunque el margen puede bajar durante sueño, el sistema acepta porque elimina fuga y recupera accuracy. La reducción de leakage es prioritaria cuando la separación ya es suficiente.
-
-### 4.7 Evidencia Del Entrenamiento Desde Cero
-
-El entrenamiento limpio nativo fue ejecutado desde cero, sin cargar el checkpoint legacy:
-
-```powershell
-cargo run --release --bin native_thermo_clean_trainer
-```
-
-Estado final guardado:
-
-```text
-checkpoint=data/native_thermo_clean.cdt_native
-batch=338804
-samples=5420864
-semantic=1806954
-causal=903477
-skill=903477
-episodic=1806956
-sleep_runs=84701
-growths=0
-slices=4
-nodes=640
-relations=3878
-epr_links=640
-```
-
-Métricas finales:
-
-```text
-accuracy=100.0%
-leakage=0.1%
-margin=691.721
-mean_energy=2.0188
-free_energy=-1.5608
-relation_density=6.059
-epr_density=1.000
-```
-
-Interpretación:
-
-```text
-El motor termodinámico nativo aprende desde cero.
-No depende del checkpoint legacy para lograr baja fuga.
-No necesitó crecer: la densidad quedó bajo los umbrales.
-El sueño periódico mantiene el estado cerca del óptimo.
-```
-
-### 4.8 Resumen De Ventajas
-
-```text
-1. Menor costo de inferencia por bloques impactados.
-2. Relajación física local en vez de paso geométrico global.
-3. Score condicionado por energía y temperatura.
-4. Muestreo híbrido que combina exploración y colapso.
-5. Sueño contrastivo que separa memorias válidas entre sí.
-6. Entrenamiento limpio desde cero con checkpoint nativo.
-7. Mejor leakage, mejor margen y mayor velocidad que el baseline.
-```
-
-Por estas razones, el motor termodinámico nativo no es solo una versión más rápida. Es una arquitectura mejor optimizada para aprendizaje incremental, consolidación y recuperación robusta.
-
----
-
-## 5. Adaptador Legacy -> Nativo
-
-El adaptador carga el checkpoint anterior y migra:
-
-```text
-RelationalFieldSubstrate -> relaciones nativas dirigidas
-EntanglementField        -> EPR nativo reutilizado
-CdtGraphitySubstrate     -> estado térmico y aristas activas nativas
-```
-
-Resumen de migración:
-
-```text
-legacy_relations=4928
-imported_relations=9856
-nodes=640
-imported_edges=6509
-epr_links=250
-```
-
-Las relaciones se duplican en ambos sentidos:
-
-```text
-(a -> b, phase)
-(b -> a, -phase)
-```
-
-Esto conserva consultas por cualquier lado de una relación legacy no dirigida.
-
----
-
-## 6. Sueño Termodinámico Nativo
-
-El primer sueño nativo solo hacía replay positivo y atenuaba el distractor explícito de cada lección. Eso mejoraba memoria directa, acción, memoria tipada, cues parciales y ruido, pero dejaba más alto el caso `cross_distractor`.
-
-Diagnóstico:
-
-```text
-cross_distractor usa como distractor el target remoto de otra memoria aprendida.
-Ese target no es ruido: es una memoria válida en otro contexto.
-```
-
-Por eso faltaba una función equivalente a competencia contextual:
-
-```text
-inhibición contrastiva entre recuerdos válidos
-```
-
-La versión actual del sueño nativo hace:
-
-```text
-1. replay protegido del target correcto
-2. atenuación del distractor explícito
-3. atenuación contrastiva de remotos de otras lecciones
-4. relajación térmica
-5. aceptación solo si preserva accuracy y mejora leakage o margin
-```
-
-Resultado del motor antes y después de sueño:
-
-```text
-native_before_sleep:
-  accuracy=100.0%
-  leakage=10.5%
-  margin=0.009
-  us_per_case=332.350
-
-native_sleep:
-  attempts=8
-  accepted=8
-  accuracy=100.0% -> 100.0%
-  leakage=10.5% -> 0.1%
-  margin=0.009 -> 443.611
-  epr_links=250 -> 699
-
-native_after_sleep:
-  accuracy=100.0%
-  leakage=0.1%
-  margin=443.611
-  us_per_case=339.240
-
-decision=keep_native
-```
-
----
-
-## 7. Comparación Principal: Legacy vs Nativo Dormido
-
-Comando:
-
-```powershell
-cargo run --release --bin native_thermodynamic_engine
-```
-
-Resultado:
-
-```text
-previous_cdt_rqm_epr:
-  accuracy=100.0%
-  leakage=10.1%
-  margin=76.145
-  dynamics=0.902
-  us_per_case=1649.442
-  relations=4928
-  epr_links=250
-  energy=26103.500
-
-native_thermo_rqm_epr_after_sleep:
-  accuracy=100.0%
-  leakage=0.1%
-  margin=443.611
-  dynamics=4.060
-  us_per_case=339.240
-  relations=10519
-  epr_links=699
-  energy=5.604
-```
-
-Conclusión cuantitativa:
-
-```text
-accuracy:      igual, 100.0%
-leakage:       nativo mejor, 10.1% -> 0.1%
-margin:        nativo mejor, 76.145 -> 443.611
-inferencia:    nativo mejor, ~4.9x más rápido
-energía proxy: nativo mucho menor en escala nativa
-```
-
----
-
-## 8. Evaluación Amplia De Conocimiento
-
-Comando:
-
-```powershell
-cargo run --release --bin consolidated_knowledge_evaluation
-```
-
-La suite evalúa 48 casos por repetición:
-
-```text
-direct_memory
-action_conditioned
-typed_memory
-partial_cue
-noisy_cue
-cross_distractor
-```
-
-### Resultado Global
-
-```text
-legacy_cdt_rqm_consolidated:
-  accuracy=100.0%
-  leakage=9.1%
-  margin=127.464
-  expected_score=142.588
-  distractor_score=15.124
-  signal_ratio=9.428
-  us_per_case=1280.029
-
-native_thermodynamic_consolidated:
-  accuracy=100.0%
-  leakage=0.4%
-  margin=420.909
-  expected_score=422.515
-  distractor_score=1.607
-  signal_ratio=263.003
-  us_per_case=343.507
-```
-
-Delta:
-
-```text
-accuracy_delta=+0.0pp
-leakage_delta=-8.7pp
-margin_delta=+293.445
-signal_ratio_gain=27.896x
-runtime_gain=~3.7x
-```
-
-### Resultado Por Categoría
-
-Legacy:
-
-```text
-direct_memory:      accuracy=100.0% leakage=9.9%  margin=105.170 signal_ratio=8.732
-action_conditioned: accuracy=100.0% leakage=12.3% margin=121.340 signal_ratio=6.969
-typed_memory:       accuracy=100.0% leakage=8.1%  margin=1.924   signal_ratio=10.713
-partial_cue:        accuracy=100.0% leakage=10.1% margin=52.900  signal_ratio=8.475
-noisy_cue:          accuracy=100.0% leakage=9.6%  margin=103.725 signal_ratio=9.086
-cross_distractor:   accuracy=100.0% leakage=8.8%  margin=106.447 signal_ratio=9.636
-```
-
-Nativo consolidado:
-
-```text
-direct_memory:      accuracy=100.0% leakage=0.1% margin=499.732 signal_ratio=1502.752
-action_conditioned: accuracy=100.0% leakage=0.2% margin=565.833 signal_ratio=509.173
-typed_memory:       accuracy=100.0% leakage=0.1% margin=265.267 signal_ratio=913.594
-partial_cue:        accuracy=100.0% leakage=0.1% margin=262.204 signal_ratio=1531.399
-noisy_cue:          accuracy=100.0% leakage=0.1% margin=498.266 signal_ratio=1512.380
-cross_distractor:   accuracy=100.0% leakage=1.8% margin=492.313 signal_ratio=64.514
-```
-
-Interpretación:
-
-```text
-El motor nativo gana en todas las categorías medidas.
-El caso más difícil sigue siendo cross_distractor, pero después de inhibición contrastiva
-baja de 10.7% a 1.8% y queda mejor que el legacy.
-```
-
----
-
-## 9. Datos De Aprendizaje
-
-Los datos indican tres fases de aprendizaje:
-
-### 8.1 Aprendizaje Legacy
-
-```text
-relations=4928
-epr_links=250
-accuracy=100.0%
-leakage_global=9.1% a 10.1%
-```
-
-El legacy aprende correctamente, pero mantiene fuga moderada porque muchos recuerdos válidos compiten dentro del mismo espacio causal.
-
-### 8.2 Migración Nativa
-
-```text
-imported_relations=9856
-imported_edges=6509
-accuracy=100.0%
-leakage_before_sleep=10.5%
-margin_before_sleep=0.009
-```
-
-La migración conserva el conocimiento, pero inicialmente lo expresa con margen muy bajo porque traduce memoria sin consolidarla en la dinámica nativa.
-
-### 8.3 Sueño Contrastivo Nativo
-
-```text
-relations_after_sleep=10519
-epr_links_after_sleep=699
-leakage_after_sleep=0.1% a 0.4%
-margin_after_sleep=420.909 a 443.611
-signal_ratio=263.003
-```
-
-El sueño no solo repite recuerdos; crea separación contextual. Esta fase es lo que convierte la migración en un motor superior.
-
----
-
-## 10. Qué Faltaba Respecto Al Sustrato Anterior
-
-La función faltante no era inferencia relacional ni EPR. Esas ya estaban cubiertas.
-
-Lo faltante era:
-
-```text
-competencia contextual entre memorias válidas
-```
-
-En el legacy esa competencia aparecía parcialmente en:
-
-```text
-RelationalGuidanceEngine::apply
-  + geometría CDT
-  + causal_gate
-  + local_regge_cost
-  + capillary_memory
-```
-
-En el nativo se implementó como:
-
-```text
-sueño contrastivo
-  target correcto: reforzar
-  distractor explícito: atenuar
-  remotos de otros recuerdos: atenuar suavemente
-```
-
-Resultado:
-
-```text
-cross_distractor leakage:
-  antes=10.7%
-  después=1.8%
-```
-
----
-
-## 11. Comandos Vigentes
-
-Motor termodinámico consolidado:
-
-```powershell
-cargo run --release --bin native_thermodynamic_engine
-```
-
-Evaluación amplia de conocimiento:
-
-```powershell
-cargo run --release --bin consolidated_knowledge_evaluation
-```
-
-Baseline legacy:
-
-```powershell
-cargo run --release --bin cdt_rqm_consolidated_evaluation
-```
-
-Entrenamiento continuo legacy para generar checkpoints:
-
-```powershell
-$env:CDT_RQM_INFINITE_OUTPUT="data/cdt_rqm_evolutionary_kept.cdt_rqm"; cargo run --release --bin cdt_rqm_infinite_concept_trainer
-```
-
-Sueño legacy sobre checkpoint:
-
-```powershell
-$env:CDT_RQM_EPR_SLEEP_STATE="data/cdt_rqm_evolutionary_kept.cdt_rqm"; cargo run --release --bin cdt_rqm_epr_sleep_consolidate
-```
-
-Tests:
-
-```powershell
-cargo test --release
-```
-
----
-
-## 12. Evaluación Amplia Del Currículo De 5 Fases
-
-Después de entrenar el currículo infinito de cinco fases, se ejecutó una evaluación amplia desde el checkpoint:
-
-```text
+data/native_thermo_clean.cdt_native
 data/native_curriculum_5phase.cdt_native
+data/native_massive_thermo.cdt_native
+data/native_prototype_bridge_thermo.cdt_native
+data/native_gemma_distilled_thermo.cdt_native
 ```
 
-Comando:
+## 4. Inferencia Nativa
+
+La consulta nativa combina:
+
+```text
+score = relational_score + thermal_score_gain * thermal_activation
+```
+
+La dinámica térmica actualiza estado, amplitud y fase locales. La poda por
+energía libre elimina candidatos con alta fuga o alta energía residual, protegiendo
+los nodos esperados.
+
+## 5. Sueños A Y B
+
+**Sueño A (consolidativo):** rejuega recuerdos, atenúa distractores y remotes
+competidores. Reduce fuga sin destruir precisión.
+
+**Sueño B (prospectivo):** genera futuros por puentes A→B→C de alto prior,
+reserva cupo EPR reemplazando enlaces de menor utilidad, entrena con success bajo
+y vuelve a aplicar Sueño A. Objetivo: bajar fuga (sobre todo fase 5) y crecer EPR útil sin perder
+`broad_5phase_pass`.
+
+```text
+Sueño A: preservar accuracy, reducir leakage
+Sueño B: reasignar EPR selectivo + consolidar
+Controlador: limpiar residuo -> fluctuar localmente -> proponer -> consolidar -> gate
+```
+
+## 6. Currículo De 5 Fases
+
+1. Cross-lingual (Gemma como periferia)
+2. Composición multi-hop
+3. Razonamiento fuerte con poda
+4. Aprendizaje continuo / retención base + stream
+5. Comparación contra baselines graph/lexical
+
+Comando de evaluación amplia:
 
 ```powershell
 $env:GEMMA_MODEL="gemma2:2b"; $env:CURRICULUM_EVAL_USE_GEMMA="true"; cargo run --release --bin native_curriculum_broad_evaluation
 ```
 
-Estado del checkpoint evaluado:
+Checkpoint histórico evaluado (antes del entrenamiento prolongado):
 
 ```text
+data/native_curriculum_5phase.cdt_native
 cycle=113017
-growths=0
 nodes=640
 relations=6842
 epr_links=620
-mean_energy=4.4424
-free_energy=-1.2177
 ```
 
-Resultados por fase:
+## 7. Resultados De La Evaluación Amplia
 
 ```text
-phase1_cross_lingual:
-  accuracy=100.0%
-  leakage=6.6%
-  margin=832.920
-  cases=6
-
-phase2_compositional:
-  accuracy=100.0%
-  leakage=3.7%
-  margin=31.474
-  cases=4
-
-phase3_strong_reasoning:
-  accuracy=100.0%
-  leakage=0.6%
-  margin=36.674
-  cases=4
-
-phase4_base_retention:
-  accuracy=100.0%
-  leakage=11.7%
-  margin=113.450
-  cases=4
-
-phase4_stream_retention:
-  accuracy=100.0%
-  leakage=0.0%
-  margin=124.818
-  cases=4
-
-phase5_native:
-  accuracy=100.0%
-  leakage=8.1%
-  margin=31.033
-  cases=4
+phase1_cross_lingual:      accuracy=100.0% leakage=6.6%
+phase2_compositional:      accuracy=100.0% leakage=3.7%
+phase3_strong_reasoning:   accuracy=100.0% leakage=0.6%
+phase4_base_retention:     accuracy=100.0% leakage=11.7%
+phase4_stream_retention:   accuracy=100.0% leakage=0.0%
+phase5_native:             accuracy=100.0% leakage=8.1%
+phase5_graph_baseline:     accuracy=0.0%   leakage=50.0%
+phase5_lexical_baseline:   accuracy=0.0%   leakage=87.5%
+decision=broad_5phase_pass
 ```
 
-Comparación de Fase 5 contra baselines:
-
-```text
-phase5_graph_baseline:
-  accuracy=0.0%
-  leakage=50.0%
-
-phase5_lexical_baseline:
-  accuracy=0.0%
-  leakage=87.5%
-
-native_delta:
-  acc_vs_graph=+100.0pp
-  leak_vs_graph=-41.9pp
-  acc_vs_lexical=+100.0pp
-  leak_vs_lexical=-79.4pp
-```
-
-Decisión de la evaluación amplia:
-
-```text
-broad_5phase_pass
-```
+Estos valores son históricos y no deben confundirse con el checkpoint vigente.
 
 Interpretación:
 
 ```text
-Fase 1 pasa: transferencia multilingüe con Gemma como periferia.
-Fase 2 pasa: composición multi-hop.
-Fase 3 pasa: razonamiento fuerte con poda por energía libre.
-Fase 5 pasa: ventaja clara sobre baselines ruidosos.
-Fase 4 pasa después del ajuste: se retiene memoria base y memoria nueva del stream.
+Fase 1 pasa: transferencia multilingüe
+Fase 2 pasa: composición multi-hop
+Fase 3 pasa: razonamiento con poda
+Fase 4 pasa: retención base y stream
+Fase 5 pasa: ventaja clara sobre baselines
 ```
 
-El hallazgo importante fue que el entrenamiento por ciclo reportaba `phase4_forgetting=0.000`, pero la evaluación amplia separada mostró que esa métrica solo medía retención del conocimiento base. Se agregó una métrica simétrica:
+## 8. Estado Vigente Y Reparación De Retención
+
+El entrenamiento prolongado llegó a `cycle=116347`, pero la evaluación amplia detectó
+una regresión que el loop interno no veía:
 
 ```text
-stream_retention
+phase4_base_retention: accuracy=75.0% leakage=13.5%
+phase5_native:         accuracy=100.0% leakage=9.5%
+decision=broad_5phase_needs_tuning
 ```
 
-La corrección aplicada fue incluir en el stream curricular los alias que la evaluación amplia medía:
+La causa inmediata era una divergencia entre currículo y evaluación: el trainer omitía
+`rain_story -> wet_ground` en fase 4 base y omitía el cuarto caso de fase 5. Tras alinear
+los casos, ejecutar un ciclo reparador y activar el controlador de plasticidad:
 
 ```text
-chien -> dog
-eau   -> water
-feu   -> fire
+checkpoint=data/native_curriculum_5phase.cdt_native
+cycle=116350
+nodes=4480
+relations=8192
+epr_links=5292
+phase1_cross_lingual:    accuracy=100.0% leakage=6.2%
+phase2_compositional:    accuracy=100.0% leakage=4.7%
+phase3_strong_reasoning: accuracy=100.0% leakage=0.0%
+phase4_base_retention:   accuracy=100.0% leakage=0.0%
+phase4_stream_retention: accuracy=100.0% leakage=0.0%
+phase5_native:           accuracy=100.0% leakage=3.3%
+decision=broad_5phase_pass
 ```
 
-Después de un ciclo adicional con sueño contrastivo:
+La evaluación fue repetida con y sin la periferia Gemma en el ciclo 116349. En ese ciclo,
+Sueño B volvió a aceptar propuestas (`accepted=2`) y creó un enlace EPR neto (`+1`) sin
+romper retención. El ciclo 116350 alineó también los fixtures faltantes de fases 2 y 3,
+pasó el gate estricto, amplió el sustrato y redujo la fuga de fase 5 a 3.3%.
+
+## 9. Residuo Como Presupuesto De Plasticidad
+
+El residuo es una variable computacional, no una afirmación de equivalencia física:
 
 ```text
-phase4_stream_retention accuracy=100.0%
-phase4_stream_retention leakage=0.0%
+Z = suma local de pesos
+S = -sum(p ln p)
+R = 1 - p_elegido
 ```
 
----
+El controlador mantiene cuatro etapas separadas:
 
-## 13. Recomendación De Investigación
+1. **Limpieza:** atenúa caminos perdedores y fuga usando `R`.
+2. **Fluctuación:** alquila una señal débil de activación/fase en regiones ambiguas.
+3. **Propuesta:** detecta A→B→C con coherencia relacional y geométrica.
+4. **Consolidación:** Sueño A y gate transaccional deciden si el cambio persiste.
 
-Con los datos actuales, no se recomienda regresar al sustrato anterior como arquitectura principal.
+EPR usa una cuota prospectiva por nodo. Cuando la capacidad está saturada, desactiva el
+enlace de menor utilidad estimada (`coherence × (1-entropy) × (1-heat)`) antes de probar
+un puente. Un candidato rechazado vuelve al estado original.
 
-Se recomienda:
+La ruta fue consolidada en `run_native_thermo_engine` y en el trainer de cinco fases.
+Los bins A/B utilizados durante el desarrollo fueron eliminados; sus algoritmos y tests
+permanecen como componentes del motor.
+
+## 10. Comparación Antes Y Después
 
 ```text
-continuar con el motor termodinámico nativo consolidado
-mantener CDT-RQM-EPR legacy como baseline, validador y fuente de checkpoints
-investigar persistencia nativa del estado dormido
-ampliar la suite de conocimiento con más categorías y distractores adversariales
-formalizar la inhibición contrastiva como principio termodinámico de consolidación
-agregar stream_retention como métrica obligatoria de Fase 4
-mantener balance entre memoria base y memoria nueva en el sueño curricular
+Métrica                    ciclo 116347     ciclo 116350
+phase1 leakage                 6.4%             6.2%
+phase2 leakage                 4.2%             4.7%
+phase3 leakage                 0.3%             0.0%
+phase4 base accuracy          75.0%           100.0%
+phase4 base leakage           13.5%             0.0%
+phase4 stream accuracy       100.0%           100.0%
+phase5 accuracy              100.0%           100.0%
+phase5 leakage                 9.5%             3.3%
+nodos                          4160             4480
+relaciones                     7504             8192
+enlaces EPR                    5028             5292
+decisión               needs_tuning broad_5phase_pass
 ```
 
-Razón:
+La mejora principal no es solo crecimiento: recupera el caso base omitido, reduce fuga
+en razonamiento y fase 5, conserva todas las precisiones y vuelve transaccional el
+aprendizaje continuo. El ligero aumento de fuga en fase 2 (`+0.5 pp`) permanece dentro
+del gate y debe seguir monitorizándose.
+
+La ejecución del motor consolidado sobre `data/native_thermo_clean.cdt_native` produjo:
 
 ```text
-El legacy es correcto.
-El nativo consolidado es correcto, más rápido, menos filtrante y con mayor margen.
-La evaluación amplia de 5 fases pasa después de corregir retención del stream.
+antes:
+  accuracy=45.8% leakage=58.0% margin=5.524 relations=3878 epr=640
+Sueño A:
+  accepted=7 accuracy=100.0% leakage=0.1% margin=385.290 epr=652
+PlasticityController:
+  accepted=true cleanup=true fluctuation=true bridge=true
+después del pipeline completo:
+  accuracy=100.0% leakage=0.1% margin=904.396 relations=5990 epr=655
+decision=native_thermo_stable_pass
 ```
 
-La decisión experimental vigente es:
+La plasticidad mantuvo precisión y fuga, y elevó el margen posterior sin requerir
+crecimiento EPR indiscriminado. La compactación elimina slots inactivos durante sueño,
+reduciendo memoria e índices clonados sin eliminar enlaces activos.
+
+## 11. Actualización EPR Y Sustrato En Tiempo Real
+
+El motor expone dos APIs de escritura online:
+
+```rust
+train_observed_transition_realtime(...)
+query_and_learn_realtime(...)
+```
+
+`RealtimeUpdateConfig` limita por evento:
 
 ```text
-keep_native value=preserves_loaded_training_and_improves_runtime
+max_relation_updates
+max_epr_observations
+max_epr_evictions
+epr_reserve_slots
+max_window_nodes
+thermal_microsteps
+min_success
 ```
 
----
+La ruta anterior ejecutaba un paso térmico global `O(nodos + aristas)` después de cada
+observación. La ruta realtime modifica un máximo de pares y evoluciona solo el vecindario
+causa/efecto. EPR mantiene grados activos en caché `O(1)`, reutiliza buffers de
+sincronización y limita reemplazos por evento para evitar churn.
 
-## 14. Conclusión
-
-El resultado central de esta etapa es que la arquitectura nativa deja de ser solo una optimización de rendimiento. Después de agregar sueño contrastivo, poda por energía libre y currículo de 5 fases, también supera al sustrato anterior en calidad de recuperación de conocimiento.
-
-La evaluación amplia del currículo confirma las fases 1, 2, 3, 4 y 5. El problema inicial de retención del stream en Fase 4 se corrigió agregando los alias faltantes y aplicando un ciclo adicional de sueño contrastivo.
-
-Resumen final:
+Benchmark release, 500 actualizaciones, 4480 nodos (rango de ejecuciones validadas):
 
 ```text
-accuracy:         legacy=100.0% native=100.0%
-leakage global:   legacy=9.1%   native=0.4%
-margin global:    legacy=127.464 native=420.909
-signal_ratio:     legacy=9.428  native=263.003
-inferencia:       native ~3.7x a ~4.9x más rápido
-cross_distractor: legacy=8.8% leakage, native=1.8% leakage
-broad_5phase:    decision=broad_5phase_pass
+actualización global:
+  mean=506-528 us
+actualización realtime local:
+  mean=44-47 us  throughput=21432-22567 ops/s
+consulta realtime + EPR:
+  mean=139.6-162.1 us  throughput=6169-7164 ops/s
+reporte CDT completo:
+  mean=33-39 us
+query RQM solo relacional:
+  mean=8-13 us  throughput=77651-124131 ops/s
+speedup actualización=11-12x
+
+nuevo enlace EPR:
+  latency=9-11 us created=1 evicted=0 active=true
+
+calidad global:
+  accuracy=100.0% leakage=11.00%
+calidad realtime:
+  accuracy=100.0% leakage=10.65%
+decision=realtime_optimization_pass
 ```
 
-Por tanto:
+“Tiempo real” significa latencia acotada y presupuestada bajo un único escritor `&mut`;
+no implica garantías hard-real-time del sistema operativo ni escrituras concurrentes
+lock-free.
+
+Cuellos de botella adicionales eliminados:
 
 ```text
-La investigación debe continuar sobre el motor termodinámico nativo consolidado.
+observables CDT:
+  seis recorridos de arrays -> una reducción fusionada
+  secuencial <8192 nodos, Rayon para sustratos mayores
+vecindario CDT:
+  Vec::contains O(ventana²) -> marcas generacionales O(1)
+scheduling térmico:
+  scan schedule × impacted -> ranking precompilado + top-K determinista
+scoring relacional:
+  búsqueda lineal por candidato -> acumulador HashMap reutilizable
+  sort completo de fan-out -> selección parcial top-K
+fase de relaciones:
+  scan de todas las relaciones -> lookup O(1)
+EPR:
+  grado por scan -> contador O(1)
+  HashSets por sync -> buffers reutilizables
+  summary O(enlaces) -> contador rápido cuando diagnostics=false
+Sueño B:
+  doble observe_correlation -> una observación con beneficio acumulado equivalente
+probes de residuo:
+  un clone completo por lección -> un clone reutilizado por ciclo
+slots EPR inactivos:
+  acumulación indefinida -> compactación durante sueño
 ```
+
+Los clones completos requeridos para rollback de sueño, plasticidad y gates permanecen
+fuera de la ruta realtime. Se conservan deliberadamente porque garantizan transacciones
+seguras; sustituirlos requiere snapshots diferenciales con una validación separada.
+
+## 12. Herramientas Conservadas
+
+```powershell
+cargo run --release --bin native_thermodynamic_engine
+cargo run --release --bin native_thermo_clean_trainer
+cargo run --release --bin native_curriculum_5phase_trainer
+cargo run --release --bin native_curriculum_broad_evaluation
+cargo run --release --bin native_massive_dataset_trainer
+cargo run --release --bin native_massive_checkpoint_evaluation
+cargo run --release --bin native_scientific_benchmark
+cargo run --release --bin native_phase2_compositional_trainer
+cargo run --release --bin native_phase3_strong_reasoning
+cargo run --release --bin native_phase4_continual_learning
+cargo run --release --bin native_phase5_baseline_comparison
+cargo run --release --bin native_gemma_phase1_trainer
+cargo run --release --bin native_realtime_benchmark
+```
+
+## 13. Gate Y Persistencia
+
+El trainer ejecuta un gate determinista equivalente al núcleo de las cinco fases antes
+de guardar. Exige retención base, precisión composicional y fuga de fase 5 dentro del
+presupuesto. El guardado usa:
+
+```text
+serializar -> archivo temporal -> backup .bak -> commit
+si falla -> rollback
+```
+
+Plasticidad y gate están activos por defecto. Para diagnósticos aislados pueden
+desactivarse con `CURRICULUM_PLASTICITY=false` y
+`CURRICULUM_CHECKPOINT_GATE=false`, respectivamente.
+
+## 14. Decisión
+
+```text
+Esta decisión describe el cierre histórico del currículo CDT-RQM-EPR.
+Desde la sección 15, el legacy permanece como baseline de compatibilidad y el
+motor unificado es la entrada de producción para la nueva hipótesis.
+```
+
+Criterio de estabilidad vigente:
+
+```text
+accuracy alta
+leakage baja
+EPR creciente sin romper retención
+ventaja sobre baselines
+broad_5phase_pass
+native_thermo_stable_pass
+realtime_optimization_pass
+```
+
+## 15. Hipótesis De Cognición Operacional Y Simetría
+
+### 15.1 Hipótesis
+
+Se separan dos afirmaciones:
+
+**H1 — cognición operacional emergente.** Una capa abstracta muestra una
+capacidad nueva si compone `A→C` después de aprender únicamente `A→B` y `B→C`,
+sin que exista una relación directa `A→C`.
+
+**H2 — simetría como guía de consolidación.** La simetría no crea contenido
+cognitivo. Determina qué relaciones equivalentes reciben transferencia y
+participa en el gate que decide si una relación se convierte en conocimiento
+persistente.
+
+Estas hipótesis son computacionales y falsables dentro del modelo. No implican
+conciencia, comprensión humana ni emergencia ontológica.
+
+### 15.2 Arquitectura Evaluada
+
+```text
+CDT pyrochlore regular
+  -> estado cuántico XXZ entrelazado
+  -> RQM: amplitud, fase, coherencia, error
+  -> EPR: enlaces por utilidad predictiva
+  -> capa cognitiva: composición y abstención
+  -> ConsolidatedKnowledge
+```
+
+El gate exige:
+
+```text
+topología CDT regular
+AND entropía/testigo de entrelazamiento
+AND relación RQM consolidada
+AND error predictivo bajo
+```
+
+### 15.3 Protocolo Causal
+
+`emergent_cognition_training::run_emergent_cognition_cycle` ejecuta 32 ensayos:
+
+1. **Control vacío:** simetría perfecta sin relaciones debe abstenerse.
+2. **Primera regla:** se entrena `A→B`; todavía no debe aparecer `A→C`.
+3. **Segunda regla:** se entrena `B→C`; la capa cognitiva debe producir
+   `A→B→C`.
+4. **Control de almacenamiento:** se verifica que RQM no contiene una relación
+   directa `A→C`.
+5. **Órbita:** una relación no observada debe consolidarse sólo con transferencia
+   simétrica activa.
+6. **Ablación:** con confianza de simetría cero, la órbita no debe aparecer.
+7. **Lesión CDT:** retirar un enlace físico debe bloquear conocimiento nuevo.
+8. **Reparación:** restaurar el enlace debe volver a habilitar consolidación.
+9. **OOD:** una señal sin relaciones debe causar abstención.
+
+Comando reproducible:
+
+```powershell
+cargo test --release causal_cycle_supports_operational_emergent_cognition --lib -- --nocapture
+```
+
+### 15.4 Resultados
+
+```text
+ensayos                                             32
+simetría sin relaciones -> abstención              100%
+composición ausente tras una regla                  100%
+composición A→B→C tras dos reglas                    100%
+relación directa A→C ausente                        100%
+transferencia de órbita con simetría                100%
+órbita ausente sin transferencia                    100%
+consolidación con CDT intacto                       100%
+lesión CDT bloquea consolidación                    100%
+reparación restaura consolidación                   100%
+abstención OOD                                      100%
+
+conocimiento medio:
+  etapa 0                                             0
+  después de A→B                                      1
+  después de B→C                                      2
+  final                                               5
+
+decision=evidence_pass
+```
+
+### 15.5 Interpretación
+
+Los resultados constituyen evidencia interna de una capacidad composicional que
+no está almacenada como arista directa. En ese sentido operacional y limitado,
+la conducta cognitiva aparece en la capa de composición.
+
+La ablación y la lesión muestran que la simetría tiene un papel causal en la
+transferencia y consolidación, pero el control vacío demuestra que no es
+suficiente para producir contenido. Por tanto:
+
+```text
+simetría = sesgo y gate de aprendizaje
+RQM/EPR = sustrato relacional
+cognición operacional = composición/selección sobre relaciones
+```
+
+## 16. Comparación Con El Motor Legacy
+
+En 24 ensayos pareados:
+
+```text
+métrica                         unificado    legacy
+asociación directa                100%        100%
+composición A→B→C                 100%        100%
+retención                         100%        100%
+abstención OOD                    100%        100%
+transferencia de órbita           100%          0%
+gate ante lesión CDT              100%          0%
+tiempo total                    464.9 ms      1.15 ms
+```
+
+El motor unificado amplía generalización estructural y seguridad de
+consolidación sin perder las capacidades compartidas. No mejora latencia: el
+legacy, evaluado sin pasos térmicos, es aproximadamente 403 veces más rápido.
+La comparación temporal no iguala física ni funcionalidad y no debe interpretarse
+como benchmark de algoritmos equivalentes.
+
+### 16.1 Checkpoint prolongado frente a legacy
+
+El checkpoint durable de `221,600,000` ejemplos fue evaluado sin continuar el
+entrenamiento:
+
+```text
+métrica                         entrenado    legacy
+asociación directa                 100%        100%
+composición A→B→C                  100%        100%
+abstención OOD                     100%        100%
+transferencia de órbita            100%          0%
+cobertura conocimiento core        100%         N/D
+
+relaciones                       12,400          72
+conocimiento consolidado         12,400     sin gate
+EPR                                 616          72
+latencia 3,200 consultas        181.397 ms    1.364 ms
+```
+
+Decisión:
+
+```text
+FUNCTIONALLY_SUPERIOR_BUT_OVERCONSOLIDATED_AND_SLOWER
+```
+
+La selectividad `knowledge/relations = 100%` indica saturación: el gate terminó
+aceptando todas las relaciones del espacio sintético. La prioridad deja de ser
+añadir ejemplos repetidos y pasa a ser poda por utilidad holdout, indexación de
+consulta y ampliación de la distribución.
+
+## 17. Estado De La Evidencia
+
+La suite completa contiene 81 pruebas unitarias y causales. Los resultados
+respaldan capacidades operacionales dentro de fixtures sintéticos controlados.
+Para afirmar cognición más general faltan tareas sensoriales complejas, ambientes
+temporales, múltiples semillas y distribuciones, aprendizaje de simetrías no
+proporcionadas y comparación con modelos de capacidad equivalente.
+
+## 18. Entrenamiento Sintético Prolongado
+
+Se añadió `native_unified_infinite_trainer`, un proceso reanudable por batches
+con checkpoint completo del estado cuántico, RQM, EPR, conocimiento y RNG.
+
+La corrida de validación corta produjo:
+
+```text
+primera evidencia composicional   batch 14
+ejemplos                           2,800
+composición                        100%
+órbitas                            100%
+OOD                                100%
+relación directa compuesta ausente 100%
+decision=EMERGENT_COGNITION_SUSTAINED
+```
+
+Al escalar sin enfriamiento, la capa relacional conservó composición y órbitas,
+pero el testigo de entrelazamiento cayó y el gate global rechazó consolidación.
+Este resultado refuta que la estabilidad relacional sea suficiente.
+
+Se incorporó homeostasis cuántica adaptativa. Tras reanudar desde checkpoint:
+
+```text
+ejemplos              2,202,000
+relaciones            12,400
+composición           100%
+órbitas               100%
+OOD                    100%
+enlaces entrelazados  7–8
+gate                  true
+```
+
+La sesión fue detenida manualmente después de aproximadamente 3 h 10 min:
+
+```text
+último checkpoint durable          batch 1,108,000
+ejemplos checkpoint                221,600,000
+última validación observada        batch 1,108,200
+ejemplos observados                221,640,000
+composición                        100%
+órbitas                            100%
+OOD                                100%
+relación directa compuesta ausente 100%
+conocimiento consolidado           12,400
+relaciones                         12,400
+EPR                                602
+entropía de spin                   0.692869
+enlaces entrelazados               6
+gate                               true
+validaciones consecutivas          10,974
+```
+
+La tasa de gate posterior a homeostasis fue `99.9909%`; hubo un único fallo
+transitorio registrado por pérdida total del testigo de entrelazamiento. El
+checkpoint permite reanudar desde 221.6 millones de ejemplos. Los 200 batches
+posteriores observados no estaban aún comprometidos y se descartan al reanudar.
