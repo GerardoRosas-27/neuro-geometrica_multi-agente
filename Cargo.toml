@@ -7,6 +7,7 @@ license = "MIT"
 
 [dependencies]
 candle-core = "0.11.0"
+candle-nn = "0.11.0"
 candle-transformers = "0.11.0"
 macroquad = "0.4.15"
 num-complex = "0.4.6"
@@ -16,3 +17,4 @@ rand_xoshiro = "0.6"
 rayon = "1.12.0"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.150"
+tokenizers = { version = "0.22.2", default-features = false, features = ["onig"] }

@@ -5,6 +5,7 @@ pub mod engine_comparison;
 pub mod entanglement;
 pub mod matrix_free_cognitive_substrate;
 pub mod native_checkpoint;
+pub mod native_gemma2;
 pub mod native_plastic_symmetry_network;
 pub mod native_thermo_rqm_epr;
 pub mod native_thermodynamic_cdt;

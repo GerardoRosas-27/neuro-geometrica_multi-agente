@@ -1,4 +1,5 @@
 /target/
+/ollama-models/
 /data/*.progress
 /data/native_curriculum_massive_*.jsonl
 /data/native_*_paged_thermo/
@@ -9,6 +10,8 @@
 /data/native_hybrid_episodes.jsonl
 /data/native_hybrid_token_memory.tsv
 /data/unified_infinite_training/
+/data/gemma2_spin_infinite_training/
+/data/gemma2_developmental_infinite_training/
 /data/native_cognitive_desktop/checkpoints/
 /data/native_cognitive_desktop/latest.json
 /target-correlation-test/
