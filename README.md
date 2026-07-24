@@ -4,6 +4,71 @@ Motor termodinámico nativo en Rust. El Transformer se conserva como periferia
 lingüística; CDT-RQM-EPR mantiene memoria, control, exploración, planificación y
 sueño.
 
+## Motor termodinámico fasorial independiente
+
+La arquitectura fasorial se ejecuta por separado y no reemplaza el motor CDT,
+RQM/EPR ni el motor unificado:
+
+```powershell
+cargo run --release --bin native_phasor_thermodynamic
+```
+
+`NativePhasorThermodynamicEngine` reutiliza únicamente la configuración,
+topología, amplitudes, fases y temperaturas iniciales de
+`NativeThermoCdtSubstrate`. Después mantiene su propio estado `Complex32` y
+evoluciona mediante:
+
+- Laplaciano magnético disperso con las fases de arista CDT;
+- energía de acoplamiento por interferencia;
+- potencial radial que impide el mínimo trivial de amplitud cero;
+- término entrópico `F = U - T·S`;
+- estímulos complejos, ruido térmico y enfriamiento gradual.
+
+Para buscar directamente el mínimo, `minimize_free_energy` aplica sincronización
+topológica de gauge `O(E)`, gradiente precondicionado y búsqueda de línea de
+Armijo. Cada paso aceptado reduce la energía libre. El benchmark verifica el
+resultado contra un mínimo global conocido:
+
+```powershell
+cargo run --release --bin native_phasor_minimum_benchmark
+```
+
+Comparación pareada contra el CDT anterior:
+
+```powershell
+cargo run --release --bin native_thermodynamic_attractor_comparison
+```
+
+El benchmark entrena ambos sustratos con el mismo dataset Walsh/Hebbiano, usa
+los mismos cues corrompidos y evalúa ambos con una energía XY común. Reporta
+recuperación de atractores, residuo de fase, iteraciones y tiempo de pared.
+
+Motor híbrido sobre un único core CDT:
+
+```powershell
+cargo run --release --bin native_hybrid_phasor_cdt
+```
+
+`NativeHybridPhasorCdtEngine` monta dos capas sobre
+`NativeThermoCdtSubstrate`. Durante wake, `infer_and_stage` busca atractores con
+fasores y los conserva en una cola volátil sin modificar CDT. Sólo
+`sleep_consolidate` revalida esa cola y transfiere los estados aprobados a
+amplitudes, fases, pesos y estabilidad de las aristas CDT. La fase de sueño es
+transaccional: ante un error restaura core, memoria y pendientes.
+
+La prueba costosa de estabilidad se difiere a sleep para conservar la latencia
+del solver fasorial standalone. Benchmark de paridad y overhead:
+
+```powershell
+cargo run --release --bin native_phasor_fusion_efficiency
+```
+
+Pruebas específicas:
+
+```powershell
+cargo test --lib native_phasor_thermodynamic_engine
+```
+
 ## Motor unificado de espines y cognición
 
 La arquitectura consolidada CDT–spin–RQM–EPR se ejecuta con:

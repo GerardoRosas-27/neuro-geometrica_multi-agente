@@ -840,9 +840,7 @@ fn train_language_plan(
     }
 }
 
-fn recover_observed_cycle_850(
-    config: &TrainerConfig,
-) -> Result<(), Box<dyn std::error::Error>> {
+fn recover_observed_cycle_850(config: &TrainerConfig) -> Result<(), Box<dyn std::error::Error>> {
     let mut engine = fresh_engine()?;
     let mut state = TrainingCheckpoint::fresh();
     for (index, lesson) in LESSONS.iter().copied().enumerate() {
