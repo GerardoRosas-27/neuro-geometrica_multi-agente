@@ -11,8 +11,12 @@ use std::collections::VecDeque;
 use std::fmt;
 
 const EPSILON: f32 = 1.0e-7;
-const PARALLEL_NODE_THRESHOLD: usize = 1_024;
+const PARALLEL_NODE_THRESHOLD: usize = 2_048;
 const PARALLEL_EDGE_THRESHOLD: usize = 8_192;
+pub const DEFAULT_PHASOR_STARTUP_SLICES: usize = 3;
+pub const DEFAULT_PHASOR_NODES_PER_SLICE: usize = 65_536;
+pub const DEFAULT_PHASOR_STARTUP_NODES: usize =
+    DEFAULT_PHASOR_STARTUP_SLICES * DEFAULT_PHASOR_NODES_PER_SLICE;
 
 #[derive(Clone, Copy, Debug)]
 pub struct NativePhasorConfig {

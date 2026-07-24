@@ -1,14 +1,16 @@
 use cdt_rqm_epr::native_hybrid_phasor_cdt_engine::{
     NativeHybridConfig, NativeHybridPhasorCdtEngine, NativePhasorCue,
 };
-use cdt_rqm_epr::native_phasor_thermodynamic_engine::NativePhasorConfig;
+use cdt_rqm_epr::native_phasor_thermodynamic_engine::{
+    NativePhasorConfig, DEFAULT_PHASOR_NODES_PER_SLICE, DEFAULT_PHASOR_STARTUP_SLICES,
+};
 use cdt_rqm_epr::native_thermodynamic_cdt::NativeThermoCdtConfig;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut engine = NativeHybridPhasorCdtEngine::new(
         NativeThermoCdtConfig {
-            slices: 2,
-            nodes_per_slice: 64,
+            slices: DEFAULT_PHASOR_STARTUP_SLICES,
+            nodes_per_slice: DEFAULT_PHASOR_NODES_PER_SLICE,
             temperature: 0.0,
             diffusion: 0.12,
             pilot_gain: 0.0,

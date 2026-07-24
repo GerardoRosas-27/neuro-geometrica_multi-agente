@@ -1,12 +1,13 @@
 use cdt_rqm_epr::native_phasor_thermodynamic_engine::{
     NativePhasorConfig, NativePhasorMinimizerConfig, NativePhasorThermodynamicEngine,
+    DEFAULT_PHASOR_NODES_PER_SLICE, DEFAULT_PHASOR_STARTUP_SLICES,
 };
 use cdt_rqm_epr::native_thermodynamic_cdt::NativeThermoCdtConfig;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cdt_config = NativeThermoCdtConfig {
-        slices: 4,
-        nodes_per_slice: 160,
+        slices: DEFAULT_PHASOR_STARTUP_SLICES,
+        nodes_per_slice: DEFAULT_PHASOR_NODES_PER_SLICE,
         spatial_degree: 4,
         temporal_degree: 3,
         temperature: 0.65,
