@@ -3,8 +3,9 @@
 //! Gemma describe variables y factores lógicos. La validación y la compilación
 //! numérica permanecen en Rust.
 
+use crate::native_cognitive_closed_loop::{memory_context, summarize_solution};
 use crate::native_gemma2::{Gemma2Tokenizer, QuantizedGemma2};
-use crate::native_multi_operator_core::OperatorRecipe;
+use crate::native_multi_operator_core::{CognitiveEpisode, OperatorRecipe, SolvedRecipe};
 use candle_core::{Device, Tensor};
 use candle_transformers::generation::LogitsProcessor;
 use std::collections::{BTreeMap, BTreeSet};
@@ -112,6 +113,17 @@ pub fn generate_operator_recipe(
     device: &Device,
     config: GemmaRecipeGenerationConfig,
 ) -> Result<GeneratedOperatorRecipe, GemmaOperatorBridgeError> {
+    generate_operator_recipe_with_memory(model, tokenizer, problem, &[], device, config)
+}
+
+pub fn generate_operator_recipe_with_memory(
+    model: &mut QuantizedGemma2,
+    tokenizer: &Gemma2Tokenizer,
+    problem: &str,
+    memories: &[CognitiveEpisode],
+    device: &Device,
+    config: GemmaRecipeGenerationConfig,
+) -> Result<GeneratedOperatorRecipe, GemmaOperatorBridgeError> {
     if let Some(recipe) = compile_simple_qubo_expression(problem) {
         return Ok(GeneratedOperatorRecipe {
             recipe,
@@ -119,40 +131,17 @@ pub fn generate_operator_recipe(
             origin: RecipeOrigin::DeterministicQuboFallback,
         });
     }
-    let instruction = operator_recipe_prompt(problem);
-    let chat = format!("<start_of_turn>user\n{instruction}<end_of_turn>\n<start_of_turn>model\n");
-    let mut prompt_tokens = vec![tokenizer.bos_id];
-    prompt_tokens.extend(tokenizer.encode(&chat)?);
-    model.clear_kv_cache();
-    let input = Tensor::new(prompt_tokens.as_slice(), device)?.unsqueeze(0)?;
-    let mut logits = model.forward(&input, 0)?.squeeze(0)?;
-    let mut sampler = LogitsProcessor::new(
-        config.seed,
-        Some(config.temperature.max(f64::EPSILON)),
-        Some(config.top_p.clamp(f64::EPSILON, 1.0)),
-    );
-    let mut generated = Vec::new();
-    for _ in 0..config.max_tokens.max(1) {
-        let token = sampler.sample(&logits)?;
-        if token == tokenizer.eos_id || Some(token) == tokenizer.end_of_turn_id {
-            break;
-        }
-        generated.push(token);
-        if generated.len() % 4 == 0 {
-            let partial = tokenizer.decode(&generated, true)?;
-            if partial.contains("END") {
-                break;
-            }
-        }
-        if prompt_tokens.len() + generated.len() >= model.max_context() {
-            break;
-        }
-        let next = Tensor::new(&[token], device)?.unsqueeze(0)?;
-        logits = model
-            .forward(&next, prompt_tokens.len() + generated.len() - 1)?
-            .squeeze(0)?;
-    }
-    let rendered = tokenizer.decode(&generated, true)?;
+    let instruction = if memories.is_empty() {
+        operator_recipe_prompt(problem)
+    } else {
+        format!(
+            "Memoria externa verificada. Úsala sólo como precedente; la tarea actual manda:\n{}\n\n{}",
+            memory_context(memories),
+            operator_recipe_prompt(problem)
+        )
+    };
+    let rendered =
+        generate_gemma_text(model, tokenizer, &instruction, device, config, Some("END"))?;
     if let Ok(recipe) = parse_operator_recipe(&rendered) {
         return Ok(GeneratedOperatorRecipe {
             recipe,
@@ -170,6 +159,139 @@ pub fn generate_operator_recipe(
     Err(GemmaOperatorBridgeError::InvalidRecipeJson(format!(
         "salida Gemma no compilable y sin fallback determinista: {rendered}"
     )))
+}
+
+pub fn generate_solution_explanation(
+    model: &mut QuantizedGemma2,
+    tokenizer: &Gemma2Tokenizer,
+    problem: &str,
+    recipe: &OperatorRecipe,
+    solved: &SolvedRecipe,
+    memories: &[CognitiveEpisode],
+    device: &Device,
+    config: GemmaRecipeGenerationConfig,
+) -> Result<String, GemmaOperatorBridgeError> {
+    let variable_preview = recipe
+        .variables
+        .iter()
+        .take(12)
+        .map(|variable| variable.name.as_str())
+        .collect::<Vec<_>>()
+        .join(", ");
+    let summary = summarize_solution(solved);
+    let instruction = format!(
+        "Explica en español el resultado verificado del solver nativo. No recalcules, no cambies \
+         cifras y no afirmes optimalidad global salvo que los datos indiquen exactitud. La primera \
+         línea debe ser exactamente `EVIDENCIA: {summary}`. Después interpreta sin introducir \
+         ningún número nuevo. Termina en END.\n\
+         Tarea: {problem}\n\
+         Receta: nombre={} operador={:?} variables={} [{}] pares={} caras={} flujos={}\n\
+         Resultado del solver: {}\n\
+         Memoria recuperada:\n{}",
+        recipe.name,
+        solved.operator,
+        recipe.variables.len(),
+        variable_preview,
+        recipe.pair_factors.len(),
+        recipe.oriented_faces.len(),
+        recipe.flow_demands.len(),
+        summary,
+        memory_context(memories)
+    );
+    let rendered =
+        generate_gemma_text(model, tokenizer, &instruction, device, config, Some("END"))?;
+    let answer = rendered
+        .split_once("END")
+        .map_or(rendered.as_str(), |(answer, _)| answer)
+        .trim()
+        .to_string();
+    if explanation_is_grounded(&answer, &summary, solved) {
+        Ok(answer)
+    } else {
+        Err(GemmaOperatorBridgeError::InvalidRecipe(
+            "explicación Gemma no quedó anclada exactamente al resultado del solver".to_string(),
+        ))
+    }
+}
+
+fn explanation_is_grounded(answer: &str, summary: &str, solved: &SolvedRecipe) -> bool {
+    if !answer.lines().next().is_some_and(|line| {
+        line.trim()
+            .strip_prefix("EVIDENCIA:")
+            .is_some_and(|evidence| evidence.trim() == summary)
+    }) {
+        return false;
+    }
+    let allowed_numbers = numeric_tokens(summary);
+    if numeric_tokens(answer)
+        .iter()
+        .any(|number| !allowed_numbers.contains(number))
+    {
+        return false;
+    }
+    let lower = answer.to_lowercase();
+    let exact = matches!(
+        &solved.solution,
+        crate::native_multi_operator_core::OperatorSolution::Qubo(solution) if solution.exact
+    );
+    exact || (!lower.contains("óptimo global") && !lower.contains("optimo global"))
+}
+
+fn numeric_tokens(text: &str) -> BTreeSet<String> {
+    text.split(|character: char| {
+        !(character.is_ascii_digit() || matches!(character, '.' | '-' | '+' | 'e' | 'E' | '/'))
+    })
+    .filter(|token| token.chars().any(|character| character.is_ascii_digit()))
+    .map(str::to_string)
+    .collect()
+}
+
+fn generate_gemma_text(
+    model: &mut QuantizedGemma2,
+    tokenizer: &Gemma2Tokenizer,
+    instruction: &str,
+    device: &Device,
+    config: GemmaRecipeGenerationConfig,
+    stop_marker: Option<&str>,
+) -> Result<String, GemmaOperatorBridgeError> {
+    let chat = format!("<start_of_turn>user\n{instruction}<end_of_turn>\n<start_of_turn>model\n");
+    let mut prompt_tokens = vec![tokenizer.bos_id];
+    prompt_tokens.extend(tokenizer.encode(&chat)?);
+    if prompt_tokens.len() >= model.max_context() {
+        return Err(GemmaOperatorBridgeError::InvalidRecipe(
+            "prompt excede contexto Gemma".to_string(),
+        ));
+    }
+    model.clear_kv_cache();
+    let input = Tensor::new(prompt_tokens.as_slice(), device)?.unsqueeze(0)?;
+    let mut logits = model.forward(&input, 0)?.squeeze(0)?;
+    let mut sampler = LogitsProcessor::new(
+        config.seed,
+        Some(config.temperature.max(f64::EPSILON)),
+        Some(config.top_p.clamp(f64::EPSILON, 1.0)),
+    );
+    let mut generated = Vec::new();
+    for _ in 0..config.max_tokens.max(1) {
+        let token = sampler.sample(&logits)?;
+        if token == tokenizer.eos_id || Some(token) == tokenizer.end_of_turn_id {
+            break;
+        }
+        generated.push(token);
+        if generated.len() % 4 == 0 {
+            let partial = tokenizer.decode(&generated, true)?;
+            if stop_marker.is_some_and(|marker| partial.contains(marker)) {
+                break;
+            }
+        }
+        if prompt_tokens.len() + generated.len() >= model.max_context() {
+            break;
+        }
+        let next = Tensor::new(&[token], device)?.unsqueeze(0)?;
+        logits = model
+            .forward(&next, prompt_tokens.len() + generated.len() - 1)?
+            .squeeze(0)?;
+    }
+    tokenizer.decode(&generated, true).map_err(Into::into)
 }
 
 pub fn compile_simple_qubo_expression(problem: &str) -> Option<OperatorRecipe> {

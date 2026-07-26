@@ -203,6 +203,33 @@ También admite una consulta no interactiva y límites configurables:
 cargo run --release --bin native_gemma2_chat -- --prompt "Explica la relatividad" --max-tokens 128 --context 2048
 ```
 
+### Gemma 2 adaptativo con memoria termodinámica
+
+El chat adaptativo captura resúmenes RMS por capa, trata cada bloque Transformer
+como un supernodo, propone máscaras conservadoras y las compara contra el
+forward completo. Una ruta solo se consolida cuando conserva el token principal,
+supera el umbral de similitud de logits y pasa el gate spin exacto fuera de
+línea. Si la confianza es insuficiente, limpia la KV cache y repite con todas las
+capas.
+
+```powershell
+cargo run --release --bin native_gemma2_adaptive_chat
+cargo run --release --bin native_gemma2_adaptive_chat -- --prompt "Explica la relatividad" --max-tokens 128
+```
+
+La memoria rápida se vacía al llenarse y también con `/sueño` o al cerrar el
+chat. El estado persistente vive en `data/native_gemma2_adaptive/`: sustrato
+termodinámico, registro de rutas y checkpoint versionado. Para ejecutar solo
+consolidación, decaimiento selectivo y poda:
+
+```powershell
+cargo run --release --bin native_gemma2_adaptive_chat -- --sleep-only
+```
+
+El enrutamiento es deliberadamente seguro: un Gemma denso no garantiza que
+omitir capas sea válido. Si ninguna máscara parcial conserva la salida, se usa
+el modelo completo y no se registra un ahorro ficticio.
+
 Busca el GGUF en `data/native_gemma2_paged_thermo/manifest.txt`, en
 `ollama-models/` o en la ruta indicada mediante `--model`/`GEMMA2_GGUF`. Para
 reconstruir el catálogo, tokenizador inspeccionable y manifiesto paginado:

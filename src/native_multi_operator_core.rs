@@ -544,12 +544,30 @@ pub struct LearnedEdgeDelta {
     pub phase: f32,
 }
 
+/// Episodio simbólico recuperable por Gemma en inferencias posteriores.
+///
+/// No modifica los pesos del LLM: conserva la tarea, la receta compilada y un
+/// resumen verificable del solver como memoria externa del ciclo cognitivo.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct CognitiveEpisode {
+    pub id: String,
+    pub prompt: String,
+    pub recipe_name: String,
+    pub operator: RequestedOperator,
+    pub solution_summary: String,
+    pub verified: bool,
+    #[serde(default)]
+    pub recalls: u64,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Default)]
 pub struct OperatorDeltaSnapshot {
     pub mappings: Vec<VariableNodeMapping>,
     pub node_deltas: Vec<LearnedNodeDelta>,
     pub edge_deltas: Vec<LearnedEdgeDelta>,
     pub accepted_recipes: Vec<OperatorRecipe>,
+    #[serde(default)]
+    pub episodes: Vec<CognitiveEpisode>,
 }
 
 impl OperatorDeltaSnapshot {

@@ -7,6 +7,7 @@ use candle_core::quantized::{gguf_file, QMatMul};
 use candle_core::{DType, Device, IndexOp, Module, Result, Tensor};
 use candle_nn::Embedding;
 use candle_transformers::quantized_nn::RmsNorm;
+use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use std::env;
 use std::fs;
@@ -20,6 +21,96 @@ const DEFAULT_MAX_CONTEXT: usize = 8_192;
 const DEFAULT_ROPE_FREQUENCY: f32 = 10_000.0;
 const DEFAULT_ATTENTION_SOFTCAP: f64 = 50.0;
 const DEFAULT_FINAL_SOFTCAP: f64 = 30.0;
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct LayerExecutionMask {
+    enabled: Vec<bool>,
+}
+
+impl LayerExecutionMask {
+    pub fn all(layer_count: usize) -> Self {
+        Self {
+            enabled: vec![true; layer_count],
+        }
+    }
+
+    pub fn from_enabled(enabled: Vec<bool>) -> Self {
+        Self { enabled }
+    }
+
+    pub fn layer_count(&self) -> usize {
+        self.enabled.len()
+    }
+
+    pub fn executes(&self, layer: usize) -> bool {
+        self.enabled.get(layer).copied().unwrap_or(false)
+    }
+
+    pub fn executed_count(&self) -> usize {
+        self.enabled.iter().filter(|enabled| **enabled).count()
+    }
+
+    pub fn enabled_layers(&self) -> impl Iterator<Item = usize> + '_ {
+        self.enabled
+            .iter()
+            .enumerate()
+            .filter_map(|(index, enabled)| enabled.then_some(index))
+    }
+
+    pub fn encode(&self) -> Vec<u32> {
+        let words = self.enabled.len().div_ceil(32);
+        let mut encoded = Vec::with_capacity(words + 2);
+        encoded.push(0x474D_5232);
+        encoded.push(self.enabled.len() as u32);
+        for word in 0..words {
+            let mut bits = 0u32;
+            for bit in 0..32 {
+                let index = word * 32 + bit;
+                if self.enabled.get(index).copied().unwrap_or(false) {
+                    bits |= 1u32 << bit;
+                }
+            }
+            encoded.push(bits);
+        }
+        encoded
+    }
+
+    pub fn decode(encoded: &[u32]) -> Option<Self> {
+        if encoded.len() < 2 || encoded[0] != 0x474D_5232 {
+            return None;
+        }
+        let layer_count = encoded[1] as usize;
+        let words = layer_count.div_ceil(32);
+        if layer_count == 0 || encoded.len() != words + 2 {
+            return None;
+        }
+        let enabled = (0..layer_count)
+            .map(|index| encoded[2 + index / 32] & (1u32 << (index % 32)) != 0)
+            .collect();
+        Some(Self { enabled })
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
+pub struct LayerActivationSummary {
+    pub layer: usize,
+    pub executed: bool,
+    pub input_rms: f32,
+    pub output_rms: f32,
+    pub delta_rms: f32,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct Gemma2ForwardTrace {
+    pub layers: Vec<LayerActivationSummary>,
+    pub executed_layers: usize,
+    pub skipped_layers: usize,
+}
+
+pub struct Gemma2ForwardOutput {
+    pub logits: Tensor,
+    pub trace: Gemma2ForwardTrace,
+}
 
 #[derive(Debug, Clone)]
 struct Mlp {
@@ -187,6 +278,7 @@ pub struct QuantizedGemma2 {
     output: QMatMul,
     final_softcap: f64,
     max_context: usize,
+    active_mask: Option<LayerExecutionMask>,
 }
 
 impl QuantizedGemma2 {
@@ -281,10 +373,23 @@ impl QuantizedGemma2 {
             output: QMatMul::from_qtensor(output_quantized)?,
             final_softcap,
             max_context,
+            active_mask: None,
         })
     }
 
     pub fn forward(&mut self, token_ids: &Tensor, position: usize) -> Result<Tensor> {
+        Ok(self
+            .forward_with_mask(token_ids, position, None, false)?
+            .logits)
+    }
+
+    pub fn forward_with_mask(
+        &mut self,
+        token_ids: &Tensor,
+        position: usize,
+        mask: Option<&LayerExecutionMask>,
+        capture_trace: bool,
+    ) -> Result<Gemma2ForwardOutput> {
         let (_, sequence_length) = token_ids.dims2()?;
         if position + sequence_length > self.max_context {
             candle_core::bail!(
@@ -293,9 +398,44 @@ impl QuantizedGemma2 {
                 self.max_context
             );
         }
+        let requested_mask = mask
+            .cloned()
+            .unwrap_or_else(|| LayerExecutionMask::all(self.layers.len()));
+        if requested_mask.layer_count() != self.layers.len() {
+            candle_core::bail!(
+                "máscara Gemma 2 incompatible: {} capas para modelo de {}",
+                requested_mask.layer_count(),
+                self.layers.len()
+            );
+        }
+        if position == 0 {
+            self.active_mask = Some(requested_mask.clone());
+        } else if self.active_mask.as_ref() != Some(&requested_mask) {
+            candle_core::bail!(
+                "la máscara de capas debe permanecer fija durante una generación; limpia KV cache para cambiarla"
+            );
+        }
         let mut hidden =
             (self.embeddings.forward(token_ids)? * (self.embedding_length as f64).sqrt())?;
-        for layer in &mut self.layers {
+        let mut trace = Gemma2ForwardTrace {
+            layers: Vec::with_capacity(self.layers.len()),
+            executed_layers: 0,
+            skipped_layers: 0,
+        };
+        for (layer_index, layer) in self.layers.iter_mut().enumerate() {
+            if !requested_mask.executes(layer_index) {
+                trace.skipped_layers += 1;
+                if capture_trace {
+                    trace.layers.push(LayerActivationSummary {
+                        layer: layer_index,
+                        executed: false,
+                        ..LayerActivationSummary::default()
+                    });
+                }
+                continue;
+            }
+            let layer_input = hidden.clone();
+            let input_rms = capture_trace.then(|| tensor_rms(&hidden)).transpose()?;
             let residual = &hidden;
             let normalized = layer.attention_norm.forward(&hidden)?;
             let attended = layer.attention(&normalized, position)?;
@@ -306,21 +446,51 @@ impl QuantizedGemma2 {
             let projected = layer.mlp.forward(&normalized)?;
             let projected = layer.post_ffn_norm.forward(&projected)?;
             hidden = (&projected + residual)?;
+            trace.executed_layers += 1;
+            if capture_trace {
+                let output_rms = tensor_rms(&hidden)?;
+                let delta_rms = tensor_rms(&(&hidden - &layer_input)?)?;
+                trace.layers.push(LayerActivationSummary {
+                    layer: layer_index,
+                    executed: true,
+                    input_rms: input_rms.unwrap_or_default(),
+                    output_rms,
+                    delta_rms,
+                });
+            }
         }
         let last = hidden.i((.., sequence_length - 1, ..))?;
         let logits = self.output.forward(&self.norm.forward(&last)?)?;
-        (&logits / self.final_softcap)?.tanh()? * self.final_softcap
+        let logits = (&logits / self.final_softcap)?.tanh()? * self.final_softcap;
+        Ok(Gemma2ForwardOutput {
+            logits: logits?,
+            trace,
+        })
     }
 
     pub fn clear_kv_cache(&mut self) {
         for layer in &mut self.layers {
             layer.kv_cache = None;
         }
+        self.active_mask = None;
     }
 
     pub fn max_context(&self) -> usize {
         self.max_context
     }
+
+    pub fn layer_count(&self) -> usize {
+        self.layers.len()
+    }
+}
+
+fn tensor_rms(tensor: &Tensor) -> Result<f32> {
+    tensor
+        .to_dtype(DType::F32)?
+        .sqr()?
+        .mean_all()?
+        .sqrt()?
+        .to_scalar::<f32>()
 }
 
 /// Tokenizador SentencePiece/Unigram reconstruido desde los metadatos GGUF.
@@ -592,5 +762,13 @@ mod tests {
     fn converts_numeric_metadata_values() {
         assert_eq!(value_u32(&gguf_file::Value::U16(42)).unwrap(), 42);
         assert_eq!(value_f64(&gguf_file::Value::F32(0.5)).unwrap(), 0.5);
+    }
+
+    #[test]
+    fn layer_masks_round_trip_compactly() {
+        let mask = LayerExecutionMask::from_enabled(
+            (0..67).map(|index| index % 3 != 0).collect::<Vec<_>>(),
+        );
+        assert_eq!(LayerExecutionMask::decode(&mask.encode()), Some(mask));
     }
 }

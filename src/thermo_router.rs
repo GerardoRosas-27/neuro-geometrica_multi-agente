@@ -11,7 +11,7 @@ use std::path::Path;
 
 pub const ROUTER_OBSERVER: ObserverId = ObserverId(778_003);
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ActivationFingerprint {
     pub entries: Vec<(u32, f32)>,
     pub confidence: f32,
@@ -657,6 +657,37 @@ impl ThermoAssociativeRouter {
                 }
             }
         }
+    }
+
+    pub fn feedback(
+        &mut self,
+        substrate: &mut NativeThermoRqmEprSubstrate,
+        route_id: RouteId,
+        quality: f32,
+        generation: u64,
+    ) {
+        self.apply_feedback(substrate, route_id, quality.clamp(0.0, 1.0), generation);
+    }
+
+    pub fn sleep_decay_and_prune(
+        &mut self,
+        max_routes: usize,
+        decay: f32,
+        protected_utility: f32,
+    ) -> usize {
+        let decay = decay.clamp(0.0, 1.0);
+        for route in &mut self.registry.routes {
+            if route.utility < protected_utility {
+                route.utility *= decay;
+                route.confidence *= 0.5 + 0.5 * decay;
+            }
+        }
+        let removed = self.registry.prune_low_utility(max_routes.max(1));
+        let count = removed.len();
+        for memory in removed {
+            self.vault.remove(memory);
+        }
+        count
     }
 
     pub fn save(&self, path: impl AsRef<Path>) -> Result<(), String> {

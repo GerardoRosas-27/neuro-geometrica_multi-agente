@@ -3,7 +3,11 @@
 use candle_core::quantized::gguf_file;
 use candle_core::Device;
 use cdt_rqm_epr::gemma_operator_bridge::{
-    compile_simple_qubo_expression, generate_operator_recipe, GemmaRecipeGenerationConfig,
+    compile_simple_qubo_expression, generate_operator_recipe_with_memory,
+    generate_solution_explanation, GemmaRecipeGenerationConfig,
+};
+use cdt_rqm_epr::native_cognitive_closed_loop::{
+    episode_from_solution, memory_context, record_episode, retrieve_episodes, summarize_solution,
 };
 use cdt_rqm_epr::native_gemma2::{resolve_gemma2_model_path, Gemma2Tokenizer, QuantizedGemma2};
 use cdt_rqm_epr::native_multi_operator_core::{
@@ -28,54 +32,15 @@ struct Config {
     snapshot: PathBuf,
     nodes: usize,
     max_tokens: usize,
+    feedback_tokens: usize,
+    memory_limit: usize,
     learning_rate: f32,
     no_consolidate: bool,
+    no_gemma_feedback: bool,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = parse_args()?;
-    let recipe = if let Some(path) = &config.recipe {
-        let body = fs::read(path)?;
-        let recipe: OperatorRecipe = serde_json::from_slice(&body)?;
-        recipe.validate()?;
-        recipe
-    } else {
-        let prompt = config
-            .prompt
-            .as_deref()
-            .ok_or("se requiere --prompt TEXTO o --recipe ARCHIVO.json")?;
-        if let Some(recipe) = compile_simple_qubo_expression(prompt) {
-            eprintln!("receta compilada sin invocar Gemma (origen=DeterministicQuboFallback)");
-            recipe
-        } else {
-            let model_path = resolve_gemma2_model_path(config.model.as_deref())?;
-            eprintln!("cargando Gemma 2 desde {}", model_path.display());
-            let device = Device::Cpu;
-            let mut file = File::open(model_path)?;
-            let content = gguf_file::Content::read(&mut file)?;
-            let tokenizer = Gemma2Tokenizer::from_gguf(&content)?;
-            let mut model = QuantizedGemma2::from_gguf(content, &mut file, &device)?;
-            let started = Instant::now();
-            let generated = generate_operator_recipe(
-                &mut model,
-                &tokenizer,
-                prompt,
-                &device,
-                GemmaRecipeGenerationConfig {
-                    max_tokens: config.max_tokens,
-                    ..GemmaRecipeGenerationConfig::default()
-                },
-            )?;
-            eprintln!(
-                "receta generada en {:.2}s ({} bytes, origen={:?})",
-                started.elapsed().as_secs_f64(),
-                generated.raw_model_output.len(),
-                generated.origin
-            );
-            generated.recipe
-        }
-    };
-
     let mut global_core = build_global_core(config.nodes);
     let mut engine = NativeMultiOperatorCore::default();
     if config.snapshot.exists() {
@@ -88,6 +53,68 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             engine.snapshot.edge_deltas.len()
         );
     }
+    let problem = config
+        .prompt
+        .clone()
+        .unwrap_or_else(|| "resolver la receta estructurada proporcionada".to_string());
+    let memories = retrieve_episodes(&mut engine.snapshot, &problem, config.memory_limit);
+    if !memories.is_empty() {
+        eprintln!(
+            "memoria_recuperada={} contexto:\n{}",
+            memories.len(),
+            memory_context(&memories)
+        );
+    }
+    let deterministic_recipe = config
+        .prompt
+        .as_deref()
+        .and_then(compile_simple_qubo_expression);
+    let needs_model =
+        config.prompt.is_some() && (deterministic_recipe.is_none() || !config.no_gemma_feedback);
+    let device = Device::Cpu;
+    let mut gemma = if needs_model {
+        let model_path = resolve_gemma2_model_path(config.model.as_deref())?;
+        eprintln!("cargando Gemma 2 desde {}", model_path.display());
+        let mut file = File::open(model_path)?;
+        let content = gguf_file::Content::read(&mut file)?;
+        let tokenizer = Gemma2Tokenizer::from_gguf(&content)?;
+        let model = QuantizedGemma2::from_gguf(content, &mut file, &device)?;
+        Some((model, tokenizer))
+    } else {
+        None
+    };
+    let recipe = if let Some(path) = &config.recipe {
+        let body = fs::read(path)?;
+        let recipe: OperatorRecipe = serde_json::from_slice(&body)?;
+        recipe.validate()?;
+        recipe
+    } else if let Some(recipe) = deterministic_recipe {
+        eprintln!("receta compilada sin invocar Gemma (origen=DeterministicQuboFallback)");
+        recipe
+    } else {
+        let (model, tokenizer) = gemma
+            .as_mut()
+            .ok_or("Gemma es necesaria para compilar esta tarea")?;
+        let started = Instant::now();
+        let generated = generate_operator_recipe_with_memory(
+            model,
+            tokenizer,
+            &problem,
+            &memories,
+            &device,
+            GemmaRecipeGenerationConfig {
+                max_tokens: config.max_tokens,
+                ..GemmaRecipeGenerationConfig::default()
+            },
+        )?;
+        eprintln!(
+            "receta generada en {:.2}s ({} bytes, origen={:?})",
+            started.elapsed().as_secs_f64(),
+            generated.raw_model_output.len(),
+            generated.origin
+        );
+        generated.recipe
+    };
 
     println!("{}", serde_json::to_string_pretty(&recipe)?);
     let started = Instant::now();
@@ -105,9 +132,54 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         solved.solution.verified()
     );
 
+    let deterministic_feedback = summarize_solution(&solved);
+    let explanation = if !config.no_gemma_feedback {
+        if let Some((model, tokenizer)) = gemma.as_mut() {
+            match generate_solution_explanation(
+                model,
+                tokenizer,
+                &problem,
+                &recipe,
+                &solved,
+                &memories,
+                &device,
+                GemmaRecipeGenerationConfig {
+                    max_tokens: config.feedback_tokens,
+                    temperature: 0.05,
+                    ..GemmaRecipeGenerationConfig::default()
+                },
+            ) {
+                Ok(explanation) if !explanation.is_empty() => explanation,
+                Ok(_) => deterministic_feedback.clone(),
+                Err(error) => {
+                    eprintln!("feedback Gemma falló; usando resumen verificable: {error}");
+                    deterministic_feedback.clone()
+                }
+            }
+        } else {
+            deterministic_feedback.clone()
+        }
+    } else {
+        deterministic_feedback.clone()
+    };
+    println!("resultado_verificado:\n{deterministic_feedback}");
+    if explanation != deterministic_feedback {
+        println!("interpretacion_gemma_validada:\n{explanation}");
+    }
+
     if !config.no_consolidate {
+        if solved.solution.verified() {
+            record_episode(
+                &mut engine.snapshot,
+                episode_from_solution(&problem, &recipe, &solved),
+            );
+        }
         engine.snapshot.save(&config.snapshot)?;
-        println!("snapshot={}", config.snapshot.display());
+        println!(
+            "snapshot={} episodios={}",
+            config.snapshot.display(),
+            engine.snapshot.episodes.len()
+        );
     }
     Ok(())
 }
@@ -158,8 +230,11 @@ fn parse_args() -> Result<Config, Box<dyn std::error::Error>> {
         snapshot: PathBuf::from(DEFAULT_SNAPSHOT),
         nodes: DEFAULT_PHASOR_STARTUP_NODES,
         max_tokens: 384,
+        feedback_tokens: 256,
+        memory_limit: 3,
         learning_rate: 0.18,
         no_consolidate: false,
+        no_gemma_feedback: false,
     };
     let mut args = env::args().skip(1);
     while let Some(argument) = args.next() {
@@ -174,15 +249,25 @@ fn parse_args() -> Result<Config, Box<dyn std::error::Error>> {
                     .parse::<usize>()?
                     .max(1)
             }
+            "--feedback-tokens" => {
+                config.feedback_tokens = required(&mut args, "--feedback-tokens")?
+                    .parse::<usize>()?
+                    .max(1)
+            }
+            "--memory-limit" => {
+                config.memory_limit = required(&mut args, "--memory-limit")?.parse::<usize>()?
+            }
             "--learning-rate" => {
                 config.learning_rate = required(&mut args, "--learning-rate")?.parse::<f32>()?
             }
             "--no-consolidate" => config.no_consolidate = true,
+            "--no-gemma-feedback" => config.no_gemma_feedback = true,
             "--help" | "-h" => {
                 println!(
                     "Uso: native_gemma2_multi_operator (--prompt TEXTO | --recipe JSON) \
                      [--model GGUF] [--snapshot RUTA] [--nodes N] \
-                     [--max-tokens N] [--learning-rate X] [--no-consolidate]"
+                     [--max-tokens N] [--feedback-tokens N] [--memory-limit N] \
+                     [--learning-rate X] [--no-consolidate] [--no-gemma-feedback]"
                 );
                 std::process::exit(0);
             }

@@ -1,3 +1,4 @@
+pub mod adaptive_gemma2;
 pub mod cognitive_logistics;
 pub mod cognitive_os;
 pub mod emergent_cognition_training;
@@ -6,6 +7,7 @@ pub mod entanglement;
 pub mod gemma_operator_bridge;
 pub mod matrix_free_cognitive_substrate;
 pub mod native_checkpoint;
+pub mod native_cognitive_closed_loop;
 pub mod native_gemma2;
 pub mod native_hybrid_phasor_cdt_engine;
 pub mod native_multi_operator_core;
