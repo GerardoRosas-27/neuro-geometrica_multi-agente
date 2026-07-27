@@ -2,6 +2,7 @@
 //!
 //! Controles: Espacio pausa/reanuda, E alterna enlaces, R reinicia, Esc cierra.
 
+use ::rand::{Rng, SeedableRng};
 use candle_core::quantized::gguf_file;
 use candle_core::{Device, Tensor};
 use candle_transformers::models::quantized_llama::ModelWeights;
@@ -20,7 +21,6 @@ use cdt_rqm_epr::thermo_router::{
     TransformerActivationAdapter,
 };
 use macroquad::prelude::*;
-use ::rand::{Rng, SeedableRng};
 use rand_xoshiro::Xoshiro256PlusPlus;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::env;
@@ -40,10 +40,8 @@ const EPR_EVENT_LIFETIME_TICKS: u64 = 90;
 const PAGED_MODEL_ROOT: &str = "data/native_tinyllama_paged_thermo";
 const MACRO_NODE_TARGET: usize = 1_000;
 const MAX_ACTIVE_MACROS: usize = 64;
-const DREAM_MEMORY_LOG: &str =
-    "data/native_tinyllama_paged_thermo/transformer_dream_memory.tsv";
-const ROUTER_MEMORY_LOG: &str =
-    "data/native_tinyllama_paged_thermo/thermo_route_memory.json";
+const DREAM_MEMORY_LOG: &str = "data/native_tinyllama_paged_thermo/transformer_dream_memory.tsv";
+const ROUTER_MEMORY_LOG: &str = "data/native_tinyllama_paged_thermo/thermo_route_memory.json";
 const TRANSFORMER_OBSERVER: ObserverId = ObserverId(778_002);
 const DREAM_CONTEXT_LIMIT: usize = 256;
 const DREAM_HISTORY_LIMIT: usize = 16;
@@ -242,13 +240,8 @@ async fn main() {
         RouterConfig::for_substrate(substrate.thermal.node_count()),
     );
     let lessons = canonical_lessons();
-    let mut sleep_cycle = InfiniteSleepCycle::new(
-        &substrate,
-        &transformer,
-        &paged_model,
-        &router,
-        &lessons,
-    );
+    let mut sleep_cycle =
+        InfiniteSleepCycle::new(&substrate, &transformer, &paged_model, &router, &lessons);
     let mut paused = false;
     let mut show_edges = true;
     let mut view_3d = false;
@@ -310,13 +303,8 @@ async fn main() {
                 transformer.model_name.clone(),
                 RouterConfig::for_substrate(substrate.thermal.node_count()),
             );
-            sleep_cycle = InfiniteSleepCycle::new(
-                &substrate,
-                &transformer,
-                &paged_model,
-                &router,
-                &lessons,
-            );
+            sleep_cycle =
+                InfiniteSleepCycle::new(&substrate, &transformer, &paged_model, &router, &lessons);
             view_3d = false;
             pulse = 0;
         }
@@ -879,10 +867,7 @@ impl TransformerDream {
         }
     }
 
-    fn replay_memory(
-        &mut self,
-        substrate: &mut NativeThermoRqmEprSubstrate,
-    ) -> Result<(), String> {
+    fn replay_memory(&mut self, substrate: &mut NativeThermoRqmEprSubstrate) -> Result<(), String> {
         let Ok(file) = File::open(DREAM_MEMORY_LOG) else {
             return Ok(());
         };
@@ -890,8 +875,7 @@ impl TransformerDream {
             thermal_microsteps: 0,
             ..RealtimeUpdateConfig::default()
         };
-        let rebuild_substrate =
-            substrate.relation_count_for_observer(TRANSFORMER_OBSERVER) == 0;
+        let rebuild_substrate = substrate.relation_count_for_observer(TRANSFORMER_OBSERVER) == 0;
         for line in BufReader::new(file).lines().skip(1) {
             let line = line.map_err(|error| error.to_string())?;
             let mut parts = line.split('\t');
@@ -955,7 +939,6 @@ impl InfiniteSleepPhase {
             Self::Validation => "VALIDACIÓN Y GATE",
         }
     }
-
 }
 
 impl InfiniteSleepCycle {
@@ -1182,8 +1165,7 @@ impl InfiniteSleepCycle {
             );
             println!(
                 "sleep_cycle={} decision=reject saved=false summary={}",
-                self.cycle,
-                self.last_summary,
+                self.cycle, self.last_summary,
             );
             self.reject_cycle(substrate, transformer, paged_model, router, lessons);
         }
@@ -1280,9 +1262,7 @@ fn long_structural_prune(
     let mut report = StructuralPruneReport::default();
 
     let nodes = best.thermal.node_count().max(1);
-    let pressure = best
-        .relation_count()
-        .max(best.entanglement.active_count());
+    let pressure = best.relation_count().max(best.entanglement.active_count());
     let required_nodes = pressure.div_ceil(RELATION_PRESSURE_PER_NODE);
     if required_nodes > nodes {
         let nodes_per_slice = best.thermal.config.nodes_per_slice.max(1);
@@ -1316,19 +1296,14 @@ fn long_structural_prune(
                 / STRUCTURAL_PRUNE_ROUNDS,
         );
         let epr_target = epr_start.saturating_sub(
-            epr_start
-                .saturating_sub(epr_final)
-                .saturating_mul(round)
-                / STRUCTURAL_PRUNE_ROUNDS,
+            epr_start.saturating_sub(epr_final).saturating_mul(round) / STRUCTURAL_PRUNE_ROUNDS,
         );
-        let relations_pruned = candidate
-            .prune_observer_relations_to_budget(TRANSFORMER_OBSERVER, transformer_target);
+        let relations_pruned =
+            candidate.prune_observer_relations_to_budget(TRANSFORMER_OBSERVER, transformer_target);
         let epr_pruned = candidate
             .entanglement
             .prune_to_budget(epr_target, EPR_MAX_LINKS_PER_NODE);
-        candidate
-            .thermal
-            .run_until_stable(12, 1.0e-5, 1.0e-5);
+        candidate.thermal.run_until_stable(12, 1.0e-5, 1.0e-5);
         let metrics = evaluate_native_suite(&candidate, lessons);
         let preserves_knowledge = metrics.accuracy() + 1.0e-6 >= baseline.accuracy()
             && metrics.leakage() <= baseline.leakage() + 0.0005;
@@ -1411,8 +1386,10 @@ fn run_raw_transformer_dream(
         if let Some(injection) = route_injection {
             if !injection.context_ids.is_empty() {
                 model.clear_kv_cache();
-                let tail = &injection.context_ids
-                    [injection.context_ids.len().saturating_sub(DREAM_CONTEXT_LIMIT - 1)..];
+                let tail = &injection.context_ids[injection
+                    .context_ids
+                    .len()
+                    .saturating_sub(DREAM_CONTEXT_LIMIT - 1)..];
                 input_ids.clear();
                 input_ids.push(1);
                 input_ids.extend_from_slice(tail);
@@ -1437,8 +1414,7 @@ fn run_raw_transformer_dream(
             }
         }
         let fingerprint_context = recent.iter().copied().collect::<Vec<_>>();
-        let fingerprint =
-            activation_adapter.capture_with_context(&logits, &fingerprint_context);
+        let fingerprint = activation_adapter.capture_with_context(&logits, &fingerprint_context);
         let macro_report = macro_adapter.apply(&mut logits);
         let (next, confidence, entropy) = sample_raw_logits(&logits, &mut rng)?;
         generation = generation.wrapping_add(1);
@@ -1541,7 +1517,9 @@ fn raw_id_nodes(id: u32, node_count: usize) -> Vec<usize> {
         return Vec::new();
     }
     (0..4)
-        .map(|projection| stable_hash(&("raw_transformer_id", id, projection)) as usize % node_count)
+        .map(|projection| {
+            stable_hash(&("raw_transformer_id", id, projection)) as usize % node_count
+        })
         .collect()
 }
 
@@ -2198,11 +2176,7 @@ fn draw_transformer_layers_3d(
 fn transformer_layer_position(layer: usize, layers: usize) -> Vec3 {
     let progress = (layer as f32 + 0.5) / layers.max(1) as f32;
     let angle = progress * std::f32::consts::TAU * 1.35;
-    vec3(
-        angle.cos() * 9.0,
-        (progress - 0.5) * 8.2,
-        angle.sin() * 9.0,
-    )
+    vec3(angle.cos() * 9.0, (progress - 0.5) * 8.2, angle.sin() * 9.0)
 }
 
 fn macro_node_position(index: usize, count: usize) -> Vec3 {

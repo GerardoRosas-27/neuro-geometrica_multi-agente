@@ -254,9 +254,7 @@ impl RustLanguageLayer {
         }
         let decoded = self.decode(&generated)?;
         let text = sanitize_response(&decoded);
-        let clean_tokens = self
-            .tokenizer
-            .encode(&text, false);
+        let clean_tokens = self.tokenizer.encode(&text, false);
         Ok(GeneratedResponse {
             text,
             tokens: clean_tokens,

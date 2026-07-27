@@ -1,6 +1,7 @@
 use rand::{Rng, SeedableRng};
 use rand_xoshiro::Xoshiro256PlusPlus;
 use rayon::prelude::*;
+use std::collections::HashMap;
 
 const EPSILON: f32 = 1.0e-6;
 
@@ -8,6 +9,24 @@ const EPSILON: f32 = 1.0e-6;
 pub enum NativeCdtEdgeKind {
     Spatial,
     Temporal,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct NativeNodeDelta {
+    pub node: usize,
+    pub thermal_state: Option<f32>,
+    pub amplitude: Option<f32>,
+    pub phase: Option<f32>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct NativeEdgeUpsert {
+    pub a: usize,
+    pub b: usize,
+    pub kind: NativeCdtEdgeKind,
+    pub weight: f32,
+    pub phase: f32,
+    pub stability: f32,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -285,6 +304,97 @@ impl NativeThermoCdtSubstrate {
         } else {
             self.rebuild_adjacency();
         }
+    }
+
+    /// Actualiza un conjunto disperso de nodos y aristas sin reconstruir ni
+    /// sustituir la topología global. Las aristas se identifican sin dirección.
+    pub fn batch_upsert_sparse(
+        &mut self,
+        node_deltas: &[NativeNodeDelta],
+        edge_upserts: &[NativeEdgeUpsert],
+        learning_rate: f32,
+    ) -> Result<(), String> {
+        if !learning_rate.is_finite() || !(0.0..=1.0).contains(&learning_rate) {
+            return Err("learning_rate debe ser finito y pertenecer a [0, 1]".to_string());
+        }
+        let nodes = self.node_count();
+        for delta in node_deltas {
+            if delta.node >= nodes {
+                return Err(format!("nodo {} fuera de rango {nodes}", delta.node));
+            }
+            for value in [delta.thermal_state, delta.amplitude, delta.phase]
+                .into_iter()
+                .flatten()
+            {
+                if !value.is_finite() {
+                    return Err("delta de nodo no finito".to_string());
+                }
+            }
+        }
+        for edge in edge_upserts {
+            if edge.a >= nodes || edge.b >= nodes || edge.a == edge.b {
+                return Err("arista sparse inválida".to_string());
+            }
+            if !edge.weight.is_finite() || !edge.phase.is_finite() || !edge.stability.is_finite() {
+                return Err("delta de arista no finito".to_string());
+            }
+        }
+
+        let blend = |old: f32, new: f32| old + learning_rate * (new - old);
+        for delta in node_deltas {
+            let node = delta.node;
+            if let Some(value) = delta.thermal_state {
+                self.thermal_state[node] = blend(self.thermal_state[node], value)
+                    .clamp(-self.config.state_clamp, self.config.state_clamp);
+            }
+            if let Some(value) = delta.amplitude {
+                self.amplitude[node] = blend(self.amplitude[node], value).max(0.0);
+            }
+            if let Some(value) = delta.phase {
+                self.phase[node] = blend_angle(self.phase[node], value, learning_rate);
+            }
+        }
+
+        let mut edge_index = self
+            .edge_a
+            .iter()
+            .copied()
+            .zip(self.edge_b.iter().copied())
+            .enumerate()
+            .map(|(edge, (a, b))| ((a.min(b), a.max(b)), edge))
+            .collect::<HashMap<_, _>>();
+        let mut added = false;
+        for update in edge_upserts {
+            let key = (update.a.min(update.b), update.a.max(update.b));
+            if let Some(&edge) = edge_index.get(&key) {
+                self.edge_weight[edge] = blend(self.edge_weight[edge], update.weight.max(0.0));
+                let target_phase = if self.edge_a[edge] == update.a {
+                    update.phase
+                } else {
+                    -update.phase
+                };
+                self.edge_phase[edge] =
+                    blend_angle(self.edge_phase[edge], target_phase, learning_rate);
+                self.edge_stability[edge] =
+                    blend(self.edge_stability[edge], update.stability.clamp(0.0, 1.0));
+                self.edge_kind[edge] = update.kind;
+            } else if learning_rate > 0.0 {
+                self.edge_a.push(update.a);
+                self.edge_b.push(update.b);
+                self.edge_kind.push(update.kind);
+                self.edge_weight
+                    .push(learning_rate * update.weight.max(0.0));
+                self.edge_phase.push(update.phase);
+                self.edge_stability
+                    .push(learning_rate * update.stability.clamp(0.0, 1.0));
+                edge_index.insert(key, self.edge_a.len() - 1);
+                added = true;
+            }
+        }
+        if added {
+            self.rebuild_adjacency();
+        }
+        Ok(())
     }
 
     pub fn compile_sampling_program(&self, config: NativeSamplingConfig) -> NativeSamplingProgram {
@@ -1085,6 +1195,13 @@ fn sigmoid(x: f32) -> f32 {
     1.0 / (1.0 + (-x.clamp(-20.0, 20.0)).exp())
 }
 
+#[inline(always)]
+fn blend_angle(old: f32, new: f32, rate: f32) -> f32 {
+    let delta =
+        (new - old + std::f32::consts::PI).rem_euclid(std::f32::consts::TAU) - std::f32::consts::PI;
+    old + rate * delta
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1160,5 +1277,43 @@ mod tests {
         assert!(!program.schedule.is_empty());
         assert!(report.mean_energy.is_finite());
         assert!(report.max_abs_state <= substrate.config.state_clamp);
+    }
+
+    #[test]
+    fn sparse_upsert_preserves_unselected_topology_and_state() {
+        let mut substrate = NativeThermoCdtSubstrate::new(NativeThermoCdtConfig {
+            slices: 1,
+            nodes_per_slice: 8,
+            ..NativeThermoCdtConfig::default()
+        });
+        let untouched = substrate.thermal_state[7];
+        let original_edges = substrate.edge_count();
+        substrate
+            .batch_upsert_sparse(
+                &[NativeNodeDelta {
+                    node: 1,
+                    thermal_state: Some(1.0),
+                    ..NativeNodeDelta::default()
+                }],
+                &[NativeEdgeUpsert {
+                    a: 1,
+                    b: 6,
+                    kind: NativeCdtEdgeKind::Spatial,
+                    weight: 0.4,
+                    phase: 0.2,
+                    stability: 0.8,
+                }],
+                0.5,
+            )
+            .unwrap();
+
+        assert_eq!(substrate.thermal_state[7], untouched);
+        assert!(substrate.thermal_state[1] != untouched);
+        assert!(substrate.edge_count() >= original_edges);
+        assert!(substrate
+            .edge_a
+            .iter()
+            .zip(&substrate.edge_b)
+            .any(|(&a, &b)| (a == 1 && b == 6) || (a == 6 && b == 1)));
     }
 }
