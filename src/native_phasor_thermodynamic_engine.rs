@@ -162,6 +162,52 @@ pub struct NativePhasorMinimizationReport {
     pub converged: bool,
 }
 
+/// Configuración del bucle local de inferencia activa.
+///
+/// Cada barrido combina Metropolis-within-Gibbs sobre un único fasor con un
+/// descenso coordenado opcional. Ambas operaciones sólo consultan las aristas
+/// incidentes al nodo actualizado.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct NativePhasorActiveInferenceConfig {
+    pub sweeps: usize,
+    pub burn_in_sweeps: usize,
+    pub sampling_temperature: f32,
+    pub proposal_std: f32,
+    pub local_learning_rate: f32,
+    pub entropy_samples: usize,
+    pub keep_best: bool,
+    pub seed: u64,
+}
+
+impl Default for NativePhasorActiveInferenceConfig {
+    fn default() -> Self {
+        Self {
+            sweeps: 200,
+            burn_in_sweeps: 40,
+            sampling_temperature: 0.05,
+            proposal_std: 0.20,
+            local_learning_rate: 0.35,
+            entropy_samples: 512,
+            keep_best: true,
+            seed: 0xAC71_1EFE_2026,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct NativePhasorActiveInferenceReport {
+    pub initial: NativePhasorReport,
+    pub final_report: NativePhasorReport,
+    pub best_free_energy: f32,
+    pub sweeps: usize,
+    pub gibbs_proposals: usize,
+    pub gibbs_accepted: usize,
+    pub local_updates_accepted: usize,
+    pub sampled_mean_internal_energy: f32,
+    pub sampled_entropy: f32,
+    pub entropy_absolute_error: f32,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum NativePhasorError {
     EmptySubstrate,
@@ -868,6 +914,116 @@ impl NativePhasorThermodynamicEngine {
         }
     }
 
+    /// Ejecuta inferencia activa local mediante Metropolis-within-Gibbs y
+    /// actualizaciones coordenadas de energía libre.
+    ///
+    /// La aceptación Gibbs usa deltas exactos calculados sobre el vecindario
+    /// del nodo. La entropía se mantiene con estadísticos suficientes O(1);
+    /// `sampled_entropy` es una estimación Monte Carlo independiente de ese
+    /// valor y permite medir el error introducido por muestreo.
+    pub fn active_inference(
+        &mut self,
+        config: NativePhasorActiveInferenceConfig,
+    ) -> NativePhasorActiveInferenceReport {
+        let config = sanitize_active_inference_config(config);
+        let initial = self.report();
+        let mut entropy = entropy_state(&self.phasors);
+        let mut current_free_energy = initial.free_energy;
+        let mut best_free_energy = current_free_energy;
+        let mut best_state = self.phasors.clone();
+        let mut gibbs_proposals = 0usize;
+        let mut gibbs_accepted = 0usize;
+        let mut local_updates_accepted = 0usize;
+        let nodes = self.node_count();
+
+        for sweep in 0..config.sweeps {
+            let start = (splitmix64(config.seed ^ sweep as u64) as usize) % nodes;
+            for offset in 0..nodes {
+                let node = (start + offset) % nodes;
+                let counter = (sweep as u64)
+                    .wrapping_mul(nodes as u64)
+                    .wrapping_add(offset as u64);
+                let current = self.phasors[node];
+                let proposal = current
+                    + Complex32::new(
+                        gaussian_from_counter(config.seed, counter.wrapping_mul(2)),
+                        gaussian_from_counter(
+                            config.seed.rotate_left(23),
+                            counter.wrapping_mul(2).wrapping_add(1),
+                        ),
+                    ) * config.proposal_std;
+                gibbs_proposals += 1;
+                if proposal.norm() <= self.config.max_amplitude {
+                    let (delta_free_energy, next_entropy) =
+                        self.local_free_energy_delta(node, proposal, entropy);
+                    let accept_probability = if delta_free_energy <= 0.0 {
+                        1.0
+                    } else {
+                        (-delta_free_energy / config.sampling_temperature).exp()
+                    };
+                    let draw = unit_from_u64(splitmix64(
+                        config.seed.rotate_left(41) ^ counter ^ 0x91E1_0DA5_C79E_7B1D,
+                    ));
+                    if draw < accept_probability {
+                        self.phasors[node] = proposal;
+                        entropy = next_entropy;
+                        current_free_energy += delta_free_energy;
+                        gibbs_accepted += 1;
+                    }
+                }
+
+                if config.local_learning_rate > 0.0 {
+                    let current = self.phasors[node];
+                    let gradient = self.local_free_energy_gradient(node, entropy);
+                    let denominator = (self.config.coupling_strength
+                        * self.operator.diagonal[node]
+                        + self.config.radial_strength
+                            * (current.norm_sqr()
+                                + self.config.target_amplitude
+                                    * self.config.target_amplitude)
+                        + self.config.confinement)
+                        .max(EPSILON);
+                    let candidate =
+                        current - gradient * (config.local_learning_rate / denominator);
+                    if candidate.norm() <= self.config.max_amplitude {
+                        let (delta_free_energy, next_entropy) =
+                            self.local_free_energy_delta(node, candidate, entropy);
+                        if delta_free_energy <= 0.0 {
+                            self.phasors[node] = candidate;
+                            entropy = next_entropy;
+                            current_free_energy += delta_free_energy;
+                            local_updates_accepted += 1;
+                        }
+                    }
+                }
+            }
+            self.tick = self.tick.wrapping_add(1);
+            if sweep + 1 >= config.burn_in_sweeps && current_free_energy < best_free_energy {
+                best_free_energy = current_free_energy;
+                best_state.copy_from_slice(&self.phasors);
+            }
+        }
+
+        if config.keep_best && best_free_energy < current_free_energy {
+            self.phasors.copy_from_slice(&best_state);
+        }
+        let final_report = self.report();
+        let (sampled_mean_internal_energy, sampled_entropy) =
+            self.sample_observables(config.entropy_samples, config.seed.rotate_left(7));
+        NativePhasorActiveInferenceReport {
+            initial,
+            final_report,
+            best_free_energy: best_free_energy.min(final_report.free_energy),
+            sweeps: config.sweeps,
+            gibbs_proposals,
+            gibbs_accepted,
+            local_updates_accepted,
+            sampled_mean_internal_energy,
+            sampled_entropy,
+            entropy_absolute_error: (sampled_entropy - final_report.entropy).abs(),
+        }
+    }
+
     /// Mínimo global analítico para el caso no frustrado, sin estímulo y a
     /// temperatura efectiva cero. Sirve como oráculo de correctitud.
     pub fn analytic_unfrustrated_minimum(&self) -> Option<f32> {
@@ -917,6 +1073,126 @@ impl NativePhasorThermodynamicEngine {
                 *value = complete_gradient(node, *value);
             });
         }
+    }
+
+    fn local_free_energy_gradient(&self, node: usize, entropy: EntropyState) -> Complex32 {
+        let current = self.phasors[node];
+        let mut laplacian = current * self.operator.diagonal[node];
+        for cursor in self.operator.row_offsets[node]..self.operator.row_offsets[node + 1] {
+            laplacian -= self.phasors[self.operator.columns[cursor]]
+                * self.operator.transports[cursor]
+                * self.operator.weights[cursor];
+        }
+        self.config.coupling_strength * laplacian
+            + self.config.radial_strength
+                * (current.norm_sqr()
+                    - self.config.target_amplitude * self.config.target_amplitude)
+                * current
+            + self.config.confinement * current
+            - self.config.stimulus_gain * self.stimulus[node]
+            + entropy_gradient(
+                current,
+                current.norm_sqr(),
+                entropy,
+                self.config.entropy_weight * self.effective_temperature(),
+            )
+    }
+
+    fn local_free_energy_delta(
+        &self,
+        node: usize,
+        candidate: Complex32,
+        entropy: EntropyState,
+    ) -> (f32, EntropyState) {
+        let current = self.phasors[node];
+        let mut coupling_delta = 0.0;
+        for cursor in self.operator.row_offsets[node]..self.operator.row_offsets[node + 1] {
+            let neighbor = self.phasors[self.operator.columns[cursor]];
+            let transport = self.operator.transports[cursor];
+            let weight = self.operator.weights[cursor];
+            coupling_delta += 0.5
+                * self.config.coupling_strength
+                * weight
+                * ((candidate - transport * neighbor).norm_sqr()
+                    - (current - transport * neighbor).norm_sqr());
+        }
+        let onsite = |value: Complex32| {
+            let radial_delta =
+                value.norm_sqr() - self.config.target_amplitude * self.config.target_amplitude;
+            0.25 * self.config.radial_strength * radial_delta * radial_delta
+                + 0.5 * self.config.confinement * value.norm_sqr()
+                - self.config.stimulus_gain * (value.conj() * self.stimulus[node]).re
+        };
+        let current_q = current.norm_sqr() + EPSILON;
+        let candidate_q = candidate.norm_sqr() + EPSILON;
+        let next_entropy = entropy_from_sums(
+            entropy.q_sum + candidate_q - current_q,
+            entropy.q_log_q_sum + candidate_q * candidate_q.ln()
+                - current_q * current_q.ln(),
+        );
+        let entropy_delta = next_entropy.entropy - entropy.entropy;
+        (
+            coupling_delta + onsite(candidate) - onsite(current)
+                - self.config.entropy_weight * self.effective_temperature() * entropy_delta,
+            next_entropy,
+        )
+    }
+
+    fn sample_observables(&self, samples: usize, seed: u64) -> (f32, f32) {
+        let samples = samples.max(1);
+        let q_sum = self
+            .phasors
+            .iter()
+            .map(|phasor| phasor.norm_sqr() + EPSILON)
+            .sum::<f32>()
+            .max(EPSILON);
+        let mut cumulative = Vec::with_capacity(self.node_count());
+        let mut running = 0.0;
+        for phasor in &self.phasors {
+            running += (phasor.norm_sqr() + EPSILON) / q_sum;
+            cumulative.push(running);
+        }
+        if let Some(last) = cumulative.last_mut() {
+            *last = 1.0;
+        }
+
+        let mut entropy_sum = 0.0;
+        let mut energy_sum = 0.0;
+        for sample in 0..samples {
+            let entropy_draw = unit_from_u64(splitmix64(seed ^ sample as u64));
+            let sampled_node = cumulative.partition_point(|value| *value < entropy_draw);
+            let probability =
+                (self.phasors[sampled_node].norm_sqr() + EPSILON) / q_sum;
+            entropy_sum -= probability.max(EPSILON).ln();
+
+            let energy_node = (splitmix64(
+                seed.rotate_left(31) ^ sample as u64 ^ 0xA24B_AED4_963E_E407,
+            ) as usize)
+                % self.node_count();
+            energy_sum += self.node_internal_energy_share(energy_node);
+        }
+        (
+            energy_sum * self.node_count() as f32 / samples as f32,
+            entropy_sum / samples as f32,
+        )
+    }
+
+    fn node_internal_energy_share(&self, node: usize) -> f32 {
+        let current = self.phasors[node];
+        let mut coupling_share = 0.0;
+        for cursor in self.operator.row_offsets[node]..self.operator.row_offsets[node + 1] {
+            let neighbor = self.phasors[self.operator.columns[cursor]];
+            coupling_share += 0.25
+                * self.config.coupling_strength
+                * self.operator.weights[cursor]
+                * (current - self.operator.transports[cursor] * neighbor).norm_sqr();
+        }
+        let radial_delta =
+            current.norm_sqr() - self.config.target_amplitude * self.config.target_amplitude;
+        coupling_share
+            + 0.25 * self.config.radial_strength * radial_delta * radial_delta
+            + 0.5 * self.config.confinement * current.norm_sqr()
+            - self.config.stimulus_gain * (current.conj() * self.stimulus[node]).re
     }
 
     fn topological_phase_warm_start(&mut self) {
@@ -1039,13 +1315,18 @@ fn entropy_state(phasors: &[Complex32]) -> EntropyState {
             |left, right| (left.0 + right.0, left.1 + right.1),
         )
     };
+    entropy_from_sums(q_sum, q_log_q_sum)
+}
+
+fn entropy_from_sums(q_sum: f32, q_log_q_sum: f32) -> EntropyState {
     if q_sum <= EPSILON {
-        return EntropyState::default();
-    }
-    EntropyState {
-        entropy: (q_sum.ln() - q_log_q_sum / q_sum).max(0.0),
-        q_sum,
-        q_log_q_sum,
+        EntropyState::default()
+    } else {
+        EntropyState {
+            entropy: (q_sum.ln() - q_log_q_sum / q_sum).max(0.0),
+            q_sum,
+            q_log_q_sum,
+        }
     }
 }
 
@@ -1096,6 +1377,20 @@ fn sanitize_minimizer_config(config: NativePhasorMinimizerConfig) -> NativePhaso
         max_backtracks: config.max_backtracks.max(1),
         energy_tolerance: config.energy_tolerance.max(0.0),
         residual_tolerance: config.residual_tolerance.max(0.0),
+        ..config
+    }
+}
+
+fn sanitize_active_inference_config(
+    config: NativePhasorActiveInferenceConfig,
+) -> NativePhasorActiveInferenceConfig {
+    NativePhasorActiveInferenceConfig {
+        sweeps: config.sweeps.max(1),
+        burn_in_sweeps: config.burn_in_sweeps.min(config.sweeps.max(1)),
+        sampling_temperature: config.sampling_temperature.max(EPSILON),
+        proposal_std: config.proposal_std.max(EPSILON),
+        local_learning_rate: config.local_learning_rate.clamp(0.0, 1.0),
+        entropy_samples: config.entropy_samples.max(1),
         ..config
     }
 }
@@ -1287,6 +1582,59 @@ mod tests {
             result.energy_evaluations <= result.iterations * 4 + 1,
             "{result:?}"
         );
+    }
+
+    #[test]
+    fn local_active_inference_reduces_free_energy_without_global_evaluations() {
+        let core = NativeThermoCdtSubstrate::new(NativeThermoCdtConfig {
+            slices: 1,
+            nodes_per_slice: 32,
+            spatial_degree: 2,
+            temporal_degree: 1,
+            temperature: 0.5,
+            seed: 72_026,
+            ..NativeThermoCdtConfig::default()
+        });
+        let mut engine = NativePhasorThermodynamicEngine::from_core(
+            &core,
+            NativePhasorConfig {
+                radial_strength: 4.0,
+                entropy_weight: 0.15,
+                temperature_scale: 0.1,
+                noise_scale: 0.0,
+                ..NativePhasorConfig::default()
+            },
+        )
+        .unwrap();
+        for (node, phasor) in engine.phasors.iter_mut().enumerate() {
+            *phasor = Complex32::from_polar(0.8 + 0.01 * node as f32, node as f32 * 0.71);
+        }
+        let before = engine.report();
+        let result = engine.active_inference(NativePhasorActiveInferenceConfig {
+            sweeps: 40,
+            burn_in_sweeps: 0,
+            sampling_temperature: 1.0e-4,
+            local_learning_rate: 0.35,
+            entropy_samples: 256,
+            ..NativePhasorActiveInferenceConfig::default()
+        });
+
+        assert!(
+            result.final_report.free_energy < before.free_energy,
+            "{result:?}"
+        );
+        assert!(result.local_updates_accepted > 0, "{result:?}");
+        assert_eq!(result.gibbs_proposals, 40 * engine.node_count());
+    }
+
+    #[test]
+    fn monte_carlo_entropy_is_exact_for_uniform_amplitudes() {
+        let core = two_node_core(0.0);
+        let engine =
+            NativePhasorThermodynamicEngine::from_core(&core, NativePhasorConfig::default())
+                .unwrap();
+        let (_, sampled_entropy) = engine.sample_observables(64, 91);
+        assert!((sampled_entropy - 2.0_f32.ln()).abs() < 1.0e-6);
     }
 
     #[test]

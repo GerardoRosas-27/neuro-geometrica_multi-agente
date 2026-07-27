@@ -33,6 +33,25 @@ resultado contra un mínimo global conocido:
 cargo run --release --bin native_phasor_minimum_benchmark
 ```
 
+Comparación aislada entre el minimizador global actual y un bucle de inferencia
+activa local:
+
+```powershell
+cargo run --release --bin native_phasor_active_inference_benchmark
+```
+
+La variante activa aplica Metropolis-within-Gibbs a un fasor complejo por vez,
+calcula deltas de energía usando sólo sus aristas incidentes, mantiene la
+entropía mediante estadísticos suficientes y contrasta ese valor con una
+estimación Monte Carlo. El benchmark incluye una ablación Gibbs sin gradiente
+local y usa el mismo estado inicial y presupuesto de barridos para las tres
+variantes.
+
+Los movimientos de Pachner no se simulan en este benchmark: el motor fasorial
+actual conserva un grafo magnético, no un complejo simplicial con caras,
+orientaciones y restricciones de manifold. Un simple alta/baja de aristas no
+sería una prueba válida de movimientos de Pachner.
+
 Comparación pareada contra el CDT anterior:
 
 ```powershell
