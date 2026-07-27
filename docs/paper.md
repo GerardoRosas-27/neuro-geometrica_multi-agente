@@ -51,13 +51,19 @@ src/plasticity_controller.rs
 
 ## 3. Checkpoints
 
+Artefactos presentes en el checkout actual:
+
 ```text
 data/native_thermo_clean.cdt_native
 data/native_curriculum_5phase.cdt_native
-data/native_massive_thermo.cdt_native
-data/native_prototype_bridge_thermo.cdt_native
-data/native_gemma_distilled_thermo.cdt_native
+data/native_phasor_infinite_training/latest.state.json
 ```
+
+Los checkpoints `native_massive_thermo`, `native_prototype_bridge_thermo`,
+`native_gemma_distilled_thermo` y los estados de entrenamiento unificado citados
+en versiones anteriores no están versionados. Las cifras derivadas de ellos se
+tratan en este documento como evidencia histórica de sesión, no como resultados
+reproducibles desde el checkout.
 
 ## 4. Inferencia Nativa
 
@@ -113,6 +119,11 @@ epr_links=620
 
 ## 7. Resultados De La Evaluación Amplia
 
+**Estado de evidencia:** histórico. El checkpoint de ciclo 113017 permanece en
+el repositorio, pero el evaluador amplio y los trainers legacy que produjeron
+esta tabla fueron eliminados. Por ello la tabla no puede regenerarse con los
+binarios actuales y no debe presentarse como resultado CI vigente.
+
 ```text
 phase1_cross_lingual:      accuracy=100.0% leakage=6.6%
 phase2_compositional:      accuracy=100.0% leakage=3.7%
@@ -138,6 +149,12 @@ Fase 5 pasa: ventaja clara sobre baselines
 ```
 
 ## 8. Estado Vigente Y Reparación De Retención
+
+Esta sección conserva una bitácora de la sesión que alcanzó el ciclo 116350.
+El artefacto correspondiente no está en el checkout actual: el checkpoint
+versionado de cinco fases permanece en el ciclo 113017, con 640 nodos y 6842
+relaciones. En consecuencia, las cifras siguientes son evidencia histórica de
+sesión y no un estado durable verificable en este repositorio.
 
 El entrenamiento prolongado llegó a `cycle=116347`, pero la evaluación amplia detectó
 una regresión que el loop interno no veía:
@@ -327,20 +344,27 @@ seguras; sustituirlos requiere snapshots diferenciales con una validación separ
 ## 12. Herramientas Conservadas
 
 ```powershell
-cargo run --release --bin native_thermodynamic_engine
-cargo run --release --bin native_thermo_clean_trainer
-cargo run --release --bin native_curriculum_5phase_trainer
-cargo run --release --bin native_curriculum_broad_evaluation
-cargo run --release --bin native_massive_dataset_trainer
-cargo run --release --bin native_massive_checkpoint_evaluation
-cargo run --release --bin native_scientific_benchmark
-cargo run --release --bin native_phase2_compositional_trainer
-cargo run --release --bin native_phase3_strong_reasoning
-cargo run --release --bin native_phase4_continual_learning
-cargo run --release --bin native_phase5_baseline_comparison
-cargo run --release --bin native_gemma_phase1_trainer
-cargo run --release --bin native_realtime_benchmark
+cargo test --lib
+cargo run --release --bin native_phasor_thermodynamic
+cargo run --release --bin native_phasor_minimum_benchmark
+cargo run --release --bin native_phasor_active_inference_benchmark
+cargo run --release --bin native_thermodynamic_attractor_comparison
+cargo run --release --bin native_phasor_fusion_efficiency
+cargo run --release --bin native_consolidation_basin_experiment
+cargo run --release --bin native_cognitive_generalization_benchmark
+cargo run --release --bin native_advanced_cognitive_validation
+cargo run --release --bin native_transformation_family_discovery
+cargo run --release --bin native_hybrid_phasor_cdt
+cargo run --release --bin native_unified_spin_cognitive
+cargo run --release --bin native_unified_infinite_trainer
+cargo run --release --bin native_cognitive_transfer_experiment
+cargo run --release --bin native_cognitive_ood_schema_experiment
+cargo run --release --bin native_cognitive_rqm_cdt_experiment
 ```
+
+Los comandos legacy publicados anteriormente para currículo de cinco fases,
+datasets masivos, evaluación amplia y benchmark realtime ya no corresponden a
+binarios presentes y se retiraron de esta lista.
 
 ## 13. Gate Y Persistencia
 
@@ -428,7 +452,8 @@ AND error predictivo bajo
 5. **Órbita:** una relación no observada debe consolidarse sólo con transferencia
    simétrica activa.
 6. **Ablación:** con confianza de simetría cero, la órbita no debe aparecer.
-7. **Lesión CDT:** retirar un enlace físico debe bloquear conocimiento nuevo.
+7. **Lesión del backend spin:** retirar un bond usado como proxy de simetría
+   topológica debe bloquear conocimiento nuevo.
 8. **Reparación:** restaurar el enlace debe volver a habilitar consolidación.
 9. **OOD:** una señal sin relaciones debe causar abstención.
 
@@ -501,6 +526,10 @@ como benchmark de algoritmos equivalentes.
 
 ### 16.1 Checkpoint prolongado frente a legacy
 
+**Procedencia:** evidencia histórica de sesión. El checkpoint de 221,6 millones
+de ejemplos y `data/unified_infinite_training/` no están versionados en el
+checkout actual; esta subsección no es reproducible sin aportar ese artefacto.
+
 El checkpoint durable de `221,600,000` ejemplos fue evaluado sin continuar el
 entrenamiento:
 
@@ -531,13 +560,18 @@ consulta y ampliación de la distribución.
 
 ## 17. Estado De La Evidencia
 
-La suite completa contiene 81 pruebas unitarias y causales. Los resultados
+La suite de biblioteca contiene 121 pruebas unitarias y causales. Los resultados
 respaldan capacidades operacionales dentro de fixtures sintéticos controlados.
 Para afirmar cognición más general faltan tareas sensoriales complejas, ambientes
 temporales, múltiples semillas y distribuciones, aprendizaje de simetrías no
 proporcionadas y comparación con modelos de capacidad equivalente.
 
 ## 18. Entrenamiento Sintético Prolongado
+
+Esta sección registra una corrida externa al checkout. El trainer reanudable
+sigue implementado, pero los checkpoints y métricas de la corrida de 221,6
+millones de ejemplos no están versionados. Las cifras deben reproducirse desde
+cero o acompañarse del artefacto antes de usarse como evidencia publicada.
 
 Se añadió `native_unified_infinite_trainer`, un proceso reanudable por batches
 con checkpoint completo del estado cuántico, RQM, EPR, conocimiento y RNG.
@@ -594,3 +628,172 @@ La tasa de gate posterior a homeostasis fue `99.9909%`; hubo un único fallo
 transitorio registrado por pérdida total del testigo de entrelazamiento. El
 checkpoint permite reanudar desde 221.6 millones de ejemplos. Los 200 batches
 posteriores observados no estaban aún comprometidos y se descartan al reanudar.
+
+## 19. Consolidación Y Deformación Del Paisaje
+
+La predicción central del sistema fasorial se evaluó con un experimento causal
+pareado independiente del currículo histórico. El protocolo conserva un
+snapshot CDT antes de sleep, deja una configuración binaria verificada en
+memoria rápida, la consolida y repite exactamente los mismos cues ruidosos sobre
+los paisajes pre y post.
+
+```powershell
+cargo test --lib consolidation_basin_experiment -- --nocapture
+cargo run --release --bin native_consolidation_basin_experiment
+```
+
+Configuración de referencia:
+
+```text
+nodos=32
+aristas consolidadas=128
+ensayos por nivel=24
+corrupción={10%, 20%, 25%, 30%, 35%, 40%}
+ensayos totales por condición=144
+```
+
+Resultados:
+
+```text
+recuperación pre=0/144
+recuperación post=144/144
+exactitud post=100% en los seis niveles
+corrupción crítica pre=0.00
+corrupción crítica post=0.40
+ganancia media de éxito=+100 puntos porcentuales
+decision=basin_expansion_pass
+```
+
+Las iteraciones medias también fueron menores después de consolidar en los seis
+niveles. El gate se repitió con ocho semillas fijas independientes. Durante la
+adquisición se anula deliberadamente el acoplamiento para aislar la escritura de
+un patrón ya verificado; durante la evaluación, pre y post usan el mismo
+acoplamiento no nulo, solver, semillas y presupuesto. Por tanto, el resultado
+demuestra que la consolidación implementada puede deformar el paisaje y ampliar
+una cuenca controlada. No demuestra descubrimiento autónomo del patrón,
+generalización conceptual ni ventaja física.
+
+### 19.1 Niveles De Evidencia
+
+**Nivel 1 — evidencia interna.** La implementación y sus pruebas respaldan
+relajación, descenso de energía del modelo, inferencia fasorial, memoria rápida,
+replay, consolidación, gates, rollback/checkpoints, persistencia, entrenamiento
+prolongado, separación lenguaje/inferencia y ampliación de una cuenca sintética
+después de consolidar.
+
+**Nivel 2 — hipótesis algorítmicas.** Permanecen sin demostrar mediante
+benchmarks externos la generalización de atractores, la formación de
+representaciones conceptuales no proporcionadas, la reducción comparativa de
+interferencia, la superioridad frente a métodos convencionales y el escalado
+eficiente.
+
+**Nivel 3 — hipótesis físicas.** No existe todavía un prototipo que demuestre
+equivalencia del paisaje, menor energía medida, paralelismo físico útil,
+estabilidad frente a ruido o consolidación física.
+
+La secuencia experimental vigente es:
+
+```text
+algoritmo -> ventaja computacional -> escalabilidad -> mapa físico
+```
+
+## 20. Validación Cognitiva De Cuatro Niveles
+
+El motor unificado fue evaluado en memoria exacta, variaciones de fase no vistas,
+composición sin atajo directo y transferencia a nodos isomórficos:
+
+```powershell
+cargo test --lib cognitive_generalization_benchmark -- --nocapture
+cargo run --release --bin native_cognitive_generalization_benchmark
+```
+
+La corrida de 24 ensayos produjo:
+
+```text
+memoria exacta                         100%
+variaciones no vistas                  100%
+composición sin atajo directo          100%
+ausencia del atajo                     100%
+transferencia isomórfica               100%
+transferencia ausente sin simetría     100%
+abstención OOD                         100%
+decision=limited_structural_generalization_pass
+```
+
+Las variaciones no vistas son perturbaciones de fase de contexto. La
+transferencia utiliza una órbita isomórfica suministrada y el control con
+confianza de simetría cero no transfiere. Esto aporta evidencia interna de
+recuperación robusta, composición y transferencia estructural causal, pero no
+de descubrimiento autónomo de conceptos o simetrías.
+
+## 21. Ambigüedad Y Descubrimiento Limitado De Simetría
+
+Se añadió una evaluación más difícil con múltiples rutas, abstención por margen,
+tres escalas topológicas y transferencia heldout:
+
+```powershell
+cargo test --lib advanced_cognitive_validation -- --nocapture
+cargo run --release --bin native_advanced_cognitive_validation
+```
+
+El motor aprende \(A\rightarrow B\rightarrow C\) y \(A\rightarrow D\) en fases
+opuestas. Debe seleccionar la rama y trayectoria correctas cerca de cada fase,
+pero abstenerse en consultas equidistantes. Cada hipótesis reporta score y
+energía efectiva \(-\ln(score)\).
+
+El descubridor estructural recibe tres ejemplos dispersos ruidosos y un outlier
+contradictorio. No recibe la órbita ni el desplazamiento. Busca dentro del grupo
+de traslaciones cíclicas, selecciona por error mediano y transfiere la
+transformación descubierta a un patrón no visto.
+
+Resultados en 36 ensayos:
+
+```text
+selección de rama                         100%
+selección de trayectoria                  100%
+abstención ambigua                        100%
+orden energético                          100%
+margen seleccionado medio                 0,73957
+margen ambiguo medio                      0,01653
+descubrimiento de transformación          100%
+transferencia heldout                     100%
+rechazo de conflicto                      100%
+decision=adversarial_selection_and_limited_symmetry_discovery_pass
+```
+
+El resultado es más fuerte que la transferencia guiada porque la transformación
+concreta se infiere de ejemplos y resiste ruido y un outlier. Sigue siendo
+limitado: la familia de transformaciones cíclicas está definida de antemano y
+los datos son sintéticos.
+
+## 22. Selección De Familia Y Complejidad Mínima
+
+El espacio de hipótesis se amplió a traslaciones 2D, rotaciones, reflexiones,
+permutaciones y composiciones. El selector desconoce la familia y sus parámetros
+y minimiza:
+
+```text
+energía de hipótesis = error mediano + λ × complejidad
+```
+
+La evaluación incluye cuatro ejemplos consistentes con ruido, un outlier de otra
+familia, transferencia a un patrón heldout, una permutación memorizadora
+competidora y evidencia simétrica ambigua que debe causar abstención.
+
+```powershell
+cargo test --lib transformation_family_discovery -- --nocapture
+cargo run --release --bin native_transformation_family_discovery
+```
+
+En 50 ensayos, diez por familia, el selector obtuvo 100 % de identificación por
+familia, mapping, transferencia heldout, robustez, preferencia MDL y abstención.
+El error robusto medio fue `4.2485e-6`, la ventaja MDL sobre la permutación
+memorizadora `1.1050e-3` y el margen energético medio `8.1648e-2`.
+
+```text
+decision=family_parameter_mdl_discovery_pass
+```
+
+Esto demuestra descubrimiento de familia y parámetros dentro de un lenguaje de
+hipótesis heterogéneo, incluida composición. No demuestra creación autónoma de
+familias fuera del catálogo proporcionado.

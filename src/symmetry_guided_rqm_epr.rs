@@ -81,6 +81,23 @@ pub struct RqmCandidate {
     pub epr_bonus: f64,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct RqmScoredHypothesis {
+    pub concept: LatentConceptId,
+    pub score: f64,
+    /// Energía efectiva de selección `-ln(score)`, no energía física.
+    pub effective_energy: f64,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct RqmAmbiguityReport {
+    pub selected: Option<LatentConceptId>,
+    pub confidence: f64,
+    pub margin: f64,
+    pub ambiguous: bool,
+    pub hypotheses: Vec<RqmScoredHypothesis>,
+}
+
 #[derive(Clone, Debug)]
 pub struct SymmetryGuidedRqmEprField {
     pub config: SymmetryGuidedRqmConfig,
@@ -215,6 +232,43 @@ impl SymmetryGuidedRqmEprField {
                 .then_with(|| left.concept.cmp(&right.concept))
         });
         candidates
+    }
+
+    /// Selecciona una hipótesis sólo si su margen sobre la segunda supera el
+    /// umbral. La energía reportada es una transformación del score usada para
+    /// comparar hipótesis, no la energía libre del sustrato.
+    pub fn query_with_ambiguity(
+        &self,
+        observer: ObserverId,
+        source: LatentConceptId,
+        context_phase: f64,
+        minimum_margin: f64,
+    ) -> RqmAmbiguityReport {
+        let candidates = self.query(observer, source, context_phase);
+        let hypotheses = candidates
+            .iter()
+            .map(|candidate| RqmScoredHypothesis {
+                concept: candidate.concept,
+                score: candidate.score,
+                effective_energy: -candidate.score.max(f64::MIN_POSITIVE).ln(),
+            })
+            .collect::<Vec<_>>();
+        let Some(first) = candidates.first() else {
+            return RqmAmbiguityReport {
+                hypotheses,
+                ..RqmAmbiguityReport::default()
+            };
+        };
+        let second_score = candidates.get(1).map_or(0.0, |candidate| candidate.score);
+        let margin = (first.score - second_score).max(0.0);
+        let ambiguous = candidates.len() > 1 && margin < minimum_margin.max(0.0);
+        RqmAmbiguityReport {
+            selected: (!ambiguous).then_some(first.concept),
+            confidence: first.score / (first.score + second_score).max(f64::MIN_POSITIVE),
+            margin,
+            ambiguous,
+            hypotheses,
+        }
     }
 
     fn update_relation(
@@ -456,6 +510,26 @@ mod tests {
         let aligned = field.query(ObserverId(1), LatentConceptId(0), 0.0)[0].score;
         let opposed = field.query(ObserverId(1), LatentConceptId(0), std::f64::consts::PI)[0].score;
         assert!(aligned > opposed);
+    }
+
+    #[test]
+    fn ambiguity_gate_abstains_when_competing_paths_have_small_margin() {
+        let mut field = SymmetryGuidedRqmEprField::new(SymmetryGuidedRqmConfig::default());
+        train(&mut field, 0, 1, 0.0, 0.0, &[]);
+        train(&mut field, 0, 2, std::f64::consts::PI, 0.0, &[]);
+        let selected = field.query_with_ambiguity(ObserverId(1), LatentConceptId(0), 0.0, 0.06);
+        assert_eq!(selected.selected, Some(LatentConceptId(1)));
+        assert!(!selected.ambiguous);
+        assert!(selected.hypotheses[0].effective_energy < selected.hypotheses[1].effective_energy);
+
+        let ambiguous = field.query_with_ambiguity(
+            ObserverId(1),
+            LatentConceptId(0),
+            std::f64::consts::FRAC_PI_2,
+            0.06,
+        );
+        assert!(ambiguous.ambiguous);
+        assert_eq!(ambiguous.selected, None);
     }
 
     #[test]

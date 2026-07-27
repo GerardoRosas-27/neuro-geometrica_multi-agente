@@ -1,6 +1,9 @@
 pub mod adaptive_gemma2;
+pub mod advanced_cognitive_validation;
+pub mod cognitive_generalization_benchmark;
 pub mod cognitive_logistics;
 pub mod cognitive_os;
+pub mod consolidation_basin_experiment;
 pub mod emergent_cognition_training;
 pub mod engine_comparison;
 pub mod entanglement;
@@ -30,5 +33,6 @@ pub mod symmetry_guided_rqm_epr;
 pub mod symmetry_thermodynamic_substrate;
 pub mod thermo_router;
 pub mod thermodynamic_attractor_comparison;
+pub mod transformation_family_discovery;
 pub mod unified_spin_cognitive_engine;
 pub mod variational_spin_liquid_vmc;
