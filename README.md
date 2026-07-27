@@ -47,6 +47,12 @@ estimación Monte Carlo. El benchmark incluye una ablación Gibbs sin gradiente
 local y usa el mismo estado inicial y presupuesto de barridos para las tres
 variantes.
 
+El resultado selecciona el gradiente global precondicionado con Armijo como
+solver canónico de producción: ganó en tiempo y energía libre final en las tres
+escalas evaluadas (128, 512 y 2.048 nodos). Gibbs y Active Inference permanecen
+como variantes experimentales; el benchmark termina con error si Armijo deja de
+ganar ambas métricas.
+
 Los movimientos de Pachner no se simulan en este benchmark: el motor fasorial
 actual conserva un grafo magnético, no un complejo simplicial con caras,
 orientaciones y restricciones de manifold. Un simple alta/baja de aristas no

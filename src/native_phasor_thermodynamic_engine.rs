@@ -162,11 +162,12 @@ pub struct NativePhasorMinimizationReport {
     pub converged: bool,
 }
 
-/// Configuración del bucle local de inferencia activa.
+/// Configuración experimental del bucle local de inferencia activa.
 ///
 /// Cada barrido combina Metropolis-within-Gibbs sobre un único fasor con un
 /// descenso coordenado opcional. Ambas operaciones sólo consultan las aristas
-/// incidentes al nodo actualizado.
+/// incidentes al nodo actualizado. No es la ruta de producción: los benchmarks
+/// seleccionan `minimize_free_energy` por menor tiempo y menor energía final.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct NativePhasorActiveInferenceConfig {
     pub sweeps: usize,
@@ -756,9 +757,10 @@ impl NativePhasorThermodynamicEngine {
         }
     }
 
-    /// Minimiza directamente la energía libre mediante gradiente
-    /// precondicionado y búsqueda de línea de Armijo. A diferencia de `step`,
-    /// no inyecta ruido y sólo acepta movimientos que reducen F.
+    /// Solver canónico de inferencia: minimiza directamente la energía libre
+    /// mediante gradiente precondicionado y búsqueda de línea de Armijo. A
+    /// diferencia de `step`, no inyecta ruido y sólo acepta movimientos que
+    /// reducen F.
     pub fn minimize_free_energy(
         &mut self,
         config: NativePhasorMinimizerConfig,
@@ -914,8 +916,8 @@ impl NativePhasorThermodynamicEngine {
         }
     }
 
-    /// Ejecuta inferencia activa local mediante Metropolis-within-Gibbs y
-    /// actualizaciones coordenadas de energía libre.
+    /// Ejecuta la variante experimental de inferencia activa local mediante
+    /// Metropolis-within-Gibbs y actualizaciones coordenadas de energía libre.
     ///
     /// La aceptación Gibbs usa deltas exactos calculados sobre el vecindario
     /// del nodo. La entropía se mantiene con estadísticos suficientes O(1);
@@ -979,12 +981,10 @@ impl NativePhasorThermodynamicEngine {
                         * self.operator.diagonal[node]
                         + self.config.radial_strength
                             * (current.norm_sqr()
-                                + self.config.target_amplitude
-                                    * self.config.target_amplitude)
+                                + self.config.target_amplitude * self.config.target_amplitude)
                         + self.config.confinement)
                         .max(EPSILON);
-                    let candidate =
-                        current - gradient * (config.local_learning_rate / denominator);
+                    let candidate = current - gradient * (config.local_learning_rate / denominator);
                     if candidate.norm() <= self.config.max_amplitude {
                         let (delta_free_energy, next_entropy) =
                             self.local_free_energy_delta(node, candidate, entropy);
@@ -1085,8 +1085,7 @@ impl NativePhasorThermodynamicEngine {
         }
         self.config.coupling_strength * laplacian
             + self.config.radial_strength
-                * (current.norm_sqr()
-                    - self.config.target_amplitude * self.config.target_amplitude)
+                * (current.norm_sqr() - self.config.target_amplitude * self.config.target_amplitude)
                 * current
             + self.config.confinement * current
             - self.config.stimulus_gain * self.stimulus[node]
@@ -1127,12 +1126,12 @@ impl NativePhasorThermodynamicEngine {
         let candidate_q = candidate.norm_sqr() + EPSILON;
         let next_entropy = entropy_from_sums(
             entropy.q_sum + candidate_q - current_q,
-            entropy.q_log_q_sum + candidate_q * candidate_q.ln()
-                - current_q * current_q.ln(),
+            entropy.q_log_q_sum + candidate_q * candidate_q.ln() - current_q * current_q.ln(),
         );
         let entropy_delta = next_entropy.entropy - entropy.entropy;
         (
-            coupling_delta + onsite(candidate) - onsite(current)
+            coupling_delta + onsite(candidate)
+                - onsite(current)
                 - self.config.entropy_weight * self.effective_temperature() * entropy_delta,
             next_entropy,
         )
@@ -1161,14 +1160,12 @@ impl NativePhasorThermodynamicEngine {
         for sample in 0..samples {
             let entropy_draw = unit_from_u64(splitmix64(seed ^ sample as u64));
             let sampled_node = cumulative.partition_point(|value| *value < entropy_draw);
-            let probability =
-                (self.phasors[sampled_node].norm_sqr() + EPSILON) / q_sum;
+            let probability = (self.phasors[sampled_node].norm_sqr() + EPSILON) / q_sum;
             entropy_sum -= probability.max(EPSILON).ln();
 
-            let energy_node = (splitmix64(
-                seed.rotate_left(31) ^ sample as u64 ^ 0xA24B_AED4_963E_E407,
-            ) as usize)
-                % self.node_count();
+            let energy_node =
+                (splitmix64(seed.rotate_left(31) ^ sample as u64 ^ 0xA24B_AED4_963E_E407) as usize)
+                    % self.node_count();
             energy_sum += self.node_internal_energy_share(energy_node);
         }
         (

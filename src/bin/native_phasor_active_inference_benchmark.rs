@@ -2,9 +2,7 @@ use cdt_rqm_epr::native_phasor_thermodynamic_engine::{
     NativePhasorActiveInferenceConfig, NativePhasorConfig, NativePhasorMinimizerConfig,
     NativePhasorThermodynamicEngine,
 };
-use cdt_rqm_epr::native_thermodynamic_cdt::{
-    NativeThermoCdtConfig, NativeThermoCdtSubstrate,
-};
+use cdt_rqm_epr::native_thermodynamic_cdt::{NativeThermoCdtConfig, NativeThermoCdtSubstrate};
 use num_complex::Complex32;
 use std::time::{Duration, Instant};
 
@@ -24,6 +22,14 @@ struct Metrics {
 }
 
 impl Metrics {
+    fn mean_ms(self) -> f64 {
+        self.elapsed.as_secs_f64() * 1_000.0 / TRIALS as f64
+    }
+
+    fn mean_free_energy_per_node(self) -> f64 {
+        self.free_energy_per_node / TRIALS as f64
+    }
+
     fn record(
         &mut self,
         engine: &NativePhasorThermodynamicEngine,
@@ -52,8 +58,8 @@ impl Metrics {
     fn print(self, method: &str) {
         println!(
             "{method},{:.3},{:.6},{:.3e},{:.6},{:.1},{:.1},{:.3e},{:.3e}",
-            self.elapsed.as_secs_f64() * 1_000.0 / TRIALS as f64,
-            self.free_energy_per_node / TRIALS as f64,
+            self.mean_ms(),
+            self.mean_free_energy_per_node(),
             self.residual / TRIALS as f64,
             self.coherence / TRIALS as f64,
             self.operations as f64 / TRIALS as f64,
@@ -74,6 +80,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
          entropy_mc_abs_error,energy_mc_relative_error"
     );
 
+    let mut armijo_wins = 0usize;
     for nodes in [128usize, 512, 2_048] {
         let template = fixture(nodes)?;
         let mut gradient_metrics = Metrics::default();
@@ -145,7 +152,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         gibbs_metrics.print("gibbs_metropolis_local");
         print!("{nodes},");
         active_metrics.print("active_gibbs_gradiente_local");
+        if gradient_metrics.mean_ms() < gibbs_metrics.mean_ms()
+            && gradient_metrics.mean_ms() < active_metrics.mean_ms()
+            && gradient_metrics.mean_free_energy_per_node()
+                <= gibbs_metrics.mean_free_energy_per_node()
+            && gradient_metrics.mean_free_energy_per_node()
+                <= active_metrics.mean_free_energy_per_node()
+        {
+            armijo_wins += 1;
+        }
     }
+    if armijo_wins != 3 {
+        return Err(format!(
+            "regresión: Armijo ganó tiempo y energía sólo en {armijo_wins}/3 escalas"
+        )
+        .into());
+    }
+    println!("resultado=gradiente_global_armijo solver_produccion=confirmado escalas_ganadas=3/3");
     Ok(())
 }
 
@@ -179,8 +202,7 @@ fn fixture(nodes: usize) -> Result<NativePhasorThermodynamicEngine, Box<dyn std:
 fn randomize_state(engine: &mut NativePhasorThermodynamicEngine, seed: u64) {
     for (node, phasor) in engine.phasors.iter_mut().enumerate() {
         let phase = std::f32::consts::TAU * unit_from_u64(splitmix64(seed ^ node as u64));
-        let amplitude =
-            0.75 + 0.50 * unit_from_u64(splitmix64(seed.rotate_left(19) ^ node as u64));
+        let amplitude = 0.75 + 0.50 * unit_from_u64(splitmix64(seed.rotate_left(19) ^ node as u64));
         *phasor = Complex32::from_polar(amplitude, phase);
     }
 }

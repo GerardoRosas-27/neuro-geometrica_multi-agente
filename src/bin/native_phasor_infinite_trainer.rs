@@ -111,7 +111,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         config.sleep_every,
         config.root.display()
     );
-    println!("inferencia=L0_fasorial objetivo=mínimo_energía_libre backend=CPU_sparse");
+    println!(
+        "inferencia=L0_fasorial solver=gradiente_global_armijo_precondicionado \
+         objetivo=mínimo_energía_libre backend=CPU_sparse"
+    );
 
     let mut pending = VecDeque::<OperatorRecipe>::new();
     let started = Instant::now();
