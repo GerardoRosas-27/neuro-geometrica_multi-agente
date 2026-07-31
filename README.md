@@ -77,12 +77,14 @@ cargo run --release --bin native_consolidation_basin_experiment
 
 El protocolo conserva un snapshot antes de sueño, consolida una configuración
 verificada y repite exactamente los mismos cues con 10–40 % de corrupción sobre
-los paisajes pre y post. El gate exige aumento de corrupción crítica, al menos
-10 puntos porcentuales de ganancia media en recuperación y ninguna caída de
-exactitud por nivel. La corrida de referencia pasó 144/144 recuperaciones post
-frente a 0/144 pre, y el test se repite con ocho semillas fijas. Es evidencia
-interna de deformación de cuenca, no de generalización conceptual ni de energía
-física.
+los paisajes pre y post. La exactitud es directa: el flip global Z₂ cuenta como
+fallo (el reporte incluye la variante gauge-invariante sólo como diagnóstico).
+El gate exige aumento de corrupción crítica, al menos 10 puntos porcentuales de
+ganancia media en recuperación (`minimum_mean_success_gain`, en config) y
+ninguna caída de exactitud por nivel. La corrida de referencia pasó 144/144
+recuperaciones post frente a 0/144 pre, y el test se repite con ocho semillas
+fijas. Es evidencia interna de deformación de cuenca, no de generalización
+conceptual ni de energía física.
 
 Validación cognitiva escalonada:
 
@@ -241,6 +243,20 @@ E         mostrar relaciones
 S         guardado manual
 Esc       guardar y salir
 ```
+
+## Integración continua y compilación
+
+`.github/workflows/ci.yml` ejecuta en cada push: `cargo fmt --check`,
+`cargo clippy --all-targets -- -D warnings` y `cargo test --release --lib`
+(que incluye los gates científicos de regresión: cuenca de consolidación
+multi-semilla, generalización, validación adversarial y descubrimiento de
+familia).
+
+`.cargo/config.toml` fija `target-cpu=native` para los bucles calientes; los
+binarios resultantes son específicos de la CPU que compila.
+
+Los cuatro benchmarks cognitivos reportan `wall_clock_seconds` en su JSON para
+seguimiento de coste, no sólo de tasas.
 
 ## Transformer y pesos
 

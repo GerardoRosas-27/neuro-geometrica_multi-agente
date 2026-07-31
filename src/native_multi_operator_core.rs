@@ -1355,9 +1355,11 @@ mod tests {
             .iter()
             .copied()
             .collect::<BTreeSet<_>>();
-        for node in 0..global.node_count() {
+        for (node, (&actual, &before)) in
+            global.thermal_state.iter().zip(&before_states).enumerate()
+        {
             if !selected.contains(&node) {
-                assert_eq!(global.thermal_state[node], before_states[node]);
+                assert_eq!(actual, before);
             }
         }
         assert!(global.edge_count() >= before_edges);

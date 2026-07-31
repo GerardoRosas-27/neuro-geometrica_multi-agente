@@ -197,6 +197,9 @@ impl UnifiedSpinCognitiveEngine {
         })
     }
 
+    // Observación relacional completa: los argumentos son el esquema
+    // (observador, origen, destino, fase, peso, evidencia, órbita).
+    #[allow(clippy::too_many_arguments)]
     pub fn observe_relation(
         &mut self,
         observer: ObserverId,
@@ -277,6 +280,8 @@ impl UnifiedSpinCognitiveEngine {
         }
     }
 
+    // Igual que `observe_relation`: el esquema relacional viaja posicional.
+    #[allow(clippy::too_many_arguments)]
     pub fn train_relation(
         &mut self,
         observer: ObserverId,

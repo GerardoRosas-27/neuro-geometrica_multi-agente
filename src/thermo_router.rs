@@ -73,7 +73,7 @@ impl RouterConfig {
             min_evidence: 3,
             min_confidence: 0.22,
             context_limit: 32,
-            seed: 0xA550_C1A7_E5,
+            seed: 0x00A5_50C1_A7E5,
         }
     }
 }

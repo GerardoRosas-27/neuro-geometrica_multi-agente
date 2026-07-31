@@ -34,8 +34,10 @@ pub struct PlasticityConfig {
 
 impl Default for PlasticityConfig {
     fn default() -> Self {
-        let mut bridge = VacuumBridgeConfig::default();
-        bridge.apply_vacuum = false;
+        let bridge = VacuumBridgeConfig {
+            apply_vacuum: false,
+            ..VacuumBridgeConfig::default()
+        };
         Self {
             cleanup: true,
             fluctuation: true,

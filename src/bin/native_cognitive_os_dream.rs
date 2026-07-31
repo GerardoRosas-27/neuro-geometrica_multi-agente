@@ -190,7 +190,7 @@ fn build_from_scratch() -> (
         pilot_gain: 0.38,
         phase_coupling: 0.12,
         amplitude_decay: 0.003,
-        seed: 0xC09A_171E_05,
+        seed: 0x00C0_9A17_1E05,
         ..NativeThermoCdtConfig::default()
     };
     let rqm = NativeThermoRqmConfig {

@@ -80,8 +80,8 @@ pub struct VacuumCycleReport {
 
 pub fn measure_dynamics(substrate: &NativeThermoRqmEprSubstrate) -> SubstrateDynamics {
     let n = substrate.thermal.node_count().max(1) as f32;
-    let mean_activation = substrate.thermal.activation.iter().map(|v| *v).sum::<f32>() / n;
-    let mean_phase = substrate.thermal.phase.iter().map(|v| *v).sum::<f32>() / n;
+    let mean_activation = substrate.thermal.activation.iter().copied().sum::<f32>() / n;
+    let mean_phase = substrate.thermal.phase.iter().copied().sum::<f32>() / n;
     let phase_variance = substrate
         .thermal
         .phase

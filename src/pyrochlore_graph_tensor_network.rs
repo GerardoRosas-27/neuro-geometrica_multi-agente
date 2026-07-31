@@ -44,9 +44,9 @@ impl PyrochloreGraphTensorNetwork {
             incident[b].push(virtual_bond);
         }
         let mut site_tensors = Vec::with_capacity(sites);
-        for site in 0..sites {
-            incident[site].sort_unstable();
-            let mut labels = incident[site]
+        for (site, site_bonds) in incident.iter_mut().enumerate() {
+            site_bonds.sort_unstable();
+            let mut labels = site_bonds
                 .iter()
                 .map(|bond| label(*bond))
                 .collect::<Vec<_>>();

@@ -266,6 +266,9 @@ impl NativeThermoRqmEprSubstrate {
         self.candidate_accumulator.clear();
     }
 
+    // Estado relacional completo importado de una vez: los campos viajan
+    // juntos por serialización y la forma posicional refleja el esquema.
+    #[allow(clippy::too_many_arguments)]
     pub fn import_relation_state(
         &mut self,
         observer: ObserverId,
@@ -399,6 +402,7 @@ impl NativeThermoRqmEprSubstrate {
 
     /// Adaptador legacy: la simetría controla dónde se comparte aprendizaje,
     /// mientras RQM conserva amplitud/fase y EPR exige utilidad predictiva.
+    #[allow(clippy::too_many_arguments)]
     pub fn train_symmetry_guided_edges(
         &mut self,
         observer: ObserverId,

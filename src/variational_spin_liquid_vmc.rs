@@ -64,6 +64,11 @@ pub struct ComplexJastrowVmc {
     pub parameters: Vec<Complex64>,
     pub hamiltonian_bonds: Vec<QuantumSpinBond>,
     ansatz_pairs: Vec<(usize, usize)>,
+    /// Pares del ansatz incidentes a cada espín. El ratio de intercambio sólo
+    /// recibe contribución de los pares que tocan los dos espines movidos, así
+    /// que recorrer las incidencias baja el barrido Metropolis de O(N³) a
+    /// O(N·grado); el par (i, j) compartido contribuye cero en ambas listas.
+    pair_incidence: Vec<Vec<usize>>,
     parameter_group: Vec<usize>,
     spins: Vec<i8>,
     rng: SplitMix64,
@@ -90,7 +95,7 @@ impl ComplexJastrowVmc {
         config: VmcSpinConfig,
     ) -> Self {
         assert!(
-            geometry.vertices.len() % 2 == 0,
+            geometry.vertices.len().is_multiple_of(2),
             "VMC fixed-magnetization requires an even number of spins"
         );
         let ansatz_pairs = if config.all_pair_correlations {
@@ -113,6 +118,11 @@ impl ComplexJastrowVmc {
         } else {
             (0..ansatz_pairs.len()).collect()
         };
+        let mut pair_incidence = vec![Vec::new(); geometry.vertices.len()];
+        for (pair_index, &(a, b)) in ansatz_pairs.iter().enumerate() {
+            pair_incidence[a].push(pair_index);
+            pair_incidence[b].push(pair_index);
+        }
         let parameter_count = parameter_group.iter().copied().max().unwrap_or(0) + 1;
         let mut rng = SplitMix64::new(config.seed);
         let parameters = (0..parameter_count)
@@ -131,6 +141,7 @@ impl ComplexJastrowVmc {
             parameters,
             hamiltonian_bonds,
             ansatz_pairs,
+            pair_incidence,
             parameter_group,
             spins,
             rng,
@@ -368,29 +379,28 @@ impl ComplexJastrowVmc {
     }
 
     fn log_ratio_exchange(&self, spins: &[i8], i: usize, j: usize) -> Complex64 {
-        self.ansatz_pairs
+        let pair_delta = |pair_index: usize| {
+            let (a, b) = self.ansatz_pairs[pair_index];
+            let old = spins[a] as f64 * spins[b] as f64;
+            let new_a = if a == i || a == j {
+                -spins[a]
+            } else {
+                spins[a]
+            };
+            let new_b = if b == i || b == j {
+                -spins[b]
+            } else {
+                spins[b]
+            };
+            let new = new_a as f64 * new_b as f64;
+            self.parameters[self.parameter_group[pair_index]] * (new - old)
+        };
+        // El par (i, j) aparece en ambas incidencias, pero su producto no
+        // cambia al intercambiar ambos espines: contribuye cero dos veces.
+        self.pair_incidence[i]
             .iter()
-            .enumerate()
-            .filter_map(|(pair_index, &(a, b))| {
-                let touches_i = a == i || b == i;
-                let touches_j = a == j || b == j;
-                if !touches_i && !touches_j {
-                    return None;
-                }
-                let old = spins[a] as f64 * spins[b] as f64;
-                let new_a = if a == i || a == j {
-                    -spins[a]
-                } else {
-                    spins[a]
-                };
-                let new_b = if b == i || b == j {
-                    -spins[b]
-                } else {
-                    spins[b]
-                };
-                let new = new_a as f64 * new_b as f64;
-                Some(self.parameters[self.parameter_group[pair_index]] * (new - old))
-            })
+            .chain(&self.pair_incidence[j])
+            .map(|&pair_index| pair_delta(pair_index))
             .sum()
     }
 
@@ -468,16 +478,21 @@ mod tests {
 
     #[test]
     fn log_ratio_matches_direct_wavefunction_difference() {
-        let vmc = vmc(8);
-        let before = vmc.log_wavefunction(vmc.configuration());
-        let mut exchanged = vmc.configuration().to_vec();
-        let i = 0;
-        let j = 1;
-        exchanged[i] = -exchanged[i];
-        exchanged[j] = -exchanged[j];
-        let direct = vmc.log_wavefunction(&exchanged) - before;
-        let local = vmc.log_ratio_exchange(vmc.configuration(), i, j);
-        assert!((direct - local).norm() < 1.0e-12);
+        for spins in [8, 16] {
+            let vmc = vmc(spins);
+            let before = vmc.log_wavefunction(vmc.configuration());
+            for (i, j) in [(0, 1), (2, 5), (3, spins - 1)] {
+                let mut exchanged = vmc.configuration().to_vec();
+                exchanged[i] = -exchanged[i];
+                exchanged[j] = -exchanged[j];
+                let direct = vmc.log_wavefunction(&exchanged) - before;
+                let local = vmc.log_ratio_exchange(vmc.configuration(), i, j);
+                assert!(
+                    (direct - local).norm() < 1.0e-12,
+                    "spins={spins} i={i} j={j}: direct={direct:?} local={local:?}"
+                );
+            }
+        }
     }
 
     #[test]

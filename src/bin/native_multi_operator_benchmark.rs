@@ -134,7 +134,11 @@ fn qubo_recipe(seed: usize) -> OperatorRecipe {
         .enumerate()
         .map(|(node, variable)| UnaryFactor {
             variable: variable.name.clone(),
-            weight: if (node + seed) % 3 == 0 { -1.0 } else { 0.35 },
+            weight: if (node + seed).is_multiple_of(3) {
+                -1.0
+            } else {
+                0.35
+            },
             phase: 0.0,
         })
         .collect();
@@ -142,7 +146,11 @@ fn qubo_recipe(seed: usize) -> OperatorRecipe {
         .map(|node| PairFactor {
             a: variables[node].name.clone(),
             b: variables[node + 1].name.clone(),
-            weight: if (node + seed) % 2 == 0 { 0.8 } else { -0.25 },
+            weight: if (node + seed).is_multiple_of(2) {
+                0.8
+            } else {
+                -0.25
+            },
             phase: 0.0,
         })
         .collect();

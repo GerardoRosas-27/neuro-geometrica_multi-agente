@@ -1,8 +1,8 @@
 # Inferencia por descarte termodinámico y consolidación CDT:
 ## una arquitectura cognitiva con fasores, atractores y un modelo lingüístico periférico
 
-**Estado del manuscrito:** preprint técnico, versión 0.2
-**Fecha:** 26 de julio de 2026
+**Estado del manuscrito:** preprint técnico, versión 0.3
+**Fecha:** 30 de julio de 2026
 **Implementación de referencia:** `cdt_rqm_epr`, Rust
 
 ---
@@ -450,16 +450,32 @@ capacidad adicional de descubrir ese patrón. Durante la evaluación el
 acoplamiento es idéntico y no nulo en pre y post. Por tanto, la variable
 experimental que cambia es el paisaje persistido por sleep.
 
+**Métrica de exactitud.** La exactitud reportada es la **exactitud directa**:
+la fracción de nodos cuyo signo recuperado coincide con el objetivo. El
+funcional es simétrico ante un flip global \(Z_2\), pero el cue conserva la
+convención de signo mayoritaria, así que una recuperación genuina debe
+respetarla; un estado completamente invertido cuenta como fallo. El reporte
+incluye además `mean_gauge_invariant_accuracy` (que cuenta el flip global
+como acierto) únicamente como diagnóstico: una brecha entre ambas métricas
+indicaría convergencia al atractor con la convención invertida, y ninguna
+decisión del gate la consume. Versiones anteriores del protocolo usaban la
+variante invariante como métrica principal; su piso de 0,5 bajo azar inflaba
+los valores pre y se corrigió en la versión 0.3.
+
 Resultados de la corrida release de referencia:
 
 | Corrupción | Éxito pre | Éxito post | Exactitud pre | Exactitud post | Iteraciones pre | Iteraciones post |
 |---:|---:|---:|---:|---:|---:|---:|
-| 10 % | 0/24 | 24/24 | 0,503 | 1,000 | 77,1 | 26,1 |
-| 20 % | 0/24 | 24/24 | 0,504 | 1,000 | 80,2 | 27,6 |
-| 25 % | 0/24 | 24/24 | 0,505 | 1,000 | 79,2 | 26,3 |
-| 30 % | 0/24 | 24/24 | 0,508 | 1,000 | 77,3 | 34,3 |
+| 10 % | 0/24 | 24/24 | 0,497 | 1,000 | 76,8 | 26,1 |
+| 20 % | 0/24 | 24/24 | 0,499 | 1,000 | 80,2 | 27,6 |
+| 25 % | 0/24 | 24/24 | 0,500 | 1,000 | 79,8 | 26,3 |
+| 30 % | 0/24 | 24/24 | 0,508 | 1,000 | 77,2 | 34,3 |
 | 35 % | 0/24 | 24/24 | 0,500 | 1,000 | 72,6 | 35,1 |
-| 40 % | 0/24 | 24/24 | 0,505 | 1,000 | 83,9 | 45,4 |
+| 40 % | 0/24 | 24/24 | 0,500 | 1,000 | 83,9 | 45,4 |
+
+La exactitud pre queda en el nivel del azar sin piso artificial, y la
+diagnóstica gauge-invariante post coincide con la directa (1,000 en los seis
+niveles): no hubo flips globales de gauge en la recuperación.
 
 La energía final media post quedó entre \(2,29\times10^{-5}\) y
 \(3,00\times10^{-5}\), frente a 0,451–1,805 pre. Estas unidades pertenecen al

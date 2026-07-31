@@ -5,7 +5,10 @@
 //! hipótesis combina error robusto y longitud descriptiva.
 
 use crate::matrix_free_cognitive_substrate::SparsePattern;
+use crate::native_rng::{splitmix64, unit_f64_from_u64};
+use rayon::prelude::*;
 use serde::Serialize;
+use std::time::Instant;
 
 const EPSILON: f64 = 1.0e-12;
 
@@ -109,6 +112,15 @@ pub struct FamilyDiscoveryBenchmarkConfig {
     pub trials_per_family: usize,
     pub complexity_weight: f64,
     pub minimum_rate: f64,
+    /// Error de datos máximo para aceptar una hipótesis seleccionada.
+    pub maximum_data_error: f64,
+    /// Margen mínimo de energía sobre la hipótesis rival para no abstenerse.
+    pub minimum_energy_margin: f64,
+    /// Umbral de error robusto para contar una recuperación ruidosa como éxito.
+    pub robust_error_threshold: f64,
+    /// Error máximo del detector de evidencia ambigua (estricto: casi todo
+    /// empate debe producir abstención).
+    pub ambiguity_maximum_error: f64,
 }
 
 impl Default for FamilyDiscoveryBenchmarkConfig {
@@ -117,6 +129,10 @@ impl Default for FamilyDiscoveryBenchmarkConfig {
             trials_per_family: 10,
             complexity_weight: 1.0e-4,
             minimum_rate: 0.90,
+            maximum_data_error: 5.0e-4,
+            minimum_energy_margin: 2.0e-5,
+            robust_error_threshold: 5.0e-4,
+            ambiguity_maximum_error: 1.0e-12,
         }
     }
 }
@@ -140,12 +156,15 @@ pub struct FamilyDiscoveryBenchmarkReport {
     pub mean_selected_complexity: f64,
     pub mean_mdl_advantage_over_permutation: f64,
     pub mean_selected_energy_margin: f64,
+    /// Tiempo de pared total del benchmark (segundos).
+    pub wall_clock_seconds: f64,
     pub decision: &'static str,
 }
 
 pub fn run_family_discovery_benchmark(
     config: FamilyDiscoveryBenchmarkConfig,
 ) -> FamilyDiscoveryBenchmarkReport {
+    let started = Instant::now();
     let trials_per_family = config.trials_per_family.max(1);
     let families = [
         TransformationFamily::Translation,
@@ -154,6 +173,26 @@ pub fn run_family_discovery_benchmark(
         TransformationFamily::Permutation,
         TransformationFamily::Composition,
     ];
+
+    // Los ensayos (familia, trial) son independientes y su semilla deriva de
+    // ambos índices: se calculan en paralelo. La reducción en orden conserva
+    // la semántica original, incluidos los trials sin selección (contribuyen
+    // cero a todas las sumas, como hacía el `continue`).
+    let outcomes = (0..families.len() * trials_per_family)
+        .into_par_iter()
+        .map(|flat| {
+            let family_index = flat / trials_per_family;
+            let trial = flat % trials_per_family;
+            run_family_trial(
+                families[family_index],
+                &families,
+                family_index,
+                trial,
+                &config,
+            )
+        })
+        .collect::<Vec<_>>();
+
     let mut family_successes = 0;
     let mut family_successes_by_kind = [0usize; 5];
     let mut mapping_successes = 0;
@@ -166,88 +205,20 @@ pub fn run_family_discovery_benchmark(
     let mut data_error_sum = 0.0;
     let mut complexity_sum = 0.0;
     let mut mdl_advantage_sum = 0.0;
-
-    for (family_index, family) in families.iter().copied().enumerate() {
-        for trial in 0..trials_per_family {
-            let seed = 0xFA61_1E00 ^ (family_index as u64).rotate_left(17) ^ trial as u64;
-            let grid_size = 5;
-            let channels = grid_size * grid_size;
-            let expected = actual_hypothesis(family, grid_size, seed);
-            let outlier = actual_hypothesis(
-                families[(family_index + 2) % families.len()],
-                grid_size,
-                seed.rotate_left(23),
-            );
-            let mut examples = Vec::new();
-            for example in 0..4 {
-                let source = coverage_pattern(channels, example, seed);
-                examples.push(FamilyExample {
-                    target: noisy_target(
-                        &apply_mapping(&source, &expected.mapping),
-                        seed ^ example as u64,
-                    ),
-                    source,
-                });
-            }
-            let outlier_source = coverage_pattern(channels, 4, seed);
-            examples.push(FamilyExample {
-                target: noisy_target(
-                    &apply_mapping(&outlier_source, &outlier.mapping),
-                    seed.rotate_left(31),
-                ),
-                source: outlier_source,
-            });
-
-            let selection = discover_transformation_family(
-                &examples,
-                grid_size,
-                config.complexity_weight,
-                5.0e-4,
-                2.0e-5,
-            );
-            let Some(selected) = selection.selected else {
-                continue;
-            };
-            margin_sum += selection.energy_margin;
-            family_successes += usize::from(selected.family == family);
-            family_successes_by_kind[family_index] += usize::from(selected.family == family);
-            data_error_sum += selected.robust_data_error;
-            complexity_sum += selected.complexity;
-            mapping_successes += usize::from(selected.mapping == expected.mapping);
-            robust_successes += usize::from(
-                selected.mapping == expected.mapping && selected.robust_data_error <= 5.0e-4,
-            );
-
-            let heldout = heldout_pattern(channels, seed.rotate_left(41));
-            let expected_output = apply_mapping(&heldout, &expected.mapping);
-            let predicted = selected.predict(&heldout);
-            transfer_successes +=
-                usize::from(pattern_error(&predicted, &expected_output, channels) <= EPSILON);
-
-            if family != TransformationFamily::Permutation {
-                simplicity_trials += 1;
-                let permutation = inferred_permutation_hypothesis(&examples, channels);
-                let permutation_error =
-                    robust_mapping_error(&permutation.mapping, &examples, channels);
-                let permutation_energy =
-                    permutation_error + config.complexity_weight * permutation.complexity;
-                simplicity_successes += usize::from(
-                    selected.complexity < permutation.complexity
-                        && selected.energy < permutation_energy,
-                );
-                mdl_advantage_sum += permutation_energy - selected.energy;
-            }
-
-            let symmetric = symmetric_ambiguous_examples(channels);
-            let ambiguous = discover_transformation_family(
-                &symmetric,
-                grid_size,
-                config.complexity_weight,
-                1.0e-12,
-                2.0e-5,
-            );
-            ambiguity_successes += usize::from(ambiguous.ambiguous && ambiguous.selected.is_none());
-        }
+    for (flat, outcome) in outcomes.iter().enumerate() {
+        let family_index = flat / trials_per_family;
+        family_successes += outcome.family_successes;
+        family_successes_by_kind[family_index] += outcome.family_successes;
+        mapping_successes += outcome.mapping_successes;
+        transfer_successes += outcome.transfer_successes;
+        robust_successes += outcome.robust_successes;
+        simplicity_successes += outcome.simplicity_successes;
+        simplicity_trials += outcome.simplicity_trials;
+        ambiguity_successes += outcome.ambiguity_successes;
+        margin_sum += outcome.margin_sum;
+        data_error_sum += outcome.data_error_sum;
+        complexity_sum += outcome.complexity_sum;
+        mdl_advantage_sum += outcome.mdl_advantage_sum;
     }
 
     let total = (families.len() * trials_per_family) as f64;
@@ -276,6 +247,7 @@ pub fn run_family_discovery_benchmark(
         mean_selected_complexity: complexity_sum / total,
         mean_mdl_advantage_over_permutation: mdl_advantage_sum / simplicity_trials.max(1) as f64,
         mean_selected_energy_margin: margin_sum / total,
+        wall_clock_seconds: started.elapsed().as_secs_f64(),
         decision: "transformation_family_discovery_not_demonstrated",
     };
     if report.family_identification_accuracy >= minimum_rate
@@ -293,6 +265,108 @@ pub fn run_family_discovery_benchmark(
         report.decision = "family_parameter_mdl_discovery_pass";
     }
     report
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct FamilyTrialOutcome {
+    family_successes: usize,
+    mapping_successes: usize,
+    transfer_successes: usize,
+    robust_successes: usize,
+    simplicity_successes: usize,
+    simplicity_trials: usize,
+    ambiguity_successes: usize,
+    margin_sum: f64,
+    data_error_sum: f64,
+    complexity_sum: f64,
+    mdl_advantage_sum: f64,
+}
+
+fn run_family_trial(
+    family: TransformationFamily,
+    families: &[TransformationFamily],
+    family_index: usize,
+    trial: usize,
+    config: &FamilyDiscoveryBenchmarkConfig,
+) -> FamilyTrialOutcome {
+    let mut outcome = FamilyTrialOutcome::default();
+    let seed = 0xFA61_1E00 ^ (family_index as u64).rotate_left(17) ^ trial as u64;
+    let grid_size = 5;
+    let channels = grid_size * grid_size;
+    let expected = actual_hypothesis(family, grid_size, seed);
+    let outlier = actual_hypothesis(
+        families[(family_index + 2) % families.len()],
+        grid_size,
+        seed.rotate_left(23),
+    );
+    let mut examples = Vec::new();
+    for example in 0..4 {
+        let source = coverage_pattern(channels, example, seed);
+        examples.push(FamilyExample {
+            target: noisy_target(
+                &apply_mapping(&source, &expected.mapping),
+                seed ^ example as u64,
+            ),
+            source,
+        });
+    }
+    let outlier_source = coverage_pattern(channels, 4, seed);
+    examples.push(FamilyExample {
+        target: noisy_target(
+            &apply_mapping(&outlier_source, &outlier.mapping),
+            seed.rotate_left(31),
+        ),
+        source: outlier_source,
+    });
+
+    let selection = discover_transformation_family(
+        &examples,
+        grid_size,
+        config.complexity_weight,
+        config.maximum_data_error,
+        config.minimum_energy_margin,
+    );
+    let Some(selected) = selection.selected else {
+        return outcome;
+    };
+    outcome.margin_sum += selection.energy_margin;
+    outcome.family_successes += usize::from(selected.family == family);
+    outcome.data_error_sum += selected.robust_data_error;
+    outcome.complexity_sum += selected.complexity;
+    outcome.mapping_successes += usize::from(selected.mapping == expected.mapping);
+    outcome.robust_successes += usize::from(
+        selected.mapping == expected.mapping
+            && selected.robust_data_error <= config.robust_error_threshold,
+    );
+
+    let heldout = heldout_pattern(channels, seed.rotate_left(41));
+    let expected_output = apply_mapping(&heldout, &expected.mapping);
+    let predicted = selected.predict(&heldout);
+    outcome.transfer_successes +=
+        usize::from(pattern_error(&predicted, &expected_output, channels) <= EPSILON);
+
+    if family != TransformationFamily::Permutation {
+        outcome.simplicity_trials += 1;
+        let permutation = inferred_permutation_hypothesis(&examples, channels);
+        let permutation_error = robust_mapping_error(&permutation.mapping, &examples, channels);
+        let permutation_energy =
+            permutation_error + config.complexity_weight * permutation.complexity;
+        outcome.simplicity_successes += usize::from(
+            selected.complexity < permutation.complexity && selected.energy < permutation_energy,
+        );
+        outcome.mdl_advantage_sum += permutation_energy - selected.energy;
+    }
+
+    let symmetric = symmetric_ambiguous_examples(channels);
+    let ambiguous = discover_transformation_family(
+        &symmetric,
+        grid_size,
+        config.complexity_weight,
+        config.ambiguity_maximum_error,
+        config.minimum_energy_margin,
+    );
+    outcome.ambiguity_successes += usize::from(ambiguous.ambiguous && ambiguous.selected.is_none());
+    outcome
 }
 
 fn candidate_hypotheses(
@@ -579,17 +653,17 @@ fn coverage_pattern(channels: usize, omitted_group: usize, seed: u64) -> SparseP
         (channel % 5 != omitted_group % 5).then_some((
             channel,
             0.75 + channel as f64 / channels as f64
-                + 0.01 * unit_from_u64(splitmix64(seed ^ channel as u64)),
+                + 0.01 * unit_f64_from_u64(splitmix64(seed ^ channel as u64)),
         ))
     }))
 }
 
 fn heldout_pattern(channels: usize, seed: u64) -> SparsePattern {
     SparsePattern::new((0..channels).filter_map(|channel| {
-        (splitmix64(seed ^ channel as u64) % 3 != 0).then_some((
+        (!splitmix64(seed ^ channel as u64).is_multiple_of(3)).then_some((
             channel,
             0.65 + channel as f64 / channels as f64
-                + 0.02 * unit_from_u64(splitmix64(seed.rotate_left(17) ^ channel as u64)),
+                + 0.02 * unit_f64_from_u64(splitmix64(seed.rotate_left(17) ^ channel as u64)),
         ))
     }))
 }
@@ -601,7 +675,8 @@ fn noisy_target(pattern: &SparsePattern, seed: u64) -> SparsePattern {
             .iter()
             .enumerate()
             .map(|(index, &(channel, value))| {
-                let noise = 0.004 * (2.0 * unit_from_u64(splitmix64(seed ^ index as u64)) - 1.0);
+                let noise =
+                    0.004 * (2.0 * unit_f64_from_u64(splitmix64(seed ^ index as u64)) - 1.0);
                 (channel, value + noise)
             }),
     )
@@ -655,19 +730,6 @@ fn family_rank(family: TransformationFamily) -> usize {
         TransformationFamily::Composition => 3,
         TransformationFamily::Permutation => 4,
     }
-}
-
-#[inline(always)]
-fn unit_from_u64(value: u64) -> f64 {
-    ((value >> 40) as f64) * (1.0 / (1_u64 << 24) as f64)
-}
-
-#[inline(always)]
-fn splitmix64(mut value: u64) -> u64 {
-    value = value.wrapping_add(0x9E37_79B9_7F4A_7C15);
-    value = (value ^ (value >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-    value = (value ^ (value >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-    value ^ (value >> 31)
 }
 
 #[cfg(test)]

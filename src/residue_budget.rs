@@ -474,8 +474,10 @@ mod tests {
     fn pure_state_has_near_zero_residue() {
         let candidates = vec![cand(7, 10.0), cand(8, -5.0)];
         let phases = vec![(7, 0.1), (8, 3.0)];
-        let mut config = ResidueBudgetConfig::default();
-        config.temperature = 0.25;
+        let config = ResidueBudgetConfig {
+            temperature: 0.25,
+            ..ResidueBudgetConfig::default()
+        };
         let account = account_from_candidates(&candidates, &[7], &phases, &config);
         assert!(account.chosen_prob > 0.95);
         assert!(account.residue_r < 0.05);
@@ -488,8 +490,10 @@ mod tests {
         let mut substrate = fresh_native_substrate();
         train_canonical(&mut substrate, &lessons, 3);
         let before = evaluate_native_suite(&substrate, &lessons);
-        let mut config = ResidueBudgetConfig::default();
-        config.sleep_attempts = 6;
+        let config = ResidueBudgetConfig {
+            sleep_attempts: 6,
+            ..ResidueBudgetConfig::default()
+        };
         let (after, report) = native_sleep_residue(substrate, &lessons, config);
         let metrics = evaluate_native_suite(&after, &lessons);
         assert!(report.recycle.queries > 0);

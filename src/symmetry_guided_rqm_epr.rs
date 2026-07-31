@@ -144,6 +144,9 @@ impl SymmetryGuidedRqmEprField {
             .copied()
     }
 
+    // Transición relacional completa (quién, qué, con qué fase/peso y qué
+    // evidencia): los campos son el esquema del grafo relacional.
+    #[allow(clippy::too_many_arguments)]
     pub fn learn_transition(
         &mut self,
         observer: ObserverId,

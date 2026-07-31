@@ -212,6 +212,7 @@ fn main() -> Result<(), String> {
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn initialize_engine(
     output: &Path,
     model: &str,
@@ -276,6 +277,7 @@ fn initialize_engine(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn stream_shard(
     file: &mut File,
     index: &GgufIndex,
@@ -286,7 +288,7 @@ fn stream_shard(
     output: &Path,
     batch_bytes: usize,
 ) -> Result<(), String> {
-    if weight_start % layout.weights_per_block != 0 {
+    if !weight_start.is_multiple_of(layout.weights_per_block) {
         return Err("inicio de shard no alineado a bloque cuantizado".to_string());
     }
     let block_start = weight_start / layout.weights_per_block;
@@ -629,8 +631,8 @@ fn primitive_size(value_type: u32) -> Option<u64> {
     match value_type {
         0 | 1 | 7 => Some(1),
         2 | 3 => Some(2),
-        4 | 5 | 6 => Some(4),
-        10 | 11 | 12 => Some(8),
+        4..=6 => Some(4),
+        10..=12 => Some(8),
         _ => None,
     }
 }

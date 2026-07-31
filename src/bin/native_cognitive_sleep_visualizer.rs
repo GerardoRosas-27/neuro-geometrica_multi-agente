@@ -147,10 +147,8 @@ async fn main() {
             desktop.controller.substrate.thermal.step();
             desktop.record_free_energy();
             desktop.phase_frame = desktop.phase_frame.saturating_add(1);
-            if desktop.phase_frame >= desktop.phase_frames {
-                if desktop.complete_phase().is_ok() {
-                    completed_this_run = completed_this_run.saturating_add(1);
-                }
+            if desktop.phase_frame >= desktop.phase_frames && desktop.complete_phase().is_ok() {
+                completed_this_run = completed_this_run.saturating_add(1);
             }
         }
 
@@ -668,7 +666,7 @@ fn draw_dashboard(desktop: &DesktopState, paused: bool, view_3d: bool, show_edge
         SKYBLUE,
     );
     draw_text(
-        &format!(
+        format!(
             "{} | ciclo={} fase={} progreso={:.0}% | guardados={} +{} -{}",
             if paused { "PAUSADO" } else { "ACTIVO" },
             desktop.cycle,
@@ -684,7 +682,7 @@ fn draw_dashboard(desktop: &DesktopState, paused: bool, view_3d: bool, show_edge
         LIGHTGRAY,
     );
     draw_text(
-        &format!(
+        format!(
             "CDT nodos={} E={:.4} F={:.4} | RQM={} EPR={} | esquemas={} episodios={} | OOD={:.1}% validez={:.1}%",
             report.nodes,
             report.mean_energy,
@@ -703,14 +701,14 @@ fn draw_dashboard(desktop: &DesktopState, paused: bool, view_3d: bool, show_edge
     );
     draw_text(&desktop.last_summary, 24.0, 114.0, 16.0, VIOLET);
     draw_text(
-        &format!("checkpoint: {}", desktop.last_save),
+        format!("checkpoint: {}", desktop.last_save),
         24.0,
         138.0,
         14.0,
         GRAY,
     );
     if let Some(error) = &desktop.last_error {
-        draw_text(&format!("ERROR: {error}"), 24.0, 160.0, 15.0, RED);
+        draw_text(format!("ERROR: {error}"), 24.0, 160.0, 15.0, RED);
     }
     let width = screen_width() - 48.0;
     draw_rectangle(24.0, 174.0, width, 8.0, DARKGRAY);
@@ -722,7 +720,7 @@ fn draw_dashboard(desktop: &DesktopState, paused: bool, view_3d: bool, show_edge
         SKYBLUE,
     );
     draw_text(
-        &format!(
+        format!(
             "vista={} [Tab]  pausa=[Espacio]  relaciones=[E:{}]  guardar=[S]  salir+guardar=[Esc]",
             if view_3d { "3D" } else { "2D" },
             if show_edges { "on" } else { "off" }
@@ -1121,7 +1119,7 @@ fn draw_future_energy_monitor(desktop: &DesktopState) {
         SKYBLUE,
     );
     draw_text(
-        &format!(
+        format!(
             "F ahora {current:.4}  →  F(+30) {future:.4}  {}",
             if improving { "↓" } else { "↑" }
         ),

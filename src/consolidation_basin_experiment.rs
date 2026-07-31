@@ -12,9 +12,12 @@ use crate::native_hybrid_phasor_cdt_engine::{
 use crate::native_phasor_thermodynamic_engine::{
     NativePhasorConfig, NativePhasorMinimizerConfig, NativePhasorThermodynamicEngine,
 };
+use crate::native_rng::{splitmix64, unit_from_u64};
 use crate::native_thermodynamic_cdt::{NativeThermoCdtConfig, NativeThermoCdtSubstrate};
 use num_complex::Complex32;
+use rayon::prelude::*;
 use serde::Serialize;
+use std::time::Instant;
 
 #[derive(Clone, Debug)]
 pub struct ConsolidationBasinConfig {
@@ -24,6 +27,10 @@ pub struct ConsolidationBasinConfig {
     pub phase_jitter: f32,
     pub success_accuracy: f32,
     pub basin_success_rate: f32,
+    /// Ganancia media mínima de tasa de éxito post-sueño para que el gate
+    /// declare expansión de cuenca. Versionado en config: un literal invisible
+    /// en el código sería un umbral ajustable sin rastro.
+    pub minimum_mean_success_gain: f32,
     pub seed: u64,
 }
 
@@ -36,6 +43,7 @@ impl Default for ConsolidationBasinConfig {
             phase_jitter: 0.10,
             success_accuracy: 0.90,
             basin_success_rate: 0.80,
+            minimum_mean_success_gain: 0.10,
             seed: 0xBA51_CD72_2026,
         }
     }
@@ -45,9 +53,18 @@ impl Default for ConsolidationBasinConfig {
 pub struct BasinLevelMetrics {
     pub corruption_fraction: f32,
     pub trials: usize,
+    /// Éxitos medidos con la exactitud directa (sin identificación de gauge).
     pub successes: usize,
     pub success_rate: f32,
+    /// Exactitud directa: fracción de nodos cuyo signo coincide con el target.
+    /// Es la métrica primaria; el flip global Z₂ cuenta como fallo.
     pub mean_accuracy: f32,
+    /// Diagnóstico invariante ante el flip global Z₂ (un estado invertido
+    /// completo cuenta como acierto). No alimenta el gate ni `successes`;
+    /// sirve para distinguir recuperación real de un cambio de gauge global:
+    /// si `mean_accuracy` cae pero esta métrica permanece alta, la dinámica
+    /// está convergiendo al atractor con la convención de signo invertida.
+    pub mean_gauge_invariant_accuracy: f32,
     pub mean_final_energy: f32,
     pub mean_iterations: f32,
 }
@@ -64,6 +81,9 @@ pub struct ConsolidationBasinReport {
     pub pre_critical_corruption: f32,
     pub post_critical_corruption: f32,
     pub mean_success_gain: f32,
+    /// Tiempo de pared total del experimento (segundos). Permite detectar
+    /// regresiones de coste, no sólo de tasas.
+    pub wall_clock_seconds: f64,
     pub decision: &'static str,
 }
 
@@ -72,6 +92,7 @@ pub struct ConsolidationBasinReport {
 pub fn run_consolidation_basin_experiment(
     config: ConsolidationBasinConfig,
 ) -> Result<ConsolidationBasinReport, NativeHybridError> {
+    let started = Instant::now();
     let config = sanitize_config(config);
     let target = balanced_target(config.nodes, config.seed);
     let target_checksum = target_checksum(&target);
@@ -117,7 +138,7 @@ pub fn run_consolidation_basin_experiment(
         .sum::<f32>()
         / pre.len().max(1) as f32;
     let decision = if post_critical_corruption > pre_critical_corruption
-        && mean_success_gain >= 0.10
+        && mean_success_gain >= config.minimum_mean_success_gain
         && post
             .iter()
             .zip(&pre)
@@ -139,6 +160,7 @@ pub fn run_consolidation_basin_experiment(
         pre_critical_corruption,
         post_critical_corruption,
         mean_success_gain,
+        wall_clock_seconds: started.elapsed().as_secs_f64(),
         decision,
     })
 }
@@ -218,33 +240,53 @@ fn evaluate_basin(
         .copied()
         .enumerate()
         .map(|(level, corruption_fraction)| {
+            // `map_init` clona el template una vez por hilo trabajador en vez
+            // de una por ensayo; cada trial sólo reescribe `phasors`. El
+            // `collect` conserva el orden de índice, así que las sumas son
+            // idénticas bit a bit al recorrido secuencial.
+            let results = (0..config.trials_per_corruption)
+                .into_par_iter()
+                .map_init(
+                    || template.clone(),
+                    |inference, trial| {
+                        let cue = corrupted_phases(
+                            target,
+                            corruption_fraction,
+                            config.phase_jitter,
+                            config.seed ^ (level as u64).rotate_left(17),
+                            trial,
+                        );
+                        for (phasor, phase) in inference.phasors.iter_mut().zip(cue) {
+                            *phasor = Complex32::from_polar(1.0, phase);
+                        }
+                        let result = inference.minimize_free_energy(NativePhasorMinimizerConfig {
+                            max_iterations: 300,
+                            residual_tolerance: 2.0e-3,
+                            topological_warm_start: false,
+                            ..NativePhasorMinimizerConfig::default()
+                        });
+                        let accuracy = direct_accuracy(&inference.phasors, target);
+                        (
+                            usize::from(accuracy >= config.success_accuracy),
+                            accuracy,
+                            gauge_invariant_accuracy(&inference.phasors, target),
+                            result.final_report.free_energy,
+                            result.iterations,
+                        )
+                    },
+                )
+                .collect::<Vec<_>>();
             let mut successes = 0;
             let mut accuracy_sum = 0.0;
+            let mut gauge_accuracy_sum = 0.0;
             let mut energy_sum = 0.0;
             let mut iteration_sum = 0;
-            for trial in 0..config.trials_per_corruption {
-                let mut inference = template.clone();
-                let cue = corrupted_phases(
-                    target,
-                    corruption_fraction,
-                    config.phase_jitter,
-                    config.seed ^ (level as u64).rotate_left(17),
-                    trial,
-                );
-                for (phasor, phase) in inference.phasors.iter_mut().zip(cue) {
-                    *phasor = Complex32::from_polar(1.0, phase);
-                }
-                let result = inference.minimize_free_energy(NativePhasorMinimizerConfig {
-                    max_iterations: 300,
-                    residual_tolerance: 2.0e-3,
-                    topological_warm_start: false,
-                    ..NativePhasorMinimizerConfig::default()
-                });
-                let accuracy = target_accuracy(&inference.phasors, target);
-                successes += usize::from(accuracy >= config.success_accuracy);
+            for (success, accuracy, gauge_accuracy, energy, iterations) in results {
+                successes += success;
                 accuracy_sum += accuracy;
-                energy_sum += result.final_report.free_energy;
-                iteration_sum += result.iterations;
+                gauge_accuracy_sum += gauge_accuracy;
+                energy_sum += energy;
+                iteration_sum += iterations;
             }
             BasinLevelMetrics {
                 corruption_fraction,
@@ -252,6 +294,8 @@ fn evaluate_basin(
                 successes,
                 success_rate: successes as f32 / config.trials_per_corruption as f32,
                 mean_accuracy: accuracy_sum / config.trials_per_corruption as f32,
+                mean_gauge_invariant_accuracy: gauge_accuracy_sum
+                    / config.trials_per_corruption as f32,
                 mean_final_energy: energy_sum / config.trials_per_corruption as f32,
                 mean_iterations: iteration_sum as f32 / config.trials_per_corruption as f32,
             }
@@ -267,8 +311,12 @@ fn critical_corruption(levels: &[BasinLevelMetrics], threshold: f32) -> f32 {
         .fold(0.0, f32::max)
 }
 
-fn target_accuracy(state: &[Complex32], target: &[i8]) -> f32 {
-    let direct = state
+/// Exactitud directa contra el target. La energía del modelo es simétrica
+/// ante un flip global Z₂, pero el cue corrompido conserva la convención de
+/// signo mayoritaria, así que una recuperación genuina debe respetarla: un
+/// estado completamente invertido se cuenta aquí como fallo.
+fn direct_accuracy(state: &[Complex32], target: &[i8]) -> f32 {
+    let matches = state
         .iter()
         .zip(target)
         .filter(|(value, expected)| {
@@ -276,7 +324,14 @@ fn target_accuracy(state: &[Complex32], target: &[i8]) -> f32 {
             observed == **expected
         })
         .count();
-    direct.max(target.len() - direct) as f32 / target.len().max(1) as f32
+    matches as f32 / target.len().max(1) as f32
+}
+
+/// Diagnóstico invariante ante el flip global Z₂. Nunca alimenta el gate:
+/// sólo detecta convergencia al atractor con la convención invertida.
+fn gauge_invariant_accuracy(state: &[Complex32], target: &[i8]) -> f32 {
+    let direct = direct_accuracy(state, target);
+    direct.max(1.0 - direct)
 }
 
 fn corrupted_phases(
@@ -360,6 +415,7 @@ fn empty_failed_report(
         pre_critical_corruption: 0.0,
         post_critical_corruption: 0.0,
         mean_success_gain: 0.0,
+        wall_clock_seconds: 0.0,
         decision,
     }
 }
@@ -370,6 +426,7 @@ fn sanitize_config(mut config: ConsolidationBasinConfig) -> ConsolidationBasinCo
     config.phase_jitter = config.phase_jitter.clamp(0.0, 0.5);
     config.success_accuracy = config.success_accuracy.clamp(0.5, 1.0);
     config.basin_success_rate = config.basin_success_rate.clamp(0.0, 1.0);
+    config.minimum_mean_success_gain = config.minimum_mean_success_gain.clamp(0.0, 1.0);
     config.corruption_fractions = config
         .corruption_fractions
         .into_iter()
@@ -385,22 +442,25 @@ fn sanitize_config(mut config: ConsolidationBasinConfig) -> ConsolidationBasinCo
     config
 }
 
-#[inline(always)]
-fn unit_from_u64(value: u64) -> f32 {
-    ((value >> 40) as f32) * (1.0 / (1_u32 << 24) as f32)
-}
-
-#[inline(always)]
-fn splitmix64(mut value: u64) -> u64 {
-    value = value.wrapping_add(0x9E37_79B9_7F4A_7C15);
-    value = (value ^ (value >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-    value = (value ^ (value >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-    value ^ (value >> 31)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn direct_accuracy_rejects_a_global_sign_flip() {
+        let target = vec![1, -1, 1, -1, 1, -1];
+        let flipped = target
+            .iter()
+            .map(|bit| Complex32::from_polar(1.0, bit_phase(-*bit)))
+            .collect::<Vec<_>>();
+        assert_eq!(direct_accuracy(&flipped, &target), 0.0);
+        assert_eq!(gauge_invariant_accuracy(&flipped, &target), 1.0);
+        let aligned = target
+            .iter()
+            .map(|bit| Complex32::from_polar(1.0, bit_phase(*bit)))
+            .collect::<Vec<_>>();
+        assert_eq!(direct_accuracy(&aligned, &target), 1.0);
+    }
 
     #[test]
     fn consolidation_expands_the_measured_attractor_basin() {

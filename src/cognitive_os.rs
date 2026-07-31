@@ -196,7 +196,7 @@ impl CognitiveOperatingSystem {
             (0..width)
                 .map(|projection| {
                     stable_hash64(
-                        0xC09A_171E_05,
+                        0x00C0_9A17_1E05,
                         format!("overflow-entity:{entity}:{projection}").as_bytes(),
                     ) as usize
                         % node_count
@@ -453,7 +453,7 @@ impl CognitiveOperatingSystem {
         let mut nodes = (0..self.config.pattern_width.max(1))
             .map(|projection| {
                 stable_hash64(
-                    0xC09A_171E_05,
+                    0x00C0_9A17_1E05,
                     format!("entity:{entity}:{projection}").as_bytes(),
                 ) as usize
                     % node_count
@@ -567,7 +567,7 @@ mod tests {
                 CognitiveRelation::CapitalOf,
             ],
         };
-        let (_, episodes) = os.evaluate(&[task.clone()], &TestVerifier);
+        let (_, episodes) = os.evaluate(std::slice::from_ref(&task), &TestVerifier);
         assert_ne!(episodes[0].answer.as_deref(), Some("paris"));
         os.dream_with_feedback(&episodes, &TestVerifier, 6);
         let (after, _) = os.evaluate(&[task], &TestVerifier);

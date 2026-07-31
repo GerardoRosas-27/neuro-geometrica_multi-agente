@@ -1,9 +1,16 @@
+use crate::native_rng::{gaussian_from_counter, splitmix64, unit_from_u64};
 use rand::{Rng, SeedableRng};
 use rand_xoshiro::Xoshiro256PlusPlus;
 use rayon::prelude::*;
 use std::collections::HashMap;
 
 const EPSILON: f32 = 1.0e-6;
+/// Por debajo de este tamaño el reparto en `rayon` de un `step` cuesta más que
+/// recorrer el grafo en serie: cada paso abre una región paralela muy corta y
+/// el experimento de consolidación (32 nodos) o los microsteps RQM la pagan en
+/// cada tick. Coherente con `PARALLEL_REPORT_THRESHOLD` y con el cruce medido
+/// del motor fasorial (entre 8 192 y 16 384 nodos).
+const PARALLEL_STEP_THRESHOLD: usize = 8_192;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum NativeCdtEdgeKind {
@@ -607,57 +614,103 @@ impl NativeThermoCdtSubstrate {
         let edge_weight = &self.edge_weight;
         let edge_phase = &self.edge_phase;
 
-        self.thermal_state
-            .par_iter_mut()
-            .zip(self.amplitude.par_iter_mut())
-            .zip(self.phase.par_iter_mut())
-            .zip(self.pilot_force.par_iter_mut())
-            .zip(self.energy.par_iter_mut())
-            .zip(self.activation.par_iter_mut())
-            .zip(self.temperature.par_iter())
-            .enumerate()
-            .for_each(
-                |(
-                    node,
-                    ((((((state, amplitude), phase), pilot_force), energy), activation), temp),
-                )| {
-                    let mut laplacian = 0.0;
-                    let mut phase_flow = 0.0;
-                    for cursor in offsets[node]..offsets[node + 1] {
-                        let edge = incident_edges[cursor];
-                        let other = if edge_a[edge] == node {
-                            edge_b[edge]
-                        } else {
-                            edge_a[edge]
-                        };
-                        let weight = edge_weight[edge];
-                        laplacian += weight * (previous_state[other] - previous_state[node]);
-                        phase_flow += weight
-                            * (previous_phase[other] - previous_phase[node] + edge_phase[edge])
-                                .sin();
-                    }
+        let update_node = |node: usize,
+                           state: &mut f32,
+                           amplitude: &mut f32,
+                           phase: &mut f32,
+                           pilot_force: &mut f32,
+                           energy: &mut f32,
+                           activation: &mut f32,
+                           temp: f32| {
+            let mut laplacian = 0.0;
+            let mut phase_flow = 0.0;
+            for &edge in &incident_edges[offsets[node]..offsets[node + 1]] {
+                let other = if edge_a[edge] == node {
+                    edge_b[edge]
+                } else {
+                    edge_a[edge]
+                };
+                let weight = edge_weight[edge];
+                laplacian += weight * (previous_state[other] - previous_state[node]);
+                phase_flow += weight
+                    * (previous_phase[other] - previous_phase[node] + edge_phase[edge]).sin();
+            }
 
-                    let pilot_potential = *amplitude * phase.sin() + *activation;
-                    let force = diffusion * laplacian + pilot_gain * pilot_potential
-                        - confinement * previous_state[node];
-                    let noise = gaussian_from_counter(noise_seed, node as u64)
-                        * (2.0 * temp.max(0.0) * dt).sqrt();
-                    let next_state = (previous_state[node] + force * dt + noise)
-                        .clamp(-state_clamp, state_clamp);
-                    let next_phase = (*phase + phase_coupling * phase_flow * dt + next_state * dt)
-                        .rem_euclid(std::f32::consts::TAU);
-                    let next_amplitude = (*amplitude * (1.0 - amplitude_decay)
-                        + activation.abs() * 0.01)
-                        .clamp(0.0, 4.0);
+            let pilot_potential = *amplitude * phase.sin() + *activation;
+            let force = diffusion * laplacian + pilot_gain * pilot_potential
+                - confinement * previous_state[node];
+            let noise =
+                gaussian_from_counter(noise_seed, node as u64) * (2.0 * temp.max(0.0) * dt).sqrt();
+            let next_state =
+                (previous_state[node] + force * dt + noise).clamp(-state_clamp, state_clamp);
+            let next_phase = (*phase + phase_coupling * phase_flow * dt + next_state * dt)
+                .rem_euclid(std::f32::consts::TAU);
+            let next_amplitude =
+                (*amplitude * (1.0 - amplitude_decay) + activation.abs() * 0.01).clamp(0.0, 4.0);
 
-                    *state = next_state;
-                    *phase = next_phase;
-                    *amplitude = next_amplitude;
-                    *pilot_force = force;
-                    *energy = effective_energy(next_state, force, confinement, laplacian);
-                    *activation *= 0.85;
-                },
-            );
+            *state = next_state;
+            *phase = next_phase;
+            *amplitude = next_amplitude;
+            *pilot_force = force;
+            *energy = effective_energy(next_state, force, confinement, laplacian);
+            *activation *= 0.85;
+        };
+
+        if self.node_count() < PARALLEL_STEP_THRESHOLD {
+            self.thermal_state
+                .iter_mut()
+                .zip(self.amplitude.iter_mut())
+                .zip(self.phase.iter_mut())
+                .zip(self.pilot_force.iter_mut())
+                .zip(self.energy.iter_mut())
+                .zip(self.activation.iter_mut())
+                .zip(self.temperature.iter())
+                .enumerate()
+                .for_each(
+                    |(
+                        node,
+                        ((((((state, amplitude), phase), pilot_force), energy), activation), temp),
+                    )| {
+                        update_node(
+                            node,
+                            state,
+                            amplitude,
+                            phase,
+                            pilot_force,
+                            energy,
+                            activation,
+                            *temp,
+                        );
+                    },
+                );
+        } else {
+            self.thermal_state
+                .par_iter_mut()
+                .zip(self.amplitude.par_iter_mut())
+                .zip(self.phase.par_iter_mut())
+                .zip(self.pilot_force.par_iter_mut())
+                .zip(self.energy.par_iter_mut())
+                .zip(self.activation.par_iter_mut())
+                .zip(self.temperature.par_iter())
+                .enumerate()
+                .for_each(
+                    |(
+                        node,
+                        ((((((state, amplitude), phase), pilot_force), energy), activation), temp),
+                    )| {
+                        update_node(
+                            node,
+                            state,
+                            amplitude,
+                            phase,
+                            pilot_force,
+                            energy,
+                            activation,
+                            *temp,
+                        );
+                    },
+                );
+        }
 
         self.tick = self.tick.wrapping_add(1);
         self.report()
@@ -1039,8 +1092,8 @@ impl NativeThermoCdtSubstrate {
         }
 
         self.adjacency_offsets = vec![0; nodes + 1];
-        for node in 0..nodes {
-            self.adjacency_offsets[node + 1] = self.adjacency_offsets[node] + degree[node];
+        for (node, &node_degree) in degree.iter().enumerate() {
+            self.adjacency_offsets[node + 1] = self.adjacency_offsets[node] + node_degree;
         }
 
         self.adjacency_edges = vec![0; self.adjacency_offsets[nodes]];
@@ -1141,31 +1194,6 @@ impl NativeBlockObservables {
 #[inline(always)]
 fn effective_energy(state: f32, force: f32, confinement: f32, laplacian: f32) -> f32 {
     0.5 * confinement * state * state - force * state + 0.5 * laplacian * laplacian
-}
-
-#[inline(always)]
-fn gaussian_from_counter(seed: u64, counter: u64) -> f32 {
-    let base = seed ^ counter.wrapping_mul(0x9E37_79B9_7F4A_7C15);
-    let sum = unit_from_u64(splitmix64(base))
-        + unit_from_u64(splitmix64(base ^ 0xA24B_AED4_963E_E407))
-        + unit_from_u64(splitmix64(base ^ 0x9FB2_1C65_1E98_DF25))
-        + unit_from_u64(splitmix64(base ^ 0xC13F_A9A9_02A6_328F))
-        + unit_from_u64(splitmix64(base ^ 0x91E1_0DA5_C79E_7B1D))
-        + unit_from_u64(splitmix64(base ^ 0xD1B5_4A32_D192_ED03));
-    sum - 3.0
-}
-
-#[inline(always)]
-fn unit_from_u64(value: u64) -> f32 {
-    ((value >> 40) as f32) * (1.0 / (1_u32 << 24) as f32)
-}
-
-#[inline(always)]
-fn splitmix64(mut x: u64) -> u64 {
-    x = x.wrapping_add(0x9E37_79B9_7F4A_7C15);
-    x = (x ^ (x >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-    x = (x ^ (x >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-    x ^ (x >> 31)
 }
 
 fn push_unique_limited(out: &mut Vec<usize>, node: usize, max_nodes: usize, node_count: usize) {

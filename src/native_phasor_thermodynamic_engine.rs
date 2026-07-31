@@ -4,6 +4,7 @@
 //! Laplaciano magnético disperso, pero conserva su propio estado complejo y su
 //! propia dinámica. No reemplaza ni modifica el motor CDT existente.
 
+use crate::native_rng::{gaussian_from_counter, splitmix64, unit_from_u64};
 use crate::native_thermodynamic_cdt::{NativeThermoCdtConfig, NativeThermoCdtSubstrate};
 use num_complex::Complex32;
 use rayon::prelude::*;
@@ -450,11 +451,23 @@ pub struct NativePhasorThermodynamicEngine {
     pub stimulus: Vec<Complex32>,
     operator: MagneticLaplacian,
     laplacian_buffer: Vec<Complex32>,
+    minimizer_scratch: MinimizerScratch,
     /// Media de `temperature`. La búsqueda de línea evalúa la energía libre
     /// varias veces por iteración y cada evaluación necesitaba recorrer todo
     /// el vector de temperaturas para obtener este único escalar.
     mean_temperature: f32,
     tick: u64,
+}
+
+/// Buffers reutilizables del minimizador: `minimize_free_energy` es la ruta
+/// caliente de inferencia (y se llama por candidato durante sleep), así que
+/// gradiente, dirección y candidato se conservan entre llamadas en vez de
+/// reservar 3×N complejos en cada invocación.
+#[derive(Clone, Debug, Default)]
+struct MinimizerScratch {
+    gradient: Vec<Complex32>,
+    direction: Vec<Complex32>,
+    candidate: Vec<Complex32>,
 }
 
 impl NativePhasorThermodynamicEngine {
@@ -488,6 +501,7 @@ impl NativePhasorThermodynamicEngine {
             stimulus: vec![Complex32::new(0.0, 0.0); nodes],
             operator,
             laplacian_buffer: vec![Complex32::new(0.0, 0.0); nodes],
+            minimizer_scratch: MinimizerScratch::default(),
             mean_temperature,
             tick: 0,
         })
@@ -541,6 +555,12 @@ impl NativePhasorThermodynamicEngine {
 
     pub fn tick(&self) -> u64 {
         self.tick
+    }
+
+    /// Restaura el contador de ticks tras una sonda o rollback que ejecutó
+    /// pasos sólo para medir y debe dejar el motor como estaba.
+    pub(crate) fn set_tick(&mut self, tick: u64) {
+        self.tick = tick;
     }
 
     pub fn set_temperature_scale(&mut self, scale: f32) {
@@ -832,11 +852,20 @@ impl NativePhasorThermodynamicEngine {
     ) -> NativePhasorMinimizationReport {
         let config = sanitize_minimizer_config(config);
         let nodes = self.node_count();
-        let mut gradient = vec![Complex32::new(0.0, 0.0); nodes];
-        let initial = self.report_with_scratch(&mut gradient);
+        // Buffers persistentes: se extraen del motor (evita conflictos de
+        // préstamo con `&self`), se usan y se devuelven al terminar.
+        let mut scratch = std::mem::take(&mut self.minimizer_scratch);
+        scratch.gradient.clear();
+        scratch.gradient.resize(nodes, Complex32::new(0.0, 0.0));
+        scratch.direction.clear();
+        scratch.direction.resize(nodes, Complex32::new(0.0, 0.0));
+        scratch.candidate.clear();
+        scratch.candidate.extend_from_slice(&self.phasors);
+        let initial = self.report_with_scratch(&mut scratch.gradient);
         let mut current_energy = initial.free_energy;
-        let mut direction = vec![Complex32::new(0.0, 0.0); nodes];
-        let mut candidate = self.phasors.clone();
+        let gradient = &mut scratch.gradient;
+        let direction = &mut scratch.direction;
+        let candidate = &mut scratch.candidate;
         let mut step_size = config.initial_step;
         let mut iterations = 0;
         let mut energy_evaluations = 0;
@@ -854,7 +883,7 @@ impl NativePhasorThermodynamicEngine {
                 candidate.copy_from_slice(&self.phasors);
                 warm_start_applied = true;
             } else {
-                self.phasors.copy_from_slice(&candidate);
+                self.phasors.copy_from_slice(candidate);
             }
         }
 
@@ -867,7 +896,7 @@ impl NativePhasorThermodynamicEngine {
         let max_amplitude_sqr = max_amplitude * max_amplitude;
 
         for _ in 0..config.max_iterations {
-            self.free_energy_gradient(&self.phasors, &mut gradient);
+            self.free_energy_gradient(&self.phasors, gradient);
             let residual_sum = if sequential {
                 gradient
                     .iter()
@@ -901,7 +930,7 @@ impl NativePhasorThermodynamicEngine {
             let directional_derivative = (if sequential {
                 direction
                     .iter_mut()
-                    .zip(&gradient)
+                    .zip(&*gradient)
                     .zip(&self.phasors)
                     .zip(&self.operator.diagonal)
                     .map(|(((value, gradient), phasor), diagonal)| {
@@ -941,7 +970,7 @@ impl NativePhasorThermodynamicEngine {
                     candidate
                         .iter_mut()
                         .zip(&self.phasors)
-                        .zip(&direction)
+                        .zip(&*direction)
                         .for_each(|((value, phasor), direction)| {
                             *value = propose(*phasor, *direction);
                         });
@@ -954,7 +983,7 @@ impl NativePhasorThermodynamicEngine {
                             *value = propose(*phasor, *direction);
                         });
                 }
-                let trial_energy = self.free_energy_for(&candidate);
+                let trial_energy = self.free_energy_for(candidate);
                 energy_evaluations += 1;
                 if trial_energy
                     <= current_energy - config.armijo_factor * trial_step * directional_derivative
@@ -975,7 +1004,7 @@ impl NativePhasorThermodynamicEngine {
                 break;
             }
             let energy_delta = (current_energy - accepted_energy).max(0.0);
-            self.phasors.copy_from_slice(&candidate);
+            self.phasors.copy_from_slice(candidate);
             self.tick = self.tick.wrapping_add(1);
             current_energy = accepted_energy;
             accepted_steps += 1;
@@ -986,10 +1015,11 @@ impl NativePhasorThermodynamicEngine {
             }
         }
 
-        let final_report = self.report_with_scratch(&mut gradient);
+        let final_report = self.report_with_scratch(&mut scratch.gradient);
         if final_report.gradient_residual <= config.residual_tolerance {
             converged = true;
         }
+        self.minimizer_scratch = scratch;
         NativePhasorMinimizationReport {
             initial,
             final_report,
@@ -1567,31 +1597,6 @@ fn sanitize_active_inference_config(
         entropy_samples: config.entropy_samples.max(1),
         ..config
     }
-}
-
-#[inline(always)]
-fn gaussian_from_counter(seed: u64, counter: u64) -> f32 {
-    let base = seed ^ counter.wrapping_mul(0x9E37_79B9_7F4A_7C15);
-    unit_from_u64(splitmix64(base))
-        + unit_from_u64(splitmix64(base ^ 0xA24B_AED4_963E_E407))
-        + unit_from_u64(splitmix64(base ^ 0x9FB2_1C65_1E98_DF25))
-        + unit_from_u64(splitmix64(base ^ 0xC13F_A9A9_02A6_328F))
-        + unit_from_u64(splitmix64(base ^ 0x91E1_0DA5_C79E_7B1D))
-        + unit_from_u64(splitmix64(base ^ 0xD1B5_4A32_D192_ED03))
-        - 3.0
-}
-
-#[inline(always)]
-fn unit_from_u64(value: u64) -> f32 {
-    ((value >> 40) as f32) * (1.0 / (1_u32 << 24) as f32)
-}
-
-#[inline(always)]
-fn splitmix64(mut value: u64) -> u64 {
-    value = value.wrapping_add(0x9E37_79B9_7F4A_7C15);
-    value = (value ^ (value >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-    value = (value ^ (value >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-    value ^ (value >> 31)
 }
 
 #[cfg(test)]
