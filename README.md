@@ -167,6 +167,15 @@ de aprendizaje; el líquido de espines aporta estado cuántico y entrelazamiento
 RQM/EPR mantienen relaciones; la capa cognitiva compone únicamente conocimiento
 que supera el gate conjunto.
 
+El mismo core puede adjuntar y optimizar una referencia variacional
+Jastrow/VMC mediante `refresh_variational_spin_liquid`. El ratio Metropolis usa
+un recorrido híbrido calibrado: contiguo en N<16 y CSR por incidencias desde
+N=16. El benchmark reproducible es:
+
+```powershell
+cargo run --release --bin native_vmc_ratio_benchmark
+```
+
 Diseño y límites: `docs/unified_spin_cognitive_engine.md`.
 
 Entrenamiento sintético reanudable:

@@ -563,6 +563,20 @@ impl NativePhasorThermodynamicEngine {
         self.tick = tick;
     }
 
+    /// Libera el workspace persistente del minimizador. Útil para medir la
+    /// ruta fría o devolver memoria en motores que no volverán a inferir.
+    pub fn clear_minimizer_workspace(&mut self) {
+        self.minimizer_scratch = MinimizerScratch::default();
+    }
+
+    /// Capacidad reservada por los tres buffers del minimizador, en bytes.
+    pub fn minimizer_workspace_capacity_bytes(&self) -> usize {
+        (self.minimizer_scratch.gradient.capacity()
+            + self.minimizer_scratch.direction.capacity()
+            + self.minimizer_scratch.candidate.capacity())
+            * std::mem::size_of::<Complex32>()
+    }
+
     pub fn set_temperature_scale(&mut self, scale: f32) {
         self.config.temperature_scale = scale.max(0.0);
     }

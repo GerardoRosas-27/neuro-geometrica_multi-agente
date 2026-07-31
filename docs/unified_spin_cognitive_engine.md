@@ -78,11 +78,30 @@ recibido suficientes exposiciones.
 - `entanglement.rs`: EPR predictivo clásico.
 - `symmetry_thermodynamic_substrate.rs`: geometría simplicial.
 - `simplicial_thermodynamic_engine.rs`: Hodge y Regge.
-- `variational_spin_liquid_vmc.rs`: backend VMC escalable experimental interno.
+- `variational_spin_liquid_vmc.rs`: referencia VMC Jastrow adjuntable al core.
 - `oxicuda-tn`: backend tensorial seleccionado para la siguiente migración.
 
 Los módulos siguen separados para mantener pruebas y permitir sustituir el
 backend de espines sin cambiar RQM/EPR/cognición.
+
+## Referencia variacional VMC consolidada
+
+`UnifiedSpinCognitiveEngine::refresh_variational_spin_liquid` construye y
+optimiza `ComplexJastrowVmc` sobre la misma geometría y los mismos enlaces
+físicos que el backend exacto. El reporte unificado expone energía, varianza,
+aceptación, número de parámetros y estrategia del ratio.
+
+La ruta Metropolis se calibra con:
+
+```powershell
+cargo run --release --bin native_vmc_ratio_benchmark
+```
+
+El benchmark fuerza las dos implementaciones sobre semilla, geometría y
+presupuesto idénticos. El umbral por defecto usa barrido contiguo en N<16 y
+listas de incidencia CSR desde N=16. Esta integración es una referencia
+energética opcional: VMC todavía no sustituye la dinámica exacta que proporciona
+pulsos locales, entropía y testigos al gate cognitivo.
 
 ## Backend tensorial OxiCUDA
 

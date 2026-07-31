@@ -23,6 +23,9 @@ use crate::symmetry_guided_rqm_epr::{
 use crate::symmetry_thermodynamic_substrate::{
     SymmetrySubstrateError, SymmetryThermodynamicConfig,
 };
+use crate::variational_spin_liquid_vmc::{
+    ComplexJastrowVmc, VmcOptimizationReport, VmcRatioStrategy, VmcSpinConfig,
+};
 use std::collections::BTreeMap;
 use std::fmt;
 
@@ -57,6 +60,29 @@ impl Default for UnifiedSpinCognitiveConfig {
             minimum_topological_symmetry: 0.99,
             minimum_spin_entropy: 0.10,
             require_entanglement_witness: true,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct UnifiedVmcRefreshConfig {
+    pub vmc: VmcSpinConfig,
+    pub iterations: usize,
+    pub samples: usize,
+    pub burn_in_sweeps: usize,
+    pub sweeps_between_samples: usize,
+    pub learning_rate: f64,
+}
+
+impl Default for UnifiedVmcRefreshConfig {
+    fn default() -> Self {
+        Self {
+            vmc: VmcSpinConfig::default(),
+            iterations: 4,
+            samples: 512,
+            burn_in_sweeps: 64,
+            sweeps_between_samples: 1,
+            learning_rate: 0.02,
         }
     }
 }
@@ -124,6 +150,11 @@ pub struct UnifiedEngineReport {
     pub graph_tensor_bonds: Option<usize>,
     pub graph_tensor_entropy: Option<f64>,
     pub graph_tensor_contraction_cost: Option<usize>,
+    pub variational_energy: Option<f64>,
+    pub variational_variance: Option<f64>,
+    pub variational_acceptance_rate: Option<f64>,
+    pub variational_parameters: Option<usize>,
+    pub variational_ratio_strategy: Option<VmcRatioStrategy>,
 }
 
 #[derive(Debug)]
@@ -164,6 +195,11 @@ pub struct UnifiedSpinCognitiveEngine {
     pub tensor_network: Option<PyrochloreDmrgReport>,
     pub peps3d: Option<PyrochlorePeps3dReport>,
     pub graph_tensor: Option<GraphTensorNetworkReport>,
+    /// Referencia variacional Jastrow del mismo Hamiltoniano. Es auxiliar: la
+    /// dinámica cognitiva sigue usando el state-vector exacto hasta que un
+    /// backend variacional implemente pulsos y entropía equivalentes.
+    pub variational_spin_liquid: Option<ComplexJastrowVmc>,
+    pub variational_report: Option<VmcOptimizationReport>,
 }
 
 impl UnifiedSpinCognitiveEngine {
@@ -194,6 +230,8 @@ impl UnifiedSpinCognitiveEngine {
             tensor_network: None,
             peps3d: None,
             graph_tensor: None,
+            variational_spin_liquid: None,
+            variational_report: None,
         })
     }
 
@@ -373,6 +411,30 @@ impl UnifiedSpinCognitiveEngine {
         Ok(report)
     }
 
+    /// Optimiza una referencia VMC sobre exactamente la misma geometría y
+    /// enlaces físicos del core. Consolida el módulo variacional dentro del
+    /// motor unificado sin fingir paridad funcional con la dinámica exacta.
+    pub fn refresh_variational_spin_liquid(
+        &mut self,
+        config: UnifiedVmcRefreshConfig,
+    ) -> VmcOptimizationReport {
+        let mut vmc = ComplexJastrowVmc::new_with_bonds(
+            self.spin_liquid.geometry.clone(),
+            self.spin_liquid.bonds.clone(),
+            config.vmc,
+        );
+        let report = vmc.optimize(
+            config.iterations,
+            config.samples,
+            config.burn_in_sweeps,
+            config.sweeps_between_samples,
+            config.learning_rate,
+        );
+        self.variational_spin_liquid = Some(vmc);
+        self.variational_report = Some(report);
+        report
+    }
+
     pub fn report(&self) -> UnifiedEngineReport {
         UnifiedEngineReport {
             backend: if self.tensor_network.is_some()
@@ -410,6 +472,23 @@ impl UnifiedSpinCognitiveEngine {
             graph_tensor_bonds: self.graph_tensor.map(|report| report.represented_bonds),
             graph_tensor_entropy: self.graph_tensor.map(|report| report.single_spin_entropy),
             graph_tensor_contraction_cost: self.graph_tensor.map(|report| report.contraction_cost),
+            variational_energy: self
+                .variational_report
+                .map(|report| report.final_report.energy),
+            variational_variance: self
+                .variational_report
+                .map(|report| report.final_report.variance),
+            variational_acceptance_rate: self
+                .variational_report
+                .map(|report| report.final_report.acceptance_rate),
+            variational_parameters: self
+                .variational_spin_liquid
+                .as_ref()
+                .map(ComplexJastrowVmc::parameter_count),
+            variational_ratio_strategy: self
+                .variational_spin_liquid
+                .as_ref()
+                .map(ComplexJastrowVmc::ratio_strategy),
         }
     }
 
@@ -617,5 +696,29 @@ mod tests {
             SpinLiquidBackendKind::ExactWithAllTensorBackends
         );
         assert_eq!(report.graph_tensor_bonds, Some(12));
+    }
+
+    #[test]
+    fn variational_reference_attaches_to_the_same_unified_core() {
+        let mut engine = engine();
+        let result = engine.refresh_variational_spin_liquid(UnifiedVmcRefreshConfig {
+            iterations: 1,
+            samples: 128,
+            burn_in_sweeps: 16,
+            ..UnifiedVmcRefreshConfig::default()
+        });
+        assert!(result.final_report.energy.is_finite());
+        assert!(result.final_report.variance.is_finite());
+        let report = engine.report();
+        assert_eq!(report.spins, 8);
+        assert_eq!(report.variational_parameters, Some(28));
+        assert_eq!(
+            report.variational_ratio_strategy,
+            Some(VmcRatioStrategy::ContiguousScan)
+        );
+        assert_eq!(report.variational_energy, Some(result.final_report.energy));
+        // VMC es una referencia auxiliar; no suplanta silenciosamente el
+        // backend que impulsa la dinámica cognitiva.
+        assert_eq!(report.backend, SpinLiquidBackendKind::ExactStateVector);
     }
 }
