@@ -68,6 +68,66 @@ El benchmark entrena ambos sustratos con el mismo dataset Walsh/Hebbiano, usa
 los mismos cues corrompidos y evalúa ambos con una energía XY común. Reporta
 recuperación de atractores, residuo de fase, iteraciones y tiempo de pared.
 
+Experimento causal pre/post de consolidación:
+
+```powershell
+cargo test --lib consolidation_basin_experiment -- --nocapture
+cargo run --release --bin native_consolidation_basin_experiment
+```
+
+El protocolo conserva un snapshot antes de sueño, consolida una configuración
+verificada y repite exactamente los mismos cues con 10–40 % de corrupción sobre
+los paisajes pre y post. La exactitud es directa: el flip global Z₂ cuenta como
+fallo (el reporte incluye la variante gauge-invariante sólo como diagnóstico).
+El gate exige aumento de corrupción crítica, al menos 10 puntos porcentuales de
+ganancia media en recuperación (`minimum_mean_success_gain`, en config) y
+ninguna caída de exactitud por nivel. La corrida de referencia pasó 144/144
+recuperaciones post frente a 0/144 pre, y el test se repite con ocho semillas
+fijas. Es evidencia interna de deformación de cuenca, no de generalización
+conceptual ni de energía física.
+
+Validación cognitiva escalonada:
+
+```powershell
+cargo test --lib cognitive_generalization_benchmark -- --nocapture
+cargo run --release --bin native_cognitive_generalization_benchmark
+```
+
+El protocolo entrena cuatro familias relacionales y separa cuatro niveles:
+memoria exacta, variaciones de fase no vistas, composición A→B→C sin atajo
+directo y transferencia a tres pares isomórficos con control sin simetría. La
+corrida de 24 ensayos obtuvo 100 % en los cuatro niveles, en el control y en
+abstención OOD. La órbita isomórfica se proporciona explícitamente: demuestra
+transferencia estructural limitada, no descubrimiento autónomo de simetrías.
+
+Validación adversarial y descubrimiento limitado de simetría:
+
+```powershell
+cargo test --lib advanced_cognitive_validation -- --nocapture
+cargo run --release --bin native_advanced_cognitive_validation
+```
+
+El benchmark introduce ramificaciones A→B→C y A→D, selección dependiente de
+fase, consultas equidistantes que deben causar abstención, tres escalas
+topológicas y descubrimiento de una traslación cíclica de canales a partir de
+ejemplos ruidosos con un outlier. En 36 ensayos pasó selección, trayectoria,
+ambigüedad, orden energético, transferencia heldout y rechazo de estructuras
+conflictivas. El grupo de transformaciones cíclicas sigue predefinido; el
+desplazamiento y la órbita concreta no se proporcionan.
+
+Descubrimiento de familia y selección por complejidad:
+
+```powershell
+cargo test --lib transformation_family_discovery -- --nocapture
+cargo run --release --bin native_transformation_family_discovery
+```
+
+El selector contrasta traslaciones 2D, rotaciones, reflexiones, permutaciones y
+composiciones. Su energía de hipótesis combina error mediano y penalización de
+complejidad. El benchmark usa ejemplos ruidosos, un outlier, una permutación
+memorizadora como competidor y patrones heldout. La familia y sus parámetros no
+se proporcionan; el catálogo de cinco familias sí está definido previamente.
+
 Motor híbrido sobre un único core CDT:
 
 ```powershell
@@ -106,6 +166,15 @@ CDT mantiene la malla simplicial pyrochlore; la simetría guía la transferencia
 de aprendizaje; el líquido de espines aporta estado cuántico y entrelazamiento;
 RQM/EPR mantienen relaciones; la capa cognitiva compone únicamente conocimiento
 que supera el gate conjunto.
+
+El mismo core puede adjuntar y optimizar una referencia variacional
+Jastrow/VMC mediante `refresh_variational_spin_liquid`. El ratio Metropolis usa
+un recorrido híbrido calibrado: contiguo en N<16 y CSR por incidencias desde
+N=16. El benchmark reproducible es:
+
+```powershell
+cargo run --release --bin native_vmc_ratio_benchmark
+```
 
 Diseño y límites: `docs/unified_spin_cognitive_engine.md`.
 
@@ -183,6 +252,20 @@ E         mostrar relaciones
 S         guardado manual
 Esc       guardar y salir
 ```
+
+## Integración continua y compilación
+
+`.github/workflows/ci.yml` ejecuta en cada push: `cargo fmt --check`,
+`cargo clippy --all-targets -- -D warnings` y `cargo test --release --lib`
+(que incluye los gates científicos de regresión: cuenca de consolidación
+multi-semilla, generalización, validación adversarial y descubrimiento de
+familia).
+
+`.cargo/config.toml` fija `target-cpu=native` para los bucles calientes; los
+binarios resultantes son específicos de la CPU que compila.
+
+Los cuatro benchmarks cognitivos reportan `wall_clock_seconds` en su JSON para
+seguimiento de coste, no sólo de tasas.
 
 ## Transformer y pesos
 

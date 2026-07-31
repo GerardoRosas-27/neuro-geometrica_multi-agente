@@ -303,6 +303,8 @@ fn maximum_mpo_bond(mpo: &Mpo) -> usize {
         .unwrap_or(1)
 }
 
+// Ensamblado MPO sitio a sitio: índices y factores viajan posicionalmente.
+#[allow(clippy::too_many_arguments)]
 fn add_global_operator(
     tensor: &mut MpoTensor,
     site: usize,

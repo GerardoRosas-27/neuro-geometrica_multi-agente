@@ -256,8 +256,10 @@ async fn main() {
         .collect::<HashSet<_>>();
     let mut pilot_waves = Vec::<PilotWave>::new();
     let mut epr_events = Vec::<EprEvent>::new();
-    let mut updates = RealtimeUpdateConfig::default();
-    updates.thermal_microsteps = 1;
+    let updates = RealtimeUpdateConfig {
+        thermal_microsteps: 1,
+        ..RealtimeUpdateConfig::default()
+    };
 
     loop {
         if is_key_pressed(KeyCode::Escape) {
@@ -326,7 +328,7 @@ async fn main() {
             }
             for _ in 0..STEPS_PER_FRAME {
                 if sleep_cycle.phase == InfiniteSleepPhase::LucidTransformer
-                    && substrate.thermal.tick() % 96 == 0
+                    && substrate.thermal.tick().is_multiple_of(96)
                 {
                     let seeds = inject_dream_pulse(&mut substrate, &lessons, pulse, updates);
                     pilot_waves.push(PilotWave {
@@ -797,7 +799,7 @@ impl TransformerDream {
             }
             self.previous_id = Some(dream.id);
             self.generated = self.generated.max(dream.generation);
-            if self.generated > 0 && self.generated % DREAM_CONSOLIDATION_INTERVAL == 0 {
+            if self.generated > 0 && self.generated.is_multiple_of(DREAM_CONSOLIDATION_INTERVAL) {
                 println!(
                     "macro_forward_adapter applied={} changed_top={} change_rate={:.2}% router_routes={} router_recalls={} context_injections={}",
                     self.macro_injections,
@@ -815,7 +817,7 @@ impl TransformerDream {
             self.layer_pulse = 1.0;
             waves.push(contact_nodes);
             if self.generated > 0
-                && self.generated % DREAM_CONSOLIDATION_INTERVAL == 0
+                && self.generated.is_multiple_of(DREAM_CONSOLIDATION_INTERVAL)
                 && self.generated != self.consolidated
             {
                 self.consolidate(substrate, config);
@@ -835,7 +837,7 @@ impl TransformerDream {
             .iter()
             .map(|(&(source, target), &count)| (source, target, count))
             .collect::<Vec<_>>();
-        strongest.sort_by(|left, right| right.2.cmp(&left.2));
+        strongest.sort_by_key(|&(_, _, count)| std::cmp::Reverse(count));
         for (source, target, count) in strongest.into_iter().take(64) {
             substrate.train_observed_transition_realtime(
                 TRANSFORMER_OBSERVER,
@@ -1691,6 +1693,10 @@ fn inject_dream_pulse(
     lesson.local.clone()
 }
 
+/// Fila de relación RQM/EPR para overlays del visualizador.
+type RelationRow = (ObserverId, usize, usize, f32, f32, f32, f32, u64);
+
+#[allow(clippy::too_many_arguments)]
 fn draw_header(
     report: &NativeThermoCdtReport,
     substrate: &NativeThermoRqmEprSubstrate,
@@ -1726,7 +1732,7 @@ fn draw_header(
     );
     draw_text(&details, 28.0, 65.0, 18.0, LIGHTGRAY);
     draw_text(
-        &format!(
+        format!(
             "PESOS PAGINADOS={} aristas={} macronodos={} activos={}",
             paged_model.model,
             paged_model.logical_edges,
@@ -1753,7 +1759,7 @@ fn draw_header(
         .map(|error| format!("ERROR {error}"))
         .unwrap_or_else(|| "GENERANDO".to_string());
     draw_text(
-        &format!(
+        format!(
             "CICLO {} · {} | TRANSFORMER {} | IDs=[{}] gen={} | macro={} cambios={} | rutas={} recalls={} ctx_inyectado={} | ciclos +{} -{} | {}",
             sleep_cycle.cycle,
             sleep_cycle.phase.label(),
@@ -1775,7 +1781,7 @@ fn draw_header(
         Color::from_rgba(255, 110, 235, 255),
     );
     draw_text(
-        &format!(
+        format!(
             "E={:.3}  F={:.3}  σ²={:.4}  A={:.3}  |ψ|={:.3}  coherencia={:.3}  fuerza={:.3}  T={:.3}",
             report.mean_energy,
             report.free_energy_proxy,
@@ -1792,7 +1798,7 @@ fn draw_header(
         Color::from_rgba(190, 220, 245, 255),
     );
     draw_text(
-        &format!("EPR: +{epr_created} / -{epr_destroyed} en el último frame de sueño"),
+        format!("EPR: +{epr_created} / -{epr_destroyed} en el último frame de sueño"),
         28.0,
         106.0,
         16.0,
@@ -1830,7 +1836,7 @@ fn draw_header(
         Color::from_rgba(210, 185, 255, 255),
     );
     draw_text(
-        &format!(
+        format!(
             "vista={} (2D por defecto)  [Tab] cambio manual 2D/3D  [Espacio] pausa  [E] enlaces: {}  [R] reiniciar  [Esc] gate y guardar",
             if view_3d { "3D" } else { "2D" },
             if show_edges { "visibles" } else { "ocultos" }
@@ -1870,7 +1876,7 @@ fn draw_substrate(substrate: &NativeThermoCdtSubstrate, show_edges: bool) {
             1.0,
             Color::from_rgba(28, 48, 79, 150),
         );
-        draw_text(&format!("t{slice}"), x - 10.0, top - 18.0, 15.0, GRAY);
+        draw_text(format!("t{slice}"), x - 10.0, top - 18.0, 15.0, GRAY);
     }
 
     if show_edges {
@@ -1912,10 +1918,11 @@ fn draw_substrate(substrate: &NativeThermoCdtSubstrate, show_edges: bool) {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn draw_substrate_3d(
     substrate: &NativeThermoCdtSubstrate,
     epr_links: &[cdt_rqm_epr::entanglement::EntanglementLink],
-    relations: &[(ObserverId, usize, usize, f32, f32, f32, f32, u64)],
+    relations: &[RelationRow],
     network: &NetworkOverlay,
     paged_model: &PagedModelVisual,
     transformer: &TransformerDream,
@@ -2222,7 +2229,7 @@ fn draw_epr_arc(a: Vec3, b: Vec3, lift: f32, color: Color) {
 
 fn build_network_overlay(
     nodes: usize,
-    relations: &[(ObserverId, usize, usize, f32, f32, f32, f32, u64)],
+    relations: &[RelationRow],
     epr_links: &[cdt_rqm_epr::entanglement::EntanglementLink],
 ) -> NetworkOverlay {
     let mut rqm_degree = vec![0usize; nodes];
@@ -2357,9 +2364,9 @@ fn draw_chart(
         let y1 = top + height - (history[index] - min) / range * height;
         draw_line(x0, y0, x1, y1, 1.5, color);
     }
-    draw_text(&format!("{max:.3}"), left + 5.0, top + 16.0, 14.0, GRAY);
+    draw_text(format!("{max:.3}"), left + 5.0, top + 16.0, 14.0, GRAY);
     draw_text(
-        &format!("{min:.3}"),
+        format!("{min:.3}"),
         left + 5.0,
         top + height - 5.0,
         14.0,

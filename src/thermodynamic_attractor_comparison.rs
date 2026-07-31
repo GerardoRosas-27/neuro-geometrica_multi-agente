@@ -7,6 +7,7 @@
 use crate::native_phasor_thermodynamic_engine::{
     NativePhasorConfig, NativePhasorMinimizerConfig, NativePhasorThermodynamicEngine,
 };
+use crate::native_rng::{splitmix64, unit_from_u64};
 use crate::native_thermodynamic_cdt::{
     NativeCdtEdgeKind, NativeThermoCdtConfig, NativeThermoCdtSubstrate,
 };
@@ -429,19 +430,6 @@ fn sanitize_config(config: AttractorComparisonConfig) -> AttractorComparisonConf
         attractor_accuracy_threshold: config.attractor_accuracy_threshold.clamp(0.5, 1.0),
         ..config
     }
-}
-
-#[inline(always)]
-fn unit_from_u64(value: u64) -> f32 {
-    ((value >> 40) as f32) * (1.0 / (1_u32 << 24) as f32)
-}
-
-#[inline(always)]
-fn splitmix64(mut value: u64) -> u64 {
-    value = value.wrapping_add(0x9E37_79B9_7F4A_7C15);
-    value = (value ^ (value >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-    value = (value ^ (value >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-    value ^ (value >> 31)
 }
 
 #[cfg(test)]

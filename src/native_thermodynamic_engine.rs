@@ -431,7 +431,9 @@ pub fn native_sleep_prospective(
             continue;
         }
         futures.sort_by(|a, b| b.prior.total_cmp(&a.prior));
-        let train_n = ((futures.len() + 1) / 2)
+        let train_n = futures
+            .len()
+            .div_ceil(2)
             .max(1)
             .min(futures.len().saturating_sub(1).max(1));
         let split = train_n.min(futures.len().saturating_sub(1)).max(1);

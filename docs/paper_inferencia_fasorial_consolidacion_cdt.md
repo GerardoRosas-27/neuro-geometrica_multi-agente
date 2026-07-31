@@ -1,8 +1,8 @@
 # Inferencia por descarte termodinámico y consolidación CDT:
 ## una arquitectura cognitiva con fasores, atractores y un modelo lingüístico periférico
 
-**Estado del manuscrito:** preprint técnico, versión 0.1  
-**Fecha:** 26 de julio de 2026  
+**Estado del manuscrito:** preprint técnico, versión 0.3
+**Fecha:** 30 de julio de 2026
 **Implementación de referencia:** `cdt_rqm_epr`, Rust
 
 ---
@@ -34,7 +34,19 @@ los ciclos wake, 115.785 fueron verificados (99,921 %) y 91 rechazados. Las
 115.785 soluciones aceptadas fueron revalidadas y consolidadas sin rechazos
 registrados durante sleep. En el último ciclo persistido, la energía libre
 descendió de -3,474102 a -18,544695 y el residuo final fue
-9,541141 × 10⁻⁴. Por otra parte, un experimento preliminar de apagado de capas
+9,541141 × 10⁻⁴.
+
+Además, un experimento causal pareado de 32 nodos y 144 inferencias por
+condición midió directamente el paisaje antes y después de consolidar un patrón
+verificado. Antes del sueño, ninguna de las entradas con 10–40 % de corrupción
+alcanzó el umbral de recuperación; después del sueño, las 144 lo alcanzaron,
+con exactitud media 1,0. La corrupción crítica medida pasó de 0 a 0,40 y las
+iteraciones medias bajaron en todos los niveles evaluados. El resultado se
+repitió en una prueba automatizada con ocho semillas fijas independientes.
+Esto demuestra deformación y ampliación de cuenca dentro del fixture controlado;
+no demuestra generalización conceptual ni ventaja física.
+
+Por otra parte, un experimento preliminar de apagado de capas
 en Gemma 2 produjo 0 rutas dispersas verificadas y activó fallback completo en
 2 de 2 consultas. Este resultado negativo muestra que la arquitectura de
 seguridad funciona, pero también que un Transformer denso no se vuelve disperso
@@ -286,13 +298,15 @@ checkpoint persiste por separado estado global y deltas estructurales.
 Las métricas observadas proceden de:
 
 - `data/native_phasor_infinite_training/latest.state.json`;
-- `data/native_gemma2_adaptive/adaptive-state.json`;
-- ejecuciones reales del binario adaptativo con Gemma 2 2B GGUF;
+- una ejecución registrada del binario adaptativo con Gemma 2 2B GGUF;
 - suite automatizada de librería y del binario adaptativo.
 
 El checkpoint fasorial fue leído en el ciclo 115.876. Las dos consultas Gemma 2
 se ejecutaron el 26 de julio de 2026 sobre CPU. No se realizó aún una comparación
-energética con hardware analógico.
+energética con hardware analógico. El JSON fasorial sí está versionado en este
+checkout. `data/native_gemma2_adaptive/adaptive-state.json` no está versionado,
+por lo que las dos consultas Gemma se clasifican como evidencia de sesión y no
+pueden reproducirse sin el GGUF y el estado externo correspondiente.
 
 ### 6.2 Métricas
 
@@ -374,11 +388,14 @@ una medición independiente de generalización ni demuestra ausencia de olvido.
 | Tasa de fallback | 100 % |
 | Capas ejecutadas tras verificación | 26/26 |
 | Velocidad de decodificación CPU observada | 2,04–2,68 tokens/s |
-| Pruebas de librería aprobadas | 113 |
+| Pruebas de librería aprobadas | 121 |
 | Pruebas del binario adaptativo aprobadas | 2 |
 | Fallos en las pruebas dirigidas | 0 |
 
-Al omitir incluso una capa candidata cambió el token principal o no se alcanzó
+El conteo de 121 corresponde a `cargo test --lib` después de incorporar los
+experimentos de cuenca, generalización limitada, validación adversarial y
+selección de familias. Al omitir incluso una capa candidata cambió el token
+principal o no se alcanzó
 el umbral de similitud de logits. El verificador limpió la KV cache y repitió la
 inferencia con el modelo completo. Es un resultado negativo importante:
 demuestra el fallback, no una mejora de eficiencia.
@@ -392,6 +409,8 @@ Los resultados apoyan que:
 - la consolidación está condicionada a verificación;
 - el fallback evita aceptar rutas Transformer degradadas;
 - el entrenamiento observado es estable durante más de \(10^5\) ciclos.
+- una consolidación aceptada puede modificar las fases de arista CDT y ampliar
+  de forma reproducible la cuenca del patrón consolidado en un fixture sintético.
 
 Los resultados todavía no demuestran que:
 
@@ -402,6 +421,254 @@ Los resultados todavía no demuestran que:
 - un chip físico procese literalmente millones de hipótesis útiles;
 - el sistema posea consciencia o cognición general.
 
+### 7.4 Experimento causal de deformación del paisaje
+
+Se añadió un protocolo explícito para evaluar la predicción central de este
+trabajo. La implementación reproducible está en
+`consolidation_basin_experiment::run_consolidation_basin_experiment` y el gate
+ejecutable es:
+
+```powershell
+cargo test --lib consolidation_basin_experiment -- --nocapture
+cargo run --release --bin native_consolidation_basin_experiment
+```
+
+El protocolo separa las siguientes fases:
+
+1. se crea un CDT de 32 nodos y se conserva un snapshot **pre**;
+2. se presenta una configuración binaria completa y verificada en memoria rápida;
+3. wake sólo la deja pendiente, sin modificar el snapshot CDT;
+4. sleep la revalida y consolida 128 fases de arista;
+5. se generan exactamente los mismos cues, semillas y jitter para los snapshots
+   pre y post;
+6. se minimiza la misma energía con el mismo solver y presupuesto;
+7. se mide recuperación con corrupción de 10, 20, 25, 30, 35 y 40 %.
+
+La fase de adquisición usa acoplamiento cero de forma deliberada: aísla el
+efecto causal de escribir un patrón ya verificado, sin atribuir al solver la
+capacidad adicional de descubrir ese patrón. Durante la evaluación el
+acoplamiento es idéntico y no nulo en pre y post. Por tanto, la variable
+experimental que cambia es el paisaje persistido por sleep.
+
+**Métrica de exactitud.** La exactitud reportada es la **exactitud directa**:
+la fracción de nodos cuyo signo recuperado coincide con el objetivo. El
+funcional es simétrico ante un flip global \(Z_2\), pero el cue conserva la
+convención de signo mayoritaria, así que una recuperación genuina debe
+respetarla; un estado completamente invertido cuenta como fallo. El reporte
+incluye además `mean_gauge_invariant_accuracy` (que cuenta el flip global
+como acierto) únicamente como diagnóstico: una brecha entre ambas métricas
+indicaría convergencia al atractor con la convención invertida, y ninguna
+decisión del gate la consume. Versiones anteriores del protocolo usaban la
+variante invariante como métrica principal; su piso de 0,5 bajo azar inflaba
+los valores pre y se corrigió en la versión 0.3.
+
+Resultados de la corrida release de referencia:
+
+| Corrupción | Éxito pre | Éxito post | Exactitud pre | Exactitud post | Iteraciones pre | Iteraciones post |
+|---:|---:|---:|---:|---:|---:|---:|
+| 10 % | 0/24 | 24/24 | 0,497 | 1,000 | 76,8 | 26,1 |
+| 20 % | 0/24 | 24/24 | 0,499 | 1,000 | 80,2 | 27,6 |
+| 25 % | 0/24 | 24/24 | 0,500 | 1,000 | 79,8 | 26,3 |
+| 30 % | 0/24 | 24/24 | 0,508 | 1,000 | 77,2 | 34,3 |
+| 35 % | 0/24 | 24/24 | 0,500 | 1,000 | 72,6 | 35,1 |
+| 40 % | 0/24 | 24/24 | 0,500 | 1,000 | 83,9 | 45,4 |
+
+La exactitud pre queda en el nivel del azar sin piso artificial, y la
+diagnóstica gauge-invariante post coincide con la directa (1,000 en los seis
+niveles): no hubo flips globales de gauge en la recuperación.
+
+La energía final media post quedó entre \(2,29\times10^{-5}\) y
+\(3,00\times10^{-5}\), frente a 0,451–1,805 pre. Estas unidades pertenecen al
+funcional implementado y no son julios.
+
+El gate exige simultáneamente:
+
+\[
+\rho_\mathrm{crítica,post} > \rho_\mathrm{crítica,pre},
+\qquad
+\overline{\Delta P_\mathrm{éxito}} \geq 0,10,
+\]
+
+y ausencia de caída de exactitud media en cualquiera de los niveles. En la
+corrida de referencia:
+
+```text
+rho_critica_pre=0.00
+rho_critica_post=0.40
+ganancia_media_probabilidad_exito=1.00
+decision=basin_expansion_pass
+```
+
+La prueba multisemilla repite el gate con ocho semillas deterministas. Su
+objetivo es detectar dependencia accidental del grafo o del patrón; no sustituye
+un intervalo de confianza sobre una distribución externa.
+
+### 7.5 Tres niveles de afirmación
+
+Para evitar mezclar implementación, algoritmo y física, el estado de la
+evidencia se clasifica así:
+
+**Nivel 1 — evidencia interna reproducible.** La suite y los binarios demuestran
+dentro de la implementación: relajación, descenso de la energía del modelo,
+inferencia fasorial, memoria rápida, replay, consolidación, gates, rollback,
+persistencia, entrenamiento prolongado y separación operativa entre lenguaje e
+inferencia. El experimento de la sección 7.4 añade evidencia causal de que una
+consolidación puede deformar el paisaje y ampliar una cuenca medida.
+
+**Nivel 2 — hipótesis algorítmicas no resueltas.** Todavía requieren benchmarks
+externos: generalización de atractores, representaciones conceptuales no
+inyectadas, reducción de interferencia frente a baselines equivalentes,
+superioridad sobre métodos convencionales y escalabilidad eficiente.
+
+**Nivel 3 — hipótesis físicas no probadas.** Un dispositivo físico tendría que
+implementar un funcional equivalente, converger con menor energía medida,
+aprovechar paralelismo físico, mantener estabilidad bajo ruido y permitir
+consolidación útil. Ningún resultado digital de este manuscrito demuestra esas
+propiedades.
+
+La secuencia de validación defendible es:
+
+```text
+algoritmo -> ventaja computacional -> escalabilidad -> mapa físico
+```
+
+### 7.6 Memoria, variación, composición y transferencia
+
+Se añadió un protocolo cognitivo de cuatro niveles sobre el motor unificado:
+
+1. **Memoria exacta:** cuatro relaciones \(A_i\rightarrow B_i\).
+2. **Variación no vista:** las mismas relaciones se consultan con desfases de
+   contexto que no aparecieron durante entrenamiento.
+3. **Composición:** se aprende \(A\rightarrow B\) y \(B\rightarrow C\), y se
+   exige inferir \(A\rightarrow B\rightarrow C\) sin almacenar el atajo
+   \(A\rightarrow C\).
+4. **Transferencia estructural:** una relación observada se transfiere a tres
+   pares isomórficos de nodos nuevos. Una ablación con confianza de simetría cero
+   debe impedir la transferencia.
+
+```powershell
+cargo test --lib cognitive_generalization_benchmark -- --nocapture
+cargo run --release --bin native_cognitive_generalization_benchmark
+```
+
+En 24 ensayos:
+
+```text
+memoria exacta                         100%
+variaciones no vistas                  100%
+composición sin atajo directo          100%
+ausencia del atajo                     100%
+transferencia isomórfica               100%
+transferencia ausente sin simetría     100%
+abstención OOD                         100%
+decision=limited_structural_generalization_pass
+```
+
+El nivel 2 prueba variaciones de fase, no entradas sensoriales complejas. En el
+nivel 4 la órbita isomórfica se proporciona explícitamente. Por tanto, el
+resultado demuestra recuperación robusta, composición y transferencia
+estructural limitada; todavía no demuestra descubrimiento autónomo de
+regularidades o simetrías.
+
+### 7.7 Selección ambigua y descubrimiento de simetría
+
+Para reducir la facilidad y determinismo de los fixtures anteriores se añadió
+un protocolo adversarial:
+
+- ramificación \(A\rightarrow B\rightarrow C\) frente a \(A\rightarrow D\);
+- selección de rama según fase de contexto;
+- consultas cercanas al punto equidistante, donde el sistema debe abstenerse;
+- energía efectiva de cada hipótesis, definida como \(-\ln(score)\);
+- topologías de 4, 8 y 12 espines;
+- número variable de exposiciones;
+- patrones dispersos de 8, 12 y 16 canales;
+- tres ejemplos estructurales ruidosos y un outlier contradictorio;
+- transferencia a un patrón heldout;
+- control con dos estructuras incompatibles.
+
+```powershell
+cargo test --lib advanced_cognitive_validation -- --nocapture
+cargo run --release --bin native_advanced_cognitive_validation
+```
+
+Resultados sobre 36 ensayos:
+
+```text
+selección de rama                         100%
+selección de trayectoria A→B→C            100%
+abstención ante ambigüedad                100%
+orden correcto de energía efectiva        100%
+margen medio seleccionado                 0,73957
+margen medio ambiguo                      0,01653
+descubrimiento de transformación          100%
+transferencia a patrón heldout            100%
+rechazo de estructura conflictiva         100%
+decision=adversarial_selection_and_limited_symmetry_discovery_pass
+```
+
+La nueva API `query_with_ambiguity` no fuerza una respuesta cuando las dos
+mejores hipótesis tienen margen insuficiente. El descubridor no recibe la
+órbita ni el desplazamiento correcto: compara transformaciones candidatas,
+selecciona la de menor error mediano y tolera un outlier.
+
+La familia de simetrías candidatas —traslaciones cíclicas de canales— sí está
+predefinida. En consecuencia, se demuestra descubrimiento autónomo limitado del
+elemento de simetría dentro de un grupo conocido, no descubrimiento irrestricto
+de cualquier invariante.
+
+### 7.8 Descubrimiento de familia y complejidad mínima
+
+El siguiente benchmark amplía el espacio de hipótesis a cinco familias:
+
+```text
+H1 = traslaciones 2D
+H2 = rotaciones
+H3 = reflexiones
+H4 = permutaciones aprendidas
+H5 = composiciones rotación/reflexión + traslación
+```
+
+Cada hipótesis recibe una energía:
+
+\[
+\mathcal E(H)=\operatorname{mediana}_i
+\operatorname{MSE}(H(x_i),y_i)+\lambda\,C(H),
+\]
+
+donde \(C(H)\) es la complejidad descriptiva. La mediana protege contra un
+outlier y el segundo término penaliza una permutación memorizadora cuando una
+regla geométrica simple explica los mismos datos.
+
+```powershell
+cargo test --lib transformation_family_discovery -- --nocapture
+cargo run --release --bin native_transformation_family_discovery
+```
+
+Resultados de 50 ensayos, diez por familia:
+
+```text
+identificación global de familia          100%
+traslación                                100%
+rotación                                  100%
+reflexión                                 100%
+permutación                               100%
+composición                               100%
+parámetros/mapping                        100%
+transferencia heldout                     100%
+robustez a ruido + outlier                100%
+preferencia por complejidad mínima        100%
+abstención con evidencia ambigua          100%
+error robusto medio                       4,2485e-6
+ventaja MDL media sobre memorización      1,1050e-3
+margen energético medio                   8,1648e-2
+decision=family_parameter_mdl_discovery_pass
+```
+
+El sistema ya no recibe la familia concreta ni sus parámetros. Descubre ambas
+seleccionando entre familias candidatas y puede identificar una composición.
+La limitación restante es metaestructural: el catálogo de cinco familias y el
+lenguaje de composiciones todavía fueron definidos por el investigador.
+
 ---
 
 ## 8. Predicciones falsables
@@ -411,7 +678,9 @@ La hipótesis puede evaluarse con las siguientes predicciones:
 1. **Descenso y exactitud.** Para problemas con mínimo conocido, un menor
    residuo y una menor energía final deben correlacionarse con mayor exactitud.
 2. **Formación de atractores.** Tras consolidar una solución, cues parciales
-   deben converger hacia ella desde una cuenca más amplia que antes.
+   deben converger hacia ella desde una cuenca más amplia que antes. Esta
+   predicción pasó el fixture causal de la sección 7.4; permanece pendiente en
+   distribuciones externas y tareas conceptuales.
 3. **Interferencia acotada.** Aprender una tarea nueva no debe reducir la
    retención de tareas antiguas más allá de un \(\epsilon\) predefinido.
 4. **Ventaja del sueño.** Consolidar sólo experiencias revalidadas debe superar
@@ -486,6 +755,11 @@ La formulación científicamente defendible es:
 7. No se ha fabricado ni simulado a nivel de circuito un chip termodinámico.
 8. No se ha demostrado ventaja asintótica ni energética frente a hardware
    convencional.
+9. El experimento de cuenca consolida una configuración proporcionada y
+   verificada; no demuestra que el sistema descubra autónomamente conceptos.
+10. La corrida de referencia usa un patrón, un tamaño y un conjunto finito de
+    corrupciones. La repetición en ocho semillas reduce fragilidad del fixture,
+    pero no establece generalización fuera de distribución.
 
 ---
 
@@ -497,7 +771,8 @@ La formulación científicamente defendible es:
   conocido;
 - comparación contra búsqueda exhaustiva, simulated annealing y gradiente;
 - ablación de fase, amplitud, entropía, CDT y sueño;
-- medición de cuencas de atracción y mínimos espurios.
+- extensión de la medición de cuencas ya implementada a múltiples tamaños,
+  familias de patrones, baselines y mínimos espurios.
 
 ### Fase B: aprendizaje continuo
 
@@ -533,13 +808,16 @@ realizan búsqueda por relajación y descarte de modos incompatibles; CDT conser
 representaciones operativas. La memoria de dos velocidades permite plasticidad
 rápida sin escribir inmediatamente sobre conocimiento protegido.
 
-La evidencia actual demuestra descenso de energía, persistencia wake/sleep y
-fallback seguro, pero no demuestra todavía ausencia de olvido, ventaja
-energética ni procesamiento físico masivo. Precisamente por ello, la propuesta
-se expresa como una hipótesis experimental: si un sustrato termodinámico físico
-puede implementar el mismo paisaje con relajación paralela, podría convertir
-una búsqueda digital costosa en evolución física eficiente. La oportunidad no
-es obtener cómputo gratuito, sino utilizar de forma medible la dinámica de la
+La evidencia actual demuestra descenso de energía, persistencia wake/sleep,
+fallback seguro y, en un experimento causal sintético, que consolidar un patrón
+verificado deforma el paisaje para aumentar su cuenca de recuperación y reducir
+las iteraciones. No demuestra todavía generalización conceptual, ausencia de
+olvido, ventaja sobre baselines de capacidad equivalente, ventaja energética ni
+procesamiento físico masivo. Precisamente por ello, la propuesta se expresa
+como una hipótesis experimental: si un sustrato termodinámico físico puede
+implementar el mismo paisaje con relajación paralela, podría convertir una
+búsqueda digital costosa en evolución física eficiente. La oportunidad no es
+obtener cómputo gratuito, sino utilizar de forma medible la dinámica de la
 naturaleza como parte del computador.
 
 ---

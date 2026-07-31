@@ -161,6 +161,9 @@ pub fn generate_operator_recipe_with_memory(
     )))
 }
 
+// Generación guiada: los parámetros son facetas del prompt que los callers
+// pasan de forma posicional; un struct de opciones no mejoraría la legibilidad.
+#[allow(clippy::too_many_arguments)]
 pub fn generate_solution_explanation(
     model: &mut QuantizedGemma2,
     tokenizer: &Gemma2Tokenizer,

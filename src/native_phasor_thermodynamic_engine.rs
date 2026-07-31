@@ -4,6 +4,7 @@
 //! Laplaciano magnético disperso, pero conserva su propio estado complejo y su
 //! propia dinámica. No reemplaza ni modifica el motor CDT existente.
 
+use crate::native_rng::{gaussian_from_counter, splitmix64, unit_from_u64};
 use crate::native_thermodynamic_cdt::{NativeThermoCdtConfig, NativeThermoCdtSubstrate};
 use num_complex::Complex32;
 use rayon::prelude::*;
@@ -11,8 +12,13 @@ use std::collections::VecDeque;
 use std::fmt;
 
 const EPSILON: f32 = 1.0e-7;
-const PARALLEL_NODE_THRESHOLD: usize = 2_048;
-const PARALLEL_EDGE_THRESHOLD: usize = 8_192;
+/// Tamaños por debajo de los cuales el recorrido secuencial gana al reparto en
+/// `rayon`. Cada iteración del minimizador abre varias regiones paralelas muy
+/// cortas, así que repartir un vector pequeño cuesta más que recorrerlo entero:
+/// medido sobre el solver de Armijo, 2 048 nodos tardaban 23 ms en paralelo
+/// frente a 6 ms en serie. El cruce real está entre 8 192 y 16 384 nodos.
+const PARALLEL_NODE_THRESHOLD: usize = 16_384;
+const PARALLEL_EDGE_THRESHOLD: usize = 32_768;
 pub const DEFAULT_PHASOR_STARTUP_SLICES: usize = 3;
 pub const DEFAULT_PHASOR_NODES_PER_SLICE: usize = 65_536;
 pub const DEFAULT_PHASOR_STARTUP_NODES: usize =
@@ -246,6 +252,9 @@ struct MagneticEdge {
     b: usize,
     weight: f32,
     phase: f32,
+    /// `exp(-i * phase)` precalculado: evita un `sin`/`cos` por arista en cada
+    /// evaluación de energía dentro de la búsqueda de línea.
+    transport: Complex32,
 }
 
 #[derive(Clone, Debug)]
@@ -255,6 +264,9 @@ struct MagneticLaplacian {
     columns: Vec<usize>,
     weights: Vec<f32>,
     transports: Vec<Complex32>,
+    /// `transport * weight` por elemento no nulo. Colapsa la multiplicación
+    /// compleja-por-escalar del producto disperso en una sola lectura.
+    weighted_transports: Vec<Complex32>,
     diagonal: Vec<f32>,
     edges: Vec<MagneticEdge>,
 }
@@ -317,6 +329,7 @@ impl MagneticLaplacian {
                 b,
                 weight,
                 phase,
+                transport: forward_transport,
             });
         }
 
@@ -324,12 +337,14 @@ impl MagneticLaplacian {
         let mut columns = Vec::with_capacity(edges.len() * 2);
         let mut weights = Vec::with_capacity(edges.len() * 2);
         let mut transports = Vec::with_capacity(edges.len() * 2);
+        let mut weighted_transports = Vec::with_capacity(edges.len() * 2);
         row_offsets.push(0);
         for row in adjacency {
             for (column, weight, transport) in row {
                 columns.push(column);
                 weights.push(weight);
                 transports.push(transport);
+                weighted_transports.push(transport * weight);
             }
             row_offsets.push(columns.len());
         }
@@ -340,6 +355,7 @@ impl MagneticLaplacian {
             columns,
             weights,
             transports,
+            weighted_transports,
             diagonal,
             edges,
         })
@@ -349,9 +365,13 @@ impl MagneticLaplacian {
         debug_assert_eq!(input.len(), self.nodes);
         debug_assert_eq!(output.len(), self.nodes);
         let apply_row = |row: usize| {
+            let start = self.row_offsets[row];
+            let end = self.row_offsets[row + 1];
+            let columns = &self.columns[start..end];
+            let transports = &self.weighted_transports[start..end];
             let mut sum = input[row] * self.diagonal[row];
-            for cursor in self.row_offsets[row]..self.row_offsets[row + 1] {
-                sum -= input[self.columns[cursor]] * self.transports[cursor] * self.weights[cursor];
+            for (column, transport) in columns.iter().zip(transports) {
+                sum -= input[*column] * *transport;
             }
             sum
         };
@@ -369,33 +389,50 @@ impl MagneticLaplacian {
 
     fn coupling_energy(&self, phasors: &[Complex32], strength: f32) -> f32 {
         let edge_energy = |edge: &MagneticEdge| {
-            let transport = Complex32::from_polar(1.0, -edge.phase);
-            edge.weight * (phasors[edge.a] - transport * phasors[edge.b]).norm_sqr()
+            f64::from(edge.weight * (phasors[edge.a] - edge.transport * phasors[edge.b]).norm_sqr())
         };
         let sum = if self.edges.len() < PARALLEL_EDGE_THRESHOLD {
-            self.edges.iter().map(edge_energy).sum::<f32>()
+            self.edges.iter().map(edge_energy).sum::<f64>()
         } else {
-            self.edges.par_iter().map(edge_energy).sum::<f32>()
+            self.edges.par_iter().map(edge_energy).sum::<f64>()
         };
-        0.5 * strength * sum
+        0.5 * strength * sum as f32
     }
 
+    /// Coherencia de fase sin trigonometría por arista.
+    ///
+    /// `cos(arg(a) - arg(b) + phase)` equivale a
+    /// `Re(a * conj(b * transport)) / (|a| |b|)` porque `transport` es
+    /// `exp(-i*phase)` y tiene módulo unitario. Sólo se recurre a `atan2`/`cos`
+    /// cuando alguno de los dos módulos se anula y el cociente es indefinido.
     fn phase_coherence(&self, phasors: &[Complex32]) -> f32 {
-        let (weighted_coherence, weight_sum) = self
-            .edges
-            .par_iter()
-            .map(|edge| {
-                let phase_delta = phasors[edge.a].arg() - phasors[edge.b].arg() + edge.phase;
-                (edge.weight * phase_delta.cos(), edge.weight)
-            })
-            .reduce(
-                || (0.0, 0.0),
-                |left, right| (left.0 + right.0, left.1 + right.1),
-            );
-        if weight_sum <= EPSILON {
+        let edge_coherence = |edge: &MagneticEdge| {
+            let left = phasors[edge.a];
+            let right = phasors[edge.b];
+            let magnitude = left.norm() * right.norm();
+            let cosine = if magnitude > EPSILON {
+                ((left * (edge.transport * right).conj()).re / magnitude).clamp(-1.0, 1.0)
+            } else {
+                (left.arg() - right.arg() + edge.phase).cos()
+            };
+            (f64::from(edge.weight * cosine), f64::from(edge.weight))
+        };
+        let combine = |left: (f64, f64), right: (f64, f64)| (left.0 + right.0, left.1 + right.1);
+        let (weighted_coherence, weight_sum) = if self.edges.len() < PARALLEL_EDGE_THRESHOLD {
+            self.edges
+                .iter()
+                .map(edge_coherence)
+                .fold((0.0, 0.0), combine)
+        } else {
+            self.edges
+                .par_iter()
+                .map(edge_coherence)
+                .reduce(|| (0.0, 0.0), combine)
+        };
+        if weight_sum <= f64::from(EPSILON) {
             1.0
         } else {
-            (weighted_coherence / weight_sum).clamp(-1.0, 1.0)
+            (weighted_coherence / weight_sum).clamp(-1.0, 1.0) as f32
         }
     }
 }
@@ -407,11 +444,30 @@ impl MagneticLaplacian {
 pub struct NativePhasorThermodynamicEngine {
     pub config: NativePhasorConfig,
     pub phasors: Vec<Complex32>,
+    /// Temperatura por nodo. Si se escribe directamente hay que llamar a
+    /// [`Self::refresh_temperature_statistics`] para revalidar la media
+    /// cacheada que consume `effective_temperature`.
     pub temperature: Vec<f32>,
     pub stimulus: Vec<Complex32>,
     operator: MagneticLaplacian,
     laplacian_buffer: Vec<Complex32>,
+    minimizer_scratch: MinimizerScratch,
+    /// Media de `temperature`. La búsqueda de línea evalúa la energía libre
+    /// varias veces por iteración y cada evaluación necesitaba recorrer todo
+    /// el vector de temperaturas para obtener este único escalar.
+    mean_temperature: f32,
     tick: u64,
+}
+
+/// Buffers reutilizables del minimizador: `minimize_free_energy` es la ruta
+/// caliente de inferencia (y se llama por candidato durante sleep), así que
+/// gradiente, dirección y candidato se conservan entre llamadas en vez de
+/// reservar 3×N complejos en cada invocación.
+#[derive(Clone, Debug, Default)]
+struct MinimizerScratch {
+    gradient: Vec<Complex32>,
+    direction: Vec<Complex32>,
+    candidate: Vec<Complex32>,
 }
 
 impl NativePhasorThermodynamicEngine {
@@ -436,15 +492,25 @@ impl NativePhasorThermodynamicEngine {
             .map(|(amplitude, phase)| Complex32::from_polar(amplitude.max(0.0), phase))
             .collect::<Vec<_>>();
         let nodes = phasors.len();
+        let temperature = core.temperature.clone();
+        let mean_temperature = mean_temperature(&temperature);
         Ok(Self {
             config: sanitize_config(config),
             phasors,
-            temperature: core.temperature.clone(),
+            temperature,
             stimulus: vec![Complex32::new(0.0, 0.0); nodes],
             operator,
             laplacian_buffer: vec![Complex32::new(0.0, 0.0); nodes],
+            minimizer_scratch: MinimizerScratch::default(),
+            mean_temperature,
             tick: 0,
         })
+    }
+
+    /// Recalcula la media de temperatura cacheada. Necesario sólo si se escribe
+    /// `temperature` sin pasar por `from_core` o `recompile_from_core`.
+    pub fn refresh_temperature_statistics(&mut self) {
+        self.mean_temperature = mean_temperature(&self.temperature);
     }
 
     /// Recompila pesos y fases de arista desde el core CDT sin perder el
@@ -458,6 +524,7 @@ impl NativePhasorThermodynamicEngine {
         }
         self.operator = MagneticLaplacian::compile(core)?;
         self.temperature.copy_from_slice(&core.temperature);
+        self.refresh_temperature_statistics();
         Ok(())
     }
 
@@ -488,6 +555,26 @@ impl NativePhasorThermodynamicEngine {
 
     pub fn tick(&self) -> u64 {
         self.tick
+    }
+
+    /// Restaura el contador de ticks tras una sonda o rollback que ejecutó
+    /// pasos sólo para medir y debe dejar el motor como estaba.
+    pub(crate) fn set_tick(&mut self, tick: u64) {
+        self.tick = tick;
+    }
+
+    /// Libera el workspace persistente del minimizador. Útil para medir la
+    /// ruta fría o devolver memoria en motores que no volverán a inferir.
+    pub fn clear_minimizer_workspace(&mut self) {
+        self.minimizer_scratch = MinimizerScratch::default();
+    }
+
+    /// Capacidad reservada por los tres buffers del minimizador, en bytes.
+    pub fn minimizer_workspace_capacity_bytes(&self) -> usize {
+        (self.minimizer_scratch.gradient.capacity()
+            + self.minimizer_scratch.direction.capacity()
+            + self.minimizer_scratch.candidate.capacity())
+            * std::mem::size_of::<Complex32>()
     }
 
     pub fn set_temperature_scale(&mut self, scale: f32) {
@@ -544,107 +631,119 @@ impl NativePhasorThermodynamicEngine {
         let stimulus = &self.stimulus;
         let temperatures = &self.temperature;
 
-        self.phasors
-            .par_iter_mut()
-            .enumerate()
-            .for_each(|(node, phasor)| {
-                let current = *phasor;
-                let norm_sqr = current.norm_sqr();
-                let entropy_gradient =
-                    entropy_gradient(current, norm_sqr, entropy_state, entropy_gain);
-                let gradient = coupling * laplacian[node]
-                    + radial * (norm_sqr - target_sqr) * current
-                    + confinement * current
-                    - stimulus_gain * stimulus[node]
-                    + entropy_gradient;
-                let thermal_std = noise_scale
-                    * (2.0 * temperatures[node].max(0.0) * temperature_scale * dt).sqrt();
-                let noise = Complex32::new(
-                    gaussian_from_counter(noise_seed, (node as u64) * 2),
-                    gaussian_from_counter(noise_seed, (node as u64) * 2 + 1),
-                ) * thermal_std;
-                let mut next = current - gradient * dt + noise;
-                let amplitude = next.norm();
-                if amplitude > max_amplitude {
-                    next *= max_amplitude / amplitude;
-                }
-                *phasor = next;
-            });
-
+        let max_amplitude_sqr = max_amplitude * max_amplitude;
+        let integrate = |node: usize, phasor: &mut Complex32| {
+            let current = *phasor;
+            let norm_sqr = current.norm_sqr();
+            let entropy_gradient = entropy_gradient(current, norm_sqr, entropy_state, entropy_gain);
+            let gradient = coupling * laplacian[node]
+                + radial * (norm_sqr - target_sqr) * current
+                + confinement * current
+                - stimulus_gain * stimulus[node]
+                + entropy_gradient;
+            let thermal_std =
+                noise_scale * (2.0 * temperatures[node].max(0.0) * temperature_scale * dt).sqrt();
+            let noise = Complex32::new(
+                gaussian_from_counter(noise_seed, (node as u64) * 2),
+                gaussian_from_counter(noise_seed, (node as u64) * 2 + 1),
+            ) * thermal_std;
+            let mut next = current - gradient * dt + noise;
+            let amplitude_sqr = next.norm_sqr();
+            if amplitude_sqr > max_amplitude_sqr {
+                next *= max_amplitude / amplitude_sqr.sqrt();
+            }
+            *phasor = next;
+        };
         let decay = self.config.stimulus_decay;
-        self.stimulus
-            .par_iter_mut()
-            .for_each(|stimulus| *stimulus *= decay);
+        if self.phasors.len() < PARALLEL_NODE_THRESHOLD {
+            self.phasors
+                .iter_mut()
+                .enumerate()
+                .for_each(|(node, phasor)| integrate(node, phasor));
+            self.stimulus
+                .iter_mut()
+                .for_each(|stimulus| *stimulus *= decay);
+        } else {
+            self.phasors
+                .par_iter_mut()
+                .enumerate()
+                .for_each(|(node, phasor)| integrate(node, phasor));
+            self.stimulus
+                .par_iter_mut()
+                .for_each(|stimulus| *stimulus *= decay);
+        }
         self.tick = self.tick.wrapping_add(1);
-        self.report()
+        let mut scratch = std::mem::take(&mut self.laplacian_buffer);
+        let report = self.report_with_scratch(&mut scratch);
+        self.laplacian_buffer = scratch;
+        report
     }
 
     pub fn report(&self) -> NativePhasorReport {
+        let mut scratch = vec![Complex32::new(0.0, 0.0); self.node_count()];
+        self.report_with_scratch(&mut scratch)
+    }
+
+    /// Igual que [`Self::report`] pero reutilizando un buffer del llamador para
+    /// el producto Laplaciano. Todas las métricas por nodo se acumulan en un
+    /// solo recorrido en lugar de seis independientes.
+    fn report_with_scratch(&self, laplacian: &mut [Complex32]) -> NativePhasorReport {
         let entropy_state = entropy_state(&self.phasors);
         let effective_temperature = self.effective_temperature();
+        let entropy_gain = self.config.entropy_weight * effective_temperature;
         let coupling_energy = self
             .operator
             .coupling_energy(&self.phasors, self.config.coupling_strength);
+        self.operator.apply(&self.phasors, laplacian);
+
         let target_sqr = self.config.target_amplitude * self.config.target_amplitude;
-        let radial_energy = 0.25
-            * self.config.radial_strength
-            * self
-                .phasors
-                .par_iter()
-                .map(|phasor| {
-                    let delta = phasor.norm_sqr() - target_sqr;
-                    delta * delta
-                })
-                .sum::<f32>();
-        let confinement_energy = 0.5
-            * self.config.confinement
-            * self
-                .phasors
-                .par_iter()
-                .map(Complex32::norm_sqr)
-                .sum::<f32>();
-        let stimulus_energy = -self.config.stimulus_gain
-            * self
-                .phasors
+        let coupling = self.config.coupling_strength;
+        let radial = self.config.radial_strength;
+        let confinement = self.config.confinement;
+        let stimulus_gain = self.config.stimulus_gain;
+        let active_threshold = self.config.active_threshold;
+        let contribution =
+            |((phasor, field), laplacian): ((&Complex32, &Complex32), &Complex32)| {
+                let phasor = *phasor;
+                let norm_sqr = phasor.norm_sqr();
+                let radial_delta = norm_sqr - target_sqr;
+                let gradient =
+                    coupling * *laplacian + radial * radial_delta * phasor + confinement * phasor
+                        - stimulus_gain * *field
+                        + entropy_gradient(phasor, norm_sqr, entropy_state, entropy_gain);
+                let amplitude = norm_sqr.sqrt();
+                NodeMetrics {
+                    radial: f64::from(radial_delta * radial_delta),
+                    confinement: f64::from(norm_sqr),
+                    stimulus: f64::from((phasor.conj() * field).re),
+                    residual_sqr: f64::from(gradient.norm_sqr()),
+                    amplitude: f64::from(amplitude),
+                    active: usize::from(amplitude > active_threshold),
+                }
+            };
+        let metrics = if self.node_count() < PARALLEL_NODE_THRESHOLD {
+            self.phasors
+                .iter()
+                .zip(&self.stimulus)
+                .zip(&*laplacian)
+                .map(contribution)
+                .fold(NodeMetrics::default(), NodeMetrics::combine)
+        } else {
+            self.phasors
                 .par_iter()
                 .zip(self.stimulus.par_iter())
-                .map(|(phasor, field)| (phasor.conj() * field).re)
-                .sum::<f32>();
+                .zip(laplacian.par_iter())
+                .map(contribution)
+                .reduce(NodeMetrics::default, NodeMetrics::combine)
+        };
+
+        let radial_energy = 0.25 * radial * metrics.radial as f32;
+        let confinement_energy = 0.5 * confinement * metrics.confinement as f32;
+        let stimulus_energy = -stimulus_gain * metrics.stimulus as f32;
         let internal_energy =
             coupling_energy + radial_energy + confinement_energy + stimulus_energy;
-        let free_energy = internal_energy
-            - self.config.entropy_weight * effective_temperature * entropy_state.entropy;
-        let mut laplacian = vec![Complex32::new(0.0, 0.0); self.node_count()];
-        self.operator.apply(&self.phasors, &mut laplacian);
-        let residual_sqr = self
-            .phasors
-            .par_iter()
-            .enumerate()
-            .map(|(node, phasor)| {
-                let entropy_gradient = entropy_gradient(
-                    *phasor,
-                    phasor.norm_sqr(),
-                    entropy_state,
-                    self.config.entropy_weight * effective_temperature,
-                );
-                let gradient = self.config.coupling_strength * laplacian[node]
-                    + self.config.radial_strength * (phasor.norm_sqr() - target_sqr) * *phasor
-                    + self.config.confinement * *phasor
-                    - self.config.stimulus_gain * self.stimulus[node]
-                    + entropy_gradient;
-                gradient.norm_sqr()
-            })
-            .sum::<f32>();
-        let amplitude_sum = self
-            .phasors
-            .par_iter()
-            .map(|phasor| phasor.norm())
-            .sum::<f32>();
-        let active_phasors = self
-            .phasors
-            .par_iter()
-            .filter(|phasor| phasor.norm() > self.config.active_threshold)
-            .count();
+        let free_energy = internal_energy - entropy_gain * entropy_state.entropy;
+        let nodes = self.node_count().max(1) as f64;
 
         NativePhasorReport {
             tick: self.tick,
@@ -658,10 +757,10 @@ impl NativePhasorThermodynamicEngine {
             stimulus_energy,
             entropy: entropy_state.entropy,
             effective_temperature,
-            gradient_residual: (residual_sqr / self.node_count().max(1) as f32).sqrt(),
-            mean_amplitude: amplitude_sum / self.node_count().max(1) as f32,
+            gradient_residual: (metrics.residual_sqr / nodes).sqrt() as f32,
+            mean_amplitude: (metrics.amplitude / nodes) as f32,
             phase_coherence: self.operator.phase_coherence(&self.phasors),
-            active_phasors,
+            active_phasors: metrics.active,
         }
     }
 
@@ -766,11 +865,21 @@ impl NativePhasorThermodynamicEngine {
         config: NativePhasorMinimizerConfig,
     ) -> NativePhasorMinimizationReport {
         let config = sanitize_minimizer_config(config);
-        let initial = self.report();
+        let nodes = self.node_count();
+        // Buffers persistentes: se extraen del motor (evita conflictos de
+        // préstamo con `&self`), se usan y se devuelven al terminar.
+        let mut scratch = std::mem::take(&mut self.minimizer_scratch);
+        scratch.gradient.clear();
+        scratch.gradient.resize(nodes, Complex32::new(0.0, 0.0));
+        scratch.direction.clear();
+        scratch.direction.resize(nodes, Complex32::new(0.0, 0.0));
+        scratch.candidate.clear();
+        scratch.candidate.extend_from_slice(&self.phasors);
+        let initial = self.report_with_scratch(&mut scratch.gradient);
         let mut current_energy = initial.free_energy;
-        let mut gradient = vec![Complex32::new(0.0, 0.0); self.node_count()];
-        let mut direction = vec![Complex32::new(0.0, 0.0); self.node_count()];
-        let mut candidate = self.phasors.clone();
+        let gradient = &mut scratch.gradient;
+        let direction = &mut scratch.direction;
+        let candidate = &mut scratch.candidate;
         let mut step_size = config.initial_step;
         let mut iterations = 0;
         let mut energy_evaluations = 0;
@@ -788,87 +897,107 @@ impl NativePhasorThermodynamicEngine {
                 candidate.copy_from_slice(&self.phasors);
                 warm_start_applied = true;
             } else {
-                self.phasors.copy_from_slice(&candidate);
+                self.phasors.copy_from_slice(candidate);
             }
         }
 
+        let sequential = nodes < PARALLEL_NODE_THRESHOLD;
+        let coupling = self.config.coupling_strength;
+        let radial = self.config.radial_strength;
+        let target_sqr = self.config.target_amplitude * self.config.target_amplitude;
+        let confinement = self.config.confinement;
+        let max_amplitude = self.config.max_amplitude;
+        let max_amplitude_sqr = max_amplitude * max_amplitude;
+
         for _ in 0..config.max_iterations {
-            self.free_energy_gradient(&self.phasors, &mut gradient);
-            let residual_sum = if self.node_count() < PARALLEL_NODE_THRESHOLD {
-                gradient.iter().map(|value| value.norm_sqr()).sum::<f32>()
+            self.free_energy_gradient(&self.phasors, gradient);
+            let residual_sum = if sequential {
+                gradient
+                    .iter()
+                    .map(|value| f64::from(value.norm_sqr()))
+                    .sum::<f64>()
             } else {
-                gradient.par_iter().map(Complex32::norm_sqr).sum::<f32>()
+                gradient
+                    .par_iter()
+                    .map(|value| f64::from(value.norm_sqr()))
+                    .sum::<f64>()
             };
-            let residual_sqr = residual_sum / self.node_count().max(1) as f32;
-            let residual = residual_sqr.sqrt();
+            let residual = (residual_sum / nodes.max(1) as f64).sqrt() as f32;
             if residual <= config.residual_tolerance {
                 converged = true;
                 break;
             }
 
-            let coupling = self.config.coupling_strength;
-            let radial = self.config.radial_strength;
-            let target_sqr = self.config.target_amplitude * self.config.target_amplitude;
-            let confinement = self.config.confinement;
-            let precondition = |node: usize| {
+            // Precondicionador de Jacobi y derivada direccional comparten el
+            // mismo recorrido: la proyección `<g, d>` se acumula mientras se
+            // escribe `d`.
+            let precondition = |gradient: Complex32, phasor: Complex32, diagonal: f32| {
                 let denominator = if config.jacobi_preconditioner {
-                    (coupling * self.operator.diagonal[node]
-                        + radial * (self.phasors[node].norm_sqr() + target_sqr)
-                        + confinement)
+                    (coupling * diagonal + radial * (phasor.norm_sqr() + target_sqr) + confinement)
                         .max(EPSILON)
                 } else {
                     1.0
                 };
-                gradient[node] / denominator
+                let direction = gradient / denominator;
+                (direction, f64::from((gradient.conj() * direction).re))
             };
-            if self.node_count() < PARALLEL_NODE_THRESHOLD {
-                for (node, value) in direction.iter_mut().enumerate() {
-                    *value = precondition(node);
-                }
+            let directional_derivative = (if sequential {
+                direction
+                    .iter_mut()
+                    .zip(&*gradient)
+                    .zip(&self.phasors)
+                    .zip(&self.operator.diagonal)
+                    .map(|(((value, gradient), phasor), diagonal)| {
+                        let (next, projection) = precondition(*gradient, *phasor, *diagonal);
+                        *value = next;
+                        projection
+                    })
+                    .sum::<f64>()
             } else {
                 direction
                     .par_iter_mut()
-                    .enumerate()
-                    .for_each(|(node, value)| *value = precondition(node));
-            }
-            let directional_derivative = if self.node_count() < PARALLEL_NODE_THRESHOLD {
-                gradient
-                    .iter()
-                    .zip(&direction)
-                    .map(|(gradient, direction)| (gradient.conj() * direction).re)
-                    .sum::<f32>()
-            } else {
-                gradient
-                    .par_iter()
-                    .zip(direction.par_iter())
-                    .map(|(gradient, direction)| (gradient.conj() * direction).re)
-                    .sum::<f32>()
-            }
-            .max(EPSILON);
+                    .zip(gradient.par_iter())
+                    .zip(self.phasors.par_iter())
+                    .zip(self.operator.diagonal.par_iter())
+                    .map(|(((value, gradient), phasor), diagonal)| {
+                        let (next, projection) = precondition(*gradient, *phasor, *diagonal);
+                        *value = next;
+                        projection
+                    })
+                    .sum::<f64>()
+            } as f32)
+                .max(EPSILON);
 
             let mut trial_step = step_size;
             let mut accepted_energy = current_energy;
             let mut accepted = false;
             for _ in 0..config.max_backtracks {
-                let propose = |node: usize| {
-                    let mut next = self.phasors[node] - direction[node] * trial_step;
-                    let amplitude = next.norm();
-                    if amplitude > self.config.max_amplitude {
-                        next *= self.config.max_amplitude / amplitude;
+                let propose = |phasor: Complex32, direction: Complex32| {
+                    let mut next = phasor - direction * trial_step;
+                    let amplitude_sqr = next.norm_sqr();
+                    if amplitude_sqr > max_amplitude_sqr {
+                        next *= max_amplitude / amplitude_sqr.sqrt();
                     }
                     next
                 };
-                if self.node_count() < PARALLEL_NODE_THRESHOLD {
-                    for (node, value) in candidate.iter_mut().enumerate() {
-                        *value = propose(node);
-                    }
+                if sequential {
+                    candidate
+                        .iter_mut()
+                        .zip(&self.phasors)
+                        .zip(&*direction)
+                        .for_each(|((value, phasor), direction)| {
+                            *value = propose(*phasor, *direction);
+                        });
                 } else {
                     candidate
                         .par_iter_mut()
-                        .enumerate()
-                        .for_each(|(node, value)| *value = propose(node));
+                        .zip(self.phasors.par_iter())
+                        .zip(direction.par_iter())
+                        .for_each(|((value, phasor), direction)| {
+                            *value = propose(*phasor, *direction);
+                        });
                 }
-                let trial_energy = self.free_energy_for(&candidate);
+                let trial_energy = self.free_energy_for(candidate);
                 energy_evaluations += 1;
                 if trial_energy
                     <= current_energy - config.armijo_factor * trial_step * directional_derivative
@@ -889,7 +1018,7 @@ impl NativePhasorThermodynamicEngine {
                 break;
             }
             let energy_delta = (current_energy - accepted_energy).max(0.0);
-            self.phasors.copy_from_slice(&candidate);
+            self.phasors.copy_from_slice(candidate);
             self.tick = self.tick.wrapping_add(1);
             current_energy = accepted_energy;
             accepted_steps += 1;
@@ -900,10 +1029,11 @@ impl NativePhasorThermodynamicEngine {
             }
         }
 
-        let final_report = self.report();
+        let final_report = self.report_with_scratch(&mut scratch.gradient);
         if final_report.gradient_residual <= config.residual_tolerance {
             converged = true;
         }
+        self.minimizer_scratch = scratch;
         NativePhasorMinimizationReport {
             initial,
             final_report,
@@ -1031,7 +1161,9 @@ impl NativePhasorThermodynamicEngine {
             .operator
             .edges
             .iter()
-            .any(|edge| edge.phase.sin().abs() > 1.0e-6 || 1.0 - edge.phase.cos() > 1.0e-6)
+            // `transport` es `exp(-i*phase)`, así que `re`/`im` ya contienen
+            // `cos(phase)` y `-sin(phase)` sin recalcular la trigonometría.
+            .any(|edge| edge.transport.im.abs() > 1.0e-6 || 1.0 - edge.transport.re > 1.0e-6)
             || self.stimulus.iter().any(|field| field.norm_sqr() > EPSILON)
             || self.config.entropy_weight * self.effective_temperature() > EPSILON
             || self.config.radial_strength <= EPSILON
@@ -1049,29 +1181,37 @@ impl NativePhasorThermodynamicEngine {
 
     fn free_energy_gradient(&self, phasors: &[Complex32], output: &mut [Complex32]) {
         self.operator.apply(phasors, output);
-        let entropy_state = entropy_state(phasors);
-        let entropy_gain = self.config.entropy_weight * self.effective_temperature();
+        let entropy_gain = self.entropy_gain();
+        let entropy_state = if entropy_gain != 0.0 {
+            entropy_state(phasors)
+        } else {
+            EntropyState::default()
+        };
         let coupling = self.config.coupling_strength;
         let radial = self.config.radial_strength;
         let target_sqr = self.config.target_amplitude * self.config.target_amplitude;
         let confinement = self.config.confinement;
         let stimulus_gain = self.config.stimulus_gain;
-        let complete_gradient = |node: usize, laplacian: Complex32| {
-            let phasor = phasors[node];
-            coupling * laplacian
-                + radial * (phasor.norm_sqr() - target_sqr) * phasor
-                + confinement * phasor
-                - stimulus_gain * self.stimulus[node]
-                + entropy_gradient(phasor, phasor.norm_sqr(), entropy_state, entropy_gain)
+        let complete_gradient = |laplacian: Complex32, phasor: Complex32, field: Complex32| {
+            let norm_sqr = phasor.norm_sqr();
+            coupling * laplacian + radial * (norm_sqr - target_sqr) * phasor + confinement * phasor
+                - stimulus_gain * field
+                + entropy_gradient(phasor, norm_sqr, entropy_state, entropy_gain)
         };
         if output.len() < PARALLEL_NODE_THRESHOLD {
-            for (node, value) in output.iter_mut().enumerate() {
-                *value = complete_gradient(node, *value);
-            }
+            output.iter_mut().zip(phasors).zip(&self.stimulus).for_each(
+                |((value, phasor), field)| {
+                    *value = complete_gradient(*value, *phasor, *field);
+                },
+            );
         } else {
-            output.par_iter_mut().enumerate().for_each(|(node, value)| {
-                *value = complete_gradient(node, *value);
-            });
+            output
+                .par_iter_mut()
+                .zip(phasors.par_iter())
+                .zip(self.stimulus.par_iter())
+                .for_each(|((value, phasor), field)| {
+                    *value = complete_gradient(*value, *phasor, *field);
+                });
         }
     }
 
@@ -1201,7 +1341,7 @@ impl NativePhasorThermodynamicEngine {
             if visited[root] {
                 continue;
             }
-            let root_norm = self.phasors[root].norm();
+            let root_norm = self.phasors[root].norm_sqr().sqrt();
             synchronized[root] = if root_norm > EPSILON {
                 self.phasors[root] / root_norm
             } else {
@@ -1237,53 +1377,120 @@ impl NativePhasorThermodynamicEngine {
         } else {
             0.0
         };
-        self.phasors
-            .par_iter_mut()
-            .enumerate()
-            .for_each(|(node, phasor)| {
-                let amplitude = if can_use_radial_equilibrium {
-                    equilibrium_amplitude
-                } else {
-                    phasor.norm()
-                };
-                *phasor = synchronized[node] * amplitude;
-            });
+        let resynchronize = |phasor: &mut Complex32, synchronized: &Complex32| {
+            let amplitude = if can_use_radial_equilibrium {
+                equilibrium_amplitude
+            } else {
+                phasor.norm_sqr().sqrt()
+            };
+            *phasor = synchronized * amplitude;
+        };
+        if nodes < PARALLEL_NODE_THRESHOLD {
+            self.phasors
+                .iter_mut()
+                .zip(&synchronized)
+                .for_each(|(phasor, target)| {
+                    resynchronize(phasor, target);
+                });
+        } else {
+            self.phasors
+                .par_iter_mut()
+                .zip(synchronized.par_iter())
+                .for_each(|(phasor, target)| resynchronize(phasor, target));
+        }
     }
 
+    /// Evaluación completa de F para un estado candidato. Es la operación que
+    /// más veces se repite por iteración (una por retroceso de Armijo), así que
+    /// los términos local y entrópico comparten un único recorrido.
     fn free_energy_for(&self, phasors: &[Complex32]) -> f32 {
         let coupling = self
             .operator
             .coupling_energy(phasors, self.config.coupling_strength);
         let target_sqr = self.config.target_amplitude * self.config.target_amplitude;
-        let local_energy = |(phasor, field): (&Complex32, &Complex32)| {
-            let radial_delta = phasor.norm_sqr() - target_sqr;
-            0.25 * self.config.radial_strength * radial_delta * radial_delta
-                + 0.5 * self.config.confinement * phasor.norm_sqr()
-                - self.config.stimulus_gain * (phasor.conj() * field).re
+        let radial = self.config.radial_strength;
+        let confinement = self.config.confinement;
+        let stimulus_gain = self.config.stimulus_gain;
+        let entropy_gain = self.entropy_gain();
+        let track_entropy = entropy_gain != 0.0;
+        let contribution = |(phasor, field): (&Complex32, &Complex32)| {
+            let norm_sqr = phasor.norm_sqr();
+            let radial_delta = norm_sqr - target_sqr;
+            let local = 0.25 * radial * radial_delta * radial_delta + 0.5 * confinement * norm_sqr
+                - stimulus_gain * (phasor.conj() * field).re;
+            if track_entropy {
+                let q = norm_sqr + EPSILON;
+                (f64::from(local), f64::from(q), f64::from(q * q.ln()))
+            } else {
+                (f64::from(local), 0.0, 0.0)
+            }
         };
-        let local = if phasors.len() < PARALLEL_NODE_THRESHOLD {
+        let combine = |left: (f64, f64, f64), right: (f64, f64, f64)| {
+            (left.0 + right.0, left.1 + right.1, left.2 + right.2)
+        };
+        let (local, q_sum, q_log_q_sum) = if phasors.len() < PARALLEL_NODE_THRESHOLD {
             phasors
                 .iter()
                 .zip(&self.stimulus)
-                .map(local_energy)
-                .sum::<f32>()
+                .map(contribution)
+                .fold((0.0, 0.0, 0.0), combine)
         } else {
             phasors
                 .par_iter()
                 .zip(self.stimulus.par_iter())
-                .map(local_energy)
-                .sum::<f32>()
+                .map(contribution)
+                .reduce(|| (0.0, 0.0, 0.0), combine)
         };
-        coupling + local
-            - self.config.entropy_weight
-                * self.effective_temperature()
-                * entropy_state(phasors).entropy
+        let local = local as f32;
+        if !track_entropy {
+            return coupling + local;
+        }
+        coupling + local - entropy_gain * entropy_from_wide_sums(q_sum, q_log_q_sum).entropy
     }
 
+    #[inline]
     fn effective_temperature(&self) -> f32 {
-        let mean_temperature =
-            self.temperature.iter().copied().sum::<f32>() / self.temperature.len().max(1) as f32;
-        mean_temperature.max(0.0) * self.config.temperature_scale
+        self.mean_temperature.max(0.0) * self.config.temperature_scale
+    }
+
+    /// Peso `entropy_weight * T_efectiva` del término `-T S`. Cuando vale
+    /// exactamente cero el término entero se anula y el recorrido O(N) con un
+    /// `ln` por nodo que calcula la entropía puede omitirse sin alterar el
+    /// resultado en punto flotante.
+    #[inline]
+    fn entropy_gain(&self) -> f32 {
+        self.config.entropy_weight * self.effective_temperature()
+    }
+}
+
+fn mean_temperature(temperature: &[f32]) -> f32 {
+    temperature.iter().copied().sum::<f32>() / temperature.len().max(1) as f32
+}
+
+/// Acumulador de las métricas por nodo que publica `report`, agrupadas para
+/// que un único recorrido del campo fasorial las produzca todas. Suma en `f64`
+/// por la misma razón que [`entropy_from_wide_sums`].
+#[derive(Clone, Copy, Debug, Default)]
+struct NodeMetrics {
+    radial: f64,
+    confinement: f64,
+    stimulus: f64,
+    residual_sqr: f64,
+    amplitude: f64,
+    active: usize,
+}
+
+impl NodeMetrics {
+    #[inline]
+    fn combine(left: Self, right: Self) -> Self {
+        Self {
+            radial: left.radial + right.radial,
+            confinement: left.confinement + right.confinement,
+            stimulus: left.stimulus + right.stimulus,
+            residual_sqr: left.residual_sqr + right.residual_sqr,
+            amplitude: left.amplitude + right.amplitude,
+            active: left.active + right.active,
+        }
     }
 }
 
@@ -1297,22 +1504,36 @@ struct EntropyState {
 fn entropy_state(phasors: &[Complex32]) -> EntropyState {
     let contribution = |phasor: &Complex32| {
         let q = phasor.norm_sqr() + EPSILON;
-        (q, q * q.ln())
+        (f64::from(q), f64::from(q * q.ln()))
     };
+    let combine = |left: (f64, f64), right: (f64, f64)| (left.0 + right.0, left.1 + right.1);
     let (q_sum, q_log_q_sum) = if phasors.len() < PARALLEL_NODE_THRESHOLD {
-        phasors
-            .iter()
-            .map(contribution)
-            .fold((0.0, 0.0), |left, right| {
-                (left.0 + right.0, left.1 + right.1)
-            })
+        phasors.iter().map(contribution).fold((0.0, 0.0), combine)
     } else {
-        phasors.par_iter().map(contribution).reduce(
-            || (0.0, 0.0),
-            |left, right| (left.0 + right.0, left.1 + right.1),
-        )
+        phasors
+            .par_iter()
+            .map(contribution)
+            .reduce(|| (0.0, 0.0), combine)
     };
-    entropy_from_sums(q_sum, q_log_q_sum)
+    entropy_from_wide_sums(q_sum, q_log_q_sum)
+}
+
+/// Cierre de la entropía a partir de acumuladores de doble precisión.
+///
+/// Los recorridos por debajo del umbral de paralelismo suman en serie, y una
+/// suma encadenada en `f32` sobre decenas de miles de nodos arrastra un error
+/// proporcional a `n`. Acumular en `f64` mantiene la energía libre tan precisa
+/// como la reducción en árbol de `rayon` a cualquier tamaño.
+fn entropy_from_wide_sums(q_sum: f64, q_log_q_sum: f64) -> EntropyState {
+    if q_sum <= f64::from(EPSILON) {
+        EntropyState::default()
+    } else {
+        EntropyState {
+            entropy: (q_sum.ln() - q_log_q_sum / q_sum).max(0.0) as f32,
+            q_sum: q_sum as f32,
+            q_log_q_sum: q_log_q_sum as f32,
+        }
+    }
 }
 
 fn entropy_from_sums(q_sum: f32, q_log_q_sum: f32) -> EntropyState {
@@ -1390,31 +1611,6 @@ fn sanitize_active_inference_config(
         entropy_samples: config.entropy_samples.max(1),
         ..config
     }
-}
-
-#[inline(always)]
-fn gaussian_from_counter(seed: u64, counter: u64) -> f32 {
-    let base = seed ^ counter.wrapping_mul(0x9E37_79B9_7F4A_7C15);
-    unit_from_u64(splitmix64(base))
-        + unit_from_u64(splitmix64(base ^ 0xA24B_AED4_963E_E407))
-        + unit_from_u64(splitmix64(base ^ 0x9FB2_1C65_1E98_DF25))
-        + unit_from_u64(splitmix64(base ^ 0xC13F_A9A9_02A6_328F))
-        + unit_from_u64(splitmix64(base ^ 0x91E1_0DA5_C79E_7B1D))
-        + unit_from_u64(splitmix64(base ^ 0xD1B5_4A32_D192_ED03))
-        - 3.0
-}
-
-#[inline(always)]
-fn unit_from_u64(value: u64) -> f32 {
-    ((value >> 40) as f32) * (1.0 / (1_u32 << 24) as f32)
-}
-
-#[inline(always)]
-fn splitmix64(mut value: u64) -> u64 {
-    value = value.wrapping_add(0x9E37_79B9_7F4A_7C15);
-    value = (value ^ (value >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-    value = (value ^ (value >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-    value ^ (value >> 31)
 }
 
 #[cfg(test)]

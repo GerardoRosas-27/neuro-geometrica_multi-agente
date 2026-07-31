@@ -204,7 +204,7 @@ pub fn generate_dream_recipes(
             }
             for (index, pair) in dream.pair_factors.iter_mut().enumerate() {
                 pair.phase = (pair.phase
-                    + signed_jitter(perturbation_seed ^ 0xA11C_E55, index, 0.08))
+                    + signed_jitter(perturbation_seed ^ 0x0A11_CE55, index, 0.08))
                 .rem_euclid(std::f32::consts::TAU);
                 pair.weight = (pair.weight
                     * (1.0 + signed_jitter(perturbation_seed, index + 97, 0.04)))

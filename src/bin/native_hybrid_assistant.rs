@@ -227,8 +227,7 @@ impl RustLanguageLayer {
             .squeeze(0)?
             .to_vec1::<f32>()?;
         let mut generated = Vec::<u32>::new();
-        let mut position = prompt_tokens.len();
-        for _ in 0..max_tokens {
+        for position in (prompt_tokens.len()..).take(max_tokens) {
             for &recent in generated.iter().rev().take(16) {
                 if let Some(logit) = logits.get_mut(recent as usize) {
                     *logit -= 0.85;
@@ -250,7 +249,6 @@ impl RustLanguageLayer {
                 .forward(&token, position)?
                 .squeeze(0)?
                 .to_vec1::<f32>()?;
-            position += 1;
         }
         let decoded = self.decode(&generated)?;
         let text = sanitize_response(&decoded);
@@ -739,7 +737,8 @@ fn extract_concepts(text: &str) -> Vec<String> {
     let aliases = alias_map();
     let mut concepts = aliases
         .iter()
-        .filter_map(|(surface, concept)| lower.contains(surface).then(|| (*concept).to_string()))
+        .filter(|&(surface, _concept)| lower.contains(surface))
+        .map(|(_surface, concept)| (*concept).to_string())
         .collect::<Vec<_>>();
     let stopwords = [
         "que", "qué", "como", "cómo", "para", "por", "porque", "eres", "soy", "una", "uno", "del",
@@ -893,7 +892,7 @@ fn paged_model_path() -> Result<PathBuf, Box<dyn std::error::Error>> {
 }
 
 fn hex_decode(value: &str) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-    if value.len() % 2 != 0 {
+    if !value.len().is_multiple_of(2) {
         return Err("hex impar".into());
     }
     (0..value.len())

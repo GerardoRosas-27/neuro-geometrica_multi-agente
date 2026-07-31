@@ -8,6 +8,7 @@ use crate::native_phasor_thermodynamic_engine::{
     NativePhasorConfig, NativePhasorError, NativePhasorMinimizationReport,
     NativePhasorMinimizerConfig, NativePhasorThermodynamicEngine,
 };
+use crate::native_rng::signed_unit;
 use crate::native_thermodynamic_cdt::{
     NativeThermoCdtConfig, NativeThermoCdtReport, NativeThermoCdtSubstrate,
 };
@@ -265,23 +266,29 @@ impl NativeHybridPhasorCdtEngine {
 
     /// Fase sleep: revalida la cola volátil y sólo aquí transfiere sus
     /// atractores al CDT. Ante un error, restaura core, memoria y cola.
+    ///
+    /// El rollback evita clonar el motor fasorial y las memorias completas:
+    /// el core sí se clona entero (garantía transaccional), pero el estado
+    /// fasorial se reconstruye desde el core restaurado (el operador es una
+    /// función pura del core) y las ediciones de memoria se deshacen con un
+    /// journal que sólo copia las entradas efectivamente tocadas.
     pub fn sleep_consolidate(&mut self) -> Result<NativeHybridSleepReport, NativeHybridError> {
         self.sleep_cycle = self.sleep_cycle.wrapping_add(1);
         let core_snapshot = self.core.clone();
-        let phasor_snapshot = self.phasor.clone();
-        let memory_snapshot = self.attractors.clone();
-        let pending_snapshot = self.pending.clone();
+        let phasor_state_snapshot = self.phasor.phasors.clone();
+        let phasor_tick_snapshot = self.phasor.tick();
+        let candidates = std::mem::take(&mut self.pending);
+        let mut attractor_journal = Vec::new();
         let cdt_before = self.core.report();
         let memory_before = self.attractors.len();
-        let pending_before = self.pending.len();
+        let pending_before = candidates.len();
 
         let result = (|| {
-            let candidates = std::mem::take(&mut self.pending);
             let mut accepted = 0;
             let mut rejected = 0;
             let mut stability_sum = 0.0;
             let mut consolidated_edges = 0;
-            for candidate in candidates {
+            for candidate in &candidates {
                 self.phasor.recompile_from_core(&self.core)?;
                 self.phasor.phasors.copy_from_slice(&candidate.prototype);
                 let validation = self
@@ -304,7 +311,8 @@ impl NativeHybridPhasorCdtEngine {
                         ((validation.final_report.phase_coherence + 1.0) * 0.5) * stability
                             / (1.0 + validation.final_report.gradient_residual),
                     );
-                    let (_, edges) = self.consolidate_attractor(confidence)?;
+                    let (_, edges) =
+                        self.consolidate_attractor(confidence, &mut attractor_journal)?;
                     consolidated_edges += edges;
                     accepted += 1;
                 } else {
@@ -336,9 +344,15 @@ impl NativeHybridPhasorCdtEngine {
 
         if result.is_err() {
             self.core = core_snapshot;
-            self.phasor = phasor_snapshot;
-            self.attractors = memory_snapshot;
-            self.pending = pending_snapshot;
+            // El operador fasorial es determinista dado el core, así que se
+            // reconstruye en vez de clonarse; luego se repone el campo tal
+            // como lo dejó la última fase wake.
+            if self.phasor.recompile_from_core(&self.core).is_ok() {
+                self.phasor.phasors.copy_from_slice(&phasor_state_snapshot);
+            }
+            self.phasor.set_tick(phasor_tick_snapshot);
+            rollback_attractor_journal(&mut self.attractors, attractor_journal);
+            self.pending = candidates;
         }
         result
     }
@@ -377,25 +391,34 @@ impl NativeHybridPhasorCdtEngine {
         id
     }
 
-    fn stability_probe(&self) -> f32 {
+    /// Sonda de estabilidad in-place: perturba, re-minimiza y mide la
+    /// similitud, y después restaura fasores y tick. El motor queda bit a bit
+    /// como antes de la sonda; evita clonar el Laplaciano magnético por
+    /// candidato.
+    fn stability_probe(&mut self) -> f32 {
         let reference = self.phasor.phasors.clone();
-        let mut probe = self.phasor.clone();
-        for (node, phasor) in probe.phasors.iter_mut().enumerate() {
+        let tick_before = self.phasor.tick();
+        for (node, phasor) in self.phasor.phasors.iter_mut().enumerate() {
             let jitter = self.config.stability_probe_jitter
                 * signed_unit(self.cycle ^ (node as u64).rotate_left(19));
             *phasor = Complex32::from_polar(phasor.norm(), phasor.arg() + jitter);
         }
-        probe.minimize_free_energy(NativePhasorMinimizerConfig {
-            max_iterations: self.config.stability_probe_iterations,
-            topological_warm_start: false,
-            ..self.config.minimizer
-        });
-        attractor_similarity(&reference, &probe.phasors)
+        self.phasor
+            .minimize_free_energy(NativePhasorMinimizerConfig {
+                max_iterations: self.config.stability_probe_iterations,
+                topological_warm_start: false,
+                ..self.config.minimizer
+            });
+        let similarity = attractor_similarity(&reference, &self.phasor.phasors);
+        self.phasor.phasors.copy_from_slice(&reference);
+        self.phasor.set_tick(tick_before);
+        similarity
     }
 
     fn consolidate_attractor(
         &mut self,
         confidence: f32,
+        journal: &mut Vec<AttractorEdit>,
     ) -> Result<(usize, usize), NativeHybridError> {
         let learning_rate = (self.config.consolidation_learning_rate * confidence).clamp(0.0, 1.0);
         for node in 0..self.core.node_count() {
@@ -433,16 +456,26 @@ impl NativeHybridPhasorCdtEngine {
             }
         }
         self.phasor.recompile_from_core(&self.core)?;
-        let id = self.store_or_merge_attractor(confidence);
+        let id = self.store_or_merge_attractor(confidence, journal);
         Ok((id, edge_count))
     }
 
-    fn store_or_merge_attractor(&mut self, confidence: f32) -> usize {
-        if let Some(existing) = self.attractors.iter_mut().find(|attractor| {
+    fn store_or_merge_attractor(
+        &mut self,
+        confidence: f32,
+        journal: &mut Vec<AttractorEdit>,
+    ) -> usize {
+        let merge_index = self.attractors.iter().position(|attractor| {
             attractor_similarity(&attractor.prototype, &self.phasor.phasors)
                 >= self.config.attractor_merge_similarity
-        }) {
+        });
+        if let Some(index) = merge_index {
+            journal.push(AttractorEdit::Merged {
+                index,
+                before: self.attractors[index].clone(),
+            });
             let rate = self.config.consolidation_learning_rate;
+            let existing = &mut self.attractors[index];
             for (stored, observed) in existing.prototype.iter_mut().zip(&self.phasor.phasors) {
                 *stored = *stored * (1.0 - rate) + *observed * rate;
             }
@@ -460,7 +493,10 @@ impl NativeHybridPhasorCdtEngine {
                 .min_by(|left, right| left.1.confidence.total_cmp(&right.1.confidence))
                 .map(|(index, _)| index)
                 .unwrap_or(0);
-            self.attractors.remove(remove);
+            journal.push(AttractorEdit::Removed {
+                index: remove,
+                attractor: self.attractors.remove(remove),
+            });
         }
         let id = self
             .attractors
@@ -468,6 +504,7 @@ impl NativeHybridPhasorCdtEngine {
             .map(|attractor| attractor.id)
             .max()
             .map_or(0, |id| id + 1);
+        journal.push(AttractorEdit::Pushed);
         self.attractors.push(ConsolidatedCdtAttractor {
             id,
             prototype: self.phasor.phasors.clone(),
@@ -476,6 +513,42 @@ impl NativeHybridPhasorCdtEngine {
             consolidations: 1,
         });
         id
+    }
+}
+
+/// Edición reversible sobre la memoria de atractores consolidados. Deshacer
+/// en orden inverso restaura la memoria exacta previa a la transacción sin
+/// clonarla entera por ciclo de sueño.
+enum AttractorEdit {
+    Merged {
+        index: usize,
+        before: ConsolidatedCdtAttractor,
+    },
+    Removed {
+        index: usize,
+        attractor: ConsolidatedCdtAttractor,
+    },
+    Pushed,
+}
+
+fn rollback_attractor_journal(
+    attractors: &mut Vec<ConsolidatedCdtAttractor>,
+    journal: Vec<AttractorEdit>,
+) {
+    for edit in journal.into_iter().rev() {
+        match edit {
+            AttractorEdit::Merged { index, before } => {
+                if index < attractors.len() {
+                    attractors[index] = before;
+                }
+            }
+            AttractorEdit::Removed { index, attractor } => {
+                attractors.insert(index.min(attractors.len()), attractor);
+            }
+            AttractorEdit::Pushed => {
+                attractors.pop();
+            }
+        }
     }
 }
 
@@ -515,18 +588,6 @@ fn sanitize_config(config: NativeHybridConfig) -> NativeHybridConfig {
         max_attractors: config.max_attractors.max(1),
         ..config
     }
-}
-
-fn signed_unit(seed: u64) -> f32 {
-    let value = splitmix64(seed);
-    2.0 * ((value >> 40) as f32) * (1.0 / (1_u32 << 24) as f32) - 1.0
-}
-
-fn splitmix64(mut value: u64) -> u64 {
-    value = value.wrapping_add(0x9E37_79B9_7F4A_7C15);
-    value = (value ^ (value >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-    value = (value ^ (value >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-    value ^ (value >> 31)
 }
 
 #[cfg(test)]

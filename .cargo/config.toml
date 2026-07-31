@@ -1,0 +1,7 @@
+# Afinidad de CPU para los bucles calientes (normas complejas, trigonometría
+# por arista, reducciones rayon). Sin esto, rustc emite código para x86-64
+# genérico y no usa AVX2/FMA aunque el hardware lo soporte.
+# Nota: los binarios quedan específicos de la CPU que compila; quitar al
+# distribuir artefactos a otras máquinas.
+[build]
+rustflags = ["-C", "target-cpu=native"]

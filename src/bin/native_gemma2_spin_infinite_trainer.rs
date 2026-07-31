@@ -1427,7 +1427,7 @@ fn persist_periodically(
     state: &mut TrainingCheckpoint,
     last_checkpoint: &mut Instant,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let periodic = state.cycle % config.checkpoint_every_cycles == 0
+    let periodic = state.cycle.is_multiple_of(config.checkpoint_every_cycles)
         || last_checkpoint.elapsed() >= config.checkpoint_every;
     if periodic {
         capture_checkpoint(engine, state);
@@ -1435,7 +1435,7 @@ fn persist_periodically(
         *last_checkpoint = Instant::now();
         println!("event=checkpoint cycle={}", state.cycle);
     }
-    if state.cycle % config.milestone_every == 0 {
+    if state.cycle.is_multiple_of(config.milestone_every) {
         capture_checkpoint(engine, state);
         save_checkpoint(&config.root, state, true)?;
         prune_milestones(&config.root, config.retain_milestones)?;

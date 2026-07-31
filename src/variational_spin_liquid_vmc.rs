@@ -19,6 +19,10 @@ pub struct VmcSpinConfig {
     pub initial_parameter_scale: f64,
     pub parameter_clamp: f64,
     pub sr_diagonal_shift: f64,
+    /// Tamaño mínimo para usar listas de incidencia cuando el ansatz contiene
+    /// todos los pares. En sistemas pequeños, el barrido contiguo de
+    /// `ansatz_pairs` aprovecha mejor la caché aunque visite más entradas.
+    pub incidence_ratio_min_spins: usize,
     pub seed: u64,
 }
 
@@ -32,9 +36,17 @@ impl Default for VmcSpinConfig {
             initial_parameter_scale: 0.02,
             parameter_clamp: 2.0,
             sr_diagonal_shift: 0.05,
+            // El benchmark CSR pareado sitúa el cruce entre N=8 y N=16.
+            incidence_ratio_min_spins: 16,
             seed: 0x5A17_1A5A_2026_0718,
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum VmcRatioStrategy {
+    ContiguousScan,
+    PairIncidence,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -64,6 +76,11 @@ pub struct ComplexJastrowVmc {
     pub parameters: Vec<Complex64>,
     pub hamiltonian_bonds: Vec<QuantumSpinBond>,
     ansatz_pairs: Vec<(usize, usize)>,
+    /// Incidencia espín→pares en CSR. El almacenamiento plano evita el salto
+    /// de punteros de `Vec<Vec<_>>` y conserva localidad incluso en N pequeño.
+    pair_offsets: Vec<usize>,
+    pair_indices: Vec<usize>,
+    ratio_strategy: VmcRatioStrategy,
     parameter_group: Vec<usize>,
     spins: Vec<i8>,
     rng: SplitMix64,
@@ -90,7 +107,7 @@ impl ComplexJastrowVmc {
         config: VmcSpinConfig,
     ) -> Self {
         assert!(
-            geometry.vertices.len() % 2 == 0,
+            geometry.vertices.len().is_multiple_of(2),
             "VMC fixed-magnetization requires an even number of spins"
         );
         let ansatz_pairs = if config.all_pair_correlations {
@@ -113,6 +130,30 @@ impl ComplexJastrowVmc {
         } else {
             (0..ansatz_pairs.len()).collect()
         };
+        let mut pair_degree = vec![0usize; geometry.vertices.len()];
+        for &(a, b) in &ansatz_pairs {
+            pair_degree[a] += 1;
+            pair_degree[b] += 1;
+        }
+        let mut pair_offsets = vec![0usize; geometry.vertices.len() + 1];
+        for (spin, degree) in pair_degree.into_iter().enumerate() {
+            pair_offsets[spin + 1] = pair_offsets[spin] + degree;
+        }
+        let mut pair_indices = vec![0usize; pair_offsets[geometry.vertices.len()]];
+        let mut cursor = pair_offsets[..geometry.vertices.len()].to_vec();
+        for (pair_index, &(a, b)) in ansatz_pairs.iter().enumerate() {
+            pair_indices[cursor[a]] = pair_index;
+            cursor[a] += 1;
+            pair_indices[cursor[b]] = pair_index;
+            cursor[b] += 1;
+        }
+        let ratio_strategy = if config.all_pair_correlations
+            && geometry.vertices.len() < config.incidence_ratio_min_spins
+        {
+            VmcRatioStrategy::ContiguousScan
+        } else {
+            VmcRatioStrategy::PairIncidence
+        };
         let parameter_count = parameter_group.iter().copied().max().unwrap_or(0) + 1;
         let mut rng = SplitMix64::new(config.seed);
         let parameters = (0..parameter_count)
@@ -131,6 +172,9 @@ impl ComplexJastrowVmc {
             parameters,
             hamiltonian_bonds,
             ansatz_pairs,
+            pair_offsets,
+            pair_indices,
+            ratio_strategy,
             parameter_group,
             spins,
             rng,
@@ -148,6 +192,10 @@ impl ComplexJastrowVmc {
 
     pub fn configuration(&self) -> &[i8] {
         &self.spins
+    }
+
+    pub fn ratio_strategy(&self) -> VmcRatioStrategy {
+        self.ratio_strategy
     }
 
     pub fn log_wavefunction(&self, spins: &[i8]) -> Complex64 {
@@ -368,30 +416,51 @@ impl ComplexJastrowVmc {
     }
 
     fn log_ratio_exchange(&self, spins: &[i8], i: usize, j: usize) -> Complex64 {
-        self.ansatz_pairs
-            .iter()
-            .enumerate()
-            .filter_map(|(pair_index, &(a, b))| {
-                let touches_i = a == i || b == i;
-                let touches_j = a == j || b == j;
-                if !touches_i && !touches_j {
-                    return None;
-                }
-                let old = spins[a] as f64 * spins[b] as f64;
-                let new_a = if a == i || a == j {
-                    -spins[a]
-                } else {
-                    spins[a]
+        let pair_delta = |pair_index: usize| {
+            let (a, b) = self.ansatz_pairs[pair_index];
+            let old = spins[a] as f64 * spins[b] as f64;
+            let new_a = if a == i || a == j {
+                -spins[a]
+            } else {
+                spins[a]
+            };
+            let new_b = if b == i || b == j {
+                -spins[b]
+            } else {
+                spins[b]
+            };
+            let new = new_a as f64 * new_b as f64;
+            self.parameters[self.parameter_group[pair_index]] * (new - old)
+        };
+        match self.ratio_strategy {
+            VmcRatioStrategy::ContiguousScan => self
+                .ansatz_pairs
+                .iter()
+                .enumerate()
+                .filter(|(_, &(a, b))| a == i || b == i || a == j || b == j)
+                .map(|(pair_index, _)| pair_delta(pair_index))
+                .sum(),
+            VmcRatioStrategy::PairIncidence => {
+                let incident_i = &self.pair_indices[self.pair_offsets[i]..self.pair_offsets[i + 1]];
+                let incident_j = &self.pair_indices[self.pair_offsets[j]..self.pair_offsets[j + 1]];
+                let single_flip_delta = |pair_index: usize, other: usize| {
+                    let (a, b) = self.ansatz_pairs[pair_index];
+                    if a == other || b == other {
+                        // El par (i,j) toca ambos espines: ambos signos cambian
+                        // y su producto queda idéntico.
+                        Complex64::new(0.0, 0.0)
+                    } else {
+                        let old = spins[a] as f64 * spins[b] as f64;
+                        self.parameters[self.parameter_group[pair_index]] * (-2.0 * old)
+                    }
                 };
-                let new_b = if b == i || b == j {
-                    -spins[b]
-                } else {
-                    spins[b]
-                };
-                let new = new_a as f64 * new_b as f64;
-                Some(self.parameters[self.parameter_group[pair_index]] * (new - old))
-            })
-            .sum()
+                incident_i
+                    .iter()
+                    .map(|&pair| single_flip_delta(pair, j))
+                    .chain(incident_j.iter().map(|&pair| single_flip_delta(pair, i)))
+                    .sum()
+            }
+        }
     }
 
     fn log_derivatives(&self, spins: &[i8]) -> Vec<f64> {
@@ -468,16 +537,59 @@ mod tests {
 
     #[test]
     fn log_ratio_matches_direct_wavefunction_difference() {
-        let vmc = vmc(8);
-        let before = vmc.log_wavefunction(vmc.configuration());
-        let mut exchanged = vmc.configuration().to_vec();
-        let i = 0;
-        let j = 1;
-        exchanged[i] = -exchanged[i];
-        exchanged[j] = -exchanged[j];
-        let direct = vmc.log_wavefunction(&exchanged) - before;
-        let local = vmc.log_ratio_exchange(vmc.configuration(), i, j);
-        assert!((direct - local).norm() < 1.0e-12);
+        for spins in [8, 16] {
+            let vmc = vmc(spins);
+            let expected = if spins < VmcSpinConfig::default().incidence_ratio_min_spins {
+                VmcRatioStrategy::ContiguousScan
+            } else {
+                VmcRatioStrategy::PairIncidence
+            };
+            assert_eq!(vmc.ratio_strategy(), expected);
+            let before = vmc.log_wavefunction(vmc.configuration());
+            for (i, j) in [(0, 1), (2, 5), (3, spins - 1)] {
+                let mut exchanged = vmc.configuration().to_vec();
+                exchanged[i] = -exchanged[i];
+                exchanged[j] = -exchanged[j];
+                let direct = vmc.log_wavefunction(&exchanged) - before;
+                let local = vmc.log_ratio_exchange(vmc.configuration(), i, j);
+                assert!(
+                    (direct - local).norm() < 1.0e-12,
+                    "spins={spins} i={i} j={j}: direct={direct:?} local={local:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn hybrid_ratio_switches_to_incidence_at_scale() {
+        assert_eq!(vmc(8).ratio_strategy(), VmcRatioStrategy::ContiguousScan);
+        assert_eq!(vmc(16).ratio_strategy(), VmcRatioStrategy::PairIncidence);
+        assert_eq!(vmc(32).ratio_strategy(), VmcRatioStrategy::PairIncidence);
+    }
+
+    #[test]
+    fn contiguous_and_incidence_ratios_are_numerically_equivalent() {
+        let fixture = vmc(16);
+        let mut contiguous = ComplexJastrowVmc::new_with_bonds(
+            fixture.geometry.clone(),
+            fixture.hamiltonian_bonds.clone(),
+            VmcSpinConfig {
+                incidence_ratio_min_spins: usize::MAX,
+                ..fixture.config
+            },
+        );
+        let incidence = fixture;
+        contiguous.parameters.clone_from(&incidence.parameters);
+        assert_eq!(
+            contiguous.ratio_strategy(),
+            VmcRatioStrategy::ContiguousScan
+        );
+        assert_eq!(incidence.ratio_strategy(), VmcRatioStrategy::PairIncidence);
+        for (i, j) in [(0, 1), (2, 5), (3, 15)] {
+            let dense_ratio = contiguous.log_ratio_exchange(contiguous.configuration(), i, j);
+            let sparse_ratio = incidence.log_ratio_exchange(contiguous.configuration(), i, j);
+            assert!((dense_ratio - sparse_ratio).norm() < 1.0e-12);
+        }
     }
 
     #[test]

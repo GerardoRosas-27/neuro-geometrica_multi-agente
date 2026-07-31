@@ -807,6 +807,10 @@ fn inner_product(left: &[Complex64], right: &[Complex64]) -> Complex64 {
         .sum()
 }
 
+// Las rotaciones de Jacobi actualizan pares de filas y columnas cruzadas
+// in-place sobre la misma matriz; la forma indexada es la idiomática aquí y
+// una versión con iteradores requeriría `split_at_mut` sin ganar claridad.
+#[allow(clippy::needless_range_loop)]
 fn symmetric_tridiagonal_eigenvalues(diagonal: &[f64], off_diagonal: &[f64]) -> Vec<f64> {
     let size = diagonal.len();
     let mut matrix = vec![vec![0.0; size]; size];

@@ -173,7 +173,10 @@ impl AdaptiveThermoMemory {
 
     pub fn should_revalidate(&self) -> bool {
         self.config.revalidate_every > 0
-            && self.state.generation % self.config.revalidate_every == 0
+            && self
+                .state
+                .generation
+                .is_multiple_of(self.config.revalidate_every)
     }
 
     pub fn context_fingerprint(&self, token_ids: &[u32]) -> ActivationFingerprint {
@@ -220,6 +223,9 @@ impl AdaptiveThermoMemory {
         progressive_candidate_masks(trace, &self.config)
     }
 
+    // API relacional posicional: agrupar los argumentos en un struct sólo
+    // añadiría ruido en los sitios de llamada del benchmark adaptativo.
+    #[allow(clippy::too_many_arguments)]
     pub fn observe(
         &mut self,
         context: ActivationFingerprint,
