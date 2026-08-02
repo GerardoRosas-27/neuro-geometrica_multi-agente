@@ -1269,7 +1269,8 @@ impl NativePhasorThermodynamicEngine {
                 for ((weight, value), phasor) in
                     attention.iter_mut().zip(&*direction).zip(&self.phasors)
                 {
-                    let logit = (value.norm()).ln_1p() * inverse_temperature - max_logit;
+                    let logit = (value.norm() / mean_direction_norm).ln_1p() * inverse_temperature
+                        - max_logit;
                     *weight = logit.exp();
                     normalizer += f64::from(*weight);
                     weighted_log_weight += f64::from(*weight) * f64::from(logit);

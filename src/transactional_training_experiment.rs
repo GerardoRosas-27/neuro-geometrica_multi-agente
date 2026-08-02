@@ -360,7 +360,13 @@ fn training_engine(
                 attention_strength: if modulated { 0.55 } else { 0.0 },
                 attention_temperature: 0.75,
                 attention_max_gain: 3.0,
-                attention_ignition_threshold: 0.001,
+                // La ignición tiene que ser un evento selectivo. Con la
+                // saliencia medida contra la media, Φ vive en torno a 1e-2
+                // durante el descenso: un umbral por debajo de eso enciende
+                // el foco en casi toda iteración, y una atención permanente
+                // amplifica correcciones justo en la región que la inferencia
+                // no puede determinar.
+                attention_ignition_threshold: 0.02,
                 handshake_max_gain: 3.0,
                 inference_policy: if modulated {
                     NativePhasorInferencePolicy::Adaptive
