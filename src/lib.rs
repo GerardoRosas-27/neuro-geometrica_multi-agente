@@ -42,6 +42,9 @@ pub mod symmetry_guided_rqm_epr;
 pub mod symmetry_thermodynamic_substrate;
 pub mod thermo_router;
 pub mod thermodynamic_attractor_comparison;
+/// Comparación de estructuras temporales de inferencia: evidencia sola,
+/// evidencia como frontera y dos vectores de estado con post-selección.
+pub mod transactional_training_experiment;
 pub mod transformation_family_discovery;
 pub mod unified_spin_cognitive_engine;
 /// VMC Jastrow complejo. Estado: validado contra energía exacta en tests,

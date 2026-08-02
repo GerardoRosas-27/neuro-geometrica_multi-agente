@@ -5,8 +5,8 @@
 //! persistentes sin depender de RQM ni EPR.
 
 use crate::native_phasor_thermodynamic_engine::{
-    NativePhasorConfig, NativePhasorError, NativePhasorMinimizationReport,
-    NativePhasorMinimizerConfig, NativePhasorThermodynamicEngine,
+    NativePhasorConfig, NativePhasorError, NativePhasorInferencePolicy,
+    NativePhasorMinimizationReport, NativePhasorMinimizerConfig, NativePhasorThermodynamicEngine,
 };
 use crate::native_rng::signed_unit;
 use crate::native_thermodynamic_cdt::{
@@ -30,15 +30,52 @@ pub struct NativeHybridConfig {
     pub attractor_merge_similarity: f32,
     pub max_attractors: usize,
     pub cdt_consolidation_steps: usize,
+    /// Penalización MDL por escribir un atractor novedoso en memoria CDT.
+    /// La topología es fija: representa costo de estado, no nuevos símplices.
+    pub storage_complexity_weight: f32,
+    /// Beneficio de precisión estable dentro del filtro variacional.
+    pub storage_precision_weight: f32,
+    /// Se consolida sólo cuando ΔF_store no supera este umbral.
+    pub maximum_storage_delta_free_energy: f32,
+    /// Escribe la cue también en el estímulo, de modo que entre en F como
+    /// término de frontera `-g·Re(ψ*·s)` y no sólo como condición inicial.
+    /// Es lo que da a Handshake una frontera que propagar. Sleep siempre
+    /// revalida sin ella: un atractor debe sostenerse por la geometría, no
+    /// por el estímulo que lo evocó.
+    pub cue_as_boundary: bool,
+    /// Peso con el que sleep vuelve a evocar la frontera del propio episodio
+    /// durante la revalidación. Cero exige que el patrón ya sea atractor de la
+    /// geometría actual, lo que impide aprender nada que el prior no soporte
+    /// todavía. Un eco débil permite que la consolidación arranque sin que la
+    /// frontera sostenga el recuerdo por sí sola.
+    pub sleep_replay_boundary_gain: f32,
+    /// Cristaliza cada arista sólo en la medida en que el episodio ancló sus
+    /// dos extremos. Sin esto, la consolidación reescribe también la región
+    /// que la inferencia tuvo que inventar y cada episodio borra lo que
+    /// aprendió el anterior.
+    pub anchored_consolidation: bool,
 }
 
 impl Default for NativeHybridConfig {
     fn default() -> Self {
         Self {
+            // Con la cue como frontera, wake es el régimen para el que se
+            // diseñó el ciclo: inferencia dirigida por una condición de
+            // contorno desde un estado corrompido. Medido en
+            // `native_hybrid_cue_boundary_benchmark`, es la única variante que
+            // entra en el presupuesto de residuo de consolidación, y además
+            // despierta más rápido que Armijo puro.
             minimizer: NativePhasorMinimizerConfig {
                 max_iterations: 400,
                 residual_tolerance: 5.0e-3,
                 topological_warm_start: false,
+                handshake_strength: 0.65,
+                attention_strength: 0.55,
+                attention_temperature: 0.75,
+                attention_max_gain: 3.0,
+                attention_ignition_threshold: 0.001,
+                handshake_max_gain: 3.0,
+                inference_policy: NativePhasorInferencePolicy::Adaptive,
                 ..NativePhasorMinimizerConfig::default()
             },
             consolidation_learning_rate: 0.18,
@@ -51,6 +88,12 @@ impl Default for NativeHybridConfig {
             attractor_merge_similarity: 0.985,
             max_attractors: 128,
             cdt_consolidation_steps: 2,
+            storage_complexity_weight: 0.005,
+            storage_precision_weight: 0.01,
+            maximum_storage_delta_free_energy: 0.0,
+            cue_as_boundary: true,
+            sleep_replay_boundary_gain: 0.0,
+            anchored_consolidation: false,
         }
     }
 }
@@ -87,6 +130,14 @@ pub struct PendingPhasorAttractor {
     pub free_energy: f32,
     pub confidence: f32,
     pub observations: u64,
+    /// Reducción normalizada de F observada durante wake.
+    pub relative_energy_drop: f32,
+    /// Frontera que evocó el episodio, para poder replicarla atenuada durante
+    /// el replay de sueño. Vacía cuando la inferencia no tuvo frontera.
+    pub boundary: Vec<Complex32>,
+    /// Anclaje por nodo del episodio: 1 donde la evidencia o la meta fijaron
+    /// el estado, 0 donde la inferencia tuvo que inventarlo.
+    pub anchors: Vec<f32>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -109,6 +160,10 @@ pub struct NativeHybridSleepReport {
     pub revalidated: usize,
     pub accepted: usize,
     pub rejected: usize,
+    pub rejected_by_efficiency: usize,
+    /// Media de ΔF_store = complejidad - beneficio para candidatos revalidados.
+    pub mean_storage_delta_free_energy: f32,
+    /// Media sobre los candidatos que llegaron a la sonda de estabilidad.
     pub mean_stability: f32,
     pub consolidated_edges: usize,
     pub memory_before: usize,
@@ -201,10 +256,26 @@ impl NativeHybridPhasorCdtEngine {
         &mut self,
         cue: &[NativePhasorCue],
     ) -> Result<NativeWakeInferenceReport, NativeHybridError> {
+        self.infer_and_stage_with_goal(cue, &[])
+    }
+
+    /// Wake con estructura de dos vectores de estado: `cue` fija la evidencia
+    /// hacia adelante y `goal` fija la frontera hacia atrás por la que se
+    /// post-selecciona. Ambas coexisten en F cuando `cue_as_boundary` está
+    /// activo: el pasado pre-selecciona y el futuro post-selecciona.
+    ///
+    /// Los nodos de `goal` no se escriben en el estado: sólo entran en F como
+    /// término de frontera, de modo que la inferencia tiene que reconciliar
+    /// evidencia y meta en lugar de recibir la respuesta puesta.
+    pub fn infer_and_stage_with_goal(
+        &mut self,
+        cue: &[NativePhasorCue],
+        goal: &[NativePhasorCue],
+    ) -> Result<NativeWakeInferenceReport, NativeHybridError> {
         if cue.is_empty() {
             return Err(NativeHybridError::EmptyCue);
         }
-        for item in cue {
+        for item in cue.iter().chain(goal) {
             if item.node >= self.core.node_count() {
                 return Err(NativeHybridError::InvalidCueNode {
                     node: item.node,
@@ -215,9 +286,20 @@ impl NativeHybridPhasorCdtEngine {
 
         self.cycle = self.cycle.wrapping_add(1);
         self.phasor.clear_stimulus();
+        let cue_is_boundary = self.config.cue_as_boundary;
+        let mut anchors = vec![0.0f32; self.core.node_count()];
         for item in cue {
-            self.phasor.phasors[item.node] =
+            let field = Complex32::from_polar(item.amplitude.max(EPSILON), item.phase);
+            self.phasor.phasors[item.node] = field;
+            anchors[item.node] = 1.0;
+            if cue_is_boundary {
+                self.phasor.stimulus[item.node] = field;
+            }
+        }
+        for item in goal {
+            self.phasor.stimulus[item.node] =
                 Complex32::from_polar(item.amplitude.max(EPSILON), item.phase);
+            anchors[item.node] = 1.0;
         }
         let minimization = self.phasor.minimize_free_energy(self.config.minimizer);
         let initial_energy = minimization.initial.free_energy;
@@ -247,7 +329,12 @@ impl NativeHybridPhasorCdtEngine {
         let confidence = ((minimization.final_report.phase_coherence + 1.0) * 0.5)
             / (1.0 + minimization.final_report.gradient_residual);
         let pending_id = if gate.passed {
-            Some(self.stage_pending_attractor(confidence, minimization.final_report.free_energy))
+            Some(self.stage_pending_attractor(
+                confidence,
+                minimization.final_report.free_energy,
+                relative_energy_drop,
+                anchors,
+            ))
         } else {
             None
         };
@@ -278,6 +365,12 @@ impl NativeHybridPhasorCdtEngine {
         let phasor_state_snapshot = self.phasor.phasors.clone();
         let phasor_tick_snapshot = self.phasor.tick();
         let candidates = std::mem::take(&mut self.pending);
+        // La consolidación mide si el patrón se sostiene por la geometría del
+        // CDT, no por la frontera que lo evocó. Cada candidato repone la suya
+        // atenuada por `sleep_replay_boundary_gain`; con ganancia cero la
+        // revalidación es completamente libre de frontera.
+        self.phasor.clear_stimulus();
+        let replay_gain = self.config.sleep_replay_boundary_gain;
         let mut attractor_journal = Vec::new();
         let cdt_before = self.core.report();
         let memory_before = self.attractors.len();
@@ -286,11 +379,21 @@ impl NativeHybridPhasorCdtEngine {
         let result = (|| {
             let mut accepted = 0;
             let mut rejected = 0;
+            let mut rejected_by_efficiency = 0;
             let mut stability_sum = 0.0;
+            let mut stability_probes = 0usize;
+            let mut storage_delta_sum = 0.0;
             let mut consolidated_edges = 0;
             for candidate in &candidates {
                 self.phasor.recompile_from_core(&self.core)?;
                 self.phasor.phasors.copy_from_slice(&candidate.prototype);
+                if replay_gain > 0.0 && candidate.boundary.len() == self.phasor.stimulus.len() {
+                    for (field, evoked) in
+                        self.phasor.stimulus.iter_mut().zip(&candidate.boundary)
+                    {
+                        *field = *evoked * replay_gain;
+                    }
+                }
                 let validation = self
                     .phasor
                     .minimize_free_energy(NativePhasorMinimizerConfig {
@@ -298,27 +401,52 @@ impl NativeHybridPhasorCdtEngine {
                         topological_warm_start: false,
                         ..self.config.minimizer
                     });
-                let stability = self.stability_probe();
-                stability_sum += stability;
-                let valid = validation.final_report.free_energy
+                // La sonda de estabilidad es otra minimización completa, así
+                // que sólo se paga cuando los criterios baratos ya pasaron.
+                let quality = validation.final_report.free_energy
                     <= validation.initial.free_energy + 1.0e-6
                     && validation.final_report.gradient_residual <= self.config.maximum_residual
                     && validation.final_report.phase_coherence
-                        >= self.config.minimum_magnetic_coherence
-                    && stability >= self.config.minimum_stability;
+                        >= self.config.minimum_magnetic_coherence;
+                let stability = if quality {
+                    let measured = self.stability_probe();
+                    stability_sum += measured;
+                    stability_probes += 1;
+                    measured
+                } else {
+                    0.0
+                };
+                let valid = quality && stability >= self.config.minimum_stability;
                 if valid {
                     let confidence = candidate.confidence.min(
                         ((validation.final_report.phase_coherence + 1.0) * 0.5) * stability
                             / (1.0 + validation.final_report.gradient_residual),
                     );
-                    let (_, edges) =
-                        self.consolidate_attractor(confidence, &mut attractor_journal)?;
-                    consolidated_edges += edges;
-                    accepted += 1;
+                    let revalidation_drop = ((validation.initial.free_energy
+                        - validation.final_report.free_energy)
+                        / validation.initial.free_energy.abs().max(1.0))
+                    .max(0.0);
+                    let storage_delta =
+                        self.storage_delta_free_energy(candidate, stability, revalidation_drop);
+                    storage_delta_sum += storage_delta;
+                    if storage_delta <= self.config.maximum_storage_delta_free_energy {
+                        let (_, edges) = self.consolidate_attractor(
+                            confidence,
+                            &candidate.anchors,
+                            &mut attractor_journal,
+                        )?;
+                        consolidated_edges += edges;
+                        accepted += 1;
+                    } else {
+                        rejected += 1;
+                        rejected_by_efficiency += 1;
+                    }
                 } else {
                     rejected += 1;
                 }
             }
+            // El eco del replay no sobrevive al ciclo de sueño.
+            self.phasor.clear_stimulus();
 
             let mut cdt_after = self.core.report();
             if accepted > 0 {
@@ -333,7 +461,10 @@ impl NativeHybridPhasorCdtEngine {
                 revalidated: accepted + rejected,
                 accepted,
                 rejected,
-                mean_stability: stability_sum / (accepted + rejected).max(1) as f32,
+                rejected_by_efficiency,
+                mean_storage_delta_free_energy: storage_delta_sum
+                    / (accepted + rejected_by_efficiency).max(1) as f32,
+                mean_stability: stability_sum / stability_probes.max(1) as f32,
                 consolidated_edges,
                 memory_before,
                 memory_size: self.attractors.len(),
@@ -365,7 +496,13 @@ impl NativeHybridPhasorCdtEngine {
         true
     }
 
-    fn stage_pending_attractor(&mut self, confidence: f32, free_energy: f32) -> u64 {
+    fn stage_pending_attractor(
+        &mut self,
+        confidence: f32,
+        free_energy: f32,
+        relative_energy_drop: f32,
+        anchors: Vec<f32>,
+    ) -> u64 {
         let observed = self.phasor.phasors.clone();
         if let Some(existing) = self.pending.iter_mut().find(|candidate| {
             attractor_similarity(&candidate.prototype, &observed)
@@ -378,6 +515,16 @@ impl NativeHybridPhasorCdtEngine {
             existing.free_energy = free_energy;
             existing.confidence += rate * (confidence - existing.confidence);
             existing.observations += 1;
+            existing.relative_energy_drop +=
+                rate * (relative_energy_drop - existing.relative_energy_drop);
+            for (stored, value) in existing.boundary.iter_mut().zip(&self.phasor.stimulus) {
+                *stored = *stored * (1.0 - rate) + *value * rate;
+            }
+            // El anclaje se acumula: dos episodios con máscaras distintas
+            // cubren juntos más geometría que cualquiera por separado.
+            for (stored, value) in existing.anchors.iter_mut().zip(&anchors) {
+                *stored = stored.max(*value);
+            }
             return existing.id;
         }
         let id = self.cycle;
@@ -387,8 +534,45 @@ impl NativeHybridPhasorCdtEngine {
             free_energy,
             confidence,
             observations: 1,
+            relative_energy_drop,
+            boundary: self.phasor.stimulus.clone(),
+            anchors,
         });
         id
+    }
+
+    /// ΔF variacional del acto de almacenar. Un patrón nuevo cuesta más que
+    /// fusionar uno conocido; la caída de F y su precisión estable pagan ese
+    /// costo. Un valor positivo se considera compresión ineficiente.
+    fn storage_delta_free_energy(
+        &self,
+        candidate: &PendingPhasorAttractor,
+        stability: f32,
+        revalidation_drop: f32,
+    ) -> f32 {
+        // El barrido es O(memoria × nodos). Al cruzar el umbral de fusión el
+        // candidato ya no crea una entrada nueva, así que se corta: la
+        // similitud hallada es una cota inferior de la real y por tanto
+        // sobreestima el costo, nunca lo subestima.
+        let mut maximum_similarity = 0.0f32;
+        for attractor in &self.attractors {
+            maximum_similarity = maximum_similarity
+                .max(attractor_similarity(&attractor.prototype, &candidate.prototype));
+            if maximum_similarity >= self.config.attractor_merge_similarity {
+                break;
+            }
+        }
+        let novelty = (1.0 - maximum_similarity).clamp(0.0, 1.0);
+        let evidence_discount = (candidate.observations.max(1) as f32).sqrt().recip();
+        let complexity = self.config.storage_complexity_weight * novelty * evidence_discount;
+        let energy_benefit = candidate.relative_energy_drop + revalidation_drop;
+        // La precisión que paga el almacenamiento es que el patrón vuelva a
+        // emerger tras perturbarlo: eso es lo que reduce sorpresa futura. La
+        // coherencia magnética ya se filtra en el gate de wake; volver a
+        // multiplicar por ella aquí re-impondría en silencio un mínimo de
+        // coherencia que el llamador pudo desactivar a propósito.
+        let precision_benefit = self.config.storage_precision_weight * stability;
+        complexity - energy_benefit - precision_benefit
     }
 
     /// Sonda de estabilidad in-place: perturba, re-minimiza y mide la
@@ -418,16 +602,29 @@ impl NativeHybridPhasorCdtEngine {
     fn consolidate_attractor(
         &mut self,
         confidence: f32,
+        anchors: &[f32],
         journal: &mut Vec<AttractorEdit>,
     ) -> Result<(usize, usize), NativeHybridError> {
         let learning_rate = (self.config.consolidation_learning_rate * confidence).clamp(0.0, 1.0);
+        // Sólo se graba donde el episodio estuvo anclado. La región que la
+        // inferencia tuvo que inventar se deja como estaba en vez de escribir
+        // ruido encima de lo que aprendieron episodios anteriores.
+        let anchor_at = |node: usize| {
+            if self.config.anchored_consolidation {
+                anchors.get(node).copied().unwrap_or(0.0).clamp(0.0, 1.0)
+            } else {
+                1.0
+            }
+        };
         for node in 0..self.core.node_count() {
+            let rate = learning_rate * anchor_at(node);
+            if rate <= 0.0 {
+                continue;
+            }
             let target = self.phasor.phasors[node];
-            self.core.amplitude[node] +=
-                learning_rate * (target.norm() - self.core.amplitude[node]);
-            self.core.phase[node] = blend_phase(self.core.phase[node], target.arg(), learning_rate);
-            self.core.thermal_state[node] +=
-                learning_rate * (target.re - self.core.thermal_state[node]);
+            self.core.amplitude[node] += rate * (target.norm() - self.core.amplitude[node]);
+            self.core.phase[node] = blend_phase(self.core.phase[node], target.arg(), rate);
+            self.core.thermal_state[node] += rate * (target.re - self.core.thermal_state[node]);
         }
 
         let edge_count = self
@@ -440,6 +637,12 @@ impl NativeHybridPhasorCdtEngine {
         for edge in 0..edge_count {
             let a = self.core.edge_a[edge];
             let b = self.core.edge_b[edge];
+            // Una arista sólo cristaliza si el apretón de manos se cerró en
+            // sus dos extremos; basta un extremo inventado para no grabarla.
+            let rate = learning_rate * anchor_at(a).min(anchor_at(b));
+            if rate <= 0.0 {
+                continue;
+            }
             let preferred_phase = (self.phasor.phasors[b].arg() - self.phasor.phasors[a].arg())
                 .rem_euclid(std::f32::consts::TAU);
             let observed_strength =
@@ -447,11 +650,11 @@ impl NativeHybridPhasorCdtEngine {
             let old =
                 Complex32::from_polar(self.core.edge_weight[edge], self.core.edge_phase[edge]);
             let observed = Complex32::from_polar(observed_strength, preferred_phase);
-            let consolidated = old * (1.0 - learning_rate) + observed * learning_rate;
+            let consolidated = old * (1.0 - rate) + observed * rate;
             self.core.edge_weight[edge] = consolidated.norm();
             self.core.edge_phase[edge] = consolidated.arg().rem_euclid(std::f32::consts::TAU);
             if let Some(stability) = self.core.edge_stability.get_mut(edge) {
-                *stability += learning_rate * (confidence - *stability);
+                *stability += rate * (confidence - *stability);
                 *stability = (*stability).clamp(0.0, 1.0);
             }
         }
@@ -479,7 +682,7 @@ impl NativeHybridPhasorCdtEngine {
             for (stored, observed) in existing.prototype.iter_mut().zip(&self.phasor.phasors) {
                 *stored = *stored * (1.0 - rate) + *observed * rate;
             }
-            existing.free_energy = self.phasor.report().free_energy;
+            existing.free_energy = self.phasor.free_energy();
             existing.confidence += rate * (confidence - existing.confidence);
             existing.consolidations += 1;
             return existing.id;
@@ -508,7 +711,7 @@ impl NativeHybridPhasorCdtEngine {
         self.attractors.push(ConsolidatedCdtAttractor {
             id,
             prototype: self.phasor.phasors.clone(),
-            free_energy: self.phasor.report().free_energy,
+            free_energy: self.phasor.free_energy(),
             confidence,
             consolidations: 1,
         });
@@ -586,6 +789,9 @@ fn sanitize_config(config: NativeHybridConfig) -> NativeHybridConfig {
         stability_probe_iterations: config.stability_probe_iterations.max(1),
         attractor_merge_similarity: config.attractor_merge_similarity.clamp(0.0, 1.0),
         max_attractors: config.max_attractors.max(1),
+        storage_complexity_weight: config.storage_complexity_weight.max(0.0),
+        storage_precision_weight: config.storage_precision_weight.max(0.0),
+        sleep_replay_boundary_gain: config.sleep_replay_boundary_gain.clamp(0.0, 1.0),
         ..config
     }
 }
@@ -631,8 +837,15 @@ mod tests {
                 phase: if node % 3 == 0 { 0.12 } else { 2.7 },
             })
             .collect::<Vec<_>>();
+        // El aislado recibe la cue igual que wake: estado inicial y, si está
+        // configurada como frontera, también estímulo. Así la comparación
+        // sigue midiendo que wake no añade dinámica propia.
         for item in &cue {
-            standalone.phasors[item.node] = Complex32::from_polar(item.amplitude, item.phase);
+            let field = Complex32::from_polar(item.amplitude, item.phase);
+            standalone.phasors[item.node] = field;
+            if hybrid.config.cue_as_boundary {
+                standalone.stimulus[item.node] = field;
+            }
         }
         let standalone_report = standalone.minimize_free_energy(hybrid.config.minimizer);
         let wake_report = hybrid.infer_and_stage(&cue).unwrap();
@@ -725,6 +938,85 @@ mod tests {
         let sleep = engine.sleep_consolidate().unwrap();
         assert_eq!(sleep.pending_before, 0);
         assert_eq!(sleep.accepted, 0);
+        assert_eq!(engine.core.phase, phases_before);
+    }
+
+    #[test]
+    fn cue_enters_free_energy_only_when_configured_as_boundary() {
+        for cue_as_boundary in [false, true] {
+            let mut engine = engine(NativeHybridConfig {
+                cue_as_boundary,
+                ..NativeHybridConfig::default()
+            });
+            let cue = vec![NativePhasorCue {
+                node: 0,
+                amplitude: 1.0,
+                phase: 0.4,
+            }];
+            engine.infer_and_stage(&cue).unwrap();
+            let boundary_norm = engine
+                .phasor
+                .stimulus
+                .iter()
+                .map(|value| value.norm_sqr())
+                .sum::<f32>();
+            assert_eq!(boundary_norm > 0.0, cue_as_boundary);
+        }
+    }
+
+    #[test]
+    fn sleep_revalidates_without_the_cue_boundary() {
+        let mut engine = engine(NativeHybridConfig {
+            cue_as_boundary: true,
+            minimum_relative_energy_drop: 0.0,
+            ..NativeHybridConfig::default()
+        });
+        let cue = (0..engine.core.node_count())
+            .map(|node| NativePhasorCue {
+                node,
+                amplitude: 1.0,
+                phase: 0.15,
+            })
+            .collect::<Vec<_>>();
+        engine.infer_and_stage(&cue).unwrap();
+        assert!(engine.phasor.stimulus.iter().any(|value| value.norm() > 0.0));
+
+        engine.sleep_consolidate().unwrap();
+        // Un atractor debe sostenerse por la geometría del CDT, no por el
+        // estímulo que lo evocó.
+        assert!(engine
+            .phasor
+            .stimulus
+            .iter()
+            .all(|value| value.norm() == 0.0));
+    }
+
+    #[test]
+    fn variational_storage_filter_rejects_an_inefficient_new_memory() {
+        let mut engine = engine(NativeHybridConfig {
+            minimum_relative_energy_drop: 0.0,
+            minimum_stability: 0.90,
+            storage_complexity_weight: 100.0,
+            storage_precision_weight: 0.0,
+            maximum_storage_delta_free_energy: 0.0,
+            ..NativeHybridConfig::default()
+        });
+        let phases_before = engine.core.phase.clone();
+        let cue = (0..engine.core.node_count())
+            .map(|node| NativePhasorCue {
+                node,
+                amplitude: 1.0,
+                phase: if node % 2 == 0 { 0.0 } else { 0.2 },
+            })
+            .collect::<Vec<_>>();
+        let wake = engine.infer_and_stage(&cue).unwrap();
+        assert!(wake.gate.passed, "{wake:?}");
+
+        let sleep = engine.sleep_consolidate().unwrap();
+        assert_eq!(sleep.accepted, 0, "{sleep:?}");
+        assert_eq!(sleep.rejected_by_efficiency, 1, "{sleep:?}");
+        assert!(sleep.mean_storage_delta_free_energy > 0.0, "{sleep:?}");
+        assert!(engine.attractors().is_empty());
         assert_eq!(engine.core.phase, phases_before);
     }
 }

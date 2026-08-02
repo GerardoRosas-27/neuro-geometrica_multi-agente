@@ -1,5 +1,6 @@
 use cdt_rqm_epr::native_phasor_thermodynamic_engine::{
-    NativePhasorConfig, NativePhasorMinimizerConfig, NativePhasorThermodynamicEngine,
+    NativePhasorConfig, NativePhasorInferencePolicy, NativePhasorMinimizerConfig,
+    NativePhasorThermodynamicEngine,
 };
 use cdt_rqm_epr::native_rng::{splitmix64, unit_from_u64};
 use cdt_rqm_epr::native_thermodynamic_cdt::{NativeThermoCdtConfig, NativeThermoCdtSubstrate};
@@ -159,6 +160,9 @@ fn minimizer_config(attention_strength: f32) -> NativePhasorMinimizerConfig {
         attention_strength,
         attention_temperature: 0.75,
         attention_max_gain: 4.0,
+        // Este banco aísla la atención pura: la programación adaptativa la
+        // apagaría a mitad del descenso y mediría otra cosa.
+        inference_policy: NativePhasorInferencePolicy::Fixed,
         ..NativePhasorMinimizerConfig::default()
     }
 }
