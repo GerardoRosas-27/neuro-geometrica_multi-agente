@@ -1,21 +1,22 @@
 //! Gemma 2 con enrutamiento adaptativo y memoria termodinámica de dos velocidades.
 
 use candle_core::quantized::gguf_file;
-use candle_core::{Device, Tensor};
-use candle_transformers::generation::LogitsProcessor;
+use candle_core::Tensor;
 use cdt_rqm_epr::adaptive_gemma2::{
     AdaptiveGemma2Config, AdaptiveThermoMemory, RecalledLayerRoute,
 };
+use cdt_rqm_epr::gemma_phasor_coupling::{GemmaPhasorCouplingConfig, GemmaPhasorWorker};
 use cdt_rqm_epr::native_gemma2::{
-    resolve_gemma2_model_path, Gemma2ForwardOutput, Gemma2Tokenizer, LayerExecutionMask,
-    QuantizedGemma2,
+    resolve_gemma2_device, resolve_gemma2_model_path, Gemma2ForwardOutput, Gemma2Tokenizer,
+    LayerExecutionMask, QuantizedGemma2,
 };
+use cdt_rqm_epr::native_gemma2_runtime::{chat_tokens, Gemma2GenerationConfig, Gemma2Session};
 use cdt_rqm_epr::thermo_router::{ActivationFingerprint, TransformerActivationAdapter};
 use std::env;
 use std::fs::File;
 use std::io::{self, Write};
 use std::path::PathBuf;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 const DEFAULT_MAX_TOKENS: usize = 256;
 const DEFAULT_CONTEXT: usize = 2_048;
@@ -31,6 +32,8 @@ struct Config {
     top_p: f64,
     prompt: Option<String>,
     sleep_only: bool,
+    device: String,
+    thermo: bool,
 }
 
 struct PreparedForward {
@@ -66,11 +69,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("GGUF: {}", model_path.display());
     println!("Memoria: {}", config.state_root.display());
     let started = Instant::now();
-    let device = Device::Cpu;
+    let device = resolve_gemma2_device(&config.device)?;
     let mut file = File::open(&model_path)?;
     let content = gguf_file::Content::read(&mut file)?;
     let tokenizer = Gemma2Tokenizer::from_gguf(&content)?;
     let mut model = QuantizedGemma2::from_gguf(content, &mut file, &device)?;
+    let mut session = Gemma2Session::new();
+    let thermo = config
+        .thermo
+        .then(|| GemmaPhasorWorker::start(GemmaPhasorCouplingConfig::default()))
+        .transpose()?;
     let context_limit = config.context.min(model.max_context());
     println!(
         "Listo en {:.1}s; capas={} contexto={}",
@@ -84,6 +92,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             &mut model,
             &tokenizer,
             &mut memory,
+            &mut session,
+            thermo.as_ref(),
             &[],
             prompt,
             &config,
@@ -115,7 +125,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         if input.eq_ignore_ascii_case("/limpiar") {
             history.clear();
-            model.clear_kv_cache();
+            session.reset(&mut model);
             println!("Historial y KV cache borrados.");
             continue;
         }
@@ -131,6 +141,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             &mut model,
             &tokenizer,
             &mut memory,
+            &mut session,
+            thermo.as_ref(),
             &history,
             input,
             &config,
@@ -147,10 +159,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+// La interacción adaptativa coordina cuatro estados con ciclos de vida
+// distintos; mantenerlos visibles evita ocultar resets transaccionales.
+#[allow(clippy::too_many_arguments)]
 fn answer(
     model: &mut QuantizedGemma2,
     tokenizer: &Gemma2Tokenizer,
     memory: &mut AdaptiveThermoMemory,
+    session: &mut Gemma2Session,
+    thermo: Option<&GemmaPhasorWorker>,
     history: &[(String, String)],
     input: &str,
     config: &Config,
@@ -171,15 +188,47 @@ fn answer(
         prepared.fallback,
         prepared.recalled_memory_tokens
     );
-    let rendered = generate(
+    session.adopt_prefill(&prompt_tokens, Some(&prepared.mask), prepared.output.logits)?;
+    print!("\nGemma> ");
+    io::stdout().flush()?;
+    let generation = session.generate_observed(
         model,
         tokenizer,
-        prepared.output.logits,
-        &prepared.mask,
-        prompt_tokens.len(),
-        config,
-        context_limit,
+        &prompt_tokens,
+        Some(&prepared.mask),
+        Gemma2GenerationConfig {
+            max_tokens: config.max_tokens,
+            context_limit,
+            temperature: config.temperature,
+            top_p: config.top_p,
+            seed: 0x4745_4D4D_4132,
+        },
+        |fragment| {
+            print!("{fragment}");
+            let _ = io::stdout().flush();
+        },
+        |token, position| {
+            if let Some(worker) = thermo {
+                worker.observe_token(token, position);
+            }
+        },
+        |_| false,
     )?;
+    eprintln!(
+        "\n[TTFT={:.3}s decode={:.2} tok/s tokens={}]",
+        generation.metrics.time_to_first_token_seconds,
+        generation.metrics.decode_tokens_per_second(),
+        generation.metrics.generated_tokens,
+    );
+    if let Some(report) = thermo.and_then(|worker| worker.snapshot(Duration::from_millis(100))) {
+        eprintln!(
+            "[fasores concurrentes: tokens={} steps={} F={:.4} coherencia={:.4}]",
+            report.observed_tokens,
+            report.phasor_steps,
+            report.state.free_energy,
+            report.state.phase_coherence,
+        );
+    }
     memory.observe(
         prepared.context_fingerprint,
         prepared.activation_fingerprint,
@@ -189,7 +238,7 @@ fn answer(
         prepared.route_id,
         prepared.fallback,
     )?;
-    Ok(rendered)
+    Ok(generation.text)
 }
 
 fn prepare_forward(
@@ -197,7 +246,7 @@ fn prepare_forward(
     memory: &mut AdaptiveThermoMemory,
     prompt_tokens: &[u32],
 ) -> Result<PreparedForward, Box<dyn std::error::Error>> {
-    let prompt = Tensor::new(prompt_tokens, &Device::Cpu)?.unsqueeze(0)?;
+    let prompt = Tensor::new(prompt_tokens, model.device())?.unsqueeze(0)?;
     let context_fingerprint = memory.context_fingerprint(prompt_tokens);
     let recalled = memory.recall(&context_fingerprint, model.layer_count());
     if let Some(route) = recalled.as_ref().filter(|_| !memory.should_revalidate()) {
@@ -250,21 +299,31 @@ fn prepare_forward(
     }
 
     let full_logits = full.logits.squeeze(0)?.to_vec1::<f32>()?;
-    let mut best = None::<(LayerExecutionMask, f32)>;
+    let mut best = None::<(LayerExecutionMask, f32, Gemma2ForwardOutput)>;
     let mut last_quality = 0.0;
-    for candidate in candidates {
+    let mut cache_matches_best = false;
+    for candidate in candidates
+        .into_iter()
+        .take(memory.config.max_candidate_prefills)
+    {
         model.clear_kv_cache();
         let sparse = model.forward_with_mask(&prompt, 0, Some(&candidate), false)?;
         let sparse_logits = sparse.logits.squeeze(0)?.to_vec1::<f32>()?;
         last_quality = logit_agreement(&full_logits, &sparse_logits);
         if last_quality < memory.config.min_verified_quality {
+            cache_matches_best = false;
             break;
         }
-        best = Some((candidate, last_quality));
+        best = Some((candidate, last_quality, sparse));
+        cache_matches_best = true;
     }
-    if let Some((candidate, quality)) = best {
-        model.clear_kv_cache();
-        let output = model.forward_with_mask(&prompt, 0, Some(&candidate), true)?;
+    if let Some((candidate, quality, sparse)) = best {
+        let output = if cache_matches_best {
+            sparse
+        } else {
+            model.clear_kv_cache();
+            model.forward_with_mask(&prompt, 0, Some(&candidate), false)?
+        };
         return Ok(PreparedForward {
             output,
             mask: candidate,
@@ -322,57 +381,6 @@ fn full_fallback(
     })
 }
 
-fn generate(
-    model: &mut QuantizedGemma2,
-    tokenizer: &Gemma2Tokenizer,
-    logits: Tensor,
-    mask: &LayerExecutionMask,
-    prompt_length: usize,
-    config: &Config,
-    context_limit: usize,
-) -> Result<String, Box<dyn std::error::Error>> {
-    print!("\nGemma> ");
-    io::stdout().flush()?;
-    let mut logits = logits.squeeze(0)?;
-    let mut sampler = LogitsProcessor::new(
-        0x4745_4D4D_4132,
-        Some(config.temperature),
-        Some(config.top_p),
-    );
-    let mut generated = Vec::<u32>::new();
-    let mut rendered = String::new();
-    let started = Instant::now();
-    for _ in 0..config.max_tokens {
-        let token = sampler.sample(&logits)?;
-        if token == tokenizer.eos_id || Some(token) == tokenizer.end_of_turn_id {
-            break;
-        }
-        generated.push(token);
-        let decoded = tokenizer.decode(&generated, true)?;
-        if let Some(delta) = decoded.strip_prefix(&rendered) {
-            print!("{delta}");
-            io::stdout().flush()?;
-        }
-        rendered = decoded;
-        if prompt_length + generated.len() >= context_limit {
-            break;
-        }
-        let next = Tensor::new(&[token], &Device::Cpu)?.unsqueeze(0)?;
-        logits = model
-            .forward_with_mask(
-                &next,
-                prompt_length + generated.len() - 1,
-                Some(mask),
-                false,
-            )?
-            .logits
-            .squeeze(0)?;
-    }
-    let speed = generated.len() as f64 / started.elapsed().as_secs_f64().max(f64::EPSILON);
-    eprintln!("\n[generados={}, {:.2} tok/s]", generated.len(), speed);
-    Ok(rendered.trim().to_string())
-}
-
 fn output_confidence(logits: &[f32]) -> f32 {
     TransformerActivationAdapter::new(8)
         .capture(logits)
@@ -409,33 +417,6 @@ fn logit_agreement(full: &[f32], sparse: &[f32]) -> f32 {
     (-4.0 * relative_rmse).exp() as f32
 }
 
-fn chat_tokens(
-    tokenizer: &Gemma2Tokenizer,
-    history: &[(String, String)],
-    input: &str,
-    limit: usize,
-) -> Result<Vec<u32>, Box<dyn std::error::Error>> {
-    for skip in 0..=history.len() {
-        let mut prompt = String::new();
-        for (user, assistant) in &history[skip..] {
-            prompt.push_str("<start_of_turn>user\n");
-            prompt.push_str(user);
-            prompt.push_str("<end_of_turn>\n<start_of_turn>model\n");
-            prompt.push_str(assistant);
-            prompt.push_str("<end_of_turn>\n");
-        }
-        prompt.push_str("<start_of_turn>user\n");
-        prompt.push_str(input);
-        prompt.push_str("<end_of_turn>\n<start_of_turn>model\n");
-        let mut tokens = vec![tokenizer.bos_id];
-        tokens.extend(tokenizer.encode(&prompt)?);
-        if tokens.len() <= limit {
-            return Ok(tokens);
-        }
-    }
-    Err(format!("el mensaje excede el límite de {limit} tokens").into())
-}
-
 fn parse_args() -> Result<Config, Box<dyn std::error::Error>> {
     let mut config = Config {
         model: None,
@@ -446,6 +427,8 @@ fn parse_args() -> Result<Config, Box<dyn std::error::Error>> {
         top_p: 0.95,
         prompt: None,
         sleep_only: false,
+        device: "cpu".to_string(),
+        thermo: true,
     };
     let mut args = env::args().skip(1);
     while let Some(argument) = args.next() {
@@ -462,10 +445,13 @@ fn parse_args() -> Result<Config, Box<dyn std::error::Error>> {
             "--top-p" => config.top_p = required(&mut args, "--top-p")?.parse()?,
             "--prompt" => config.prompt = Some(required(&mut args, "--prompt")?),
             "--sleep-only" => config.sleep_only = true,
+            "--device" => config.device = required(&mut args, "--device")?,
+            "--no-thermo" => config.thermo = false,
             "--help" | "-h" => {
                 println!(
                     "Uso: native_gemma2_adaptive_chat [--model GGUF] [--state-root DIR] \
-                     [--prompt TEXTO] [--max-tokens N] [--context N] [--sleep-only]"
+                     [--prompt TEXTO] [--max-tokens N] [--context N] [--device cpu|cuda:N] \\
+                     [--sleep-only] [--no-thermo]"
                 );
                 std::process::exit(0);
             }

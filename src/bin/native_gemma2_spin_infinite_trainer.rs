@@ -5,10 +5,11 @@
 //! CDT–spin-liquid–RQM/EPR.
 
 use candle_core::quantized::gguf_file;
-use candle_core::{Device, Tensor};
-use candle_transformers::generation::LogitsProcessor;
 use cdt_rqm_epr::matrix_free_cognitive_substrate::LatentConceptId;
-use cdt_rqm_epr::native_gemma2::{resolve_gemma2_model_path, Gemma2Tokenizer, QuantizedGemma2};
+use cdt_rqm_epr::native_gemma2::{
+    resolve_gemma2_device, resolve_gemma2_model_path, Gemma2Tokenizer, QuantizedGemma2,
+};
+use cdt_rqm_epr::native_gemma2_runtime::{Gemma2GenerationConfig, Gemma2Session};
 use cdt_rqm_epr::relational_field::ObserverId;
 use cdt_rqm_epr::symmetry_guided_rqm_epr::{RqmPhaseRelationState, RqmRelationKey};
 use cdt_rqm_epr::unified_spin_cognitive_engine::{
@@ -270,7 +271,6 @@ struct LanguagePlanningZone {
 struct GemmaTeacher {
     model: QuantizedGemma2,
     tokenizer: Gemma2Tokenizer,
-    device: Device,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -640,16 +640,13 @@ impl TrainerConfig {
 
 impl GemmaTeacher {
     fn load(path: &Path) -> Result<Self, Box<dyn std::error::Error>> {
-        let device = Device::Cpu;
+        let device_name = env::var("GEMMA2_DEVICE").unwrap_or_else(|_| "cpu".to_string());
+        let device = resolve_gemma2_device(&device_name)?;
         let mut file = File::open(path)?;
         let content = gguf_file::Content::read(&mut file)?;
         let tokenizer = Gemma2Tokenizer::from_gguf(&content)?;
         let model = QuantizedGemma2::from_gguf(content, &mut file, &device)?;
-        Ok(Self {
-            model,
-            tokenizer,
-            device,
-        })
+        Ok(Self { model, tokenizer })
     }
 
     fn ask(
@@ -692,24 +689,23 @@ impl GemmaTeacher {
         );
         let mut prompt_tokens = vec![self.tokenizer.bos_id];
         prompt_tokens.extend(self.tokenizer.encode(&prompt)?);
-        self.model.clear_kv_cache();
-        let input = Tensor::new(prompt_tokens.as_slice(), &self.device)?.unsqueeze(0)?;
-        let mut logits = self.model.forward(&input, 0)?.squeeze(0)?;
-        let mut sampler = LogitsProcessor::new(seed, Some(0.05), Some(0.90));
-        let mut generated = Vec::new();
-        for _ in 0..max_tokens {
-            let token = sampler.sample(&logits)?;
-            if token == self.tokenizer.eos_id || Some(token) == self.tokenizer.end_of_turn_id {
-                break;
-            }
-            generated.push(token);
-            let next = Tensor::new(&[token], &self.device)?.unsqueeze(0)?;
-            logits = self
-                .model
-                .forward(&next, prompt_tokens.len() + generated.len() - 1)?
-                .squeeze(0)?;
-        }
-        Ok(self.tokenizer.decode(&generated, true)?.trim().to_string())
+        let context_limit = self.model.max_context();
+        let mut session = Gemma2Session::new();
+        let generation = session.generate(
+            &mut self.model,
+            &self.tokenizer,
+            &prompt_tokens,
+            None,
+            Gemma2GenerationConfig {
+                max_tokens,
+                context_limit,
+                temperature: 0.05,
+                top_p: 0.90,
+                seed,
+            },
+            |_| {},
+        )?;
+        Ok(generation.text)
     }
 }
 

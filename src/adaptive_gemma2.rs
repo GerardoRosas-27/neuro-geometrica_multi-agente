@@ -30,6 +30,9 @@ pub struct AdaptiveGemma2Config {
     pub minimum_executed_layers: usize,
     pub revalidate_every: u64,
     pub max_routes: usize,
+    /// Número máximo de prefills candidatos permitidos durante una
+    /// revalidación interactiva. Acota los picos de TTFT.
+    pub max_candidate_prefills: usize,
     pub sleep_decay: f32,
     pub protected_utility: f32,
     pub relation_budget: usize,
@@ -44,6 +47,7 @@ impl Default for AdaptiveGemma2Config {
             minimum_executed_layers: 8,
             revalidate_every: 16,
             max_routes: 2_048,
+            max_candidate_prefills: 1,
             sleep_decay: 0.995,
             protected_utility: 0.85,
             relation_budget: 16_384,

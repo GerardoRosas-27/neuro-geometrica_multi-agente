@@ -5,7 +5,7 @@
 
 use candle_core::quantized::{gguf_file, QMatMul};
 use candle_core::{DType, Device, IndexOp, Module, Result, Tensor};
-use candle_nn::Embedding;
+use candle_nn::kv_cache::{KvCache, RotatingKvCache};
 use candle_transformers::quantized_nn::RmsNorm;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
@@ -161,6 +161,35 @@ impl RotaryEmbedding {
 }
 
 #[derive(Debug, Clone)]
+enum LayerKvCache {
+    Full(KvCache),
+    Sliding(RotatingKvCache),
+}
+
+impl LayerKvCache {
+    fn append(&mut self, key: &Tensor, value: &Tensor) -> Result<(Tensor, Tensor)> {
+        match self {
+            Self::Full(cache) => cache.append(key, value),
+            Self::Sliding(cache) => cache.append(key, value),
+        }
+    }
+
+    fn key_positions(&self, sequence_length: usize) -> Option<Vec<usize>> {
+        match self {
+            Self::Full(_) => None,
+            Self::Sliding(cache) => Some(cache.positions(sequence_length)),
+        }
+    }
+
+    fn reset(&mut self) {
+        match self {
+            Self::Full(cache) => cache.reset(),
+            Self::Sliding(cache) => cache.reset(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 struct Layer {
     query: QMatMul,
     key: QMatMul,
@@ -178,48 +207,20 @@ struct Layer {
     attention_softcap: f64,
     sliding_window: Option<usize>,
     rotary: RotaryEmbedding,
-    kv_cache: Option<(Tensor, Tensor)>,
+    kv_cache: LayerKvCache,
 }
 
 impl Layer {
-    fn attention_mask(
-        &self,
-        batch: usize,
-        query_length: usize,
-        position: usize,
-        dtype: DType,
-        device: &Device,
-    ) -> Result<Option<Tensor>> {
-        let key_length = position + query_length;
-        if query_length == 1
-            && self
-                .sliding_window
-                .is_none_or(|window| key_length <= window)
-        {
-            return Ok(None);
-        }
-        let mut values = Vec::with_capacity(query_length * key_length);
-        for query_index in 0..query_length {
-            let absolute_query = position + query_index;
-            for key_index in 0..key_length {
-                let causal = key_index <= absolute_query;
-                let in_window = self
-                    .sliding_window
-                    .is_none_or(|window| key_index + window > absolute_query);
-                values.push(if causal && in_window {
-                    0.0f32
-                } else {
-                    f32::NEG_INFINITY
-                });
-            }
-        }
-        let mask = Tensor::from_vec(values, (query_length, key_length), device)?
-            .expand((batch, 1, query_length, key_length))?
-            .to_dtype(dtype)?;
-        Ok(Some(mask))
+    fn key_positions(&self, sequence_length: usize) -> Option<Vec<usize>> {
+        self.kv_cache.key_positions(sequence_length)
     }
 
-    fn attention(&mut self, xs: &Tensor, position: usize) -> Result<Tensor> {
+    fn attention(
+        &mut self,
+        xs: &Tensor,
+        position: usize,
+        attention_mask: Option<&Tensor>,
+    ) -> Result<Tensor> {
         let (batch, sequence_length, _) = xs.dims3()?;
         let query = self
             .query
@@ -237,33 +238,20 @@ impl Layer {
             .reshape((batch, sequence_length, self.kv_heads, self.head_dim))?
             .transpose(1, 2)?;
         let (query, key) = self.rotary.apply(&query, &key, position)?;
-        let (key, value) = match &self.kv_cache {
-            Some((cached_key, cached_value)) if position > 0 => (
-                Tensor::cat(&[cached_key, &key], 2)?,
-                Tensor::cat(&[cached_value, &value], 2)?,
-            ),
-            _ => (key, value),
-        };
-        self.kv_cache = Some((key.clone(), value.clone()));
-        let key = repeat_kv(key, self.heads / self.kv_heads)?.contiguous()?;
-        let value = repeat_kv(value, self.heads / self.kv_heads)?.contiguous()?;
-        let mut weights = (query.matmul(&key.transpose(2, 3)?)? * self.query_scale)?;
-        weights = ((&weights / self.attention_softcap)?.tanh()? * self.attention_softcap)?;
-        if let Some(mask) = self.attention_mask(
-            batch,
-            sequence_length,
-            position,
-            weights.dtype(),
-            weights.device(),
-        )? {
-            weights = weights.broadcast_add(&mask)?;
-        }
-        let weights = candle_nn::ops::softmax_last_dim(&weights)?;
-        let attended = weights.matmul(&value)?.transpose(1, 2)?.reshape((
-            batch,
-            sequence_length,
-            self.heads * self.head_dim,
-        ))?;
+        let (key, value) = self
+            .kv_cache
+            .append(&key.contiguous()?, &value.contiguous()?)?;
+        let attended = grouped_query_attention(
+            &query,
+            &key,
+            &value,
+            self.heads / self.kv_heads,
+            self.query_scale,
+            self.attention_softcap,
+            attention_mask,
+        )?
+        .transpose(1, 2)?
+        .reshape((batch, sequence_length, self.heads * self.head_dim))?;
         self.output.forward(&attended)
     }
 }
@@ -271,7 +259,7 @@ impl Layer {
 /// Transformer Gemma 2 cuantizado cargado directamente desde un GGUF.
 #[derive(Debug, Clone)]
 pub struct QuantizedGemma2 {
-    embeddings: Embedding,
+    embeddings: QMatMul,
     embedding_length: usize,
     layers: Vec<Layer>,
     norm: RmsNorm,
@@ -279,6 +267,7 @@ pub struct QuantizedGemma2 {
     final_softcap: f64,
     max_context: usize,
     active_mask: Option<LayerExecutionMask>,
+    device: Device,
 }
 
 impl QuantizedGemma2 {
@@ -314,11 +303,12 @@ impl QuantizedGemma2 {
             .or_else(|| metadata_f64_optional(&content, "gemma2.final_logit_softcapping"))
             .unwrap_or(DEFAULT_FINAL_SOFTCAP);
 
-        let embeddings_quantized = content.tensor(reader, "token_embd.weight", device)?;
-        let embeddings = embeddings_quantized.dequantize(device)?;
-        let output_quantized = content
-            .tensor(reader, "output.weight", device)
-            .unwrap_or(embeddings_quantized);
+        let embeddings =
+            QMatMul::from_qtensor(content.tensor(reader, "token_embd.weight", device)?)?;
+        let output = match content.tensor(reader, "output.weight", device) {
+            Ok(output) => QMatMul::from_qtensor(output)?,
+            Err(_) => embeddings.clone(),
+        };
         let norm = RmsNorm::from_qtensor(
             content.tensor(reader, "output_norm.weight", device)?,
             rms_epsilon,
@@ -362,18 +352,23 @@ impl QuantizedGemma2 {
                 attention_softcap,
                 sliding_window: (layer_index % 2 == 0).then_some(sliding_window),
                 rotary: rotary.clone(),
-                kv_cache: None,
+                kv_cache: if layer_index % 2 == 0 {
+                    LayerKvCache::Sliding(RotatingKvCache::new(2, sliding_window))
+                } else {
+                    LayerKvCache::Full(KvCache::new(2, max_context))
+                },
             });
         }
         Ok(Self {
-            embeddings: Embedding::new(embeddings, embedding_length),
+            embeddings,
             embedding_length,
             layers,
             norm,
-            output: QMatMul::from_qtensor(output_quantized)?,
+            output,
             final_softcap,
             max_context,
             active_mask: None,
+            device: device.clone(),
         })
     }
 
@@ -416,7 +411,45 @@ impl QuantizedGemma2 {
             );
         }
         let mut hidden =
-            (self.embeddings.forward(token_ids)? * (self.embedding_length as f64).sqrt())?;
+            (self.embeddings.embedding(token_ids)? * (self.embedding_length as f64).sqrt())?;
+        let global_mask = if sequence_length == 1 {
+            None
+        } else {
+            let key_positions = (0..position + sequence_length).collect::<Vec<_>>();
+            build_attention_mask(
+                hidden.dim(0)?,
+                sequence_length,
+                position,
+                &key_positions,
+                None,
+                hidden.dtype(),
+                hidden.device(),
+            )?
+        };
+        let local_mask = if sequence_length == 1 {
+            None
+        } else {
+            let local_key_positions = self
+                .layers
+                .iter()
+                .enumerate()
+                .find(|(index, layer)| {
+                    requested_mask.executes(*index) && layer.sliding_window.is_some()
+                })
+                .and_then(|(_, layer)| layer.key_positions(sequence_length));
+            match local_key_positions {
+                Some(key_positions) => build_attention_mask(
+                    hidden.dim(0)?,
+                    sequence_length,
+                    position,
+                    &key_positions,
+                    self.layers.iter().find_map(|layer| layer.sliding_window),
+                    hidden.dtype(),
+                    hidden.device(),
+                )?,
+                None => None,
+            }
+        };
         let mut trace = Gemma2ForwardTrace {
             layers: Vec::with_capacity(self.layers.len()),
             executed_layers: 0,
@@ -438,7 +471,12 @@ impl QuantizedGemma2 {
             let input_rms = capture_trace.then(|| tensor_rms(&hidden)).transpose()?;
             let residual = &hidden;
             let normalized = layer.attention_norm.forward(&hidden)?;
-            let attended = layer.attention(&normalized, position)?;
+            let attention_mask = if layer.sliding_window.is_some() {
+                local_mask.as_ref()
+            } else {
+                global_mask.as_ref()
+            };
+            let attended = layer.attention(&normalized, position, attention_mask)?;
             let attended = layer.post_attention_norm.forward(&attended)?;
             hidden = (&attended + residual)?;
             let residual = &hidden;
@@ -470,7 +508,7 @@ impl QuantizedGemma2 {
 
     pub fn clear_kv_cache(&mut self) {
         for layer in &mut self.layers {
-            layer.kv_cache = None;
+            layer.kv_cache.reset();
         }
         self.active_mask = None;
     }
@@ -482,6 +520,113 @@ impl QuantizedGemma2 {
     pub fn layer_count(&self) -> usize {
         self.layers.len()
     }
+
+    pub fn device(&self) -> &Device {
+        &self.device
+    }
+
+    pub fn embedding_storage_bytes(&self) -> usize {
+        match &self.embeddings {
+            QMatMul::QTensor(tensor) => tensor.storage_size_in_bytes(),
+            QMatMul::Tensor(tensor) | QMatMul::TensorF16(tensor) => {
+                tensor.elem_count() * tensor.dtype().size_in_bytes()
+            }
+        }
+    }
+
+    pub fn embedding_logical_f32_bytes(&self) -> usize {
+        match &self.embeddings {
+            QMatMul::QTensor(tensor) => tensor.shape().elem_count() * std::mem::size_of::<f32>(),
+            QMatMul::Tensor(tensor) | QMatMul::TensorF16(tensor) => {
+                tensor.elem_count() * std::mem::size_of::<f32>()
+            }
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_attention_mask(
+    batch: usize,
+    query_length: usize,
+    position: usize,
+    key_positions: &[usize],
+    sliding_window: Option<usize>,
+    dtype: DType,
+    device: &Device,
+) -> Result<Option<Tensor>> {
+    if query_length == 1 {
+        return Ok(None);
+    }
+    let mut masked = false;
+    let mut values = Vec::with_capacity(query_length * key_positions.len());
+    for query_index in 0..query_length {
+        let absolute_query = position + query_index;
+        for &absolute_key in key_positions {
+            let causal = absolute_key <= absolute_query;
+            let in_window =
+                sliding_window.is_none_or(|window| absolute_key + window > absolute_query);
+            let value = if causal && in_window {
+                0.0f32
+            } else {
+                masked = true;
+                f32::NEG_INFINITY
+            };
+            values.push(value);
+        }
+    }
+    if !masked {
+        return Ok(None);
+    }
+    Tensor::from_vec(values, (query_length, key_positions.len()), device)?
+        .expand((batch, 1, query_length, key_positions.len()))?
+        .to_dtype(dtype)
+        .map(Some)
+}
+
+fn grouped_query_attention(
+    query: &Tensor,
+    key: &Tensor,
+    value: &Tensor,
+    groups: usize,
+    scale: f64,
+    softcap: f64,
+    attention_mask: Option<&Tensor>,
+) -> Result<Tensor> {
+    let (_, query_heads, query_length, head_dim) = query.dims4()?;
+    let (_, key_value_heads, _, key_head_dim) = key.dims4()?;
+    if key_head_dim != head_dim || query_heads != key_value_heads * groups {
+        candle_core::bail!(
+            "GQA incompatible: query_heads={query_heads}, kv_heads={key_value_heads}, \
+             groups={groups}, query_dim={head_dim}, key_dim={key_head_dim}"
+        );
+    }
+    if query_length > 4 {
+        // Prefill: un matmul batched amortiza la copia contigua.
+        let repeated_key = repeat_kv(key.clone(), groups)?.contiguous()?;
+        let repeated_value = repeat_kv(value.clone(), groups)?.contiguous()?;
+        let mut weights = (query.matmul(&repeated_key.transpose(2, 3)?)? * scale)?;
+        weights = ((&weights / softcap)?.tanh()? * softcap)?;
+        if let Some(mask) = attention_mask {
+            weights = weights.broadcast_add(mask)?;
+        }
+        return candle_nn::ops::softmax_last_dim(&weights)?.matmul(&repeated_value);
+    }
+
+    // Decode: evita materializar K/V repetido para todo el contexto.
+    let mut attended = Vec::with_capacity(query_heads);
+    for query_head in 0..query_heads {
+        let key_value_head = query_head / groups;
+        let query_head = query.narrow(1, query_head, 1)?;
+        let key_head = key.narrow(1, key_value_head, 1)?;
+        let value_head = value.narrow(1, key_value_head, 1)?;
+        let mut weights = (query_head.matmul(&key_head.transpose(2, 3)?)? * scale)?;
+        weights = ((&weights / softcap)?.tanh()? * softcap)?;
+        if let Some(mask) = attention_mask {
+            weights = weights.broadcast_add(mask)?;
+        }
+        attended.push(candle_nn::ops::softmax_last_dim(&weights)?.matmul(&value_head)?);
+    }
+    Tensor::cat(&attended.iter().collect::<Vec<_>>(), 1)
 }
 
 fn tensor_rms(tensor: &Tensor) -> Result<f32> {
@@ -499,6 +644,16 @@ pub struct Gemma2Tokenizer {
     pub bos_id: u32,
     pub eos_id: u32,
     pub end_of_turn_id: Option<u32>,
+}
+
+pub struct Gemma2DecodeStream<'a> {
+    stepper: Box<dyn FnMut(u32) -> Result<Option<String>> + 'a>,
+}
+
+impl Gemma2DecodeStream<'_> {
+    pub fn step(&mut self, token: u32) -> Result<Option<String>> {
+        (self.stepper)(token)
+    }
 }
 
 impl Gemma2Tokenizer {
@@ -573,6 +728,17 @@ impl Gemma2Tokenizer {
             .map_err(|error| candle_core::Error::Msg(error.to_string()))
     }
 
+    pub fn decode_stream(&self, skip_special_tokens: bool) -> Gemma2DecodeStream<'_> {
+        let mut stream = self.tokenizer.decode_stream(skip_special_tokens);
+        Gemma2DecodeStream {
+            stepper: Box::new(move |token| {
+                stream
+                    .step(token)
+                    .map_err(|error| candle_core::Error::Msg(error.to_string()))
+            }),
+        }
+    }
+
     pub fn token_id(&self, token: &str) -> Option<u32> {
         self.tokenizer.token_to_id(token)
     }
@@ -620,6 +786,32 @@ pub fn resolve_gemma2_model_path(
         }
     }
     Err("no se encontró Gemma 2; usa --model RUTA_GGUF o GEMMA2_GGUF".into())
+}
+
+pub fn resolve_gemma2_device(requested: &str) -> Result<Device> {
+    let normalized = requested.trim().to_ascii_lowercase();
+    if normalized == "cpu" {
+        return Ok(Device::Cpu);
+    }
+    if normalized == "cuda" || normalized.starts_with("cuda:") {
+        #[cfg(feature = "cuda")]
+        {
+            let ordinal = normalized
+                .split_once(':')
+                .map_or(Ok(0usize), |(_, value)| value.parse::<usize>())
+                .map_err(|error| {
+                    candle_core::Error::Msg(format!("ordinal CUDA inválido: {error}"))
+                })?;
+            return Device::new_cuda(ordinal);
+        }
+        #[cfg(not(feature = "cuda"))]
+        {
+            candle_core::bail!(
+                "CUDA no está compilado; reconstruye con `cargo build --release --features cuda`"
+            );
+        }
+    }
+    candle_core::bail!("dispositivo Gemma desconocido `{requested}`; usa cpu o cuda[:N]")
 }
 
 fn gemma2_from_oci_store(
@@ -756,6 +948,80 @@ mod tests {
             .unwrap();
         let repeated = repeat_kv(tensor, 2).unwrap();
         assert_eq!(repeated.dims(), &[1, 4, 2, 2]);
+    }
+
+    #[test]
+    fn grouped_attention_matches_materialized_kv_heads() {
+        let query = Tensor::arange(0f32, 24f32, &Device::Cpu)
+            .unwrap()
+            .reshape((1, 4, 2, 3))
+            .unwrap();
+        let key = (Tensor::arange(0f32, 30f32, &Device::Cpu).unwrap() / 10.0)
+            .unwrap()
+            .reshape((1, 2, 5, 3))
+            .unwrap();
+        let value = (Tensor::arange(0f32, 30f32, &Device::Cpu).unwrap() / 7.0)
+            .unwrap()
+            .reshape((1, 2, 5, 3))
+            .unwrap();
+        let mask = Tensor::new(
+            &[
+                0.0f32,
+                f32::NEG_INFINITY,
+                f32::NEG_INFINITY,
+                f32::NEG_INFINITY,
+                f32::NEG_INFINITY,
+                0.0,
+                0.0,
+                0.0,
+                f32::NEG_INFINITY,
+                f32::NEG_INFINITY,
+            ],
+            &Device::Cpu,
+        )
+        .unwrap()
+        .reshape((1, 1, 2, 5))
+        .unwrap();
+        let grouped =
+            grouped_query_attention(&query, &key, &value, 2, 0.5, 50.0, Some(&mask)).unwrap();
+
+        let repeated_key = repeat_kv(key, 2).unwrap().contiguous().unwrap();
+        let repeated_value = repeat_kv(value, 2).unwrap().contiguous().unwrap();
+        let weights = (query
+            .matmul(&repeated_key.transpose(2, 3).unwrap())
+            .unwrap()
+            * 0.5)
+            .unwrap();
+        let weights = ((&weights / 50.0).unwrap().tanh().unwrap() * 50.0)
+            .unwrap()
+            .broadcast_add(&mask)
+            .unwrap();
+        let expected = candle_nn::ops::softmax_last_dim(&weights)
+            .unwrap()
+            .matmul(&repeated_value)
+            .unwrap();
+        let difference = (&grouped - &expected)
+            .unwrap()
+            .abs()
+            .unwrap()
+            .max_all()
+            .unwrap()
+            .to_scalar::<f32>()
+            .unwrap();
+        assert!(difference < 1.0e-5, "diferencia GQA={difference}");
+    }
+
+    #[test]
+    fn shared_sliding_mask_uses_absolute_ring_positions() {
+        let mask = build_attention_mask(1, 2, 5, &[4, 5, 6], Some(2), DType::F32, &Device::Cpu)
+            .unwrap()
+            .unwrap()
+            .reshape((2, 3))
+            .unwrap()
+            .to_vec2::<f32>()
+            .unwrap();
+        assert_eq!(mask[0], vec![0.0, 0.0, f32::NEG_INFINITY]);
+        assert_eq!(mask[1], vec![f32::NEG_INFINITY, 0.0, 0.0]);
     }
 
     #[test]

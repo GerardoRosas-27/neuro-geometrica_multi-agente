@@ -1,7 +1,6 @@
 //! Gemma 2 → OperatorRecipe → solver sparse L0/QUBO/L1 → CDT.
 
 use candle_core::quantized::gguf_file;
-use candle_core::Device;
 use cdt_rqm_epr::gemma_operator_bridge::{
     compile_simple_qubo_expression, generate_operator_recipe_with_memory,
     generate_solution_explanation, GemmaRecipeGenerationConfig,
@@ -9,7 +8,9 @@ use cdt_rqm_epr::gemma_operator_bridge::{
 use cdt_rqm_epr::native_cognitive_closed_loop::{
     episode_from_solution, memory_context, record_episode, retrieve_episodes, summarize_solution,
 };
-use cdt_rqm_epr::native_gemma2::{resolve_gemma2_model_path, Gemma2Tokenizer, QuantizedGemma2};
+use cdt_rqm_epr::native_gemma2::{
+    resolve_gemma2_device, resolve_gemma2_model_path, Gemma2Tokenizer, QuantizedGemma2,
+};
 use cdt_rqm_epr::native_multi_operator_core::{
     NativeMultiOperatorCore, OperatorDeltaSnapshot, OperatorRecipe, OperatorSolution,
 };
@@ -37,6 +38,7 @@ struct Config {
     learning_rate: f32,
     no_consolidate: bool,
     no_gemma_feedback: bool,
+    device: String,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -71,7 +73,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .and_then(compile_simple_qubo_expression);
     let needs_model =
         config.prompt.is_some() && (deterministic_recipe.is_none() || !config.no_gemma_feedback);
-    let device = Device::Cpu;
+    let device = resolve_gemma2_device(&config.device)?;
     let mut gemma = if needs_model {
         let model_path = resolve_gemma2_model_path(config.model.as_deref())?;
         eprintln!("cargando Gemma 2 desde {}", model_path.display());
@@ -235,6 +237,7 @@ fn parse_args() -> Result<Config, Box<dyn std::error::Error>> {
         learning_rate: 0.18,
         no_consolidate: false,
         no_gemma_feedback: false,
+        device: "cpu".to_string(),
     };
     let mut args = env::args().skip(1);
     while let Some(argument) = args.next() {
@@ -262,10 +265,11 @@ fn parse_args() -> Result<Config, Box<dyn std::error::Error>> {
             }
             "--no-consolidate" => config.no_consolidate = true,
             "--no-gemma-feedback" => config.no_gemma_feedback = true,
+            "--device" => config.device = required(&mut args, "--device")?,
             "--help" | "-h" => {
                 println!(
                     "Uso: native_gemma2_multi_operator (--prompt TEXTO | --recipe JSON) \
-                     [--model GGUF] [--snapshot RUTA] [--nodes N] \
+                     [--model GGUF] [--device cpu|cuda:N] [--snapshot RUTA] [--nodes N] \
                      [--max-tokens N] [--feedback-tokens N] [--memory-limit N] \
                      [--learning-rate X] [--no-consolidate] [--no-gemma-feedback]"
                 );

@@ -178,6 +178,32 @@ cargo run --release --bin native_vmc_ratio_benchmark
 
 Diseño y límites: `docs/unified_spin_cognitive_engine.md`.
 
+## Gemma 2 optimizado y acople fasorial
+
+La ruta GGUF nativa mantiene `token_embd.weight` cuantizado, usa KV cache
+preasignada/rotatoria de Candle, atención GQA híbrida y un runtime común
+con decoder incremental y reutilización de prefijos conversacionales.
+
+```powershell
+cargo run --release --bin native_gemma2_benchmark -- --prompt-lengths 32,256,1024,2048
+cargo run --release --bin native_gemma2_chat
+```
+
+El chat ejecuta en paralelo un worker fasorial Rust que recibe cada token sin
+mover tensores Candle entre hilos. Puede desactivarse con `--no-thermo`.
+
+Backends nativos opcionales:
+
+```powershell
+cargo build --release --features mkl
+cargo build --release --features cuda
+cargo run --release --features cuda --bin native_gemma2_chat -- --device cuda:0
+```
+
+Los pesos no se dividen en el backend CPU de un solo dispositivo: todas las
+capas se consumen por token y los shards añadirían I/O sin reducir cómputo.
+Diseño, métricas y límites: `docs/gemma2_runtime_optimization.md`.
+
 Entrenamiento sintético reanudable:
 
 ```powershell

@@ -5,9 +5,9 @@
 
 use crate::native_cognitive_closed_loop::{memory_context, summarize_solution};
 use crate::native_gemma2::{Gemma2Tokenizer, QuantizedGemma2};
+use crate::native_gemma2_runtime::{Gemma2GenerationConfig, Gemma2Session};
 use crate::native_multi_operator_core::{CognitiveEpisode, OperatorRecipe, SolvedRecipe};
-use candle_core::{Device, Tensor};
-use candle_transformers::generation::LogitsProcessor;
+use candle_core::Device;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
@@ -253,7 +253,7 @@ fn generate_gemma_text(
     model: &mut QuantizedGemma2,
     tokenizer: &Gemma2Tokenizer,
     instruction: &str,
-    device: &Device,
+    _device: &Device,
     config: GemmaRecipeGenerationConfig,
     stop_marker: Option<&str>,
 ) -> Result<String, GemmaOperatorBridgeError> {
@@ -265,36 +265,24 @@ fn generate_gemma_text(
             "prompt excede contexto Gemma".to_string(),
         ));
     }
-    model.clear_kv_cache();
-    let input = Tensor::new(prompt_tokens.as_slice(), device)?.unsqueeze(0)?;
-    let mut logits = model.forward(&input, 0)?.squeeze(0)?;
-    let mut sampler = LogitsProcessor::new(
-        config.seed,
-        Some(config.temperature.max(f64::EPSILON)),
-        Some(config.top_p.clamp(f64::EPSILON, 1.0)),
-    );
-    let mut generated = Vec::new();
-    for _ in 0..config.max_tokens.max(1) {
-        let token = sampler.sample(&logits)?;
-        if token == tokenizer.eos_id || Some(token) == tokenizer.end_of_turn_id {
-            break;
-        }
-        generated.push(token);
-        if generated.len() % 4 == 0 {
-            let partial = tokenizer.decode(&generated, true)?;
-            if stop_marker.is_some_and(|marker| partial.contains(marker)) {
-                break;
-            }
-        }
-        if prompt_tokens.len() + generated.len() >= model.max_context() {
-            break;
-        }
-        let next = Tensor::new(&[token], device)?.unsqueeze(0)?;
-        logits = model
-            .forward(&next, prompt_tokens.len() + generated.len() - 1)?
-            .squeeze(0)?;
-    }
-    tokenizer.decode(&generated, true).map_err(Into::into)
+    let context_limit = model.max_context();
+    let mut session = Gemma2Session::new();
+    let generation = session.generate_until(
+        model,
+        tokenizer,
+        &prompt_tokens,
+        None,
+        Gemma2GenerationConfig {
+            max_tokens: config.max_tokens.max(1),
+            context_limit,
+            temperature: config.temperature.max(f64::EPSILON),
+            top_p: config.top_p.clamp(f64::EPSILON, 1.0),
+            seed: config.seed,
+        },
+        |_| {},
+        |text| stop_marker.is_some_and(|marker| text.contains(marker)),
+    )?;
+    Ok(generation.text)
 }
 
 pub fn compile_simple_qubo_expression(problem: &str) -> Option<OperatorRecipe> {

@@ -2,14 +2,16 @@
 //! No usa el proceso, API ni servidor de Ollama.
 
 use candle_core::quantized::gguf_file;
-use candle_core::{Device, Tensor};
-use candle_transformers::generation::LogitsProcessor;
-use cdt_rqm_epr::native_gemma2::{resolve_gemma2_model_path, Gemma2Tokenizer, QuantizedGemma2};
+use cdt_rqm_epr::gemma_phasor_coupling::{GemmaPhasorCouplingConfig, GemmaPhasorWorker};
+use cdt_rqm_epr::native_gemma2::{
+    resolve_gemma2_device, resolve_gemma2_model_path, Gemma2Tokenizer, QuantizedGemma2,
+};
+use cdt_rqm_epr::native_gemma2_runtime::{chat_tokens, Gemma2GenerationConfig, Gemma2Session};
 use std::env;
 use std::fs::File;
 use std::io::{self, Write};
 use std::path::PathBuf;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 const DEFAULT_MAX_TOKENS: usize = 256;
 const DEFAULT_CONTEXT: usize = 2_048;
@@ -24,6 +26,8 @@ struct ChatConfig {
     temperature: f64,
     top_p: f64,
     prompt: Option<String>,
+    device: String,
+    thermo: bool,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -31,15 +35,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let model_path = resolve_gemma2_model_path(config.model.as_deref())?;
     println!("Gemma 2 2B nativo en Rust");
     println!("GGUF: {}", model_path.display());
-    println!("Motor: Candle CPU; Ollama API/servidor: no usado");
+    println!(
+        "Motor: Candle {}; Ollama API/servidor: no usado",
+        config.device
+    );
     println!("Cargando pesos cuantizados...");
 
     let started = Instant::now();
-    let device = Device::Cpu;
+    let device = resolve_gemma2_device(&config.device)?;
     let mut file = File::open(&model_path)?;
     let content = gguf_file::Content::read(&mut file)?;
     let tokenizer = Gemma2Tokenizer::from_gguf(&content)?;
     let mut model = QuantizedGemma2::from_gguf(content, &mut file, &device)?;
+    let mut session = Gemma2Session::new();
+    let thermo = config
+        .thermo
+        .then(|| GemmaPhasorWorker::start(GemmaPhasorCouplingConfig::default()))
+        .transpose()?;
     let context_limit = config.context.min(model.max_context());
     println!(
         "Listo en {:.1}s; contexto={} tokens; salida máxima={} tokens",
@@ -49,7 +61,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     if let Some(prompt) = config.prompt.as_deref() {
-        let _ = answer(&mut model, &tokenizer, &[], prompt, &config, context_limit)?;
+        let _ = answer(
+            &mut model,
+            &tokenizer,
+            &mut session,
+            thermo.as_ref(),
+            &[],
+            prompt,
+            &config,
+            context_limit,
+        )?;
         println!();
         return Ok(());
     }
@@ -75,13 +96,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         if input.eq_ignore_ascii_case("/limpiar") {
             history.clear();
-            model.clear_kv_cache();
+            session.reset(&mut model);
             println!("Historial borrado.");
             continue;
         }
         let response = answer(
             &mut model,
             &tokenizer,
+            &mut session,
+            thermo.as_ref(),
             &history,
             input,
             &config,
@@ -93,9 +116,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+// El helper reúne explícitamente los estados persistentes del REPL y los
+// parámetros de una interacción; agrupar referencias aquí no reduce ownership.
+#[allow(clippy::too_many_arguments)]
 fn answer(
     model: &mut QuantizedGemma2,
     tokenizer: &Gemma2Tokenizer,
+    session: &mut Gemma2Session,
+    thermo: Option<&GemmaPhasorWorker>,
     history: &[(String, String)],
     input: &str,
     config: &ChatConfig,
@@ -103,80 +131,49 @@ fn answer(
 ) -> Result<String, Box<dyn std::error::Error>> {
     let prompt_limit = context_limit.saturating_sub(config.max_tokens).max(32);
     let prompt_tokens = chat_tokens(tokenizer, history, input, prompt_limit)?;
-    model.clear_kv_cache();
-    let prompt = Tensor::new(prompt_tokens.as_slice(), &Device::Cpu)?.unsqueeze(0)?;
     print!("\nGemma> ");
     io::stdout().flush()?;
-    let prefill = Instant::now();
-    let mut logits = model.forward(&prompt, 0)?.squeeze(0)?;
-    let prefill_elapsed = prefill.elapsed();
-    let mut sampler = LogitsProcessor::new(
-        0x4745_4D4D_4132,
-        Some(config.temperature),
-        Some(config.top_p),
-    );
-    let mut generated = Vec::<u32>::new();
-    let mut rendered = String::new();
-    let decode_started = Instant::now();
-    for _ in 0..config.max_tokens {
-        let token = sampler.sample(&logits)?;
-        if token == tokenizer.eos_id || Some(token) == tokenizer.end_of_turn_id {
-            break;
-        }
-        generated.push(token);
-        let decoded = tokenizer.decode(&generated, true)?;
-        if let Some(delta) = decoded.strip_prefix(&rendered) {
-            print!("{delta}");
-            io::stdout().flush()?;
-        }
-        rendered = decoded;
-        if prompt_tokens.len() + generated.len() >= context_limit {
-            break;
-        }
-        let next = Tensor::new(&[token], &Device::Cpu)?.unsqueeze(0)?;
-        logits = model
-            .forward(&next, prompt_tokens.len() + generated.len() - 1)?
-            .squeeze(0)?;
-    }
-    let decode_elapsed = decode_started.elapsed();
-    let speed = generated.len() as f64 / decode_elapsed.as_secs_f64().max(f64::EPSILON);
+    let generation = session.generate_observed(
+        model,
+        tokenizer,
+        &prompt_tokens,
+        None,
+        Gemma2GenerationConfig {
+            max_tokens: config.max_tokens,
+            context_limit,
+            temperature: config.temperature,
+            top_p: config.top_p,
+            seed: 0x4745_4D4D_4132,
+        },
+        |fragment| {
+            print!("{fragment}");
+            let _ = io::stdout().flush();
+        },
+        |token, position| {
+            if let Some(worker) = thermo {
+                worker.observe_token(token, position);
+            }
+        },
+        |_| false,
+    )?;
     eprintln!(
-        "\n[prefill={:.2}s, generados={}, {:.2} tok/s]",
-        prefill_elapsed.as_secs_f64(),
-        generated.len(),
-        speed
+        "\n[TTFT={:.3}s prefill={:.2} tok/s decode={:.2} tok/s tokens={} KV_reused={}]",
+        generation.metrics.time_to_first_token_seconds,
+        generation.metrics.prefill_tokens_per_second(),
+        generation.metrics.decode_tokens_per_second(),
+        generation.metrics.generated_tokens,
+        generation.metrics.cache_reused,
     );
-    Ok(rendered.trim().to_string())
-}
-
-fn chat_tokens(
-    tokenizer: &Gemma2Tokenizer,
-    history: &[(String, String)],
-    input: &str,
-    limit: usize,
-) -> Result<Vec<u32>, Box<dyn std::error::Error>> {
-    for skip in 0..=history.len() {
-        let mut prompt = String::new();
-        for (user, assistant) in &history[skip..] {
-            prompt.push_str("<start_of_turn>user\n");
-            prompt.push_str(user);
-            prompt.push_str("<end_of_turn>\n<start_of_turn>model\n");
-            prompt.push_str(assistant);
-            prompt.push_str("<end_of_turn>\n");
-        }
-        prompt.push_str("<start_of_turn>user\n");
-        prompt.push_str(input);
-        prompt.push_str("<end_of_turn>\n<start_of_turn>model\n");
-        let mut tokens = vec![tokenizer.bos_id];
-        tokens.extend(tokenizer.encode(&prompt)?);
-        if tokens.len() <= limit {
-            return Ok(tokens);
-        }
+    if let Some(report) = thermo.and_then(|worker| worker.snapshot(Duration::from_millis(100))) {
+        eprintln!(
+            "[fasores concurrentes: tokens={} steps={} F={:.4} coherencia={:.4}]",
+            report.observed_tokens,
+            report.phasor_steps,
+            report.state.free_energy,
+            report.state.phase_coherence,
+        );
     }
-    Err(
-        format!("el mensaje actual excede el límite de contexto disponible ({limit} tokens)")
-            .into(),
-    )
+    Ok(generation.text)
 }
 
 fn parse_args() -> Result<ChatConfig, Box<dyn std::error::Error>> {
@@ -187,6 +184,8 @@ fn parse_args() -> Result<ChatConfig, Box<dyn std::error::Error>> {
         temperature: DEFAULT_TEMPERATURE,
         top_p: DEFAULT_TOP_P,
         prompt: None,
+        device: "cpu".to_string(),
+        thermo: true,
     };
     let mut args = env::args().skip(1);
     while let Some(argument) = args.next() {
@@ -201,10 +200,13 @@ fn parse_args() -> Result<ChatConfig, Box<dyn std::error::Error>> {
             }
             "--top-p" => config.top_p = required_value(&mut args, "--top-p")?.parse()?,
             "--prompt" => config.prompt = Some(required_value(&mut args, "--prompt")?),
+            "--device" => config.device = required_value(&mut args, "--device")?,
+            "--no-thermo" => config.thermo = false,
             "--help" | "-h" => {
                 println!(
-                    "Uso: native_gemma2_chat [--model GGUF] [--max-tokens N] [--context N] \\
-                     [--temperature N] [--top-p N] [--prompt TEXTO]"
+                    "Uso: native_gemma2_chat [--model GGUF] [--device cpu|cuda:N] \\
+                     [--max-tokens N] [--context N] [--temperature N] [--top-p N] \\
+                     [--prompt TEXTO] [--no-thermo]"
                 );
                 std::process::exit(0);
             }

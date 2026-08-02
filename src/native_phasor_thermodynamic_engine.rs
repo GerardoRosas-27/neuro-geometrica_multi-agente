@@ -136,6 +136,13 @@ pub struct NativePhasorMinimizerConfig {
     pub jacobi_preconditioner: bool,
     /// Sincronización de gauge O(E) antes del descenso continuo.
     pub topological_warm_start: bool,
+    /// Intensidad del precondicionador atencional sobre el residuo energético.
+    /// Cero conserva exactamente el minimizador de energía libre.
+    pub attention_strength: f32,
+    /// Temperatura del softmax aplicado a `ln(1 + |gradiente|)`.
+    pub attention_temperature: f32,
+    /// Límite de ganancia para impedir que un único fasor domine el descenso.
+    pub attention_max_gain: f32,
 }
 
 impl Default for NativePhasorMinimizerConfig {
@@ -152,6 +159,9 @@ impl Default for NativePhasorMinimizerConfig {
             residual_tolerance: 1.0e-4,
             jacobi_preconditioner: true,
             topological_warm_start: true,
+            attention_strength: 0.0,
+            attention_temperature: 1.0,
+            attention_max_gain: 4.0,
         }
     }
 }
@@ -166,6 +176,10 @@ pub struct NativePhasorMinimizationReport {
     pub rejected_steps: usize,
     pub warm_start_applied: bool,
     pub converged: bool,
+    /// Entropía normalizada media de la atención (1 = uniforme).
+    pub mean_attention_entropy: f32,
+    /// Mayor ganancia atencional aplicada a un fasor.
+    pub peak_attention_gain: f32,
 }
 
 /// Configuración experimental del bucle local de inferencia activa.
@@ -468,6 +482,7 @@ struct MinimizerScratch {
     gradient: Vec<Complex32>,
     direction: Vec<Complex32>,
     candidate: Vec<Complex32>,
+    attention: Vec<f32>,
 }
 
 impl NativePhasorThermodynamicEngine {
@@ -575,6 +590,7 @@ impl NativePhasorThermodynamicEngine {
             + self.minimizer_scratch.direction.capacity()
             + self.minimizer_scratch.candidate.capacity())
             * std::mem::size_of::<Complex32>()
+            + self.minimizer_scratch.attention.capacity() * std::mem::size_of::<f32>()
     }
 
     pub fn set_temperature_scale(&mut self, scale: f32) {
@@ -875,11 +891,14 @@ impl NativePhasorThermodynamicEngine {
         scratch.direction.resize(nodes, Complex32::new(0.0, 0.0));
         scratch.candidate.clear();
         scratch.candidate.extend_from_slice(&self.phasors);
+        scratch.attention.clear();
+        scratch.attention.resize(nodes, 1.0);
         let initial = self.report_with_scratch(&mut scratch.gradient);
         let mut current_energy = initial.free_energy;
         let gradient = &mut scratch.gradient;
         let direction = &mut scratch.direction;
         let candidate = &mut scratch.candidate;
+        let attention = &mut scratch.attention;
         let mut step_size = config.initial_step;
         let mut iterations = 0;
         let mut energy_evaluations = 0;
@@ -887,6 +906,9 @@ impl NativePhasorThermodynamicEngine {
         let mut rejected_steps = 0;
         let mut warm_start_applied = false;
         let mut converged = false;
+        let mut attention_entropy_sum = 0.0f64;
+        let mut attention_updates = 0usize;
+        let mut peak_attention_gain = 1.0f32;
 
         if config.topological_warm_start {
             self.topological_phase_warm_start();
@@ -928,9 +950,9 @@ impl NativePhasorThermodynamicEngine {
                 break;
             }
 
-            // Precondicionador de Jacobi y derivada direccional comparten el
-            // mismo recorrido: la proyección `<g, d>` se acumula mientras se
-            // escribe `d`.
+            // Primero se forma la dirección de Jacobi. La atención no cambia
+            // el objetivo: aplica una diagonal positiva calculada con un
+            // softmax del residuo por nodo. Armijo sigue validando F exacta.
             let precondition = |gradient: Complex32, phasor: Complex32, diagonal: f32| {
                 let denominator = if config.jacobi_preconditioner {
                     (coupling * diagonal + radial * (phasor.norm_sqr() + target_sqr) + confinement)
@@ -938,35 +960,84 @@ impl NativePhasorThermodynamicEngine {
                 } else {
                     1.0
                 };
-                let direction = gradient / denominator;
-                (direction, f64::from((gradient.conj() * direction).re))
+                gradient / denominator
             };
-            let directional_derivative = (if sequential {
+            if sequential {
                 direction
                     .iter_mut()
                     .zip(&*gradient)
                     .zip(&self.phasors)
                     .zip(&self.operator.diagonal)
-                    .map(|(((value, gradient), phasor), diagonal)| {
-                        let (next, projection) = precondition(*gradient, *phasor, *diagonal);
-                        *value = next;
-                        projection
+                    .for_each(|(((value, gradient), phasor), diagonal)| {
+                        *value = precondition(*gradient, *phasor, *diagonal);
                     })
-                    .sum::<f64>()
             } else {
                 direction
                     .par_iter_mut()
                     .zip(gradient.par_iter())
                     .zip(self.phasors.par_iter())
                     .zip(self.operator.diagonal.par_iter())
-                    .map(|(((value, gradient), phasor), diagonal)| {
-                        let (next, projection) = precondition(*gradient, *phasor, *diagonal);
-                        *value = next;
-                        projection
+                    .for_each(|(((value, gradient), phasor), diagonal)| {
+                        *value = precondition(*gradient, *phasor, *diagonal);
+                    })
+            }
+
+            let baseline_derivative = direction
+                .iter()
+                .zip(&*gradient)
+                .map(|(direction, gradient)| f64::from((gradient.conj() * *direction).re))
+                .sum::<f64>()
+                .max(f64::from(EPSILON));
+            if config.attention_strength > 0.0 && nodes > 1 {
+                let inverse_temperature = config.attention_temperature.recip();
+                let max_logit = gradient
+                    .iter()
+                    .map(|value| value.norm().ln_1p() * inverse_temperature)
+                    .fold(f32::NEG_INFINITY, f32::max);
+                let normalizer = attention
+                    .iter_mut()
+                    .zip(&*gradient)
+                    .map(|(weight, value)| {
+                        *weight = (value.norm().ln_1p() * inverse_temperature - max_logit).exp();
+                        f64::from(*weight)
                     })
                     .sum::<f64>()
-            } as f32)
-                .max(EPSILON);
+                    .max(f64::from(EPSILON));
+                let mean_weight = normalizer / nodes as f64;
+                let mut entropy = 0.0f64;
+                let mut local_peak_gain = 1.0f32;
+                for (value, weight) in direction.iter_mut().zip(&*attention) {
+                    let probability = f64::from(*weight) / normalizer;
+                    if probability > 0.0 {
+                        entropy -= probability * probability.ln();
+                    }
+                    let relative_weight = (f64::from(*weight) / mean_weight) as f32;
+                    let gain = (1.0 + config.attention_strength * (relative_weight - 1.0))
+                        .clamp(0.05, config.attention_max_gain);
+                    *value *= gain;
+                    local_peak_gain = local_peak_gain.max(gain);
+                }
+                let attended_derivative = direction
+                    .iter()
+                    .zip(&*gradient)
+                    .map(|(direction, gradient)| f64::from((gradient.conj() * *direction).re))
+                    .sum::<f64>()
+                    .max(f64::from(EPSILON));
+                let budget_scale = (baseline_derivative / attended_derivative) as f32;
+                direction
+                    .iter_mut()
+                    .for_each(|value| *value *= budget_scale);
+                peak_attention_gain = peak_attention_gain.max(local_peak_gain * budget_scale);
+                attention_entropy_sum += entropy / (nodes as f64).ln();
+                attention_updates += 1;
+            }
+
+            let directional_derivative = direction
+                .iter()
+                .zip(&*gradient)
+                .map(|(direction, gradient)| f64::from((gradient.conj() * *direction).re))
+                .sum::<f64>()
+                .max(f64::from(EPSILON)) as f32;
 
             let mut trial_step = step_size;
             let mut accepted_energy = current_energy;
@@ -1043,6 +1114,12 @@ impl NativePhasorThermodynamicEngine {
             rejected_steps,
             warm_start_applied,
             converged,
+            mean_attention_entropy: if attention_updates == 0 {
+                1.0
+            } else {
+                (attention_entropy_sum / attention_updates as f64) as f32
+            },
+            peak_attention_gain,
         }
     }
 
@@ -1595,6 +1672,9 @@ fn sanitize_minimizer_config(config: NativePhasorMinimizerConfig) -> NativePhaso
         max_backtracks: config.max_backtracks.max(1),
         energy_tolerance: config.energy_tolerance.max(0.0),
         residual_tolerance: config.residual_tolerance.max(0.0),
+        attention_strength: config.attention_strength.clamp(0.0, 1.0),
+        attention_temperature: config.attention_temperature.max(EPSILON),
+        attention_max_gain: config.attention_max_gain.max(1.0),
         ..config
     }
 }
