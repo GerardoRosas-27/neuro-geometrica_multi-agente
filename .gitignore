@@ -18,3 +18,4 @@
 /target-correlation-test/
 /.venv-netket/
 __pycache__/
+/build_log*.txt

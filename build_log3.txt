@@ -1,3 +1,0 @@
- Downloading crates ...
-  Downloaded onig_sys v69.9.3
-   Compiling cdt_rqm_epr v0.1.0 (D:\investigacion-ia-rust)
