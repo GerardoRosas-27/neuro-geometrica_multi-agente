@@ -1,8 +1,8 @@
 # Inferencia por descarte termodinámico y consolidación CDT:
 ## una arquitectura cognitiva con fasores, atractores y un modelo lingüístico periférico
 
-**Estado del manuscrito:** preprint técnico, versión 0.3
-**Fecha:** 30 de julio de 2026
+**Estado del manuscrito:** preprint técnico, versión 0.4
+**Fecha:** 2 de agosto de 2026
 **Implementación de referencia:** `cdt_rqm_epr`, Rust
 
 ---
@@ -53,9 +53,22 @@ seguridad funciona, pero también que un Transformer denso no se vuelve disperso
 por omisión directa de bloques: serán necesarios distillation, adapters o
 entrenamiento explícito de rutas.
 
+Finalmente, se implementó un ciclo extremo a extremo donde Gemma 2 recibe una
+única cue parcial, propone fronteras futuras, y el motor postselecciona por
+energía libre antes de aplicar Handshake, atención y consolidación CDT. En un
+benchmark sintético pareado, el recuerdo del híbrido futuro alcanzó 0,761,
+0,808 y 0,645 para 64, 128 y 256 nodos, frente a 0,505, 0,520 y 0,506 con
+interferencia sin frontera. Una ejecución real continua de Gemma 2 completó 98
+ciclos: 83 pasaron el gate wake, 70 se consolidaron y todos se fusionaron en un
+único atractor con confianza 0,987824. Entre los primeros y últimos 20 ciclos
+parseables, el residuo medio descendió de 8,236 × 10⁻³ a 4,696 × 10⁻³ y la
+coherencia Handshake aumentó de 0,604 a 0,886. Es evidencia del mecanismo
+algorítmico bajo una entrada repetida, no de retrocausalidad física ni de
+generalización semántica.
+
 **Palabras clave:** computación termodinámica, fasores, energía libre,
 atractores, CDT, consolidación, memoria de dos velocidades, inferencia
-analógica, modelos de lenguaje.
+analógica, postselección, Handshake, modelos de lenguaje.
 
 ---
 
@@ -669,6 +682,136 @@ seleccionando entre familias candidatas y puede identificar una composición.
 La limitación restante es metaestructural: el catálogo de cinco familias y el
 lenguaje de composiciones todavía fueron definidos por el investigador.
 
+### 7.9 Futuros propuestos por Gemma y postselección por energía libre
+
+Se añadió un entrenador en el que el modelo lingüístico deja de ser sólo un
+compilador periférico y asume un papel generativo acotado: recibe una única cue
+presente y propone varios estados parciales futuros. Gemma no puede escribir en
+CDT ni declarar una respuesta correcta. Cada propuesta se ejecuta en un clon
+idéntico del motor, se minimiza el mismo funcional y sólo sobrevive el candidato
+con menor energía libre normalizada. El candidato ganador todavía debe superar:
+
+```text
+gate wake -> revalidación sleep -> estabilidad -> ΔF_store -> CDT
+```
+
+Esta separación evita que una alucinación textual se convierta directamente en
+memoria. El generador sólo amplía el conjunto de hipótesis; Armijo conserva la
+autoridad sobre el descenso, Handshake y atención modulan la dirección, y el
+filtro variacional decide la persistencia.
+
+#### 7.9.1 Validación sintética pareada
+
+El primer experimento utilizó ocho prototipos balanceados como vocabulario
+preentrenado de un sustituto controlado de Gemma. En cada episodio el prior
+recibió sólo 30 % de los nodos, con 8 % de corrupción, y generó cuatro futuros.
+No recibió el índice del patrón activo ni la etiqueta de evaluación. Se
+compararon tres brazos:
+
+1. interferencia: cue como condición inicial y Armijo, sin frontera futura;
+2. futuro + Armijo: propuestas y postselección por \(F\), sin moduladores;
+3. futuro adaptativo: postselección, Handshake y atención.
+
+El presupuesto máximo se igualó: la interferencia recibió tantas iteraciones
+como la suma máxima de los cuatro candidatos futuros. La evaluación reconstruyó
+un motor desde el CDT entrenado y presentó cues nuevas sin meta ni estímulo.
+
+| Nodos | Interferencia | Futuro + Armijo | Futuro adaptativo | Mejora absoluta adaptativa |
+|---:|---:|---:|---:|---:|
+| 64 | 0,505371 | 0,710449 | **0,761475** | +0,256104 |
+| 128 | 0,520264 | 0,776978 | **0,807739** | +0,287475 |
+| 256 | 0,505737 | 0,602539 | **0,645264** | +0,139527 |
+
+El híbrido futuro ganó en las tres escalas. Sin embargo, no fue gratuito. Las
+evaluaciones de \(F\) fueron 36.960 frente a 11.571 en 64 nodos, 44.908 frente
+a 16.501 en 128 y 56.373 frente a 21.823 en 256. El costo observado fue
+2,58–3,19 veces mayor en evaluaciones, porque el baseline convergió antes de
+agotar su presupuesto mientras el sistema futuro evaluó varios candidatos.
+Por tanto, el resultado demuestra una ventaja de calidad bajo presupuesto
+máximo pareado, no todavía una ventaja de eficiencia.
+
+También apareció un control negativo útil: interferencia aceptó y consolidó
+muchos episodios pero su recuerdo permaneció cerca de azar. El número bruto de
+consolidaciones no es evidencia de aprendizaje; el endpoint primario debe ser
+recuerdo fuera de muestra.
+
+#### 7.9.2 Ejecución con Gemma 2 real
+
+Se ejecutó `native_gemma2_future_infinite_trainer` sobre Gemma 2 cuantizado en
+CPU. La entrada permaneció fija:
+
+```text
+0:+,3:-,8:+,13:-,21:+,29:-
+```
+
+La ejecución se reanudó desde checkpoints, completó 98 ciclos y terminó mediante
+Ctrl+C con guardado atómico y código de salida 0. El estado final fue:
+
+| Métrica | Resultado |
+|---|---:|
+| ciclos | 98 |
+| futuros parseados | 212 |
+| ciclos sin futuro parseable | 3 (3,06 %) |
+| gates wake aprobados | 83 (84,69 %) |
+| consolidaciones sleep | 70 (71,43 %) |
+| consolidación condicionada al gate | 84,34 % |
+| rechazos por \(\Delta F_{\text{store}}\) | 0 |
+| evaluaciones de energía | 48.848 |
+| igniciones atencionales | 720 |
+| tokens Gemma | 11.234 |
+| tiempo de decode acumulado | 1.562,21 s |
+| throughput agregado | 7,19 tokens/s |
+
+Los 70 episodios no crearon 70 recuerdos independientes. Se fusionaron en un
+único atractor, como corresponde a la repetición de la misma evidencia:
+
+```text
+atractores CDT       1
+reconsolidaciones    70
+confianza final      0,987824
+F almacenada         -6,114373
+```
+
+La comparación entre los primeros y últimos 20 ciclos parseables mostró:
+
+| Métrica media | Primeros 20 | Últimos 20 |
+|---|---:|---:|
+| residuo | 0,008236 | **0,004696** |
+| coherencia de fase | 0,945587 | **0,983317** |
+| coherencia Handshake | 0,604373 | **0,885597** |
+| \(\Phi\) | 0,085021 | 0,065038 |
+| tasa de gate | 70 % | **100 %** |
+| tasa de consolidación | 35 % | **100 %** |
+
+El residuo medio cayó aproximadamente 43 % y Handshake aumentó 0,281 puntos.
+La reducción tardía de \(\Phi\) no implica necesariamente pérdida de
+integración: al estabilizarse la cuenca, la distribución residual requiere
+menos focalización para converger. El último ciclo terminó con residuo
+0,004811, Handshake 0,934026 y \(\Phi=0,041182\).
+
+La mejor \(F\) observada fue -177,73335, pero las energías entre ciclos no son
+directamente comparables porque Gemma produjo fronteras de cardinalidad y
+confianza diferentes. Las tendencias defendibles son residuo, coherencia,
+aceptación y recuerdo bajo evaluación común.
+
+#### 7.9.3 Interpretación limitada
+
+El experimento real demuestra que:
+
+- Gemma puede producir futuros estructurados desde una cue sin recibir una
+  etiqueta;
+- el parser rechaza nodos inválidos y salidas no estructuradas;
+- una propuesta con residuo superior al gate no se consolida;
+- el mismo estado puede reanudarse, reconsolidarse y converger hacia una cuenca
+  estable.
+
+No demuestra que el futuro generado sea semánticamente correcto, que exista
+retrocausalidad física ni que el atractor generalice a entradas distintas. La
+entrada fue repetida y no existe todavía un conjunto holdout semántico para
+esta corrida. El benchmark sintético sí mide recuerdo ciego, pero utiliza un
+prior controlado con prototipos conocidos. Ambas evidencias deben mantenerse
+separadas.
+
 ---
 
 ## 8. Predicciones falsables
@@ -749,9 +892,9 @@ La formulación científicamente defendible es:
 3. La energía libre es una magnitud del modelo, no energía física medida.
 4. Los atractores pueden ser mínimos locales espurios.
 5. El LLM periférico todavía puede introducir errores al compilar lenguaje.
-6. La arquitectura fasorial/CDT y el chat Gemma 2 adaptativo existen como
-   componentes implementados, pero falta un benchmark integral extremo a
-   extremo con corpus independiente.
+6. Ya existe una ruta extrema a extremo Gemma 2 → futuros → energía libre →
+   CDT, pero la corrida real repite una sola entrada y carece de corpus
+   semántico independiente.
 7. No se ha fabricado ni simulado a nivel de circuito un chip termodinámico.
 8. No se ha demostrado ventaja asintótica ni energética frente a hardware
    convencional.
@@ -760,6 +903,12 @@ La formulación científicamente defendible es:
 10. La corrida de referencia usa un patrón, un tamaño y un conjunto finito de
     corrupciones. La repetición en ocho semillas reduce fragilidad del fixture,
     pero no establece generalización fuera de distribución.
+11. El prior sintético de futuros conoce un codebook de prototipos. No recibe la
+    etiqueta activa, pero su alta tasa top-1 representa un generador competente
+    y no prueba que Gemma alcance esa calidad en tareas abiertas.
+12. Las energías de ciclos con fronteras distintas no son comparables de forma
+    absoluta; deben normalizarse por cardinalidad o evaluarse bajo una frontera
+    común antes de inferir progreso a partir de \(F\).
 
 ---
 
@@ -811,14 +960,17 @@ rápida sin escribir inmediatamente sobre conocimiento protegido.
 La evidencia actual demuestra descenso de energía, persistencia wake/sleep,
 fallback seguro y, en un experimento causal sintético, que consolidar un patrón
 verificado deforma el paisaje para aumentar su cuenca de recuperación y reducir
-las iteraciones. No demuestra todavía generalización conceptual, ausencia de
-olvido, ventaja sobre baselines de capacidad equivalente, ventaja energética ni
-procesamiento físico masivo. Precisamente por ello, la propuesta se expresa
-como una hipótesis experimental: si un sustrato termodinámico físico puede
-implementar el mismo paisaje con relajación paralela, podría convertir una
-búsqueda digital costosa en evolución física eficiente. La oportunidad no es
-obtener cómputo gratuito, sino utilizar de forma medible la dinámica de la
-naturaleza como parte del computador.
+las iteraciones. La nueva postselección futura mejora el recuerdo frente a
+interferencia en tres escalas sintéticas, y la corrida con Gemma 2 demuestra que
+propuestas lingüísticas imperfectas pueden ser filtradas y reconsolidadas hasta
+formar una cuenca estable. No demuestra todavía generalización conceptual,
+ausencia de olvido, ventaja sobre baselines de capacidad equivalente, ventaja
+energética, retrocausalidad ni procesamiento físico masivo. Precisamente por
+ello, la propuesta se expresa como una hipótesis experimental: si un sustrato
+termodinámico físico puede implementar el mismo paisaje con relajación paralela,
+podría convertir una búsqueda digital costosa en evolución física eficiente. La
+oportunidad no es obtener cómputo gratuito, sino utilizar de forma medible la
+dinámica de la naturaleza como parte del computador.
 
 ---
 

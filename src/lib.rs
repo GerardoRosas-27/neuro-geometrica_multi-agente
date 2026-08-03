@@ -11,6 +11,10 @@ pub mod emergent_cognition_training;
 /// Comparador de motores. Estado: sólo tests propios, sin binario asociado.
 pub mod engine_comparison;
 pub mod entanglement;
+/// Entrenamiento donde un prior generativo propone futuros y F postselecciona
+/// qué trayectoria puede pasar al gate de consolidación CDT.
+pub mod future_guided_training;
+pub mod gemma_future_generator;
 pub mod gemma_operator_bridge;
 pub mod gemma_phasor_coupling;
 pub mod matrix_free_cognitive_substrate;
@@ -42,6 +46,9 @@ pub mod symmetry_guided_rqm_epr;
 pub mod symmetry_thermodynamic_substrate;
 pub mod thermo_router;
 pub mod thermodynamic_attractor_comparison;
+/// Comparación de estructuras temporales de inferencia: evidencia sola,
+/// evidencia como frontera y dos vectores de estado con post-selección.
+pub mod transactional_training_experiment;
 pub mod transformation_family_discovery;
 pub mod unified_spin_cognitive_engine;
 /// VMC Jastrow complejo. Estado: validado contra energía exacta en tests,

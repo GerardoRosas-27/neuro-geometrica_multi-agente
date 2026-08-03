@@ -47,10 +47,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let wake_report;
         if trial % 2 == 0 {
             let standalone_started = Instant::now();
-            standalone.clear_stimulus();
-            for item in &cue {
-                standalone.phasors[item.node] = Complex32::from_polar(item.amplitude, item.phase);
-            }
+            apply_cue(&mut standalone, &cue, hybrid_config.cue_as_boundary);
             standalone_report = standalone.minimize_free_energy(hybrid_config.minimizer);
             standalone_elapsed += standalone_started.elapsed();
 
@@ -63,10 +60,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             hybrid_elapsed += hybrid_started.elapsed();
 
             let standalone_started = Instant::now();
-            standalone.clear_stimulus();
-            for item in &cue {
-                standalone.phasors[item.node] = Complex32::from_polar(item.amplitude, item.phase);
-            }
+            apply_cue(&mut standalone, &cue, hybrid_config.cue_as_boundary);
             standalone_report = standalone.minimize_free_energy(hybrid_config.minimizer);
             standalone_elapsed += standalone_started.elapsed();
         }
@@ -111,6 +105,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         overhead <= 1.20
     );
     Ok(())
+}
+
+/// Replica exactamente cómo `infer_and_stage` presenta la cue, para que la
+/// referencia aislada resuelva el mismo problema que wake.
+fn apply_cue(
+    engine: &mut NativePhasorThermodynamicEngine,
+    cue: &[NativePhasorCue],
+    as_boundary: bool,
+) {
+    engine.clear_stimulus();
+    for item in cue {
+        let field = Complex32::from_polar(item.amplitude, item.phase);
+        engine.phasors[item.node] = field;
+        if as_boundary {
+            engine.stimulus[item.node] = field;
+        }
+    }
 }
 
 fn cue(nodes: usize, trial: usize) -> Vec<NativePhasorCue> {

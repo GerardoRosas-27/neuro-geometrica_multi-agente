@@ -122,6 +122,22 @@ impl Default for NativePhasorAnnealingSchedule {
     }
 }
 
+/// Cómo se programan los moduladores de dirección sobre el descenso Armijo.
+///
+/// Ninguno de los dos modos altera F ni el criterio de aceptación: sólo
+/// deciden en qué iteraciones se reorienta la dirección antes de la búsqueda
+/// de línea.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum NativePhasorInferencePolicy {
+    /// Aplica los moduladores configurados en todas las iteraciones.
+    Fixed,
+    /// Mantiene Handshake mientras la frontera siga desalineada, sondea Φ con
+    /// histéresis y libera el descenso a Armijo puro cuando el residuo ya
+    /// domina el progreso.
+    #[default]
+    Adaptive,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct NativePhasorMinimizerConfig {
     pub max_iterations: usize,
@@ -143,6 +159,28 @@ pub struct NativePhasorMinimizerConfig {
     pub attention_temperature: f32,
     /// Límite de ganancia para impedir que un único fasor domine el descenso.
     pub attention_max_gain: f32,
+    /// Umbral de ignición Φ. Φ combina concentración atencional y coherencia
+    /// de fase global; cero mantiene la atención suave siempre activa.
+    pub attention_ignition_threshold: f32,
+    /// Intensidad del precondicionador Handshake. Usa el mismo estímulo que ya
+    /// forma parte de F como frontera final; cero conserva Armijo exactamente.
+    pub handshake_strength: f32,
+    /// Rondas de propagación adjunta de la frontera sobre el grafo magnético.
+    pub handshake_rounds: usize,
+    /// Peso residual de la frontera anterior en cada ronda de mensajes.
+    pub handshake_damping: f32,
+    /// Límite de ganancia local del precondicionador Handshake.
+    pub handshake_max_gain: f32,
+    /// Programación de los moduladores sobre el descenso.
+    pub inference_policy: NativePhasorInferencePolicy,
+    /// Fracción del residuo inicial por debajo de la cual `Adaptive` libera
+    /// los moduladores: cerca del mínimo, reorientar sólo estorba al residuo.
+    pub modifier_release_residual_ratio: f32,
+    /// Coherencia media con la frontera a partir de la cual Handshake ya no
+    /// reorienta nada y se apaga para el resto del descenso.
+    pub handshake_saturation_coherence: f32,
+    /// Iteraciones entre sondas de Φ mientras la atención está apagada.
+    pub attention_probe_interval: usize,
 }
 
 impl Default for NativePhasorMinimizerConfig {
@@ -162,6 +200,15 @@ impl Default for NativePhasorMinimizerConfig {
             attention_strength: 0.0,
             attention_temperature: 1.0,
             attention_max_gain: 4.0,
+            attention_ignition_threshold: 0.0,
+            handshake_strength: 0.0,
+            handshake_rounds: 4,
+            handshake_damping: 0.25,
+            handshake_max_gain: 4.0,
+            inference_policy: NativePhasorInferencePolicy::Adaptive,
+            modifier_release_residual_ratio: 0.25,
+            handshake_saturation_coherence: 0.98,
+            attention_probe_interval: 4,
         }
     }
 }
@@ -180,6 +227,23 @@ pub struct NativePhasorMinimizationReport {
     pub mean_attention_entropy: f32,
     /// Mayor ganancia atencional aplicada a un fasor.
     pub peak_attention_gain: f32,
+    /// Φ medio: foco no uniforme multiplicado por integración global de fase.
+    pub mean_integrated_information: f32,
+    /// Iteraciones en las que Φ alcanzó el umbral de ignición.
+    pub attention_ignitions: usize,
+    /// Indica que existió una frontera no nula y se aplicó Handshake.
+    pub handshake_applied: bool,
+    /// Productos dispersos usados para propagar la frontera adjunta.
+    pub handshake_operator_applications: usize,
+    /// Coherencia media entre estado forward y frontera backward.
+    pub mean_handshake_coherence: f32,
+    /// Iteraciones en las que Handshake reorientó la dirección.
+    pub handshake_iterations: usize,
+    /// Iteraciones en las que se evaluó Φ.
+    pub attention_probes: usize,
+    /// Iteración en la que `Adaptive` liberó los moduladores. Igual a
+    /// `iterations` cuando nunca se liberaron.
+    pub modifier_release_iteration: usize,
 }
 
 /// Configuración experimental del bucle local de inferencia activa.
@@ -401,6 +465,34 @@ impl MagneticLaplacian {
         }
     }
 
+    /// Propaga mensajes desde una frontera por la adyacencia magnética
+    /// normalizada. El transporte inverso ya está representado por el
+    /// conjugado compilado en la fila opuesta; no implica inversión temporal.
+    fn propagate_adjoint(&self, input: &[Complex32], output: &mut [Complex32]) {
+        debug_assert_eq!(input.len(), self.nodes);
+        debug_assert_eq!(output.len(), self.nodes);
+        let propagate_row = |row: usize| {
+            let start = self.row_offsets[row];
+            let end = self.row_offsets[row + 1];
+            let denominator = self.diagonal[row].max(EPSILON);
+            let mut sum = Complex32::new(0.0, 0.0);
+            for cursor in start..end {
+                sum += input[self.columns[cursor]] * self.weighted_transports[cursor];
+            }
+            sum / denominator
+        };
+        if self.nodes < PARALLEL_NODE_THRESHOLD {
+            for (row, value) in output.iter_mut().enumerate() {
+                *value = propagate_row(row);
+            }
+        } else {
+            output
+                .par_iter_mut()
+                .enumerate()
+                .for_each(|(row, value)| *value = propagate_row(row));
+        }
+    }
+
     fn coupling_energy(&self, phasors: &[Complex32], strength: f32) -> f32 {
         let edge_energy = |edge: &MagneticEdge| {
             f64::from(edge.weight * (phasors[edge.a] - edge.transport * phasors[edge.b]).norm_sqr())
@@ -483,6 +575,14 @@ struct MinimizerScratch {
     direction: Vec<Complex32>,
     candidate: Vec<Complex32>,
     attention: Vec<f32>,
+    /// Frontera adjunta ya normalizada por nodo: guarda la fase objetivo con
+    /// módulo unitario para que la coherencia por iteración sea un producto
+    /// escalar sin raíces cuadradas.
+    handshake_boundary: Vec<Complex32>,
+    handshake_buffer: Vec<Complex32>,
+    /// `|frontera| / max|frontera|` precalculado: es estático durante todo el
+    /// descenso y sacarlo del bucle evita dos recorridos por iteración.
+    handshake_reachability: Vec<f32>,
 }
 
 impl NativePhasorThermodynamicEngine {
@@ -584,13 +684,17 @@ impl NativePhasorThermodynamicEngine {
         self.minimizer_scratch = MinimizerScratch::default();
     }
 
-    /// Capacidad reservada por los tres buffers del minimizador, en bytes.
+    /// Capacidad reservada por los buffers del minimizador, en bytes.
     pub fn minimizer_workspace_capacity_bytes(&self) -> usize {
         (self.minimizer_scratch.gradient.capacity()
             + self.minimizer_scratch.direction.capacity()
-            + self.minimizer_scratch.candidate.capacity())
+            + self.minimizer_scratch.candidate.capacity()
+            + self.minimizer_scratch.handshake_boundary.capacity()
+            + self.minimizer_scratch.handshake_buffer.capacity())
             * std::mem::size_of::<Complex32>()
-            + self.minimizer_scratch.attention.capacity() * std::mem::size_of::<f32>()
+            + (self.minimizer_scratch.attention.capacity()
+                + self.minimizer_scratch.handshake_reachability.capacity())
+                * std::mem::size_of::<f32>()
     }
 
     pub fn set_temperature_scale(&mut self, scale: f32) {
@@ -893,12 +997,76 @@ impl NativePhasorThermodynamicEngine {
         scratch.candidate.extend_from_slice(&self.phasors);
         scratch.attention.clear();
         scratch.attention.resize(nodes, 1.0);
+        scratch.handshake_boundary.clear();
+        scratch
+            .handshake_boundary
+            .resize(nodes, Complex32::new(0.0, 0.0));
+        scratch.handshake_buffer.clear();
+        scratch
+            .handshake_buffer
+            .resize(nodes, Complex32::new(0.0, 0.0));
+        scratch.handshake_reachability.clear();
+        scratch.handshake_reachability.resize(nodes, 0.0);
         let initial = self.report_with_scratch(&mut scratch.gradient);
+        let boundary_norm_sqr = self
+            .stimulus
+            .iter()
+            .map(|value| value.norm_sqr())
+            .sum::<f32>();
+        let handshake_applied = config.handshake_strength > 0.0 && boundary_norm_sqr > EPSILON;
+        let mut handshake_operator_applications = 0usize;
+        let mut reachability_sum = 0.0f64;
+        if handshake_applied {
+            let seed_norm = boundary_norm_sqr.sqrt().max(EPSILON);
+            for (value, seed) in scratch.handshake_boundary.iter_mut().zip(&self.stimulus) {
+                *value = *seed / seed_norm;
+            }
+            for _ in 0..config.handshake_rounds {
+                self.operator
+                    .propagate_adjoint(&scratch.handshake_boundary, &mut scratch.handshake_buffer);
+                for (propagated, seed) in scratch.handshake_buffer.iter_mut().zip(&self.stimulus) {
+                    *propagated = *propagated * (1.0 - config.handshake_damping)
+                        + (*seed / seed_norm) * config.handshake_damping;
+                }
+                normalize_complex_field(&mut scratch.handshake_buffer);
+                std::mem::swap(
+                    &mut scratch.handshake_boundary,
+                    &mut scratch.handshake_buffer,
+                );
+                handshake_operator_applications += 1;
+            }
+            // La frontera ya no cambia: se separa en dirección unitaria y
+            // alcanzabilidad para que cada iteración sólo haga un producto
+            // escalar por nodo.
+            let peak = scratch
+                .handshake_boundary
+                .iter()
+                .map(|value| value.norm())
+                .fold(0.0f32, f32::max)
+                .max(EPSILON);
+            for (message, reachability) in scratch
+                .handshake_boundary
+                .iter_mut()
+                .zip(&mut scratch.handshake_reachability)
+            {
+                let magnitude = message.norm();
+                *reachability = magnitude / peak;
+                *message = if magnitude > EPSILON {
+                    *message / magnitude
+                } else {
+                    Complex32::new(0.0, 0.0)
+                };
+                reachability_sum += f64::from(*reachability);
+            }
+            reachability_sum = reachability_sum.max(f64::from(EPSILON));
+        }
         let mut current_energy = initial.free_energy;
         let gradient = &mut scratch.gradient;
         let direction = &mut scratch.direction;
         let candidate = &mut scratch.candidate;
         let attention = &mut scratch.attention;
+        let handshake_boundary = &scratch.handshake_boundary;
+        let handshake_reachability = &scratch.handshake_reachability;
         let mut step_size = config.initial_step;
         let mut iterations = 0;
         let mut energy_evaluations = 0;
@@ -909,6 +1077,17 @@ impl NativePhasorThermodynamicEngine {
         let mut attention_entropy_sum = 0.0f64;
         let mut attention_updates = 0usize;
         let mut peak_attention_gain = 1.0f32;
+        let mut attention_phi_sum = 0.0f64;
+        let mut attention_ignitions = 0usize;
+        let mut handshake_coherence_sum = 0.0f64;
+        let mut handshake_updates = 0usize;
+        let adaptive = config.inference_policy == NativePhasorInferencePolicy::Adaptive;
+        let mut handshake_saturated = false;
+        let mut transaction_agreement = 1.0f32;
+        let mut attention_dormant_for = 0usize;
+        let mut release_threshold = 0.0f32;
+        let mut modifier_release_iteration = usize::MAX;
+        let probe_interval = config.attention_probe_interval.max(1);
 
         if config.topological_warm_start {
             self.topological_phase_warm_start();
@@ -931,7 +1110,7 @@ impl NativePhasorThermodynamicEngine {
         let max_amplitude = self.config.max_amplitude;
         let max_amplitude_sqr = max_amplitude * max_amplitude;
 
-        for _ in 0..config.max_iterations {
+        for iteration in 0..config.max_iterations {
             self.free_energy_gradient(&self.phasors, gradient);
             let residual_sum = if sequential {
                 gradient
@@ -949,6 +1128,20 @@ impl NativePhasorThermodynamicEngine {
                 converged = true;
                 break;
             }
+            if iteration == 0 {
+                release_threshold = residual * config.modifier_release_residual_ratio;
+            }
+            // Los moduladores reorientan; cerca del mínimo el residuo manda y
+            // reorientar sólo desperdicia presupuesto de línea.
+            let released = adaptive && residual <= release_threshold;
+            if released && modifier_release_iteration == usize::MAX {
+                modifier_release_iteration = iteration;
+            }
+            let use_handshake =
+                handshake_applied && nodes > 1 && !released && !(adaptive && handshake_saturated);
+            let attention_enabled = config.attention_strength > 0.0 && nodes > 1 && !released;
+            let probe_attention = attention_enabled
+                && (!adaptive || attention_dormant_for == 0 || iteration % probe_interval == 0);
 
             // Primero se forma la dirección de Jacobi. La atención no cambia
             // el objetivo: aplica una diagonal positiva calculada con un
@@ -982,69 +1175,165 @@ impl NativePhasorThermodynamicEngine {
                     })
             }
 
-            let baseline_derivative = direction
-                .iter()
-                .zip(&*gradient)
-                .map(|(direction, gradient)| f64::from((gradient.conj() * *direction).re))
-                .sum::<f64>()
-                .max(f64::from(EPSILON));
-            if config.attention_strength > 0.0 && nodes > 1 {
-                let inverse_temperature = config.attention_temperature.recip();
-                let max_logit = gradient
-                    .iter()
-                    .map(|value| value.norm().ln_1p() * inverse_temperature)
-                    .fold(f32::NEG_INFINITY, f32::max);
-                let normalizer = attention
+            // Derivada direccional y saliencia máxima de la dirección Jacobi
+            // en un único recorrido: ambas se necesitan antes de cualquier
+            // modulador y recorrerlas por separado costaba dos pasadas.
+            let mut baseline_derivative = 0.0f64;
+            let mut peak_direction_norm = 0.0f32;
+            let mut direction_norm_sum = 0.0f64;
+            for (value, gradient) in direction.iter().zip(&*gradient) {
+                baseline_derivative += f64::from((gradient.conj() * *value).re);
+                let norm = value.norm();
+                peak_direction_norm = peak_direction_norm.max(norm);
+                direction_norm_sum += f64::from(norm);
+            }
+            let baseline_derivative = baseline_derivative.max(f64::from(EPSILON));
+            // Cada modulador se renormaliza al mismo presupuesto direccional,
+            // así que el factor acumulado se propaga como escalar y se aplica
+            // al proponer: evita una pasada de reescalado por modulador y deja
+            // la derivada direccional efectiva invariante frente a Armijo.
+            let mut direction_scale = 1.0f32;
+
+            if use_handshake {
+                let mut score_sum = 0.0f64;
+                let mut coherence_sum = 0.0f64;
+                for ((weight, phasor), (boundary, reachability)) in attention
                     .iter_mut()
-                    .zip(&*gradient)
-                    .map(|(weight, value)| {
-                        *weight = (value.norm().ln_1p() * inverse_temperature - max_logit).exp();
-                        f64::from(*weight)
-                    })
-                    .sum::<f64>()
-                    .max(f64::from(EPSILON));
-                let mean_weight = normalizer / nodes as f64;
-                let mut entropy = 0.0f64;
-                let mut local_peak_gain = 1.0f32;
-                for (value, weight) in direction.iter_mut().zip(&*attention) {
-                    let probability = f64::from(*weight) / normalizer;
-                    if probability > 0.0 {
-                        entropy -= probability * probability.ln();
-                    }
-                    let relative_weight = (f64::from(*weight) / mean_weight) as f32;
-                    let gain = (1.0 + config.attention_strength * (relative_weight - 1.0))
-                        .clamp(0.05, config.attention_max_gain);
-                    *value *= gain;
-                    local_peak_gain = local_peak_gain.max(gain);
+                    .zip(&self.phasors)
+                    .zip(handshake_boundary.iter().zip(handshake_reachability))
+                {
+                    let amplitude = phasor.norm();
+                    let coherence = if amplitude > EPSILON {
+                        ((phasor.conj() * *boundary).re / amplitude).clamp(-1.0, 1.0)
+                    } else {
+                        0.0
+                    };
+                    // La frontera debe focalizar correcciones pendientes, no
+                    // amplificar nodos que ya están alineados con ella.
+                    *weight = EPSILON + *reachability * (0.5 - 0.5 * coherence);
+                    score_sum += f64::from(*weight);
+                    coherence_sum += f64::from(coherence * *reachability);
                 }
-                let attended_derivative = direction
-                    .iter()
-                    .zip(&*gradient)
-                    .map(|(direction, gradient)| f64::from((gradient.conj() * *direction).re))
-                    .sum::<f64>()
-                    .max(f64::from(EPSILON));
-                let budget_scale = (baseline_derivative / attended_derivative) as f32;
-                direction
-                    .iter_mut()
-                    .for_each(|value| *value *= budget_scale);
-                peak_attention_gain = peak_attention_gain.max(local_peak_gain * budget_scale);
-                attention_entropy_sum += entropy / (nodes as f64).ln();
-                attention_updates += 1;
+                let mean_score = (score_sum / nodes as f64).max(f64::from(EPSILON));
+                let mut guided_derivative = 0.0f64;
+                peak_direction_norm = 0.0;
+                direction_norm_sum = 0.0;
+                for ((value, score), gradient) in
+                    direction.iter_mut().zip(&*attention).zip(&*gradient)
+                {
+                    let relative_score = (f64::from(*score) / mean_score) as f32;
+                    let gain = (1.0 + config.handshake_strength * (relative_score - 1.0))
+                        .clamp(0.05, config.handshake_max_gain);
+                    *value *= gain;
+                    guided_derivative += f64::from((gradient.conj() * *value).re);
+                    let norm = value.norm();
+                    peak_direction_norm = peak_direction_norm.max(norm);
+                    direction_norm_sum += f64::from(norm);
+                }
+                direction_scale =
+                    (baseline_derivative / guided_derivative.max(f64::from(EPSILON))) as f32;
+                // Coseno medio ponderado por alcanzabilidad: normalizar por el
+                // número de nodos diluiría la medida con la dispersión de la
+                // frontera y dejaría el umbral de saturación inalcanzable.
+                let mean_coherence = (coherence_sum / reachability_sum).clamp(-1.0, 1.0);
+                handshake_coherence_sum += mean_coherence;
+                handshake_updates += 1;
+                handshake_saturated =
+                    mean_coherence as f32 >= config.handshake_saturation_coherence;
+                // ⟨Φ|Ψ⟩ reescalado a [0,1]: es el grado en que la evidencia
+                // hacia adelante y la frontera hacia atrás están en fase.
+                transaction_agreement = (0.5 + 0.5 * mean_coherence) as f32;
             }
 
-            let directional_derivative = direction
-                .iter()
-                .zip(&*gradient)
-                .map(|(direction, gradient)| f64::from((gradient.conj() * *direction).re))
-                .sum::<f64>()
-                .max(f64::from(EPSILON)) as f32;
+            // Capa 2: la atención opera después de la intención Handshake. El
+            // softmax detecta saliencia en la dirección ya guiada y Φ decide
+            // si existe integración de fase suficiente para encender el foco.
+            if probe_attention {
+                let inverse_temperature = config.attention_temperature.recip();
+                // La saliencia se mide contra la media de la propia dirección.
+                // Sobre módulos absolutos, `ln(1+x)` con x≪1 comprime hasta
+                // borrar el contraste: cerca del mínimo una razón de 10 a 1
+                // entre nodos deja centésimas de nat y el softmax queda plano
+                // por muy focalizado que esté el error. En términos relativos
+                // el foco sólo depende de la forma del residuo, no de su
+                // escala, así que la atención no se apaga al converger.
+                let mean_direction_norm =
+                    (direction_norm_sum / nodes as f64).max(f64::from(EPSILON)) as f32;
+                // `ln(1+x)` es monótona, así que el máximo de los logits sale
+                // del módulo máximo ya observado sin recorrer la dirección.
+                let max_logit =
+                    (peak_direction_norm / mean_direction_norm).ln_1p() * inverse_temperature;
+                let mut normalizer = 0.0f64;
+                let mut weighted_log_weight = 0.0f64;
+                let mut phase_resultant = Complex32::new(0.0, 0.0);
+                for ((weight, value), phasor) in
+                    attention.iter_mut().zip(&*direction).zip(&self.phasors)
+                {
+                    let logit = (value.norm() / mean_direction_norm).ln_1p() * inverse_temperature
+                        - max_logit;
+                    *weight = logit.exp();
+                    normalizer += f64::from(*weight);
+                    weighted_log_weight += f64::from(*weight) * f64::from(logit);
+                    let amplitude = phasor.norm();
+                    if amplitude > EPSILON {
+                        phase_resultant += (*phasor / amplitude) * *weight;
+                    }
+                }
+                let normalizer = normalizer.max(f64::from(EPSILON));
+                // Entropía en forma cerrada sobre sumas suficientes: evita el
+                // segundo recorrido que calculaba `-Σ p ln p` término a término.
+                let entropy = (normalizer.ln() - weighted_log_weight / normalizer).max(0.0);
+                let normalized_entropy = (entropy / (nodes as f64).ln()).clamp(0.0, 1.0);
+                let resultant = f64::from(phase_resultant.norm()) / normalizer;
+                // Φ es la interferencia entre los dos vectores de estado: foco
+                // no uniforme, integración global de fase y acuerdo entre la
+                // evidencia hacia adelante y la frontera hacia atrás. Sin
+                // frontera el acuerdo vale 1 y Φ queda como concentración pura.
+                let phi = ((1.0 - normalized_entropy)
+                    * resultant
+                    * f64::from(transaction_agreement))
+                .clamp(0.0, 1.0);
+                attention_phi_sum += phi;
+                attention_entropy_sum += normalized_entropy;
+                attention_updates += 1;
+                if phi as f32 >= config.attention_ignition_threshold {
+                    attention_ignitions += 1;
+                    attention_dormant_for = 0;
+                    let mean_weight = normalizer / nodes as f64;
+                    let mut local_peak_gain = 1.0f32;
+                    let mut attended_derivative = 0.0f64;
+                    for ((value, weight), gradient) in
+                        direction.iter_mut().zip(&*attention).zip(&*gradient)
+                    {
+                        let relative_weight = (f64::from(*weight) / mean_weight) as f32;
+                        let gain = (1.0 + config.attention_strength * (relative_weight - 1.0))
+                            .clamp(0.05, config.attention_max_gain);
+                        *value *= gain;
+                        local_peak_gain = local_peak_gain.max(gain);
+                        attended_derivative += f64::from((gradient.conj() * *value).re);
+                    }
+                    direction_scale = (baseline_derivative
+                        / attended_derivative.max(f64::from(EPSILON)))
+                        as f32;
+                    peak_attention_gain =
+                        peak_attention_gain.max(local_peak_gain * direction_scale);
+                } else {
+                    attention_dormant_for += 1;
+                }
+            }
+
+            // Invariante del diseño: todo modulador se renormaliza al mismo
+            // presupuesto, así que la derivada efectiva coincide siempre con la
+            // de Jacobi y no hace falta recalcularla.
+            let directional_derivative = baseline_derivative as f32;
 
             let mut trial_step = step_size;
             let mut accepted_energy = current_energy;
             let mut accepted = false;
             for _ in 0..config.max_backtracks {
+                let effective_step = trial_step * direction_scale;
                 let propose = |phasor: Complex32, direction: Complex32| {
-                    let mut next = phasor - direction * trial_step;
+                    let mut next = phasor - direction * effective_step;
                     let amplitude_sqr = next.norm_sqr();
                     if amplitude_sqr > max_amplitude_sqr {
                         next *= max_amplitude / amplitude_sqr.sqrt();
@@ -1120,7 +1409,30 @@ impl NativePhasorThermodynamicEngine {
                 (attention_entropy_sum / attention_updates as f64) as f32
             },
             peak_attention_gain,
+            mean_integrated_information: if attention_updates == 0 {
+                0.0
+            } else {
+                (attention_phi_sum / attention_updates as f64) as f32
+            },
+            attention_ignitions,
+            handshake_applied,
+            handshake_operator_applications,
+            mean_handshake_coherence: if handshake_updates == 0 {
+                0.0
+            } else {
+                (handshake_coherence_sum / handshake_updates as f64) as f32
+            },
+            handshake_iterations: handshake_updates,
+            attention_probes: attention_updates,
+            modifier_release_iteration: modifier_release_iteration.min(iterations),
         }
+    }
+
+    /// Energía libre del estado actual sin las métricas derivadas de
+    /// [`Self::report`]. Ahorra el producto Laplaciano y el recorrido de
+    /// coherencia cuando sólo se necesita F.
+    pub fn free_energy(&self) -> f32 {
+        self.free_energy_for(&self.phasors)
     }
 
     /// Ejecuta la variante experimental de inferencia activa local mediante
@@ -1540,6 +1852,17 @@ impl NativePhasorThermodynamicEngine {
     }
 }
 
+fn normalize_complex_field(values: &mut [Complex32]) {
+    let norm = values
+        .iter()
+        .map(|value| f64::from(value.norm_sqr()))
+        .sum::<f64>()
+        .sqrt() as f32;
+    if norm > EPSILON {
+        values.iter_mut().for_each(|value| *value /= norm);
+    }
+}
+
 fn mean_temperature(temperature: &[f32]) -> f32 {
     temperature.iter().copied().sum::<f32>() / temperature.len().max(1) as f32
 }
@@ -1675,6 +1998,14 @@ fn sanitize_minimizer_config(config: NativePhasorMinimizerConfig) -> NativePhaso
         attention_strength: config.attention_strength.clamp(0.0, 1.0),
         attention_temperature: config.attention_temperature.max(EPSILON),
         attention_max_gain: config.attention_max_gain.max(1.0),
+        attention_ignition_threshold: config.attention_ignition_threshold.clamp(0.0, 1.0),
+        handshake_strength: config.handshake_strength.clamp(0.0, 1.0),
+        handshake_rounds: config.handshake_rounds.max(1),
+        handshake_damping: config.handshake_damping.clamp(0.0, 1.0),
+        handshake_max_gain: config.handshake_max_gain.max(1.0),
+        modifier_release_residual_ratio: config.modifier_release_residual_ratio.clamp(0.0, 1.0),
+        handshake_saturation_coherence: config.handshake_saturation_coherence.clamp(-1.0, 1.0),
+        attention_probe_interval: config.attention_probe_interval.max(1),
         ..config
     }
 }
@@ -1898,6 +2229,215 @@ mod tests {
         );
         assert!(result.local_updates_accepted > 0, "{result:?}");
         assert_eq!(result.gibbs_proposals, 40 * engine.node_count());
+    }
+
+    #[test]
+    fn zero_handshake_strength_is_bit_exact_armijo() {
+        let core = NativeThermoCdtSubstrate::new(NativeThermoCdtConfig {
+            slices: 1,
+            nodes_per_slice: 32,
+            temperature: 0.0,
+            seed: 81_026,
+            ..NativeThermoCdtConfig::default()
+        });
+        let mut baseline =
+            NativePhasorThermodynamicEngine::from_core(&core, NativePhasorConfig::default())
+                .unwrap();
+        baseline.inject_pattern(&[3, 7, 11], 1.0, 0.4);
+        let mut control = baseline.clone();
+        let baseline_report = baseline.minimize_free_energy(NativePhasorMinimizerConfig {
+            max_iterations: 20,
+            topological_warm_start: false,
+            ..NativePhasorMinimizerConfig::default()
+        });
+        let control_report = control.minimize_free_energy(NativePhasorMinimizerConfig {
+            max_iterations: 20,
+            topological_warm_start: false,
+            handshake_strength: 0.0,
+            handshake_rounds: 9,
+            ..NativePhasorMinimizerConfig::default()
+        });
+
+        assert_eq!(baseline.phasors, control.phasors);
+        assert_eq!(baseline_report, control_report);
+        assert!(!control_report.handshake_applied);
+        assert_eq!(control_report.handshake_operator_applications, 0);
+    }
+
+    #[test]
+    fn handshake_uses_the_existing_stimulus_and_preserves_armijo_descent() {
+        let core = NativeThermoCdtSubstrate::new(NativeThermoCdtConfig {
+            slices: 1,
+            nodes_per_slice: 48,
+            temperature: 0.0,
+            seed: 82_026,
+            ..NativeThermoCdtConfig::default()
+        });
+        let mut engine =
+            NativePhasorThermodynamicEngine::from_core(&core, NativePhasorConfig::default())
+                .unwrap();
+        engine.inject_pattern(&[2, 13, 29], 1.0, 0.7);
+        let report = engine.minimize_free_energy(NativePhasorMinimizerConfig {
+            max_iterations: 24,
+            topological_warm_start: false,
+            handshake_strength: 0.65,
+            handshake_rounds: 3,
+            ..NativePhasorMinimizerConfig::default()
+        });
+
+        assert!(report.handshake_applied, "{report:?}");
+        assert_eq!(report.handshake_operator_applications, 3);
+        assert!(
+            report.final_report.free_energy <= report.initial.free_energy + 1.0e-6,
+            "{report:?}"
+        );
+    }
+
+    #[test]
+    fn attention_phi_ignites_after_handshake_when_threshold_is_reached() {
+        let core = NativeThermoCdtSubstrate::new(NativeThermoCdtConfig {
+            slices: 1,
+            nodes_per_slice: 32,
+            temperature: 0.0,
+            seed: 83_026,
+            ..NativeThermoCdtConfig::default()
+        });
+        let mut engine =
+            NativePhasorThermodynamicEngine::from_core(&core, NativePhasorConfig::default())
+                .unwrap();
+        engine.inject_pattern(&[1, 5, 9], 1.0, 0.3);
+        let report = engine.minimize_free_energy(NativePhasorMinimizerConfig {
+            max_iterations: 12,
+            residual_tolerance: 0.0,
+            energy_tolerance: 0.0,
+            topological_warm_start: false,
+            handshake_strength: 0.5,
+            attention_strength: 0.5,
+            attention_ignition_threshold: 0.0,
+            inference_policy: NativePhasorInferencePolicy::Fixed,
+            ..NativePhasorMinimizerConfig::default()
+        });
+
+        assert!(report.handshake_applied, "{report:?}");
+        assert_eq!(report.attention_ignitions, report.iterations);
+        assert!(report.mean_integrated_information >= 0.0);
+        assert!(
+            report.final_report.free_energy <= report.initial.free_energy + 1.0e-6,
+            "{report:?}"
+        );
+    }
+
+    fn modulated_engine(seed: u64) -> NativePhasorThermodynamicEngine {
+        let core = NativeThermoCdtSubstrate::new(NativeThermoCdtConfig {
+            slices: 1,
+            nodes_per_slice: 96,
+            spatial_degree: 3,
+            temperature: 0.0,
+            seed,
+            ..NativeThermoCdtConfig::default()
+        });
+        let mut engine =
+            NativePhasorThermodynamicEngine::from_core(&core, NativePhasorConfig::default())
+                .unwrap();
+        for (node, phasor) in engine.phasors.iter_mut().enumerate() {
+            *phasor = Complex32::from_polar(0.8 + 0.004 * node as f32, node as f32 * 0.83);
+        }
+        engine.inject_pattern(&[4, 17, 41, 68], 1.0, 0.35);
+        engine
+    }
+
+    fn modulated_config(policy: NativePhasorInferencePolicy) -> NativePhasorMinimizerConfig {
+        NativePhasorMinimizerConfig {
+            max_iterations: 40,
+            energy_tolerance: 0.0,
+            residual_tolerance: 0.0,
+            topological_warm_start: false,
+            handshake_strength: 0.65,
+            attention_strength: 0.55,
+            attention_ignition_threshold: 0.001,
+            inference_policy: policy,
+            ..NativePhasorMinimizerConfig::default()
+        }
+    }
+
+    #[test]
+    fn attention_keeps_its_focus_while_the_descent_shrinks_the_gradient() {
+        // Medida sobre módulos absolutos, la saliencia se apaga al converger:
+        // `ln(1+x)` con x≪1 comprime hasta dejar el softmax plano y la
+        // atención se queda ciega justo cuando debería ser más selectiva.
+        // Contra la media, el foco sólo depende de la forma del residuo.
+        let mut engine = modulated_engine(91_026);
+        let far = engine.minimize_free_energy(NativePhasorMinimizerConfig {
+            max_iterations: 2,
+            ..modulated_config(NativePhasorInferencePolicy::Fixed)
+        });
+        let near = engine.minimize_free_energy(NativePhasorMinimizerConfig {
+            max_iterations: 60,
+            ..modulated_config(NativePhasorInferencePolicy::Fixed)
+        });
+
+        assert!(
+            near.final_report.gradient_residual < far.final_report.gradient_residual,
+            "{near:?}"
+        );
+        assert!(near.mean_attention_entropy < 0.995, "{near:?}");
+        assert!(near.mean_integrated_information > 1.0e-3, "{near:?}");
+    }
+
+    #[test]
+    fn adaptive_policy_spends_less_modulation_than_fixed_on_the_same_descent() {
+        let mut fixed = modulated_engine(84_026);
+        let mut adaptive = modulated_engine(84_026);
+        let fixed_report =
+            fixed.minimize_free_energy(modulated_config(NativePhasorInferencePolicy::Fixed));
+        let adaptive_report =
+            adaptive.minimize_free_energy(modulated_config(NativePhasorInferencePolicy::Adaptive));
+
+        assert_eq!(fixed_report.modifier_release_iteration, fixed_report.iterations);
+        assert!(
+            adaptive_report.handshake_iterations + adaptive_report.attention_probes
+                < fixed_report.handshake_iterations + fixed_report.attention_probes,
+            "adaptativo={adaptive_report:?} fijo={fixed_report:?}"
+        );
+        assert!(
+            adaptive_report.final_report.free_energy <= adaptive_report.initial.free_energy + 1.0e-6,
+            "{adaptive_report:?}"
+        );
+    }
+
+    #[test]
+    fn released_modifiers_leave_a_pure_armijo_tail() {
+        let mut engine = modulated_engine(85_026);
+        let report = engine.minimize_free_energy(NativePhasorMinimizerConfig {
+            modifier_release_residual_ratio: 1.0,
+            ..modulated_config(NativePhasorInferencePolicy::Adaptive)
+        });
+
+        // Con ratio 1.0 el primer residuo ya cumple el umbral de liberación.
+        assert_eq!(report.modifier_release_iteration, 0, "{report:?}");
+        assert_eq!(report.handshake_iterations, 0, "{report:?}");
+        assert_eq!(report.attention_probes, 0, "{report:?}");
+    }
+
+    #[test]
+    fn modulators_preserve_the_armijo_directional_budget() {
+        for policy in [
+            NativePhasorInferencePolicy::Fixed,
+            NativePhasorInferencePolicy::Adaptive,
+        ] {
+            let mut engine = modulated_engine(86_026);
+            let report = engine.minimize_free_energy(modulated_config(policy));
+            // La renormalización deja la derivada direccional invariante, así
+            // que ningún modulador puede comprar pasos fuera de presupuesto.
+            assert!(
+                report.final_report.free_energy <= report.initial.free_energy + 1.0e-6,
+                "{policy:?} {report:?}"
+            );
+            assert!(
+                report.energy_evaluations <= report.iterations * 12 + 1,
+                "{policy:?} {report:?}"
+            );
+        }
     }
 
     #[test]
