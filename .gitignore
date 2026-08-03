@@ -13,6 +13,7 @@
 /data/gemma2_spin_infinite_training/
 /data/gemma2_developmental_infinite_training/
 /data/native_gemma2_adaptive/
+/data/native_gemma2_future_infinite_training/
 /data/native_cognitive_desktop/checkpoints/
 /data/native_cognitive_desktop/latest.json
 /target-correlation-test/

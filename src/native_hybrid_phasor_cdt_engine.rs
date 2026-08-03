@@ -177,6 +177,7 @@ pub enum NativeHybridError {
     Phasor(NativePhasorError),
     EmptyCue,
     InvalidCueNode { node: usize, nodes: usize },
+    InvalidAttractorPrototype { length: usize, nodes: usize },
 }
 
 impl fmt::Display for NativeHybridError {
@@ -190,6 +191,10 @@ impl fmt::Display for NativeHybridError {
                     "el cue usa el nodo {node}, pero sólo existen {nodes}"
                 )
             }
+            Self::InvalidAttractorPrototype { length, nodes } => write!(
+                formatter,
+                "el prototipo restaurado tiene {length} nodos, pero el core tiene {nodes}"
+            ),
         }
     }
 }
@@ -244,6 +249,33 @@ impl NativeHybridPhasorCdtEngine {
 
     pub fn attractors(&self) -> &[ConsolidatedCdtAttractor] {
         &self.attractors
+    }
+
+    /// Restaura la memoria explícita después de reconstruir el core desde un
+    /// checkpoint. La geometría CDT sigue siendo la fuente física del operador;
+    /// esta lista recupera identidad, confianza y conteos para que los gates de
+    /// novedad/merge no cambien tras reiniciar el proceso.
+    pub fn restore_attractors(
+        &mut self,
+        attractors: Vec<ConsolidatedCdtAttractor>,
+    ) -> Result<(), NativeHybridError> {
+        let nodes = self.core.node_count();
+        if let Some(attractor) = attractors
+            .iter()
+            .find(|attractor| attractor.prototype.len() != nodes)
+        {
+            return Err(NativeHybridError::InvalidAttractorPrototype {
+                length: attractor.prototype.len(),
+                nodes,
+            });
+        }
+        self.attractors = attractors;
+        if self.attractors.len() > self.config.max_attractors {
+            let remove = self.attractors.len() - self.config.max_attractors;
+            self.attractors.drain(0..remove);
+        }
+        self.pending.clear();
+        Ok(())
     }
 
     pub fn pending_attractors(&self) -> &[PendingPhasorAttractor] {
