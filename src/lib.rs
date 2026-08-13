@@ -17,6 +17,8 @@ pub mod future_guided_training;
 pub mod gemma_future_generator;
 pub mod gemma_operator_bridge;
 pub mod gemma_phasor_coupling;
+pub mod hybrid_thermo_attention;
+pub mod hybrid_thermo_attention_comparison;
 pub mod matrix_free_cognitive_substrate;
 pub mod native_checkpoint;
 pub mod native_cognitive_closed_loop;
