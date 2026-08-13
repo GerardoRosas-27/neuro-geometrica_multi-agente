@@ -542,6 +542,38 @@ impl QuantizedGemma2 {
             }
         }
     }
+
+    pub fn embedding_length(&self) -> usize {
+        self.embedding_length
+    }
+
+    pub fn final_softcap(&self) -> f64 {
+        self.final_softcap
+    }
+
+    /// Periférico de ingesta: W_emb[k] · √d_model (escalación nativa Gemma 2).
+    pub fn embed_token_ids(&self, token_ids: &Tensor) -> Result<Tensor> {
+        self.embeddings.embedding(token_ids)? * (self.embedding_length as f64).sqrt()
+    }
+
+    /// Embedding de un único token como vector [d_model].
+    pub fn embed_token(&self, token_id: u32) -> Result<Tensor> {
+        let ids = Tensor::new(&[[token_id]], self.device())?;
+        self.embed_token_ids(&ids)?.squeeze(0)?.squeeze(0)
+    }
+
+    /// Periférico de decodificación: norm → W_unemb → softcap tanh (Gemma 2).
+    ///
+    /// `hidden` debe tener forma `[d_model]` o `[batch, d_model]`.
+    pub fn logits_from_hidden(&self, hidden: &Tensor) -> Result<Tensor> {
+        let hidden = if hidden.rank() == 1 {
+            hidden.unsqueeze(0)?
+        } else {
+            hidden.clone()
+        };
+        let logits = self.output.forward(&self.norm.forward(&hidden)?)?;
+        (&logits / self.final_softcap)?.tanh()? * self.final_softcap
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
