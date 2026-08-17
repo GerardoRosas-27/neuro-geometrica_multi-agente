@@ -563,6 +563,7 @@ fn full_fallback(
     model.clear_kv_cache();
     let mask = LayerExecutionMask::all(model.layer_count());
     let output = model.forward_with_mask(prompt, 0, Some(&mask), true, false)?;
+    let logits = output.logits.squeeze(0)?.to_vec1::<f32>()?;
     let activations = memory.activation_fingerprint(&context_fingerprint, &output.trace);
     Ok(PreparedForward {
         output,
@@ -570,7 +571,7 @@ fn full_fallback(
         context_fingerprint,
         activation_fingerprint: activations,
         route_id: route.as_ref().map(|route| route.route_id),
-        quality: 0.0,
+        quality: output_confidence(&logits).max(0.5),
         fallback: true,
         recalled_memory_tokens: route
             .as_ref()

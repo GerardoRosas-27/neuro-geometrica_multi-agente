@@ -9,6 +9,7 @@ use crate::gemma2_thermo_hybrid_session::{
 use crate::native_checkpoint::atomic_write;
 use crate::native_gemma2::QuantizedGemma2;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::fs::{self, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
@@ -203,7 +204,7 @@ pub fn persist_hybrid_session(
 pub fn export_sleep_dataset(records: &[WakeTurnRecord]) -> Vec<SleepDatasetEntry> {
     records
         .iter()
-        .filter(|record| !record.sleep_trained && record.quality >= 0.05)
+        .filter(|record| !record.sleep_trained && !record.response_tokens.is_empty())
         .map(|record| {
             let mut sequence_tokens = record.prompt_tokens.clone();
             sequence_tokens.extend(&record.response_tokens);
@@ -255,13 +256,14 @@ pub fn train_thermo_from_dataset(
     hybrid: &mut Gemma2ThermoHybridLlm,
     entries: &[SleepDatasetEntry],
     config: &CircadianSleepConfig,
-) -> Result<ThermoSleepTrainingReport, String> {
+) -> Result<(ThermoSleepTrainingReport, HashSet<u64>), String> {
     let window = hybrid.config().thermo_window.max(4);
     let mut report = ThermoSleepTrainingReport::default();
     let mut mse_sum = 0.0f32;
+    let mut trained_turns = HashSet::new();
 
     for entry in entries.iter().take(config.max_sequences) {
-        if entry.sequence_tokens.len() < 2 || entry.quality < config.min_quality {
+        if entry.sequence_tokens.len() < 2 {
             continue;
         }
         let embeddings = embed_sequence(model, &entry.sequence_tokens)?;
@@ -271,8 +273,8 @@ pub fn train_thermo_from_dataset(
         if teachers.len() != embeddings.len() {
             continue;
         }
-        report.sequences = report.sequences.saturating_add(1);
-        for end in window..=embeddings.len() {
+        let mut entry_windows = 0usize;
+        for end in 1..=embeddings.len() {
             let start = end.saturating_sub(window);
             let slice = &embeddings[start..end];
             let teacher = &teachers[end - 1];
@@ -281,12 +283,17 @@ pub fn train_thermo_from_dataset(
                 .map_err(|error| error.to_string())?;
             mse_sum += mse;
             report.windows = report.windows.saturating_add(1);
+            entry_windows = entry_windows.saturating_add(1);
             if config.consolidate_every > 0
                 && report.windows.is_multiple_of(config.consolidate_every)
             {
                 let _ = hybrid.force_sleep();
                 report.sleep_cycles = hybrid.sleep_cycles();
             }
+        }
+        if entry_windows > 0 {
+            report.sequences = report.sequences.saturating_add(1);
+            trained_turns.insert(entry.turn);
         }
     }
 
@@ -300,7 +307,7 @@ pub fn train_thermo_from_dataset(
     if report.windows > 0 {
         report.mean_alignment_mse = mse_sum / report.windows as f32;
     }
-    Ok(report)
+    Ok((report, trained_turns))
 }
 
 pub fn run_sleep_phase(
@@ -316,10 +323,10 @@ pub fn run_sleep_phase(
     let dataset = export_sleep_dataset(&records);
     write_sleep_dataset(&paths.sleep_dataset, &dataset)?;
 
-    let thermo = train_thermo_from_dataset(model, hybrid, &dataset, sleep_config)?;
+    let (thermo, trained_turns) = train_thermo_from_dataset(model, hybrid, &dataset, sleep_config)?;
 
     for record in &mut records {
-        if !record.sleep_trained && record.quality >= sleep_config.min_quality {
+        if trained_turns.contains(&record.turn) {
             record.sleep_trained = true;
         }
     }

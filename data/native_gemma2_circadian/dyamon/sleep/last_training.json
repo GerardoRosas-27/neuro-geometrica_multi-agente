@@ -1,0 +1,16 @@
+{
+  "adaptive": {
+    "flushed": 0,
+    "pruned_routes": 0,
+    "pruned_relations": 0,
+    "remaining_routes": 0
+  },
+  "dataset_entries": 0,
+  "thermo": {
+    "sequences": 0,
+    "windows": 0,
+    "mean_alignment_mse": 0.0,
+    "attractors_after": 2,
+    "sleep_cycles": 0
+  }
+}
