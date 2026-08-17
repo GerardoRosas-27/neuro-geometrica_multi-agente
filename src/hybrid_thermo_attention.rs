@@ -14,12 +14,13 @@
 //! ```
 
 use crate::native_hybrid_phasor_cdt_engine::{
-    NativeHybridConfig, NativeHybridPhasorCdtEngine, NativePhasorCue,
+    HybridEngineLearnedState, NativeHybridConfig, NativeHybridPhasorCdtEngine, NativePhasorCue,
 };
 use crate::native_phasor_thermodynamic_engine::NativePhasorConfig;
 use crate::native_rng::{gaussian_from_counter, splitmix64, signed_unit};
 use crate::native_thermodynamic_cdt::NativeThermoCdtConfig;
 use std::fmt;
+use serde::{Deserialize, Serialize};
 
 const EPSILON: f32 = 1.0e-7;
 
@@ -645,6 +646,116 @@ impl HybridThermoAttention {
         }
         self.ctp_bias = vec![vec![0.0; n]; n];
     }
+
+    pub fn export_learned_state(&self) -> ThermoAttentionLearnedState {
+        ThermoAttentionLearnedState {
+            d_model: self.config.d_model,
+            d_v: self.config.d_v,
+            cdt_nodes: self.config.cdt_nodes,
+            rff_features: self.config.rff.features,
+            tick: self.tick,
+            w_q: self.w_q.clone(),
+            w_k: self.w_k.clone(),
+            ctp_bias: self.ctp_bias.clone(),
+            reservoir: ReservoirLearnedState {
+                s_real: self.reservoir.s_real.clone(),
+                s_imag: self.reservoir.s_imag.clone(),
+                z_real: self.reservoir.z_real.clone(),
+                z_imag: self.reservoir.z_imag.clone(),
+                tick: self.reservoir.tick,
+            },
+            hybrid: self.hybrid.export_learned_state(),
+        }
+    }
+
+    pub fn apply_learned_state(
+        &mut self,
+        state: &ThermoAttentionLearnedState,
+    ) -> Result<(), HybridThermoAttentionError> {
+        if state.d_model != self.config.d_model
+            || state.d_v != self.config.d_v
+            || state.cdt_nodes != self.config.cdt_nodes
+            || state.rff_features != self.config.rff.features
+        {
+            return Err(HybridThermoAttentionError::DimensionMismatch {
+                expected: self.config.d_model,
+                got: state.d_model,
+            });
+        }
+        self.tick = state.tick;
+        self.w_q = state.w_q.clone();
+        self.w_k = state.w_k.clone();
+        self.ctp_bias = state.ctp_bias.clone();
+        self.reservoir.s_real = state.reservoir.s_real.clone();
+        self.reservoir.s_imag = state.reservoir.s_imag.clone();
+        self.reservoir.z_real = state.reservoir.z_real.clone();
+        self.reservoir.z_imag = state.reservoir.z_imag.clone();
+        self.reservoir.tick = state.reservoir.tick;
+        self.hybrid
+            .apply_learned_state(&state.hybrid)
+            .map_err(|error| HybridThermoAttentionError::Hybrid(error.to_string()))
+    }
+
+    /// Ajuste supervisado: acerca la salida termodinámica al hidden post-Transformer de Gemma.
+    pub fn supervised_align_step(
+        &mut self,
+        raw_tokens: &[Vec<f32>],
+        teacher_last: &[f32],
+        learning_rate: f32,
+    ) -> Result<f32, HybridThermoAttentionError> {
+        if raw_tokens.is_empty() {
+            return Err(HybridThermoAttentionError::EmptySequence);
+        }
+        let (output, _) = self.forward(raw_tokens, raw_tokens)?;
+        let predicted = output
+            .last()
+            .ok_or(HybridThermoAttentionError::EmptySequence)?;
+        let rate = learning_rate.clamp(1.0e-5, 0.25);
+        let dims = predicted
+            .len()
+            .min(teacher_last.len())
+            .min(self.config.d_model);
+        let mut mse = 0.0f32;
+        for dim in 0..dims {
+            let error = teacher_last[dim] - predicted[dim];
+            mse += error * error;
+            let delta = rate * error * 0.01;
+            for row in &mut self.w_q {
+                if row.len() > dim {
+                    row[dim] += delta * 0.5;
+                }
+            }
+            for row in &mut self.w_k {
+                if row.len() > dim {
+                    row[dim] += delta * 0.5;
+                }
+            }
+        }
+        Ok(mse / dims.max(1) as f32)
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ThermoAttentionLearnedState {
+    pub d_model: usize,
+    pub d_v: usize,
+    pub cdt_nodes: usize,
+    pub rff_features: usize,
+    pub tick: u64,
+    pub w_q: Vec<Vec<f32>>,
+    pub w_k: Vec<Vec<f32>>,
+    pub ctp_bias: Vec<Vec<f32>>,
+    pub reservoir: ReservoirLearnedState,
+    pub hybrid: HybridEngineLearnedState,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ReservoirLearnedState {
+    pub s_real: Vec<Vec<f32>>,
+    pub s_imag: Vec<Vec<f32>>,
+    pub z_real: Vec<f32>,
+    pub z_imag: Vec<f32>,
+    pub tick: u64,
 }
 
 // ── Utilidades ───────────────────────────────────────────────────────────────

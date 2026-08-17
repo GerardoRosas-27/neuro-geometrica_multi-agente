@@ -672,6 +672,27 @@ impl NativePhasorThermodynamicEngine {
         self.tick
     }
 
+    pub fn restore_runtime_state(
+        &mut self,
+        phasors: Vec<Complex32>,
+        temperature: Vec<f32>,
+        stimulus: Vec<Complex32>,
+        tick: u64,
+    ) -> Result<(), NativePhasorError> {
+        if phasors.len() != self.phasors.len()
+            || temperature.len() != self.temperature.len()
+            || stimulus.len() != self.stimulus.len()
+        {
+            return Err(NativePhasorError::InvalidStateDimensions);
+        }
+        self.phasors = phasors;
+        self.temperature = temperature;
+        self.stimulus = stimulus;
+        self.tick = tick;
+        self.refresh_temperature_statistics();
+        Ok(())
+    }
+
     /// Restaura el contador de ticks tras una sonda o rollback que ejecutó
     /// pasos sólo para medir y debe dejar el motor como estaba.
     pub(crate) fn set_tick(&mut self, tick: u64) {

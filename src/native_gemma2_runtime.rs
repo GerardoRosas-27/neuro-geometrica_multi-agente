@@ -167,7 +167,7 @@ impl Gemma2Session {
         } else {
             let input = Tensor::new(suffix, model.device())?.unsqueeze(0)?;
             let logits = model
-                .forward_with_mask(&input, prefix, mask, false)?
+                .forward_with_mask(&input, prefix, mask, false, false)?
                 .logits
                 .squeeze(0)?;
             self.cached_tokens.extend_from_slice(suffix);
@@ -205,7 +205,7 @@ impl Gemma2Session {
             }
             let next = Tensor::new(&[token], model.device())?.unsqueeze(0)?;
             logits = model
-                .forward_with_mask(&next, self.cached_tokens.len(), mask, false)?
+                .forward_with_mask(&next, self.cached_tokens.len(), mask, false, false)?
                 .logits
                 .squeeze(0)?;
             self.cached_tokens.push(token);

@@ -11,19 +11,28 @@
 
 use crate::hybrid_thermo_attention::{
     HybridThermoAttention, HybridThermoAttentionConfig, HybridThermoAttentionError,
-    HybridThermoAttentionReport, PhasorRffConfig,
+    HybridThermoAttentionReport, PhasorRffConfig, ThermoAttentionLearnedState,
 };
 use crate::native_gemma2::{Gemma2Tokenizer, QuantizedGemma2};
 use crate::native_hybrid_phasor_cdt_engine::NativeHybridConfig;
 use crate::native_phasor_thermodynamic_engine::NativePhasorMinimizerConfig;
 use candle_core::Tensor;
 use candle_transformers::generation::LogitsProcessor;
+use serde::{Deserialize, Serialize};
 use std::fmt;
 
 const DEFAULT_THERMO_WINDOW: usize = 64;
 const DEFAULT_RFF_FEATURES_CAP: usize = 512;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Gemma2ThermoHybridLearnedState {
+    pub config: Gemma2ThermoHybridConfig,
+    pub thermo: ThermoAttentionLearnedState,
+    pub tokens_processed: u64,
+    pub sleep_cycles: u64,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct Gemma2ThermoHybridConfig {
     /// Ventana deslizante de embeddings enviada al motor CTP por paso.
     pub thermo_window: usize,
@@ -152,6 +161,38 @@ impl Gemma2ThermoHybridLlm {
         self.sleep_cycles = 0;
     }
 
+    pub fn export_learned_state(&self) -> Gemma2ThermoHybridLearnedState {
+        Gemma2ThermoHybridLearnedState {
+            config: self.config,
+            thermo: self.thermo.export_learned_state(),
+            tokens_processed: self.tokens_processed,
+            sleep_cycles: self.sleep_cycles,
+        }
+    }
+
+    pub fn apply_learned_state(
+        &mut self,
+        state: &Gemma2ThermoHybridLearnedState,
+    ) -> Result<(), Gemma2ThermoHybridError> {
+        if state.config.cdt_nodes != self.config.cdt_nodes
+            || state.config.rff_features_cap != self.config.rff_features_cap
+            || state.config.seed != self.config.seed
+        {
+            return Err(Gemma2ThermoHybridError::Thermo(
+                HybridThermoAttentionError::DimensionMismatch {
+                    expected: self.config.cdt_nodes,
+                    got: state.config.cdt_nodes,
+                },
+            ));
+        }
+        self.config.thermo_window = state.config.thermo_window;
+        self.config.sleep_every_tokens = state.config.sleep_every_tokens;
+        self.thermo.apply_learned_state(&state.thermo)?;
+        self.tokens_processed = state.tokens_processed;
+        self.sleep_cycles = state.sleep_cycles;
+        Ok(())
+    }
+
     /// Prefill: ingesta embeddings del prompt (desde W_emb·√d) al motor CTP.
     pub fn prefill_embeddings(&mut self, embeddings: &[Vec<f32>]) -> Result<(), Gemma2ThermoHybridError> {
         for embedding in embeddings {
@@ -272,6 +313,17 @@ impl Gemma2ThermoHybridLlm {
     > {
         self.thermo
             .sleep_consolidate()
+            .map_err(Gemma2ThermoHybridError::from)
+    }
+
+    pub fn supervised_align_step(
+        &mut self,
+        embeddings: &[Vec<f32>],
+        teacher_last: &[f32],
+        learning_rate: f32,
+    ) -> Result<f32, Gemma2ThermoHybridError> {
+        self.thermo
+            .supervised_align_step(embeddings, teacher_last, learning_rate)
             .map_err(Gemma2ThermoHybridError::from)
     }
 

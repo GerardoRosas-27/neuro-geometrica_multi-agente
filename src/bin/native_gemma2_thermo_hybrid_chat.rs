@@ -11,10 +11,14 @@
 //!   /limpiar    — borra historial y contexto CTP
 //!   /estado     — métricas del motor termodinámico
 //!   /sleep      — consolidación CDT inmediata
-//!   /salir      — termina
+//!   /salir      — termina y guarda (si hay --chat NOMBRE)
 
 use candle_core::quantized::gguf_file;
 use cdt_rqm_epr::gemma2_thermo_hybrid_llm::{Gemma2ThermoHybridConfig, Gemma2ThermoHybridLlm};
+use cdt_rqm_epr::gemma2_thermo_hybrid_session::{
+    chat_session_path, load_chat_session, restore_hybrid_from_session, save_chat_session,
+    sanitize_chat_name, unix_now, DEFAULT_CHAT_ROOT,
+};
 use cdt_rqm_epr::native_gemma2::{
     resolve_gemma2_device, resolve_gemma2_model_path, Gemma2Tokenizer, QuantizedGemma2,
 };
@@ -34,6 +38,8 @@ const DEFAULT_TOP_P: f64 = 0.95;
 #[derive(Clone, Debug)]
 struct ConsoleConfig {
     model: Option<PathBuf>,
+    chat_name: Option<String>,
+    chat_root: PathBuf,
     max_tokens: usize,
     context: usize,
     temperature: f64,
@@ -51,6 +57,9 @@ struct ConsoleSession {
     processor: LogitsProcessor,
     history: Vec<(String, String)>,
     turns: u64,
+    chat_name: Option<String>,
+    chat_path: Option<PathBuf>,
+    created_at_unix: u64,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -75,22 +84,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         seed: config.seed,
         ..Default::default()
     };
-    let hybrid = Gemma2ThermoHybridLlm::for_gemma(&model, hybrid_config)?;
+
+    let (mut session, resumed) = load_or_create_session(&model, &config, hybrid_config)?;
     let context_limit = config.context.min(model.max_context());
 
     println!("Listo en {:.1}s", load_started.elapsed().as_secs_f64());
-    print_engine_info(&model, &hybrid, context_limit, &config);
-
-    let mut session = ConsoleSession {
-        hybrid,
-        processor: LogitsProcessor::new(
-            config.seed,
-            Some(config.temperature),
-            Some(config.top_p),
-        ),
-        history: Vec::new(),
-        turns: 0,
-    };
+    print_engine_info(&model, &session.hybrid, context_limit, &config);
+    print_session_info(&session, resumed);
 
     if let Some(prompt) = config.prompt.as_deref() {
         let response = converse(
@@ -103,12 +103,101 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )?;
         if response.is_empty() {
             println!();
+        } else {
+            session.history.push((prompt.to_string(), response));
+            session.turns += 1;
         }
+        persist_session(&mut session)?;
         return Ok(());
     }
 
     print_help_short();
-    repl(&model, &tokenizer, &mut session, &config, context_limit)
+    let result = repl(&model, &tokenizer, &mut session, &config, context_limit);
+    persist_session(&mut session)?;
+    result
+}
+
+fn load_or_create_session(
+    model: &QuantizedGemma2,
+    config: &ConsoleConfig,
+    hybrid_config: Gemma2ThermoHybridConfig,
+) -> Result<(ConsoleSession, bool), Box<dyn std::error::Error>> {
+    let processor = LogitsProcessor::new(
+        config.seed,
+        Some(config.temperature),
+        Some(config.top_p),
+    );
+
+    let Some(chat_name) = config.chat_name.as_deref() else {
+        let hybrid = Gemma2ThermoHybridLlm::for_gemma(model, hybrid_config)?;
+        return Ok((
+            ConsoleSession {
+                hybrid,
+                processor,
+                history: Vec::new(),
+                turns: 0,
+                chat_name: None,
+                chat_path: None,
+                created_at_unix: unix_now(),
+            },
+            false,
+        ));
+    };
+
+    let chat_path = chat_session_path(&config.chat_root, chat_name);
+    if chat_path.is_file() {
+        let saved = load_chat_session(&chat_path)?;
+        let hybrid = restore_hybrid_from_session(model, hybrid_config, &saved)?;
+        Ok((
+            ConsoleSession {
+                hybrid,
+                processor,
+                history: saved.history,
+                turns: saved.turns,
+                chat_name: Some(chat_name.to_string()),
+                chat_path: Some(chat_path),
+                created_at_unix: saved.created_at_unix,
+            },
+            true,
+        ))
+    } else {
+        let hybrid = Gemma2ThermoHybridLlm::for_gemma(model, hybrid_config)?;
+        Ok((
+            ConsoleSession {
+                hybrid,
+                processor,
+                history: Vec::new(),
+                turns: 0,
+                chat_name: Some(chat_name.to_string()),
+                chat_path: Some(chat_path),
+                created_at_unix: unix_now(),
+            },
+            false,
+        ))
+    }
+}
+
+fn persist_session(session: &mut ConsoleSession) -> Result<(), Box<dyn std::error::Error>> {
+    let Some(chat_path) = session.chat_path.as_ref() else {
+        return Ok(());
+    };
+    let Some(chat_name) = session.chat_name.as_ref() else {
+        return Ok(());
+    };
+    let _ = session.hybrid.force_sleep();
+    save_chat_session(
+        chat_path,
+        chat_name,
+        session.created_at_unix,
+        session.turns,
+        &session.history,
+        &session.hybrid,
+    )?;
+    println!(
+        "Memoria CDT guardada en {}",
+        chat_path.display()
+    );
+    Ok(())
 }
 
 fn repl(
@@ -266,6 +355,29 @@ fn print_banner() {
     println!();
 }
 
+fn print_session_info(session: &ConsoleSession, resumed: bool) {
+    match (&session.chat_name, resumed) {
+        (Some(name), true) => {
+            let attractors = session
+                .hybrid
+                .thermo_engine()
+                .hybrid_engine()
+                .attractors()
+                .len();
+            println!(
+                "Sesión '{name}': reanudada ({attractors} atractores CDT, {} mensajes)",
+                session.history.len()
+            );
+        }
+        (Some(name), false) => {
+            println!("Sesión '{name}': nueva (se guardará al salir)");
+        }
+        (None, _) => {
+            println!("Sesión efímera: no se guardará al salir (usa --chat NOMBRE)");
+        }
+    }
+}
+
 fn print_engine_info(
     model: &QuantizedGemma2,
     hybrid: &Gemma2ThermoHybridLlm,
@@ -309,6 +421,7 @@ fn print_status(session: &ConsoleSession) {
 
 fn print_help_short() {
     println!("Escribe tu mensaje y pulsa Enter. Comandos: /ayuda /limpiar /estado /sleep /salir");
+    println!("Persistencia: --chat NOMBRE guarda en data/native_gemma2_thermo_chats/NOMBRE.cdt");
 }
 
 fn print_help_full() {
@@ -320,32 +433,45 @@ Comandos de consola:
   /estado, /status  Métricas del motor termodinámico y CDT
   /sleep            Fuerza consolidación CDT (fase sueño)
   /ventana N        Ajusta ventana deslizante del reservorio (N >= 4)
-  /salir, /exit     Termina la aplicación
+  /salir, /exit     Termina la aplicación (consolida y guarda si hay --chat)
 
 Variables de entorno:
   GEMMA2_DEVICE              cpu | cuda:0
+  GEMMA2_THERMO_CHAT         nombre de sesión persistente
+  GEMMA2_THERMO_CHAT_ROOT    carpeta de sesiones (default data/native_gemma2_thermo_chats)
   GEMMA2_THERMO_WINDOW       ventana CTP (default 64)
   GEMMA2_THERMO_SLEEP_EVERY  tokens entre sleep (default 32)
   GEMMA2_THERMO_SEED         semilla de muestreo
 
 Argumentos:
-  --model PATH         Ruta al GGUF de Gemma 2
-  --device DEVICE      Dispositivo Candle
-  --max-tokens N       Tokens máximos por respuesta
-  --context N          Límite de contexto del prompt
-  --temperature T      Temperatura de muestreo
-  --top-p P            Nucleus sampling
-  --thermo-window N    Ventana del motor CTP
-  --sleep-every N      Consolidación CDT cada N tokens
-  --no-metrics         Oculta métricas termodinámicas
-  --prompt TEXTO       Una sola pregunta (sin REPL interactivo)
+  --chat NAME        Nombre de la sesión persistente (.cdt). Si no existe, se crea.
+  --chat-root PATH   Carpeta donde se guardan las sesiones
+  --model PATH       Ruta al GGUF de Gemma 2
+  --device DEVICE    Dispositivo Candle
+  --max-tokens N     Tokens máximos por respuesta
+  --context N        Límite de contexto del prompt
+  --temperature T    Temperatura de muestreo
+  --top-p P          Nucleus sampling
+  --thermo-window N  Ventana del motor CTP
+  --sleep-every N    Consolidación CDT cada N tokens
+  --no-metrics       Oculta métricas termodinámicas
+  --prompt TEXTO     Una sola pregunta (sin REPL interactivo)
 "
     );
 }
 
 fn parse_args() -> Result<ConsoleConfig, Box<dyn std::error::Error>> {
+    let chat_name = env::var("GEMMA2_THERMO_CHAT")
+        .ok()
+        .map(|value| sanitize_chat_name(&value))
+        .transpose()?;
+
     let mut config = ConsoleConfig {
         model: None,
+        chat_name,
+        chat_root: env::var("GEMMA2_THERMO_CHAT_ROOT")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| PathBuf::from(DEFAULT_CHAT_ROOT)),
         max_tokens: DEFAULT_MAX_TOKENS,
         context: DEFAULT_CONTEXT,
         temperature: DEFAULT_TEMPERATURE,
@@ -361,6 +487,10 @@ fn parse_args() -> Result<ConsoleConfig, Box<dyn std::error::Error>> {
     let mut args = env::args().skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
+            "--chat" => {
+                config.chat_name = Some(sanitize_chat_name(&required(&mut args, "--chat")?)?);
+            }
+            "--chat-root" => config.chat_root = PathBuf::from(required(&mut args, "--chat-root")?),
             "--model" => config.model = Some(PathBuf::from(required(&mut args, "--model")?)),
             "--max-tokens" => config.max_tokens = required(&mut args, "--max-tokens")?.parse()?,
             "--context" => config.context = required(&mut args, "--context")?.parse()?,

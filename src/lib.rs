@@ -14,7 +14,9 @@ pub mod entanglement;
 /// Entrenamiento donde un prior generativo propone futuros y F postselecciona
 /// qué trayectoria puede pasar al gate de consolidación CDT.
 pub mod future_guided_training;
+pub mod gemma2_circadian_bridge;
 pub mod gemma2_thermo_hybrid_llm;
+pub mod gemma2_thermo_hybrid_session;
 pub mod gemma_future_generator;
 pub mod gemma_operator_bridge;
 pub mod gemma_phasor_coupling;

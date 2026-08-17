@@ -251,7 +251,7 @@ fn prepare_forward(
     let recalled = memory.recall(&context_fingerprint, model.layer_count());
     if let Some(route) = recalled.as_ref().filter(|_| !memory.should_revalidate()) {
         model.clear_kv_cache();
-        let output = model.forward_with_mask(&prompt, 0, Some(&route.mask), true)?;
+        let output = model.forward_with_mask(&prompt, 0, Some(&route.mask), true, false)?;
         let logits = output.logits.squeeze(0)?.to_vec1::<f32>()?;
         let self_quality = output_confidence(&logits);
         if self_quality >= 0.05 && logits.iter().all(|value| value.is_finite()) {
@@ -279,7 +279,7 @@ fn prepare_forward(
     memory.note_revalidation();
     model.clear_kv_cache();
     let full_mask = LayerExecutionMask::all(model.layer_count());
-    let full = model.forward_with_mask(&prompt, 0, Some(&full_mask), true)?;
+    let full = model.forward_with_mask(&prompt, 0, Some(&full_mask), true, false)?;
     let activation_fingerprint = memory.activation_fingerprint(&context_fingerprint, &full.trace);
     let candidates = memory.progressive_candidate_masks(&full.trace);
     if candidates.is_empty() {
@@ -307,7 +307,7 @@ fn prepare_forward(
         .take(memory.config.max_candidate_prefills)
     {
         model.clear_kv_cache();
-        let sparse = model.forward_with_mask(&prompt, 0, Some(&candidate), false)?;
+        let sparse = model.forward_with_mask(&prompt, 0, Some(&candidate), false, false)?;
         let sparse_logits = sparse.logits.squeeze(0)?.to_vec1::<f32>()?;
         last_quality = logit_agreement(&full_logits, &sparse_logits);
         if last_quality < memory.config.min_verified_quality {
@@ -322,7 +322,7 @@ fn prepare_forward(
             sparse
         } else {
             model.clear_kv_cache();
-            model.forward_with_mask(&prompt, 0, Some(&candidate), false)?
+            model.forward_with_mask(&prompt, 0, Some(&candidate), false, false)?
         };
         return Ok(PreparedForward {
             output,
@@ -339,7 +339,7 @@ fn prepare_forward(
         });
     }
     model.clear_kv_cache();
-    let output = model.forward_with_mask(&prompt, 0, Some(&full_mask), true)?;
+    let output = model.forward_with_mask(&prompt, 0, Some(&full_mask), true, false)?;
     Ok(PreparedForward {
         output,
         mask: full_mask,
@@ -364,7 +364,7 @@ fn full_fallback(
 ) -> Result<PreparedForward, Box<dyn std::error::Error>> {
     model.clear_kv_cache();
     let mask = LayerExecutionMask::all(model.layer_count());
-    let output = model.forward_with_mask(prompt, 0, Some(&mask), true)?;
+    let output = model.forward_with_mask(prompt, 0, Some(&mask), true, false)?;
     let activations = memory.activation_fingerprint(&context_fingerprint, &output.trace);
     Ok(PreparedForward {
         output,
