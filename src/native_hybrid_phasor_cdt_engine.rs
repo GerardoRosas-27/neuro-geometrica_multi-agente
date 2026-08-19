@@ -10,9 +10,10 @@ use crate::native_phasor_thermodynamic_engine::{
 };
 use crate::native_rng::signed_unit;
 use crate::native_thermodynamic_cdt::{
-    NativeThermoCdtConfig, NativeThermoCdtReport, NativeThermoCdtSubstrate,
+    CdtLearnedState, NativeThermoCdtConfig, NativeThermoCdtReport, NativeThermoCdtSubstrate,
 };
 use num_complex::Complex32;
+use serde::{Deserialize, Serialize};
 use std::fmt;
 
 const EPSILON: f32 = 1.0e-7;
@@ -207,6 +208,109 @@ impl From<NativePhasorError> for NativeHybridError {
     }
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct HybridEngineLearnedState {
+    pub cdt: CdtLearnedState,
+    pub phasors: Vec<[f32; 2]>,
+    pub phasor_temperature: Vec<f32>,
+    pub phasor_stimulus: Vec<[f32; 2]>,
+    pub phasor_tick: u64,
+    pub attractors: Vec<ConsolidatedAttractorSnapshot>,
+    pub pending: Vec<PendingAttractorSnapshot>,
+    pub cycle: u64,
+    pub sleep_cycle: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ConsolidatedAttractorSnapshot {
+    pub id: usize,
+    pub prototype: Vec<[f32; 2]>,
+    pub free_energy: f32,
+    pub confidence: f32,
+    pub consolidations: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PendingAttractorSnapshot {
+    pub id: u64,
+    pub prototype: Vec<[f32; 2]>,
+    pub free_energy: f32,
+    pub confidence: f32,
+    pub observations: u64,
+    pub relative_energy_drop: f32,
+    pub boundary: Vec<[f32; 2]>,
+    pub anchors: Vec<f32>,
+}
+
+impl From<&ConsolidatedCdtAttractor> for ConsolidatedAttractorSnapshot {
+    fn from(attractor: &ConsolidatedCdtAttractor) -> Self {
+        Self {
+            id: attractor.id,
+            prototype: complex_to_pairs(&attractor.prototype),
+            free_energy: attractor.free_energy,
+            confidence: attractor.confidence,
+            consolidations: attractor.consolidations,
+        }
+    }
+}
+
+impl TryFrom<&ConsolidatedAttractorSnapshot> for ConsolidatedCdtAttractor {
+    type Error = NativeHybridError;
+
+    fn try_from(snapshot: &ConsolidatedAttractorSnapshot) -> Result<Self, Self::Error> {
+        Ok(Self {
+            id: snapshot.id,
+            prototype: pairs_to_complex(&snapshot.prototype),
+            free_energy: snapshot.free_energy,
+            confidence: snapshot.confidence,
+            consolidations: snapshot.consolidations,
+        })
+    }
+}
+
+impl From<&PendingPhasorAttractor> for PendingAttractorSnapshot {
+    fn from(attractor: &PendingPhasorAttractor) -> Self {
+        Self {
+            id: attractor.id,
+            prototype: complex_to_pairs(&attractor.prototype),
+            free_energy: attractor.free_energy,
+            confidence: attractor.confidence,
+            observations: attractor.observations,
+            relative_energy_drop: attractor.relative_energy_drop,
+            boundary: complex_to_pairs(&attractor.boundary),
+            anchors: attractor.anchors.clone(),
+        }
+    }
+}
+
+impl TryFrom<&PendingAttractorSnapshot> for PendingPhasorAttractor {
+    type Error = NativeHybridError;
+
+    fn try_from(snapshot: &PendingAttractorSnapshot) -> Result<Self, Self::Error> {
+        Ok(Self {
+            id: snapshot.id,
+            prototype: pairs_to_complex(&snapshot.prototype),
+            free_energy: snapshot.free_energy,
+            confidence: snapshot.confidence,
+            observations: snapshot.observations,
+            relative_energy_drop: snapshot.relative_energy_drop,
+            boundary: pairs_to_complex(&snapshot.boundary),
+            anchors: snapshot.anchors.clone(),
+        })
+    }
+}
+
+fn complex_to_pairs(values: &[Complex32]) -> Vec<[f32; 2]> {
+    values.iter().map(|value| [value.re, value.im]).collect()
+}
+
+fn pairs_to_complex(values: &[[f32; 2]]) -> Vec<Complex32> {
+    values
+        .iter()
+        .map(|[re, im]| Complex32::new(*re, *im))
+        .collect()
+}
+
 #[derive(Clone, Debug)]
 pub struct NativeHybridPhasorCdtEngine {
     /// Core único y persistente.
@@ -280,6 +384,80 @@ impl NativeHybridPhasorCdtEngine {
 
     pub fn pending_attractors(&self) -> &[PendingPhasorAttractor] {
         &self.pending
+    }
+
+    pub fn export_learned_state(&self) -> HybridEngineLearnedState {
+        HybridEngineLearnedState {
+            cdt: self.core.export_learned_state(),
+            phasors: complex_to_pairs(&self.phasor.phasors),
+            phasor_temperature: self.phasor.temperature.clone(),
+            phasor_stimulus: complex_to_pairs(&self.phasor.stimulus),
+            phasor_tick: self.phasor.tick(),
+            attractors: self
+                .attractors
+                .iter()
+                .map(ConsolidatedAttractorSnapshot::from)
+                .collect(),
+            pending: self
+                .pending
+                .iter()
+                .map(PendingAttractorSnapshot::from)
+                .collect(),
+            cycle: self.cycle,
+            sleep_cycle: self.sleep_cycle,
+        }
+    }
+
+    pub fn apply_learned_state(
+        &mut self,
+        state: &HybridEngineLearnedState,
+    ) -> Result<(), NativeHybridError> {
+        self.core
+            .apply_learned_state(&state.cdt)
+            .map_err(|_| NativeHybridError::Phasor(NativePhasorError::InvalidStateDimensions))?;
+        self.phasor = NativePhasorThermodynamicEngine::from_core(&self.core, self.phasor.config)
+            .map_err(NativeHybridError::Phasor)?;
+        self.phasor
+            .restore_runtime_state(
+                pairs_to_complex(&state.phasors),
+                state.phasor_temperature.clone(),
+                pairs_to_complex(&state.phasor_stimulus),
+                state.phasor_tick,
+            )
+            .map_err(NativeHybridError::Phasor)?;
+        let attractors = state
+            .attractors
+            .iter()
+            .map(ConsolidatedCdtAttractor::try_from)
+            .collect::<Result<Vec<_>, _>>()?;
+        self.restore_attractors(attractors)?;
+        let pending = state
+            .pending
+            .iter()
+            .map(PendingPhasorAttractor::try_from)
+            .collect::<Result<Vec<_>, _>>()?;
+        self.restore_pending_attractors(pending)?;
+        self.cycle = state.cycle;
+        self.sleep_cycle = state.sleep_cycle;
+        Ok(())
+    }
+
+    pub fn restore_pending_attractors(
+        &mut self,
+        pending: Vec<PendingPhasorAttractor>,
+    ) -> Result<(), NativeHybridError> {
+        let nodes = self.core.node_count();
+        if let Some(attractor) = pending
+            .iter()
+            .find(|attractor| attractor.prototype.len() != nodes)
+        {
+            return Err(NativeHybridError::InvalidAttractorPrototype {
+                length: attractor.prototype.len(),
+                nodes,
+            });
+        }
+        self.pending = pending;
+        Ok(())
     }
 
     /// Fase wake: infiere en fasores y deja el atractor en una cola volátil.
@@ -420,8 +598,7 @@ impl NativeHybridPhasorCdtEngine {
                 self.phasor.recompile_from_core(&self.core)?;
                 self.phasor.phasors.copy_from_slice(&candidate.prototype);
                 if replay_gain > 0.0 && candidate.boundary.len() == self.phasor.stimulus.len() {
-                    for (field, evoked) in
-                        self.phasor.stimulus.iter_mut().zip(&candidate.boundary)
+                    for (field, evoked) in self.phasor.stimulus.iter_mut().zip(&candidate.boundary)
                     {
                         *field = *evoked * replay_gain;
                     }
@@ -588,8 +765,10 @@ impl NativeHybridPhasorCdtEngine {
         // sobreestima el costo, nunca lo subestima.
         let mut maximum_similarity = 0.0f32;
         for attractor in &self.attractors {
-            maximum_similarity = maximum_similarity
-                .max(attractor_similarity(&attractor.prototype, &candidate.prototype));
+            maximum_similarity = maximum_similarity.max(attractor_similarity(
+                &attractor.prototype,
+                &candidate.prototype,
+            ));
             if maximum_similarity >= self.config.attractor_merge_similarity {
                 break;
             }
@@ -1011,7 +1190,11 @@ mod tests {
             })
             .collect::<Vec<_>>();
         engine.infer_and_stage(&cue).unwrap();
-        assert!(engine.phasor.stimulus.iter().any(|value| value.norm() > 0.0));
+        assert!(engine
+            .phasor
+            .stimulus
+            .iter()
+            .any(|value| value.norm() > 0.0));
 
         engine.sleep_consolidate().unwrap();
         // Un atractor debe sostenerse por la geometría del CDT, no por el

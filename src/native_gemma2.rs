@@ -110,6 +110,8 @@ pub struct Gemma2ForwardTrace {
 pub struct Gemma2ForwardOutput {
     pub logits: Tensor,
     pub trace: Gemma2ForwardTrace,
+    /// Estados ocultos `[batch, seq, d_model]` antes de norm/logits (sólo si se pidió).
+    pub sequence_hidden: Option<Tensor>,
 }
 
 #[derive(Debug, Clone)]
@@ -374,7 +376,7 @@ impl QuantizedGemma2 {
 
     pub fn forward(&mut self, token_ids: &Tensor, position: usize) -> Result<Tensor> {
         Ok(self
-            .forward_with_mask(token_ids, position, None, false)?
+            .forward_with_mask(token_ids, position, None, false, false)?
             .logits)
     }
 
@@ -384,6 +386,7 @@ impl QuantizedGemma2 {
         position: usize,
         mask: Option<&LayerExecutionMask>,
         capture_trace: bool,
+        capture_sequence_hidden: bool,
     ) -> Result<Gemma2ForwardOutput> {
         let (_, sequence_length) = token_ids.dims2()?;
         if position + sequence_length > self.max_context {
@@ -497,13 +500,38 @@ impl QuantizedGemma2 {
                 });
             }
         }
+        let sequence_hidden = if capture_sequence_hidden {
+            Some(hidden.clone())
+        } else {
+            None
+        };
         let last = hidden.i((.., sequence_length - 1, ..))?;
         let logits = self.output.forward(&self.norm.forward(&last)?)?;
         let logits = (&logits / self.final_softcap)?.tanh()? * self.final_softcap;
         Ok(Gemma2ForwardOutput {
             logits: logits?,
             trace,
+            sequence_hidden,
         })
+    }
+
+    /// Estados ocultos post-Transformer (pre-norm/logits) para cada token del prompt.
+    pub fn prefill_teacher_hiddens(&mut self, token_ids: &[u32]) -> Result<Vec<Vec<f32>>> {
+        if token_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        self.clear_kv_cache();
+        let ids = Tensor::new(token_ids, self.device())?.unsqueeze(0)?;
+        let output = self.forward_with_mask(&ids, 0, None, false, true)?;
+        let hidden = output
+            .sequence_hidden
+            .ok_or_else(|| candle_core::Error::Msg("prefill sin hidden".to_string()))?;
+        let sequence_length = token_ids.len();
+        let mut hiddens = Vec::with_capacity(sequence_length);
+        for index in 0..sequence_length {
+            hiddens.push(hidden.i((0, index, ..))?.to_vec1::<f32>()?);
+        }
+        Ok(hiddens)
     }
 
     pub fn clear_kv_cache(&mut self) {
@@ -541,6 +569,38 @@ impl QuantizedGemma2 {
                 tensor.elem_count() * std::mem::size_of::<f32>()
             }
         }
+    }
+
+    pub fn embedding_length(&self) -> usize {
+        self.embedding_length
+    }
+
+    pub fn final_softcap(&self) -> f64 {
+        self.final_softcap
+    }
+
+    /// Periférico de ingesta: W_emb[k] · √d_model (escalación nativa Gemma 2).
+    pub fn embed_token_ids(&self, token_ids: &Tensor) -> Result<Tensor> {
+        self.embeddings.embedding(token_ids)? * (self.embedding_length as f64).sqrt()
+    }
+
+    /// Embedding de un único token como vector [d_model].
+    pub fn embed_token(&self, token_id: u32) -> Result<Tensor> {
+        let ids = Tensor::new(&[[token_id]], self.device())?;
+        self.embed_token_ids(&ids)?.squeeze(0)?.squeeze(0)
+    }
+
+    /// Periférico de decodificación: norm → W_unemb → softcap tanh (Gemma 2).
+    ///
+    /// `hidden` debe tener forma `[d_model]` o `[batch, d_model]`.
+    pub fn logits_from_hidden(&self, hidden: &Tensor) -> Result<Tensor> {
+        let hidden = if hidden.rank() == 1 {
+            hidden.unsqueeze(0)?
+        } else {
+            hidden.clone()
+        };
+        let logits = self.output.forward(&self.norm.forward(&hidden)?)?;
+        (&logits / self.final_softcap)?.tanh()? * self.final_softcap
     }
 }
 

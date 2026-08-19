@@ -2,6 +2,7 @@ use crate::native_rng::{gaussian_from_counter, splitmix64, unit_from_u64};
 use rand::{Rng, SeedableRng};
 use rand_xoshiro::Xoshiro256PlusPlus;
 use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 const EPSILON: f32 = 1.0e-6;
@@ -121,6 +122,79 @@ impl Default for NativeThermoCdtConfig {
             amplitude_decay: 0.002,
             state_clamp: 4.0,
             seed: 0xCD7A_71C0,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CdtLearnedState {
+    pub config: CdtConfigSnapshot,
+    pub thermal_state: Vec<f32>,
+    pub amplitude: Vec<f32>,
+    pub phase: Vec<f32>,
+    pub temperature: Vec<f32>,
+    pub pilot_force: Vec<f32>,
+    pub energy: Vec<f32>,
+    pub activation: Vec<f32>,
+    pub edge_weight: Vec<f32>,
+    pub edge_phase: Vec<f32>,
+    pub edge_stability: Vec<f32>,
+    pub tick: u64,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+pub struct CdtConfigSnapshot {
+    pub slices: usize,
+    pub nodes_per_slice: usize,
+    pub spatial_degree: usize,
+    pub temporal_degree: usize,
+    pub temperature: f32,
+    pub dt: f32,
+    pub diffusion: f32,
+    pub confinement: f32,
+    pub pilot_gain: f32,
+    pub phase_coupling: f32,
+    pub amplitude_decay: f32,
+    pub state_clamp: f32,
+    pub seed: u64,
+}
+
+impl From<NativeThermoCdtConfig> for CdtConfigSnapshot {
+    fn from(config: NativeThermoCdtConfig) -> Self {
+        Self {
+            slices: config.slices,
+            nodes_per_slice: config.nodes_per_slice,
+            spatial_degree: config.spatial_degree,
+            temporal_degree: config.temporal_degree,
+            temperature: config.temperature,
+            dt: config.dt,
+            diffusion: config.diffusion,
+            confinement: config.confinement,
+            pilot_gain: config.pilot_gain,
+            phase_coupling: config.phase_coupling,
+            amplitude_decay: config.amplitude_decay,
+            state_clamp: config.state_clamp,
+            seed: config.seed,
+        }
+    }
+}
+
+impl From<CdtConfigSnapshot> for NativeThermoCdtConfig {
+    fn from(snapshot: CdtConfigSnapshot) -> Self {
+        Self {
+            slices: snapshot.slices,
+            nodes_per_slice: snapshot.nodes_per_slice,
+            spatial_degree: snapshot.spatial_degree,
+            temporal_degree: snapshot.temporal_degree,
+            temperature: snapshot.temperature,
+            dt: snapshot.dt,
+            diffusion: snapshot.diffusion,
+            confinement: snapshot.confinement,
+            pilot_gain: snapshot.pilot_gain,
+            phase_coupling: snapshot.phase_coupling,
+            amplitude_decay: snapshot.amplitude_decay,
+            state_clamp: snapshot.state_clamp,
+            seed: snapshot.seed,
         }
     }
 }
@@ -245,6 +319,52 @@ impl NativeThermoCdtSubstrate {
 
     pub fn tick(&self) -> u64 {
         self.tick
+    }
+
+    pub fn export_learned_state(&self) -> CdtLearnedState {
+        CdtLearnedState {
+            config: CdtConfigSnapshot::from(self.config),
+            thermal_state: self.thermal_state.clone(),
+            amplitude: self.amplitude.clone(),
+            phase: self.phase.clone(),
+            temperature: self.temperature.clone(),
+            pilot_force: self.pilot_force.clone(),
+            energy: self.energy.clone(),
+            activation: self.activation.clone(),
+            edge_weight: self.edge_weight.clone(),
+            edge_phase: self.edge_phase.clone(),
+            edge_stability: self.edge_stability.clone(),
+            tick: self.tick,
+        }
+    }
+
+    pub fn apply_learned_state(&mut self, state: &CdtLearnedState) -> Result<(), String> {
+        if self.node_count() != state.thermal_state.len() {
+            return Err(format!(
+                "nodos incompatibles: esperados {}, recibidos {}",
+                self.node_count(),
+                state.thermal_state.len()
+            ));
+        }
+        if self.edge_count() != state.edge_weight.len() {
+            return Err(format!(
+                "aristas incompatibles: esperadas {}, recibidas {}",
+                self.edge_count(),
+                state.edge_weight.len()
+            ));
+        }
+        self.thermal_state.copy_from_slice(&state.thermal_state);
+        self.amplitude.copy_from_slice(&state.amplitude);
+        self.phase.copy_from_slice(&state.phase);
+        self.temperature.copy_from_slice(&state.temperature);
+        self.pilot_force.copy_from_slice(&state.pilot_force);
+        self.energy.copy_from_slice(&state.energy);
+        self.activation.copy_from_slice(&state.activation);
+        self.edge_weight.copy_from_slice(&state.edge_weight);
+        self.edge_phase.copy_from_slice(&state.edge_phase);
+        self.edge_stability.copy_from_slice(&state.edge_stability);
+        self.tick = state.tick;
+        Ok(())
     }
 
     pub fn node_count(&self) -> usize {

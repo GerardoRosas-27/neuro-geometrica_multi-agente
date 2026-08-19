@@ -92,8 +92,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let sleep = engine.sleep_consolidate()?;
                 metrics[index].sleep_elapsed += started.elapsed();
                 metrics[index].accepted += sleep.accepted;
-                metrics[index].storage_delta +=
-                    f64::from(sleep.mean_storage_delta_free_energy);
+                metrics[index].storage_delta += f64::from(sleep.mean_storage_delta_free_energy);
 
                 corrupt_state(&mut engine, seed.rotate_left(23));
                 engine.infer_and_stage(&recall_cue)?;
