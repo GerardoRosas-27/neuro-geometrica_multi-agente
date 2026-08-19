@@ -3,8 +3,8 @@
 use crate::adaptive_gemma2::{AdaptiveThermoMemory, SleepConsolidationReport};
 use crate::gemma2_thermo_hybrid_llm::{Gemma2ThermoHybridConfig, Gemma2ThermoHybridLlm};
 use crate::gemma2_thermo_hybrid_session::{
-    chat_session_path, load_chat_session, restore_hybrid_from_session, save_chat_session,
-    sanitize_chat_name, unix_now,
+    chat_session_path, load_chat_session, restore_hybrid_from_session, sanitize_chat_name,
+    save_chat_session, unix_now,
 };
 use crate::native_checkpoint::atomic_write;
 use crate::native_gemma2::QuantizedGemma2;
@@ -156,6 +156,14 @@ impl WakeJournal {
     }
 }
 
+pub struct LoadedHybridSession {
+    pub hybrid: Gemma2ThermoHybridLlm,
+    pub created_at_unix: u64,
+    pub turns: u64,
+    pub history: Vec<(String, String)>,
+    pub resumed: bool,
+}
+
 pub fn load_or_create_hybrid(
     model: &QuantizedGemma2,
     paths: &CircadianPaths,
@@ -163,11 +171,22 @@ pub fn load_or_create_hybrid(
     history: &[(String, String)],
     turns: u64,
     created_at_unix: u64,
-) -> Result<(Gemma2ThermoHybridLlm, u64), String> {
+) -> Result<LoadedHybridSession, String> {
     if paths.thermo_session.is_file() {
         let saved = load_chat_session(&paths.thermo_session)?;
         let hybrid = restore_hybrid_from_session(model, hybrid_config, &saved)?;
-        Ok((hybrid, saved.created_at_unix))
+        let (turns, history) = if saved.history.is_empty() {
+            (turns, history.to_vec())
+        } else {
+            (saved.turns, saved.history)
+        };
+        Ok(LoadedHybridSession {
+            hybrid,
+            created_at_unix: saved.created_at_unix,
+            turns,
+            history,
+            resumed: true,
+        })
     } else {
         let hybrid = Gemma2ThermoHybridLlm::for_gemma(model, hybrid_config)
             .map_err(|error| error.to_string())?;
@@ -179,8 +198,32 @@ pub fn load_or_create_hybrid(
             history,
             &hybrid,
         )?;
-        Ok((hybrid, created_at_unix))
+        Ok(LoadedHybridSession {
+            hybrid,
+            created_at_unix,
+            turns,
+            history: history.to_vec(),
+            resumed: false,
+        })
     }
+}
+
+pub fn wake_history(journal: &WakeJournal) -> Result<(u64, Vec<(String, String)>), String> {
+    let records = journal.load_all()?;
+    if records.is_empty() {
+        return Ok((0, Vec::new()));
+    }
+    let start = records
+        .iter()
+        .rposition(|record| record.turn <= 1)
+        .unwrap_or(0);
+    let session = &records[start..];
+    let turns = session.last().map(|record| record.turn).unwrap_or(0);
+    let history = session
+        .iter()
+        .map(|record| (record.user.clone(), record.assistant.clone()))
+        .collect();
+    Ok((turns, history))
 }
 
 pub fn persist_hybrid_session(
@@ -299,15 +342,20 @@ pub fn train_thermo_from_dataset(
 
     let _ = hybrid.force_sleep();
     report.sleep_cycles = hybrid.sleep_cycles();
-    report.attractors_after = hybrid
-        .thermo_engine()
-        .hybrid_engine()
-        .attractors()
-        .len();
+    report.attractors_after = hybrid.thermo_engine().hybrid_engine().attractors().len();
     if report.windows > 0 {
         report.mean_alignment_mse = mse_sum / report.windows as f32;
     }
     Ok((report, trained_turns))
+}
+
+pub fn untrained_prompt_tokens(records: &[WakeTurnRecord]) -> Vec<Vec<u32>> {
+    records
+        .iter()
+        .rev()
+        .filter(|record| !record.sleep_trained && record.prompt_tokens.len() >= 2)
+        .map(|record| record.prompt_tokens.clone())
+        .collect()
 }
 
 pub fn run_sleep_phase(
@@ -318,8 +366,9 @@ pub fn run_sleep_phase(
     paths: &CircadianPaths,
     sleep_config: &CircadianSleepConfig,
 ) -> Result<CircadianSleepReport, String> {
-    let adaptive = memory.consolidate_sleep()?;
     let mut records = journal.load_all()?;
+    let extra_prompts = untrained_prompt_tokens(&records);
+    let adaptive = memory.consolidate_sleep_with_model(model, &extra_prompts)?;
     let dataset = export_sleep_dataset(&records);
     write_sleep_dataset(&paths.sleep_dataset, &dataset)?;
 
@@ -363,5 +412,58 @@ pub fn new_wake_record(
         quality,
         executed_layers,
         sleep_trained: false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_journal(name: &str) -> (WakeJournal, PathBuf) {
+        let path = std::env::temp_dir().join(format!("circadian-wake-{name}-{}.jsonl", unix_now()));
+        let _ = fs::remove_file(&path);
+        (WakeJournal::open(path.clone()).unwrap(), path)
+    }
+
+    #[test]
+    fn wake_history_restores_last_contiguous_session() {
+        let (journal, path) = temp_journal("history");
+        journal
+            .append(&new_wake_record(1, "a", "uno", &[1], &[2], 0.2, 26))
+            .unwrap();
+        journal
+            .append(&new_wake_record(2, "b", "dos", &[3], &[4], 0.2, 26))
+            .unwrap();
+        journal
+            .append(&new_wake_record(1, "c", "tres", &[5], &[6], 0.2, 26))
+            .unwrap();
+        journal
+            .append(&new_wake_record(2, "d", "cuatro", &[7], &[8], 0.2, 26))
+            .unwrap();
+        let (turns, history) = wake_history(&journal).unwrap();
+        assert_eq!(turns, 2);
+        assert_eq!(
+            history,
+            vec![
+                ("c".to_string(), "tres".to_string()),
+                ("d".to_string(), "cuatro".to_string()),
+            ]
+        );
+        let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn untrained_prompts_are_newest_first_and_skip_trained() {
+        let records = vec![
+            new_wake_record(1, "a", "uno", &[1, 2], &[3], 0.2, 26),
+            {
+                let mut trained = new_wake_record(2, "b", "dos", &[4, 5], &[6], 0.2, 26);
+                trained.sleep_trained = true;
+                trained
+            },
+            new_wake_record(3, "c", "tres", &[7, 8, 9], &[10], 0.2, 26),
+        ];
+        let prompts = untrained_prompt_tokens(&records);
+        assert_eq!(prompts, vec![vec![7, 8, 9], vec![1, 2]]);
     }
 }

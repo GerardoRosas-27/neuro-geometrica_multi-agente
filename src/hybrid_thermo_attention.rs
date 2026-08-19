@@ -17,10 +17,10 @@ use crate::native_hybrid_phasor_cdt_engine::{
     HybridEngineLearnedState, NativeHybridConfig, NativeHybridPhasorCdtEngine, NativePhasorCue,
 };
 use crate::native_phasor_thermodynamic_engine::NativePhasorConfig;
-use crate::native_rng::{gaussian_from_counter, splitmix64, signed_unit};
+use crate::native_rng::{gaussian_from_counter, signed_unit, splitmix64};
 use crate::native_thermodynamic_cdt::NativeThermoCdtConfig;
-use std::fmt;
 use serde::{Deserialize, Serialize};
+use std::fmt;
 
 const EPSILON: f32 = 1.0e-7;
 
@@ -148,10 +148,9 @@ pub enum HybridThermoAttentionError {
 impl fmt::Display for HybridThermoAttentionError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::DimensionMismatch { expected, got } => write!(
-                formatter,
-                "dimensión esperada {expected}, recibida {got}"
-            ),
+            Self::DimensionMismatch { expected, got } => {
+                write!(formatter, "dimensión esperada {expected}, recibida {got}")
+            }
             Self::EmptySequence => write!(formatter, "la secuencia está vacía"),
             Self::Hybrid(message) => write!(formatter, "error híbrido: {message}"),
         }
@@ -282,10 +281,8 @@ impl LangevinReservoir {
                 // dS = (-γ S + φ* ⊗ V) dt + ruido
                 let noise = gaussian_from_counter(seed, (m as u64) * self.d_v as u64 + d as u64)
                     * noise_scale;
-                self.s_real[m][d] +=
-                    (-gamma * self.s_real[m][d] + phi_r * v) * dt + noise;
-                self.s_imag[m][d] +=
-                    (-gamma * self.s_imag[m][d] - phi_i * v) * dt;
+                self.s_real[m][d] += (-gamma * self.s_real[m][d] + phi_r * v) * dt + noise;
+                self.s_imag[m][d] += (-gamma * self.s_imag[m][d] - phi_i * v) * dt;
             }
         }
         self.tick = self.tick.wrapping_add(1);
@@ -386,11 +383,7 @@ impl HybridThermoAttention {
     pub fn new(config: HybridThermoAttentionConfig) -> Result<Self, HybridThermoAttentionError> {
         let d = config.d_model;
         let rff = PhasorRffMap::new(d, config.rff);
-        let reservoir = LangevinReservoir::new(
-            config.d_v,
-            rff.features(),
-            config.reservoir,
-        );
+        let reservoir = LangevinReservoir::new(config.d_v, rff.features(), config.reservoir);
         let hybrid = NativeHybridPhasorCdtEngine::new(
             NativeThermoCdtConfig {
                 slices: 1,
@@ -441,10 +434,7 @@ impl HybridThermoAttention {
 
     /// Proyecta entradas crudas con W_Q, W_K aprendibles.
     pub fn project_qk(&self, raw: &[Vec<f32>]) -> (Vec<Vec<f32>>, Vec<Vec<f32>>) {
-        let queries = raw
-            .iter()
-            .map(|x| matvec(&self.w_q, x))
-            .collect::<Vec<_>>();
+        let queries = raw.iter().map(|x| matvec(&self.w_q, x)).collect::<Vec<_>>();
         let keys = raw.iter().map(|x| matvec(&self.w_k, x)).collect();
         (queries, keys)
     }
@@ -601,8 +591,9 @@ impl HybridThermoAttention {
 
             for d in 0..self.config.d_model {
                 let xi = raw[i][d];
-                let noise = gaussian_from_counter(seed, (i as u64) * self.config.d_model as u64 + d as u64)
-                    * temp.sqrt();
+                let noise =
+                    gaussian_from_counter(seed, (i as u64) * self.config.d_model as u64 + d as u64)
+                        * temp.sqrt();
                 let delta = -eta * error * xi + noise;
                 for row in &mut self.w_q {
                     row[d] -= delta * 0.5;
@@ -817,12 +808,7 @@ fn identity_matrix(n: usize) -> Vec<Vec<f32>> {
 fn matvec(matrix: &[Vec<f32>], vector: &[f32]) -> Vec<f32> {
     matrix
         .iter()
-        .map(|row| {
-            row.iter()
-                .zip(vector.iter())
-                .map(|(&w, &x)| w * x)
-                .sum()
-        })
+        .map(|row| row.iter().zip(vector.iter()).map(|(&w, &x)| w * x).sum())
         .collect()
 }
 
@@ -881,10 +867,13 @@ mod tests {
 
     #[test]
     fn rff_kernel_is_symmetric_and_bounded() {
-        let rff = PhasorRffMap::new(8, PhasorRffConfig {
-            features: 32,
-            ..Default::default()
-        });
+        let rff = PhasorRffMap::new(
+            8,
+            PhasorRffConfig {
+                features: 32,
+                ..Default::default()
+            },
+        );
         let x = synthetic_sequence(1, 8, 1)[0].clone();
         let y = synthetic_sequence(1, 8, 2)[0].clone();
         let k_xy = rff.kernel_approx(&x, &y);
@@ -908,10 +897,13 @@ mod tests {
     #[test]
     fn langevin_reservoir_query_is_finite() {
         let mut res = LangevinReservoir::new(4, 16, LangevinReservoirConfig::default());
-        let rff = PhasorRffMap::new(8, PhasorRffConfig {
-            features: 16,
-            ..Default::default()
-        });
+        let rff = PhasorRffMap::new(
+            8,
+            PhasorRffConfig {
+                features: 16,
+                ..Default::default()
+            },
+        );
         let k = synthetic_sequence(1, 8, 20)[0].clone();
         let v = vec![1.0, 0.0, -1.0, 0.5];
         let (phi_r, phi_i) = rff.project(&k);
@@ -972,11 +964,14 @@ mod tests {
 
     #[test]
     fn rff_similar_vectors_have_high_kernel() {
-        let rff = PhasorRffMap::new(16, PhasorRffConfig {
-            features: 128,
-            sigma: 1.0,
-            ..Default::default()
-        });
+        let rff = PhasorRffMap::new(
+            16,
+            PhasorRffConfig {
+                features: 128,
+                sigma: 1.0,
+                ..Default::default()
+            },
+        );
         let x = synthetic_sequence(1, 16, 40)[0].clone();
         let mut y = x.clone();
         let self_kernel = rff.kernel_approx(&x, &y);
@@ -990,10 +985,13 @@ mod tests {
     fn langevin_reservoir_memory_is_constant_in_sequence_length() {
         let features = 32;
         let d_v = 8;
-        let rff = PhasorRffMap::new(8, PhasorRffConfig {
-            features,
-            ..Default::default()
-        });
+        let rff = PhasorRffMap::new(
+            8,
+            PhasorRffConfig {
+                features,
+                ..Default::default()
+            },
+        );
         let mut short = LangevinReservoir::new(d_v, features, LangevinReservoirConfig::default());
         let mut long = LangevinReservoir::new(d_v, features, LangevinReservoirConfig::default());
         let k = synthetic_sequence(1, 8, 50)[0].clone();

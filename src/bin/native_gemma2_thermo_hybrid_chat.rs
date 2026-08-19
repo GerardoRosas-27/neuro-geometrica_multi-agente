@@ -14,16 +14,16 @@
 //!   /salir      — termina y guarda (si hay --chat NOMBRE)
 
 use candle_core::quantized::gguf_file;
+use candle_transformers::generation::LogitsProcessor;
 use cdt_rqm_epr::gemma2_thermo_hybrid_llm::{Gemma2ThermoHybridConfig, Gemma2ThermoHybridLlm};
 use cdt_rqm_epr::gemma2_thermo_hybrid_session::{
-    chat_session_path, load_chat_session, restore_hybrid_from_session, save_chat_session,
-    sanitize_chat_name, unix_now, DEFAULT_CHAT_ROOT,
+    chat_session_path, load_chat_session, restore_hybrid_from_session, sanitize_chat_name,
+    save_chat_session, unix_now, DEFAULT_CHAT_ROOT,
 };
 use cdt_rqm_epr::native_gemma2::{
     resolve_gemma2_device, resolve_gemma2_model_path, Gemma2Tokenizer, QuantizedGemma2,
 };
 use cdt_rqm_epr::native_gemma2_runtime::chat_tokens;
-use candle_transformers::generation::LogitsProcessor;
 use std::env;
 use std::fs::File;
 use std::io::{self, Write};
@@ -122,11 +122,7 @@ fn load_or_create_session(
     config: &ConsoleConfig,
     hybrid_config: Gemma2ThermoHybridConfig,
 ) -> Result<(ConsoleSession, bool), Box<dyn std::error::Error>> {
-    let processor = LogitsProcessor::new(
-        config.seed,
-        Some(config.temperature),
-        Some(config.top_p),
-    );
+    let processor = LogitsProcessor::new(config.seed, Some(config.temperature), Some(config.top_p));
 
     let Some(chat_name) = config.chat_name.as_deref() else {
         let hybrid = Gemma2ThermoHybridLlm::for_gemma(model, hybrid_config)?;
@@ -193,10 +189,7 @@ fn persist_session(session: &mut ConsoleSession) -> Result<(), Box<dyn std::erro
         &session.history,
         &session.hybrid,
     )?;
-    println!(
-        "Memoria CDT guardada en {}",
-        chat_path.display()
-    );
+    println!("Memoria CDT guardada en {}", chat_path.display());
     Ok(())
 }
 
@@ -396,23 +389,31 @@ fn print_engine_info(
     );
     println!(
         "max_tokens={} | T={} | top_p={} | sleep/cada={} tokens",
-        config.max_tokens,
-        config.temperature,
-        config.top_p,
-        config.sleep_every,
+        config.max_tokens, config.temperature, config.top_p, config.sleep_every,
     );
 }
 
 fn print_status(session: &ConsoleSession) {
-    let phasor = session.hybrid.thermo_engine().hybrid_engine().phasor.report();
+    let phasor = session
+        .hybrid
+        .thermo_engine()
+        .hybrid_engine()
+        .phasor
+        .report();
     let hybrid = session.hybrid.thermo_engine().hybrid_engine();
     println!("── Estado termodinámico ──");
     println!("  Turnos de chat:       {}", session.turns);
-    println!("  Tokens procesados:    {}", session.hybrid.tokens_processed());
+    println!(
+        "  Tokens procesados:    {}",
+        session.hybrid.tokens_processed()
+    );
     println!("  Contexto (ventana):   {}", session.hybrid.context_len());
     println!("  Ciclos sleep:         {}", session.hybrid.sleep_cycles());
     println!("  Atractores CDT:       {}", hybrid.attractors().len());
-    println!("  Pendientes:           {}", hybrid.pending_attractors().len());
+    println!(
+        "  Pendientes:           {}",
+        hybrid.pending_attractors().len()
+    );
     println!("  F (energía libre):    {:.4}", phasor.free_energy);
     println!("  Coherencia de fase:   {:.4}", phasor.phase_coherence);
     println!("  Residuo gradiente:    {:.3e}", phasor.gradient_residual);
@@ -494,13 +495,17 @@ fn parse_args() -> Result<ConsoleConfig, Box<dyn std::error::Error>> {
             "--model" => config.model = Some(PathBuf::from(required(&mut args, "--model")?)),
             "--max-tokens" => config.max_tokens = required(&mut args, "--max-tokens")?.parse()?,
             "--context" => config.context = required(&mut args, "--context")?.parse()?,
-            "--temperature" => config.temperature = required(&mut args, "--temperature")?.parse()?,
+            "--temperature" => {
+                config.temperature = required(&mut args, "--temperature")?.parse()?
+            }
             "--top-p" => config.top_p = required(&mut args, "--top-p")?.parse()?,
             "--device" => config.device = required(&mut args, "--device")?,
             "--thermo-window" => {
                 config.thermo_window = required(&mut args, "--thermo-window")?.parse()?
             }
-            "--sleep-every" => config.sleep_every = required(&mut args, "--sleep-every")?.parse()?,
+            "--sleep-every" => {
+                config.sleep_every = required(&mut args, "--sleep-every")?.parse()?
+            }
             "--seed" => config.seed = required(&mut args, "--seed")?.parse()?,
             "--prompt" => config.prompt = Some(required(&mut args, "--prompt")?),
             "--no-metrics" => config.show_metrics = false,

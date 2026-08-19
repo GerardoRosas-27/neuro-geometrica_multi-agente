@@ -11,10 +11,8 @@ use crate::hybrid_thermo_attention::{
 use crate::native_hybrid_phasor_cdt_engine::{
     NativeHybridConfig, NativeHybridPhasorCdtEngine, NativePhasorCue,
 };
-use crate::native_phasor_thermodynamic_engine::{
-    NativePhasorConfig, NativePhasorMinimizerConfig,
-};
-use crate::native_rng::{splitmix64, signed_unit};
+use crate::native_phasor_thermodynamic_engine::{NativePhasorConfig, NativePhasorMinimizerConfig};
+use crate::native_rng::{signed_unit, splitmix64};
 use crate::native_thermodynamic_cdt::NativeThermoCdtConfig;
 use std::time::{Duration, Instant};
 
@@ -257,7 +255,8 @@ fn run_legacy_trial(
     let wake = engine.infer_and_stage(&cues).expect("legacy wake");
     let wake_elapsed = started.elapsed();
 
-    let recall_cues = tokens_to_legacy_cues(&[tokens[0].clone()], engine.core.node_count(), seed ^ 1);
+    let recall_cues =
+        tokens_to_legacy_cues(&[tokens[0].clone()], engine.core.node_count(), seed ^ 1);
     let pre_recall = engine.phasor.report().phase_coherence;
     let sleep = engine.sleep_consolidate().expect("legacy sleep");
     let _ = engine.infer_and_stage(&recall_cues);
@@ -347,7 +346,8 @@ fn shared_hybrid_config(_config: &HybridLegacyComparisonConfig) -> NativeHybridC
             residual_tolerance: 1.0e-2,
             handshake_strength: 0.65,
             attention_strength: 0.55,
-            inference_policy: crate::native_phasor_thermodynamic_engine::NativePhasorInferencePolicy::Adaptive,
+            inference_policy:
+                crate::native_phasor_thermodynamic_engine::NativePhasorInferencePolicy::Adaptive,
             ..Default::default()
         },
         minimum_relative_energy_drop: 0.0,
@@ -528,7 +528,11 @@ fn synthetic_sequence(n: usize, d: usize, seed: u64) -> Vec<Vec<f32>> {
         .collect()
 }
 
-fn tokens_to_legacy_cues(tokens: &[Vec<f32>], node_count: usize, seed: u64) -> Vec<NativePhasorCue> {
+fn tokens_to_legacy_cues(
+    tokens: &[Vec<f32>],
+    node_count: usize,
+    seed: u64,
+) -> Vec<NativePhasorCue> {
     tokens
         .iter()
         .enumerate()
@@ -540,7 +544,8 @@ fn tokens_to_legacy_cues(tokens: &[Vec<f32>], node_count: usize, seed: u64) -> V
                 .map(|(d, &v)| v * (d as f32 + 1.0))
                 .sum::<f32>()
                 .rem_euclid(std::f32::consts::TAU);
-            let amplitude = embedding.iter().map(|v| v * v).sum::<f32>().sqrt() / embedding.len() as f32;
+            let amplitude =
+                embedding.iter().map(|v| v * v).sum::<f32>().sqrt() / embedding.len() as f32;
             NativePhasorCue {
                 node,
                 amplitude: amplitude.max(0.1),

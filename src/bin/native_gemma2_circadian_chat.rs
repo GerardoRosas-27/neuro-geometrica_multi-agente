@@ -5,23 +5,21 @@
 //! ```
 
 use candle_core::quantized::gguf_file;
-use candle_core::Tensor;
-use cdt_rqm_epr::adaptive_gemma2::{
-    AdaptiveGemma2Config, AdaptiveThermoMemory, RecalledLayerRoute,
-};
+use cdt_rqm_epr::adaptive_gemma2::{AdaptiveGemma2Config, AdaptiveThermoMemory};
 use cdt_rqm_epr::gemma2_circadian_bridge::{
-    load_or_create_hybrid, new_wake_record, persist_hybrid_session, run_sleep_phase,
-    CircadianPaths, CircadianSleepConfig, DEFAULT_CIRCADIAN_ROOT, WakeJournal,
+    load_or_create_hybrid, new_wake_record, persist_hybrid_session, run_sleep_phase, wake_history,
+    CircadianPaths, CircadianSleepConfig, WakeJournal, DEFAULT_CIRCADIAN_ROOT,
 };
-use cdt_rqm_epr::gemma2_thermo_hybrid_llm::{Gemma2ThermoHybridConfig, Gemma2ThermoHybridLlm};
+use cdt_rqm_epr::gemma2_thermo_hybrid_llm::{
+    apply_wake_bias, Gemma2ThermoHybridConfig, Gemma2ThermoHybridLlm, Gemma2WakeBiasReport,
+};
 use cdt_rqm_epr::gemma2_thermo_hybrid_session::sanitize_chat_name;
 use cdt_rqm_epr::gemma_phasor_coupling::{GemmaPhasorCouplingConfig, GemmaPhasorWorker};
 use cdt_rqm_epr::native_gemma2::{
-    resolve_gemma2_device, resolve_gemma2_model_path, Gemma2ForwardOutput, Gemma2Tokenizer,
-    LayerExecutionMask, QuantizedGemma2,
+    resolve_gemma2_device, resolve_gemma2_model_path, Gemma2Tokenizer, QuantizedGemma2,
 };
 use cdt_rqm_epr::native_gemma2_runtime::{chat_tokens, Gemma2GenerationConfig, Gemma2Session};
-use cdt_rqm_epr::thermo_router::{ActivationFingerprint, TransformerActivationAdapter};
+use std::cell::Cell;
 use std::env;
 use std::fs::File;
 use std::io::{self, Write};
@@ -46,17 +44,6 @@ struct Config {
     thermo: bool,
 }
 
-struct PreparedForward {
-    output: Gemma2ForwardOutput,
-    mask: LayerExecutionMask,
-    context_fingerprint: ActivationFingerprint,
-    activation_fingerprint: ActivationFingerprint,
-    route_id: Option<cdt_rqm_epr::thermo_router::RouteId>,
-    quality: f32,
-    fallback: bool,
-    recalled_memory_tokens: usize,
-}
-
 struct CircadianSession {
     adaptive: AdaptiveThermoMemory,
     gemma_session: Gemma2Session,
@@ -65,6 +52,8 @@ struct CircadianSession {
     paths: Option<CircadianPaths>,
     history: Vec<(String, String)>,
     turns: u64,
+    last_recalled_memory_tokens: usize,
+    last_ctp: Gemma2WakeBiasReport,
     thermo_created_at: u64,
     phasor: Option<GemmaPhasorWorker>,
 }
@@ -97,24 +86,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let content = gguf_file::Content::read(&mut file)?;
             let mut model = QuantizedGemma2::from_gguf(content, &mut file, &device)?;
             let hybrid_config = Gemma2ThermoHybridConfig::default();
-            let (mut hybrid, _) = load_or_create_hybrid(
+            let journal = WakeJournal::open(paths.wake_journal.clone())?;
+            let (journal_turns, journal_history) = wake_history(&journal)?;
+            let mut loaded = load_or_create_hybrid(
                 &model,
                 paths,
                 hybrid_config,
-                &[],
-                0,
+                &journal_history,
+                journal_turns,
                 cdt_rqm_epr::gemma2_thermo_hybrid_session::unix_now(),
             )?;
-            let journal = WakeJournal::open(paths.wake_journal.clone())?;
             let report = run_sleep_phase(
                 &mut model,
-                &mut hybrid,
+                &mut loaded.hybrid,
                 &mut adaptive,
                 &journal,
                 paths,
                 &CircadianSleepConfig::default(),
             )?;
-            persist_hybrid_session(paths, 0, 0, &[], &mut hybrid)?;
+            persist_hybrid_session(
+                paths,
+                loaded.created_at_unix,
+                loaded.turns,
+                &loaded.history,
+                &mut loaded.hybrid,
+            )?;
             print_sleep_report(report);
         } else {
             let report = adaptive.consolidate_sleep()?;
@@ -143,27 +139,40 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut model = QuantizedGemma2::from_gguf(content, &mut file, &device)?;
     let context_limit = config.context.min(model.max_context());
 
+    let journal = if let Some(paths) = paths.as_ref() {
+        WakeJournal::open(paths.wake_journal.clone())?
+    } else {
+        WakeJournal::open(PathBuf::from(
+            "data/native_gemma2_circadian/_ephemeral/journal.jsonl",
+        ))?
+    };
+    let (journal_turns, journal_history) = wake_history(&journal)?;
+
     let hybrid_config = Gemma2ThermoHybridConfig::default();
-    let (hybrid, thermo_created_at) = if let Some(paths) = paths.as_ref() {
-        load_or_create_hybrid(
+    let (hybrid, thermo_created_at, turns, history, resumed) = if let Some(paths) = paths.as_ref() {
+        let loaded = load_or_create_hybrid(
             &model,
             paths,
             hybrid_config,
-            &[],
-            0,
+            &journal_history,
+            journal_turns,
             cdt_rqm_epr::gemma2_thermo_hybrid_session::unix_now(),
-        )?
+        )?;
+        (
+            loaded.hybrid,
+            loaded.created_at_unix,
+            loaded.turns,
+            loaded.history,
+            loaded.resumed,
+        )
     } else {
         (
             Gemma2ThermoHybridLlm::for_gemma(&model, hybrid_config)?,
             cdt_rqm_epr::gemma2_thermo_hybrid_session::unix_now(),
+            journal_turns,
+            journal_history,
+            false,
         )
-    };
-
-    let journal = if let Some(paths) = paths.as_ref() {
-        WakeJournal::open(paths.wake_journal.clone())?
-    } else {
-        WakeJournal::open(PathBuf::from("data/native_gemma2_circadian/_ephemeral/journal.jsonl"))?
     };
 
     let phasor = config
@@ -177,8 +186,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         hybrid,
         journal,
         paths,
-        history: Vec::new(),
-        turns: 0,
+        history,
+        turns,
+        last_recalled_memory_tokens: 0,
+        last_ctp: Gemma2WakeBiasReport::default(),
         thermo_created_at,
         phasor,
     };
@@ -195,10 +206,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .attractors()
             .len(),
     );
+    if resumed || session.turns > 0 || !session.history.is_empty() {
+        println!(
+            "Memoria cargada: {} turnos, {} mensajes, {} rutas adaptativas",
+            session.turns,
+            session.history.len(),
+            session.adaptive.router.registry.routes().len(),
+        );
+    }
     println!("Vigilia: Gemma adaptativo responde. Sueño (/sueño): entrena núcleo CTP.");
 
     if let Some(prompt) = config.prompt.as_deref() {
-        wake_turn(&mut model, &tokenizer, &mut session, prompt, &config, context_limit)?;
+        wake_turn(
+            &mut model,
+            &tokenizer,
+            &mut session,
+            prompt,
+            &config,
+            context_limit,
+        )?;
         sleep_and_persist(&mut model, &mut session)?;
         return Ok(());
     }
@@ -231,6 +257,9 @@ fn repl(
                 session.history.clear();
                 session.gemma_session.reset(model);
                 session.turns = 0;
+                session.last_recalled_memory_tokens = 0;
+                session.hybrid.reset_context();
+                session.last_ctp = Gemma2WakeBiasReport::default();
                 println!("Historial borrado (memorias adaptativa y CTP conservadas).");
                 continue;
             }
@@ -271,17 +300,38 @@ fn wake_turn(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let prompt_limit = context_limit.saturating_sub(config.max_tokens).max(32);
     let prompt_tokens = chat_tokens(tokenizer, &session.history, input, prompt_limit)?;
-    let prepared = prepare_forward(model, &mut session.adaptive, &prompt_tokens)?;
+    let cached_tokens = session.gemma_session.cached_tokens().to_vec();
+    let cached_mask = session.gemma_session.active_mask().cloned();
+    let cached_logits = session.gemma_session.last_logits().cloned();
+    let prefill_started = Instant::now();
+    let prepared = session.adaptive.prepare_forward(
+        model,
+        &prompt_tokens,
+        &cached_tokens,
+        cached_mask.as_ref(),
+        cached_logits.as_ref(),
+    )?;
+    session.last_recalled_memory_tokens = prepared.recalled_memory_tokens;
     eprintln!(
-        "[vigilia route={} layers={}/{} quality={:.3} fallback={}]",
+        "[vigilia route={} layers={}/{} quality={:.3} fallback={} memory_tokens={} prefill={} cache={} {:.3}s]",
         prepared
             .route_id
             .map(|route| route.0.to_string())
-            .unwrap_or_else(|| "new".to_string()),
+            .unwrap_or_else(|| {
+                if prepared.recalled_memory_tokens > 0 {
+                    "working".to_string()
+                } else {
+                    "new".to_string()
+                }
+            }),
         prepared.mask.executed_count(),
         prepared.mask.layer_count(),
         prepared.quality,
         prepared.fallback,
+        prepared.recalled_memory_tokens,
+        prepared.prefill_tokens,
+        prepared.cache_reused,
+        prefill_started.elapsed().as_secs_f64(),
     );
 
     session.gemma_session.adopt_prefill(
@@ -289,10 +339,29 @@ fn wake_turn(
         Some(&prepared.mask),
         prepared.output.logits,
     )?;
+
+    let suffix = if prepared.cache_reused {
+        &prompt_tokens[cached_tokens.len().min(prompt_tokens.len())..]
+    } else {
+        prompt_tokens.as_slice()
+    };
+    let observed = session
+        .hybrid
+        .observe_prompt_tokens(model, suffix, prepared.cache_reused)?;
+    let blend = session.hybrid.config().wake_blend;
+    let (ctp_bias, mut ctp_report) = if blend > 0.0 && session.hybrid.context_len() > 0 {
+        session.hybrid.compute_wake_bias(model)?
+    } else {
+        (Vec::new(), Gemma2WakeBiasReport::default())
+    };
+    ctp_report.observed_tokens = observed;
+    ctp_report.blend = blend;
+    let mixed = Cell::new(0usize);
+
     print!("\nGemma> ");
     io::stdout().flush()?;
 
-    let generation = session.gemma_session.generate_observed(
+    let generation = session.gemma_session.generate_observed_with_logits(
         model,
         tokenizer,
         &prompt_tokens,
@@ -313,9 +382,35 @@ fn wake_turn(
                 worker.observe_token(token, position);
             }
         },
+        |logits, step| {
+            if ctp_bias.is_empty() {
+                return Ok(());
+            }
+            let changed = apply_wake_bias(logits, &ctp_bias, blend)
+                .map_err(|error| candle_core::Error::Msg(error.to_string()))?;
+            if step == 0 {
+                mixed.set(changed);
+            }
+            Ok(())
+        },
         |_| false,
     )?;
     println!();
+    session
+        .hybrid
+        .observe_generated_tokens(model, &generation.token_ids)?;
+    ctp_report.mixed = mixed.get();
+    session.last_ctp = ctp_report;
+    if session.last_ctp.mixed > 0 {
+        eprintln!(
+            "[ctp blend={:.2} phi={:.3} bias={:.3} mixed={} ctx={}]",
+            session.last_ctp.blend,
+            session.last_ctp.phi_norm,
+            session.last_ctp.ctp_bias_norm,
+            session.last_ctp.mixed,
+            session.last_ctp.context_length,
+        );
+    }
 
     session.adaptive.observe(
         prepared.context_fingerprint,
@@ -370,10 +465,14 @@ fn sleep_and_persist(
         print_sleep_report(report);
         println!("Persistido: adaptive + thermo.cdt + dataset de sueño");
     } else {
-        let report = session.adaptive.consolidate_sleep()?;
+        let report = session.adaptive.consolidate_sleep_with_model(model, &[])?;
         println!(
-            "Sueño adaptativo: flushed={} routes={}",
-            report.flushed, report.remaining_routes
+            "Sueño adaptativo: replay={} máscaras={} flushed={} working={} routes={}",
+            report.replayed,
+            report.discovered_masks,
+            report.flushed,
+            report.retained_working,
+            report.remaining_routes
         );
     }
     Ok(())
@@ -382,10 +481,18 @@ fn sleep_and_persist(
 fn print_sleep_report(report: cdt_rqm_epr::gemma2_circadian_bridge::CircadianSleepReport) {
     println!("── Sueño ──");
     println!(
-        "  Adaptativo: flushed={} routes={} relaciones_podadas={}",
-        report.adaptive.flushed, report.adaptive.remaining_routes, report.adaptive.pruned_relations
+        "  Adaptativo: replay={} máscaras={} flushed={} working={} routes={} relaciones_podadas={}",
+        report.adaptive.replayed,
+        report.adaptive.discovered_masks,
+        report.adaptive.flushed,
+        report.adaptive.retained_working,
+        report.adaptive.remaining_routes,
+        report.adaptive.pruned_relations
     );
-    println!("  Dataset CTP: {} secuencias exportadas", report.dataset_entries);
+    println!(
+        "  Dataset CTP: {} secuencias exportadas",
+        report.dataset_entries
+    );
     println!(
         "  Entrenamiento CTP: seq={} ventanas={} mse={:.4} atractores={}",
         report.thermo.sequences,
@@ -405,7 +512,15 @@ fn print_status(session: &CircadianSession) {
     println!("── Estado circadiano ──");
     println!("  Turnos vigilia:     {}", session.turns);
     println!("  Mensajes historial: {}", session.history.len());
+    println!(
+        "  Tokens recall:      {}",
+        session.last_recalled_memory_tokens
+    );
     println!("  Atractores CTP:     {}", attractors);
+    println!(
+        "  CTP vigilia:        blend={:.2} phi={:.3} mixed={}",
+        session.last_ctp.blend, session.last_ctp.phi_norm, session.last_ctp.mixed
+    );
     println!(
         "  Rutas adaptativas:  {}",
         session.adaptive.router.registry.routes().len()
@@ -439,183 +554,6 @@ Comando unificado:
     );
 }
 
-fn prepare_forward(
-    model: &mut QuantizedGemma2,
-    memory: &mut AdaptiveThermoMemory,
-    prompt_tokens: &[u32],
-) -> Result<PreparedForward, Box<dyn std::error::Error>> {
-    let prompt = Tensor::new(prompt_tokens, model.device())?.unsqueeze(0)?;
-    let context_fingerprint = memory.context_fingerprint(prompt_tokens);
-    let recalled = memory.recall(&context_fingerprint, model.layer_count());
-    if let Some(route) = recalled.as_ref().filter(|_| !memory.should_revalidate()) {
-        model.clear_kv_cache();
-        let output = model.forward_with_mask(&prompt, 0, Some(&route.mask), true, false)?;
-        let logits = output.logits.squeeze(0)?.to_vec1::<f32>()?;
-        let self_quality = output_confidence(&logits);
-        if self_quality >= 0.05 && logits.iter().all(|value| value.is_finite()) {
-            let activations = memory.activation_fingerprint(&context_fingerprint, &output.trace);
-            return Ok(PreparedForward {
-                output,
-                mask: route.mask.clone(),
-                context_fingerprint,
-                activation_fingerprint: activations,
-                route_id: Some(route.route_id),
-                quality: self_quality.max(0.30),
-                fallback: false,
-                recalled_memory_tokens: route.memory_tokens.len(),
-            });
-        }
-        return full_fallback(
-            model,
-            memory,
-            &prompt,
-            context_fingerprint,
-            Some(route.clone()),
-        );
-    }
-
-    memory.note_revalidation();
-    model.clear_kv_cache();
-    let full_mask = LayerExecutionMask::all(model.layer_count());
-    let full = model.forward_with_mask(&prompt, 0, Some(&full_mask), true, false)?;
-    let activation_fingerprint = memory.activation_fingerprint(&context_fingerprint, &full.trace);
-    let candidates = memory.progressive_candidate_masks(&full.trace);
-    if candidates.is_empty() {
-        return Ok(PreparedForward {
-            output: full,
-            mask: full_mask,
-            context_fingerprint,
-            activation_fingerprint,
-            route_id: recalled.as_ref().map(|route| route.route_id),
-            quality: 1.0,
-            fallback: false,
-            recalled_memory_tokens: recalled
-                .as_ref()
-                .map(|route| route.memory_tokens.len())
-                .unwrap_or(0),
-        });
-    }
-
-    let full_logits = full.logits.squeeze(0)?.to_vec1::<f32>()?;
-    let mut best = None::<(LayerExecutionMask, f32, Gemma2ForwardOutput)>;
-    let mut last_quality = 0.0;
-    let mut cache_matches_best = false;
-    for candidate in candidates
-        .into_iter()
-        .take(memory.config.max_candidate_prefills)
-    {
-        model.clear_kv_cache();
-        let sparse = model.forward_with_mask(&prompt, 0, Some(&candidate), false, false)?;
-        let sparse_logits = sparse.logits.squeeze(0)?.to_vec1::<f32>()?;
-        last_quality = logit_agreement(&full_logits, &sparse_logits);
-        if last_quality < memory.config.min_verified_quality {
-            cache_matches_best = false;
-            break;
-        }
-        best = Some((candidate, last_quality, sparse));
-        cache_matches_best = true;
-    }
-    if let Some((candidate, quality, sparse)) = best {
-        let output = if cache_matches_best {
-            sparse
-        } else {
-            model.clear_kv_cache();
-            model.forward_with_mask(&prompt, 0, Some(&candidate), false, false)?
-        };
-        return Ok(PreparedForward {
-            output,
-            mask: candidate,
-            context_fingerprint,
-            activation_fingerprint,
-            route_id: recalled.as_ref().map(|route| route.route_id),
-            quality,
-            fallback: false,
-            recalled_memory_tokens: recalled
-                .as_ref()
-                .map(|route| route.memory_tokens.len())
-                .unwrap_or(0),
-        });
-    }
-    model.clear_kv_cache();
-    let output = model.forward_with_mask(&prompt, 0, Some(&full_mask), true, false)?;
-    Ok(PreparedForward {
-        output,
-        mask: full_mask,
-        context_fingerprint,
-        activation_fingerprint,
-        route_id: recalled.as_ref().map(|route| route.route_id),
-        quality: last_quality,
-        fallback: true,
-        recalled_memory_tokens: recalled
-            .as_ref()
-            .map(|route| route.memory_tokens.len())
-            .unwrap_or(0),
-    })
-}
-
-fn full_fallback(
-    model: &mut QuantizedGemma2,
-    memory: &AdaptiveThermoMemory,
-    prompt: &Tensor,
-    context_fingerprint: ActivationFingerprint,
-    route: Option<RecalledLayerRoute>,
-) -> Result<PreparedForward, Box<dyn std::error::Error>> {
-    model.clear_kv_cache();
-    let mask = LayerExecutionMask::all(model.layer_count());
-    let output = model.forward_with_mask(prompt, 0, Some(&mask), true, false)?;
-    let logits = output.logits.squeeze(0)?.to_vec1::<f32>()?;
-    let activations = memory.activation_fingerprint(&context_fingerprint, &output.trace);
-    Ok(PreparedForward {
-        output,
-        mask,
-        context_fingerprint,
-        activation_fingerprint: activations,
-        route_id: route.as_ref().map(|route| route.route_id),
-        quality: output_confidence(&logits).max(0.5),
-        fallback: true,
-        recalled_memory_tokens: route
-            .as_ref()
-            .map(|route| route.memory_tokens.len())
-            .unwrap_or(0),
-    })
-}
-
-fn output_confidence(logits: &[f32]) -> f32 {
-    TransformerActivationAdapter::new(8)
-        .capture(logits)
-        .confidence
-}
-
-fn logit_agreement(full: &[f32], sparse: &[f32]) -> f32 {
-    if full.len() != sparse.len() || full.is_empty() {
-        return 0.0;
-    }
-    let full_top = full
-        .iter()
-        .enumerate()
-        .max_by(|left, right| left.1.total_cmp(right.1))
-        .map(|(index, _)| index);
-    let sparse_top = sparse
-        .iter()
-        .enumerate()
-        .max_by(|left, right| left.1.total_cmp(right.1))
-        .map(|(index, _)| index);
-    if full_top != sparse_top {
-        return 0.0;
-    }
-    let (squared_error, squared_signal) =
-        full.iter()
-            .zip(sparse)
-            .fold((0.0f64, 0.0f64), |(error, signal), (left, right)| {
-                (
-                    error + (*left as f64 - *right as f64).powi(2),
-                    signal + (*left as f64).powi(2),
-                )
-            });
-    let relative_rmse = (squared_error / squared_signal.max(f64::EPSILON)).sqrt();
-    (-4.0 * relative_rmse).exp() as f32
-}
-
 fn parse_args() -> Result<Config, Box<dyn std::error::Error>> {
     let chat_name = env::var("GEMMA2_CIRCADIAN_CHAT")
         .ok()
@@ -645,13 +583,14 @@ fn parse_args() -> Result<Config, Box<dyn std::error::Error>> {
                 config.chat_name = Some(sanitize_chat_name(&required(&mut args, "--chat")?)?);
             }
             "--circadian-root" => {
-                config.circadian_root =
-                    PathBuf::from(required(&mut args, "--circadian-root")?);
+                config.circadian_root = PathBuf::from(required(&mut args, "--circadian-root")?);
             }
             "--model" => config.model = Some(PathBuf::from(required(&mut args, "--model")?)),
             "--max-tokens" => config.max_tokens = required(&mut args, "--max-tokens")?.parse()?,
             "--context" => config.context = required(&mut args, "--context")?.parse()?,
-            "--temperature" => config.temperature = required(&mut args, "--temperature")?.parse()?,
+            "--temperature" => {
+                config.temperature = required(&mut args, "--temperature")?.parse()?
+            }
             "--top-p" => config.top_p = required(&mut args, "--top-p")?.parse()?,
             "--device" => config.device = required(&mut args, "--device")?,
             "--prompt" => config.prompt = Some(required(&mut args, "--prompt")?),

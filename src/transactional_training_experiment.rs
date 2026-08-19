@@ -185,9 +185,7 @@ fn train_and_evaluate(
 
     for epoch in 0..config.epochs {
         for (index, pattern) in patterns.iter().enumerate() {
-            let episode = config
-                .seed
-                .rotate_left(7)
+            let episode = config.seed.rotate_left(7)
                 ^ (epoch as u64).wrapping_mul(0x9E37_79B9)
                 ^ (index as u64).rotate_left(41);
             let (cue, goal) = episode_boundaries(pattern, &config, mode, episode);
@@ -275,7 +273,11 @@ fn evaluate(
                 let phase = if revealed[node] {
                     let flipped = unit_from_u64(splitmix64(probe ^ (node as u64).rotate_left(3)))
                         < config.corruption;
-                    let bit = if flipped { -pattern[node] } else { pattern[node] };
+                    let bit = if flipped {
+                        -pattern[node]
+                    } else {
+                        pattern[node]
+                    };
                     bit_phase(bit)
                         + config.phase_jitter
                             * (2.0 * unit_from_u64(splitmix64(probe ^ node as u64)) - 1.0)
@@ -416,9 +418,13 @@ fn episode_boundaries(
     let mut goal = Vec::new();
     for node in 0..config.nodes {
         if revealed[node] {
-            let flipped =
-                unit_from_u64(splitmix64(episode ^ (node as u64).rotate_left(3))) < config.corruption;
-            let bit = if flipped { -pattern[node] } else { pattern[node] };
+            let flipped = unit_from_u64(splitmix64(episode ^ (node as u64).rotate_left(3)))
+                < config.corruption;
+            let bit = if flipped {
+                -pattern[node]
+            } else {
+                pattern[node]
+            };
             let jitter = config.phase_jitter
                 * (2.0 * unit_from_u64(splitmix64(episode ^ node as u64)) - 1.0);
             cue.push(NativePhasorCue {
@@ -569,6 +575,9 @@ mod tests {
         // post-selección añade información que la evidencia no contiene.
         assert!(present > forward, "{report:#?}");
         assert!(two_state > present, "{report:#?}");
-        assert_eq!(report.decision, "dos_vectores_de_estado_gana", "{report:#?}");
+        assert_eq!(
+            report.decision, "dos_vectores_de_estado_gana",
+            "{report:#?}"
+        );
     }
 }

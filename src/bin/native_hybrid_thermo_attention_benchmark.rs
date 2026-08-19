@@ -31,7 +31,11 @@ struct Metrics {
 }
 
 impl Metrics {
-    fn record(&mut self, elapsed: Duration, report: &cdt_rqm_epr::hybrid_thermo_attention::HybridThermoAttentionReport) {
+    fn record(
+        &mut self,
+        elapsed: Duration,
+        report: &cdt_rqm_epr::hybrid_thermo_attention::HybridThermoAttentionReport,
+    ) {
         self.elapsed += elapsed;
         self.softmax_entropy += f64::from(report.softmax_entropy);
         self.ctp_bias_norm += f64::from(report.ctp_bias_norm);
@@ -110,11 +114,15 @@ fn bench_rff_reservoir(seq_len: usize, d_model: usize, d_v: usize, trials: usize
         let q = synthetic_sequence(seq_len, d_model, seed);
         let k = synthetic_sequence(seq_len, d_model, seed ^ 1);
         let v = synthetic_sequence(seq_len, d_v, seed ^ 2);
-        let rff = PhasorRffMap::new(d_model, PhasorRffConfig {
-            features,
-            ..Default::default()
-        });
-        let mut reservoir = LangevinReservoir::new(d_v, features, LangevinReservoirConfig::default());
+        let rff = PhasorRffMap::new(
+            d_model,
+            PhasorRffConfig {
+                features,
+                ..Default::default()
+            },
+        );
+        let mut reservoir =
+            LangevinReservoir::new(d_v, features, LangevinReservoirConfig::default());
         let start = Instant::now();
         for j in 0..seq_len {
             let (phi_r, phi_i) = rff.project(&k[j]);
@@ -176,20 +184,15 @@ fn main() {
     let d_v = env_usize("HYBRID_THERMO_D_V", DEFAULT_D_V).max(2);
 
     println!("benchmark=hybrid_thermo_attention_softmax_rff_cdt");
-    println!(
-        "config,trials={trials},seq_len={seq_len},d_model={d_model},d_v={d_v}"
-    );
+    println!("config,trials={trials},seq_len={seq_len},d_model={d_model},d_v={d_v}");
     println!(
         "seq_len,d_model,method,mean_ms,softmax_entropy,ctp_bias_norm,\
          thermo_F,thermo_coherence,plasticity_delta,wake_pass_rate"
     );
 
-    bench_softmax_only(seq_len, d_model, d_v, trials)
-        .print(seq_len, d_model, "softmax_only");
-    bench_rff_reservoir(seq_len, d_model, d_v, trials)
-        .print(seq_len, d_model, "rff_reservoir");
-    bench_hybrid_full(seq_len, d_model, d_v, trials)
-        .print(seq_len, d_model, "hybrid_full");
+    bench_softmax_only(seq_len, d_model, d_v, trials).print(seq_len, d_model, "softmax_only");
+    bench_rff_reservoir(seq_len, d_model, d_v, trials).print(seq_len, d_model, "rff_reservoir");
+    bench_hybrid_full(seq_len, d_model, d_v, trials).print(seq_len, d_model, "hybrid_full");
 }
 
 fn env_usize(name: &str, default: usize) -> usize {

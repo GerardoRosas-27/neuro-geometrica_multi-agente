@@ -32,6 +32,10 @@ pub struct Gemma2ThermoHybridLearnedState {
     pub sleep_cycles: u64,
 }
 
+fn default_wake_blend() -> f32 {
+    0.25
+}
+
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct Gemma2ThermoHybridConfig {
     /// Ventana deslizante de embeddings enviada al motor CTP por paso.
@@ -43,6 +47,9 @@ pub struct Gemma2ThermoHybridConfig {
     /// Consolidación sleep cada N tokens generados (0 = desactivada).
     pub sleep_every_tokens: usize,
     pub seed: u64,
+    /// Mezcla CTP→logits de Gemma en vigilia (0 = apagado). Sin prefill extra.
+    #[serde(default = "default_wake_blend")]
+    pub wake_blend: f32,
 }
 
 impl Default for Gemma2ThermoHybridConfig {
@@ -53,8 +60,19 @@ impl Default for Gemma2ThermoHybridConfig {
             cdt_nodes: 512,
             sleep_every_tokens: 32,
             seed: 0x4745_4D4D_4154_4845,
+            wake_blend: default_wake_blend(),
         }
     }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct Gemma2WakeBiasReport {
+    pub context_length: usize,
+    pub observed_tokens: usize,
+    pub phi_norm: f32,
+    pub ctp_bias_norm: f32,
+    pub mixed: usize,
+    pub blend: f32,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -110,7 +128,10 @@ pub struct Gemma2ThermoHybridLlm {
 
 impl Gemma2ThermoHybridLlm {
     /// Construye el híbrido dimensionado para un modelo Gemma 2 cargado.
-    pub fn for_gemma(model: &QuantizedGemma2, config: Gemma2ThermoHybridConfig) -> Result<Self, Gemma2ThermoHybridError> {
+    pub fn for_gemma(
+        model: &QuantizedGemma2,
+        config: Gemma2ThermoHybridConfig,
+    ) -> Result<Self, Gemma2ThermoHybridError> {
         let d_model = model.embedding_length();
         let thermo = HybridThermoAttention::new(thermo_config_for_gemma(
             d_model,
@@ -161,6 +182,70 @@ impl Gemma2ThermoHybridLlm {
         self.sleep_cycles = 0;
     }
 
+    /// Vacía la ventana de embeddings sin borrar el aprendizaje consolidado.
+    pub fn reset_context(&mut self) {
+        self.context.clear();
+    }
+
+    /// Ingesta barata (W_emb) para vigilia. Si no reutiliza contexto, solo
+    /// carga la cola de la ventana CTP; si reutiliza, añade el sufijo nuevo.
+    pub fn observe_prompt_tokens(
+        &mut self,
+        model: &QuantizedGemma2,
+        token_ids: &[u32],
+        reuse_context: bool,
+    ) -> Result<usize, Gemma2ThermoHybridError> {
+        if !reuse_context {
+            self.reset_context();
+        }
+        if token_ids.is_empty() {
+            return Ok(0);
+        }
+        let window = self.config.thermo_window.max(1);
+        let tail = if reuse_context {
+            token_ids
+        } else {
+            &token_ids[token_ids.len().saturating_sub(window)..]
+        };
+        self.prefill_tokens(model, tail)?;
+        Ok(tail.len())
+    }
+
+    pub fn observe_generated_tokens(
+        &mut self,
+        model: &QuantizedGemma2,
+        token_ids: &[u32],
+    ) -> Result<usize, Gemma2ThermoHybridError> {
+        self.prefill_tokens(model, token_ids)?;
+        Ok(token_ids.len())
+    }
+
+    /// Un paso CTP + proyección a vocabulario Gemma. No ejecuta el Transformer.
+    pub fn compute_wake_bias(
+        &mut self,
+        model: &QuantizedGemma2,
+    ) -> Result<(Vec<f32>, Gemma2WakeBiasReport), Gemma2ThermoHybridError> {
+        let (phi, _) = self.run_thermo_step()?;
+        let phi_tensor = f32_vec_to_tensor(&phi, model.device())?;
+        let bias = model
+            .logits_from_hidden(&phi_tensor)
+            .and_then(|tensor| tensor.squeeze(0))
+            .and_then(|tensor| tensor.to_vec1::<f32>())
+            .map_err(|error| Gemma2ThermoHybridError::Candle(error.to_string()))?;
+        let ctp_bias_norm = vector_norm(&bias);
+        Ok((
+            bias,
+            Gemma2WakeBiasReport {
+                context_length: self.context.len(),
+                observed_tokens: 0,
+                phi_norm: vector_norm(&phi),
+                ctp_bias_norm,
+                mixed: 0,
+                blend: self.config.wake_blend.clamp(0.0, 1.0),
+            },
+        ))
+    }
+
     pub fn export_learned_state(&self) -> Gemma2ThermoHybridLearnedState {
         Gemma2ThermoHybridLearnedState {
             config: self.config,
@@ -187,6 +272,7 @@ impl Gemma2ThermoHybridLlm {
         }
         self.config.thermo_window = state.config.thermo_window;
         self.config.sleep_every_tokens = state.config.sleep_every_tokens;
+        self.config.wake_blend = state.config.wake_blend;
         self.thermo.apply_learned_state(&state.thermo)?;
         self.tokens_processed = state.tokens_processed;
         self.sleep_cycles = state.sleep_cycles;
@@ -194,7 +280,10 @@ impl Gemma2ThermoHybridLlm {
     }
 
     /// Prefill: ingesta embeddings del prompt (desde W_emb·√d) al motor CTP.
-    pub fn prefill_embeddings(&mut self, embeddings: &[Vec<f32>]) -> Result<(), Gemma2ThermoHybridError> {
+    pub fn prefill_embeddings(
+        &mut self,
+        embeddings: &[Vec<f32>],
+    ) -> Result<(), Gemma2ThermoHybridError> {
         for embedding in embeddings {
             self.push_context(embedding.clone());
         }
@@ -228,7 +317,9 @@ impl Gemma2ThermoHybridLlm {
         self.tokens_processed = self.tokens_processed.saturating_add(1);
         let mut slept = false;
         if self.config.sleep_every_tokens > 0
-            && self.tokens_processed.is_multiple_of(self.config.sleep_every_tokens as u64)
+            && self
+                .tokens_processed
+                .is_multiple_of(self.config.sleep_every_tokens as u64)
         {
             let _ = self.thermo.sleep_consolidate()?;
             self.sleep_cycles = self.sleep_cycles.saturating_add(1);
@@ -395,7 +486,9 @@ impl Gemma2ThermoHybridLlm {
         }
     }
 
-    fn run_thermo_step(&mut self) -> Result<(Vec<f32>, HybridThermoAttentionReport), Gemma2ThermoHybridError> {
+    fn run_thermo_step(
+        &mut self,
+    ) -> Result<(Vec<f32>, HybridThermoAttentionReport), Gemma2ThermoHybridError> {
         if self.context.is_empty() {
             return Err(Gemma2ThermoHybridError::EmptyContext);
         }
@@ -478,7 +571,10 @@ fn sample_phi(
         .map_err(|e| Gemma2ThermoHybridError::Candle(e.to_string()))
 }
 
-fn embed_token_to_vec(model: &QuantizedGemma2, token_id: u32) -> Result<Vec<f32>, Gemma2ThermoHybridError> {
+fn embed_token_to_vec(
+    model: &QuantizedGemma2,
+    token_id: u32,
+) -> Result<Vec<f32>, Gemma2ThermoHybridError> {
     model
         .embed_token(token_id)
         .map_err(|e| Gemma2ThermoHybridError::Candle(e.to_string()))?
@@ -486,12 +582,63 @@ fn embed_token_to_vec(model: &QuantizedGemma2, token_id: u32) -> Result<Vec<f32>
         .map_err(|e| Gemma2ThermoHybridError::Candle(e.to_string()))
 }
 
-fn f32_vec_to_tensor(values: &[f32], device: &candle_core::Device) -> Result<Tensor, Gemma2ThermoHybridError> {
+fn f32_vec_to_tensor(
+    values: &[f32],
+    device: &candle_core::Device,
+) -> Result<Tensor, Gemma2ThermoHybridError> {
     Tensor::new(values, device).map_err(|e| Gemma2ThermoHybridError::Candle(e.to_string()))
 }
 
 fn vector_norm(values: &[f32]) -> f32 {
     values.iter().map(|v| v * v).sum::<f32>().sqrt()
+}
+
+fn rms(values: &[f32]) -> f32 {
+    if values.is_empty() {
+        return 0.0;
+    }
+    (values.iter().map(|value| value * value).sum::<f32>() / values.len() as f32).sqrt()
+}
+
+/// Mezcla logits de Gemma con un sesgo CTP del mismo vocabulario.
+/// `blend` es la fracción de RMS de Gemma que se suma desde CTP.
+pub fn mix_logits(gemma: &mut [f32], ctp: &[f32], blend: f32) -> usize {
+    if gemma.len() != ctp.len() || gemma.is_empty() {
+        return 0;
+    }
+    let blend = blend.clamp(0.0, 1.0);
+    if blend <= 0.0 {
+        return 0;
+    }
+    let gemma_rms = rms(gemma);
+    let ctp_rms = rms(ctp);
+    if !gemma_rms.is_finite() || !ctp_rms.is_finite() || ctp_rms < 1.0e-8 {
+        return 0;
+    }
+    let scale = blend * gemma_rms / ctp_rms;
+    let mut changed = 0usize;
+    for (logit, bias) in gemma.iter_mut().zip(ctp) {
+        let mixed = *logit + scale * *bias;
+        if mixed != *logit {
+            changed += 1;
+        }
+        *logit = mixed;
+    }
+    changed
+}
+
+pub fn apply_wake_bias(
+    logits: &mut Tensor,
+    bias: &[f32],
+    blend: f32,
+) -> Result<usize, Gemma2ThermoHybridError> {
+    let mut values = logits
+        .to_vec1::<f32>()
+        .map_err(|error| Gemma2ThermoHybridError::Candle(error.to_string()))?;
+    let mixed = mix_logits(&mut values, bias, blend);
+    *logits = Tensor::new(values.as_slice(), logits.device())
+        .map_err(|error| Gemma2ThermoHybridError::Candle(error.to_string()))?;
+    Ok(mixed)
 }
 
 #[cfg(test)]
@@ -510,9 +657,7 @@ mod tests {
     }
 
     fn synthetic_embedding(d: usize, seed: u64) -> Vec<f32> {
-        (0..d)
-            .map(|j| signed_unit(seed ^ j as u64))
-            .collect()
+        (0..d).map(|j| signed_unit(seed ^ j as u64)).collect()
     }
 
     #[test]
@@ -566,9 +711,7 @@ mod tests {
             sleep_cycles: 0,
         };
 
-        let embeddings: Vec<Vec<f32>> = (0..4)
-            .map(|i| synthetic_embedding(d, 100 + i))
-            .collect();
+        let embeddings: Vec<Vec<f32>> = (0..4).map(|i| synthetic_embedding(d, 100 + i)).collect();
         llm.prefill_embeddings(&embeddings).expect("prefill");
         assert_eq!(llm.context_len(), 4);
         let (phi, _) = llm.run_thermo_step().expect("thermo");
@@ -648,9 +791,7 @@ mod tests {
             tokens_processed: 0,
             sleep_cycles: 0,
         };
-        let embeddings: Vec<Vec<f32>> = (0..5)
-            .map(|i| synthetic_embedding(d, 200 + i))
-            .collect();
+        let embeddings: Vec<Vec<f32>> = (0..5).map(|i| synthetic_embedding(d, 200 + i)).collect();
         llm.prefill_embeddings(&embeddings).unwrap();
         let (phi, report) = llm.run_thermo_step().unwrap();
         assert_eq!(phi.len(), d);
@@ -658,5 +799,135 @@ mod tests {
         let w = synthetic_w_emb(16, d, 300);
         let logits = decode_phi_with_softcap(&phi, &w, 30.0);
         assert!(!logits.is_empty());
+    }
+
+    #[test]
+    fn mix_logits_blend_zero_leaves_gemma_unchanged() {
+        let original = vec![1.5, -0.2, 0.8];
+        let mut gemma = original.clone();
+        assert_eq!(mix_logits(&mut gemma, &[9.0, 9.0, 9.0], 0.0), 0);
+        assert_eq!(gemma, original);
+    }
+
+    #[test]
+    fn mix_logits_rejects_mismatched_lengths() {
+        let mut gemma = vec![1.0, 2.0];
+        assert_eq!(mix_logits(&mut gemma, &[1.0], 0.5), 0);
+        assert_eq!(gemma, vec![1.0, 2.0]);
+    }
+
+    #[test]
+    fn mix_logits_blend_changes_values_and_can_flip_top1() {
+        let mut gemma = vec![2.0, 0.1, 0.0, 0.0];
+        let ctp = vec![0.0, 1.0, 0.0, 0.0];
+        let changed = mix_logits(&mut gemma, &ctp, 1.0);
+        assert!(changed > 0);
+        let top = gemma
+            .iter()
+            .enumerate()
+            .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
+            .map(|(index, _)| index)
+            .unwrap();
+        assert_eq!(top, 1);
+    }
+
+    #[test]
+    fn reset_context_preserves_sleep_cycles() {
+        let d = 4;
+        let config = Gemma2ThermoHybridConfig {
+            thermo_window: 4,
+            rff_features_cap: 8,
+            cdt_nodes: 32,
+            sleep_every_tokens: 0,
+            ..Default::default()
+        };
+        let thermo = HybridThermoAttention::new(thermo_config_for_gemma(
+            d,
+            config.rff_features_cap,
+            config.cdt_nodes,
+            config.seed,
+        ))
+        .unwrap();
+        let mut llm = Gemma2ThermoHybridLlm {
+            thermo,
+            config,
+            context: Vec::new(),
+            tokens_processed: 99,
+            sleep_cycles: 7,
+        };
+        llm.push_context(synthetic_embedding(d, 1));
+        llm.push_context(synthetic_embedding(d, 2));
+        assert_eq!(llm.context_len(), 2);
+        llm.reset_context();
+        assert_eq!(llm.context_len(), 0);
+        assert_eq!(llm.sleep_cycles(), 7);
+        assert_eq!(llm.tokens_processed(), 99);
+    }
+
+    #[test]
+    fn wake_blend_defaults_when_missing_from_saved_config() {
+        let json = r#"{
+            "thermo_window": 64,
+            "rff_features_cap": 512,
+            "cdt_nodes": 512,
+            "sleep_every_tokens": 32,
+            "seed": 1
+        }"#;
+        let config: Gemma2ThermoHybridConfig = serde_json::from_str(json).unwrap();
+        assert!((config.wake_blend - default_wake_blend()).abs() < 1.0e-6);
+    }
+
+    #[test]
+    fn observe_prompt_without_reuse_keeps_thermo_window() {
+        let tokens: Vec<u32> = (0..12).collect();
+        let window = 5;
+        let tail = &tokens[tokens.len().saturating_sub(window)..];
+        assert_eq!(tail, &[7, 8, 9, 10, 11]);
+    }
+
+    #[test]
+    #[ignore]
+    fn wake_bias_from_embeddings_on_gemma2_gguf() {
+        use crate::native_gemma2::{resolve_gemma2_device, resolve_gemma2_model_path};
+        use candle_core::quantized::gguf_file;
+        use std::fs::File;
+
+        let path = match resolve_gemma2_model_path(None) {
+            Ok(path) => path,
+            Err(_) => return,
+        };
+        let device = resolve_gemma2_device("cpu").unwrap();
+        let mut file = File::open(&path).unwrap();
+        let content = gguf_file::Content::read(&mut file).unwrap();
+        let tokenizer = Gemma2Tokenizer::from_gguf(&content).unwrap();
+        let model = QuantizedGemma2::from_gguf(content, &mut file, &device).unwrap();
+        let mut llm = Gemma2ThermoHybridLlm::for_gemma(
+            &model,
+            Gemma2ThermoHybridConfig {
+                thermo_window: 8,
+                sleep_every_tokens: 0,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let mut tokens = vec![tokenizer.bos_id];
+        tokens.extend(tokenizer.encode("hola dyamon").unwrap());
+        let observed = llm.observe_prompt_tokens(&model, &tokens, false).unwrap();
+        assert!(observed > 0);
+        assert!(llm.context_len() <= 8);
+        assert_eq!(llm.context_len(), observed.min(8));
+
+        let (bias, report) = llm.compute_wake_bias(&model).unwrap();
+        assert!(!bias.is_empty());
+        assert!(bias.iter().all(|value| value.is_finite()));
+        assert!(report.phi_norm > 0.0);
+        assert!(report.ctp_bias_norm > 0.0);
+
+        let mut gemma = vec![0.0f32; bias.len()];
+        gemma[0] = 1.0;
+        let changed = mix_logits(&mut gemma, &bias, 0.25);
+        assert!(changed > 0);
+        assert_ne!(gemma[0], 1.0);
     }
 }

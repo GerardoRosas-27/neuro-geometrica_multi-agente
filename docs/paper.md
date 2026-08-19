@@ -14,6 +14,11 @@ CDT simplicial pyrochlore
   -> gate de conocimiento consolidado
 ```
 
+La periferia lingüística Gemma 2 vigente es circadiana: un prefill y un sesgo
+CTP en vigilia; replay, máscaras y entrenamiento del núcleo en sueño.
+Detalle: `docs/gemma2_runtime_optimization.md` y
+`docs/paper_inferencia_fasorial_consolidacion_cdt.md` §3.5.
+
 El resultado histórico del currículo legacy se conserva en este documento. La
 nueva hipótesis evaluada es más limitada: la simetría guía cómo se comparte y
 consolida aprendizaje, mientras la composición cognitiva ocurre en una capa
@@ -360,6 +365,7 @@ cargo run --release --bin native_unified_infinite_trainer
 cargo run --release --bin native_cognitive_transfer_experiment
 cargo run --release --bin native_cognitive_ood_schema_experiment
 cargo run --release --bin native_cognitive_rqm_cdt_experiment
+cargo run --release --bin native_gemma2_circadian_chat -- --chat dyamon
 ```
 
 Los comandos legacy publicados anteriormente para currículo de cinco fases,

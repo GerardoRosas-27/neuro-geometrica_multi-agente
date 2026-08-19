@@ -1310,10 +1310,9 @@ impl NativePhasorThermodynamicEngine {
                 // no uniforme, integración global de fase y acuerdo entre la
                 // evidencia hacia adelante y la frontera hacia atrás. Sin
                 // frontera el acuerdo vale 1 y Φ queda como concentración pura.
-                let phi = ((1.0 - normalized_entropy)
-                    * resultant
-                    * f64::from(transaction_agreement))
-                .clamp(0.0, 1.0);
+                let phi =
+                    ((1.0 - normalized_entropy) * resultant * f64::from(transaction_agreement))
+                        .clamp(0.0, 1.0);
                 attention_phi_sum += phi;
                 attention_entropy_sum += normalized_entropy;
                 attention_updates += 1;
@@ -1333,9 +1332,8 @@ impl NativePhasorThermodynamicEngine {
                         local_peak_gain = local_peak_gain.max(gain);
                         attended_derivative += f64::from((gradient.conj() * *value).re);
                     }
-                    direction_scale = (baseline_derivative
-                        / attended_derivative.max(f64::from(EPSILON)))
-                        as f32;
+                    direction_scale =
+                        (baseline_derivative / attended_derivative.max(f64::from(EPSILON))) as f32;
                     peak_attention_gain =
                         peak_attention_gain.max(local_peak_gain * direction_scale);
                 } else {
@@ -2414,14 +2412,18 @@ mod tests {
         let adaptive_report =
             adaptive.minimize_free_energy(modulated_config(NativePhasorInferencePolicy::Adaptive));
 
-        assert_eq!(fixed_report.modifier_release_iteration, fixed_report.iterations);
+        assert_eq!(
+            fixed_report.modifier_release_iteration,
+            fixed_report.iterations
+        );
         assert!(
             adaptive_report.handshake_iterations + adaptive_report.attention_probes
                 < fixed_report.handshake_iterations + fixed_report.attention_probes,
             "adaptativo={adaptive_report:?} fijo={fixed_report:?}"
         );
         assert!(
-            adaptive_report.final_report.free_energy <= adaptive_report.initial.free_energy + 1.0e-6,
+            adaptive_report.final_report.free_energy
+                <= adaptive_report.initial.free_energy + 1.0e-6,
             "{adaptive_report:?}"
         );
     }

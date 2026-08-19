@@ -1,6 +1,8 @@
 //! Persistencia de sesiones del chat híbrido Gemma 2 + motor CTP.
 
-use crate::gemma2_thermo_hybrid_llm::{Gemma2ThermoHybridConfig, Gemma2ThermoHybridLearnedState, Gemma2ThermoHybridLlm};
+use crate::gemma2_thermo_hybrid_llm::{
+    Gemma2ThermoHybridConfig, Gemma2ThermoHybridLearnedState, Gemma2ThermoHybridLlm,
+};
 use crate::native_checkpoint::atomic_write;
 use crate::native_gemma2::QuantizedGemma2;
 use serde::{Deserialize, Serialize};
@@ -102,8 +104,8 @@ pub fn restore_hybrid_from_session(
                 .to_string(),
         );
     }
-    let mut hybrid = Gemma2ThermoHybridLlm::for_gemma(model, config)
-        .map_err(|error| error.to_string())?;
+    let mut hybrid =
+        Gemma2ThermoHybridLlm::for_gemma(model, config).map_err(|error| error.to_string())?;
     hybrid
         .apply_learned_state(&session.learned)
         .map_err(|error| error.to_string())?;

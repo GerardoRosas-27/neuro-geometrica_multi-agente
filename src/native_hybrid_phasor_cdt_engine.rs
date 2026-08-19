@@ -408,7 +408,10 @@ impl NativeHybridPhasorCdtEngine {
         }
     }
 
-    pub fn apply_learned_state(&mut self, state: &HybridEngineLearnedState) -> Result<(), NativeHybridError> {
+    pub fn apply_learned_state(
+        &mut self,
+        state: &HybridEngineLearnedState,
+    ) -> Result<(), NativeHybridError> {
         self.core
             .apply_learned_state(&state.cdt)
             .map_err(|_| NativeHybridError::Phasor(NativePhasorError::InvalidStateDimensions))?;
@@ -595,8 +598,7 @@ impl NativeHybridPhasorCdtEngine {
                 self.phasor.recompile_from_core(&self.core)?;
                 self.phasor.phasors.copy_from_slice(&candidate.prototype);
                 if replay_gain > 0.0 && candidate.boundary.len() == self.phasor.stimulus.len() {
-                    for (field, evoked) in
-                        self.phasor.stimulus.iter_mut().zip(&candidate.boundary)
+                    for (field, evoked) in self.phasor.stimulus.iter_mut().zip(&candidate.boundary)
                     {
                         *field = *evoked * replay_gain;
                     }
@@ -763,8 +765,10 @@ impl NativeHybridPhasorCdtEngine {
         // sobreestima el costo, nunca lo subestima.
         let mut maximum_similarity = 0.0f32;
         for attractor in &self.attractors {
-            maximum_similarity = maximum_similarity
-                .max(attractor_similarity(&attractor.prototype, &candidate.prototype));
+            maximum_similarity = maximum_similarity.max(attractor_similarity(
+                &attractor.prototype,
+                &candidate.prototype,
+            ));
             if maximum_similarity >= self.config.attractor_merge_similarity {
                 break;
             }
@@ -1186,7 +1190,11 @@ mod tests {
             })
             .collect::<Vec<_>>();
         engine.infer_and_stage(&cue).unwrap();
-        assert!(engine.phasor.stimulus.iter().any(|value| value.norm() > 0.0));
+        assert!(engine
+            .phasor
+            .stimulus
+            .iter()
+            .any(|value| value.norm() > 0.0));
 
         engine.sleep_consolidate().unwrap();
         // Un atractor debe sostenerse por la geometría del CDT, no por el

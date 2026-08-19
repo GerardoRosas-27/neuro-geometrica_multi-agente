@@ -190,7 +190,9 @@ cargo run --release --bin native_gemma2_chat
 ```
 
 El chat ejecuta en paralelo un worker fasorial Rust que recibe cada token sin
-mover tensores Candle entre hilos. Puede desactivarse con `--no-thermo`.
+mover tensores Candle entre hilos. Puede desactivarse con `--no-thermo`. Ese
+worker no mezcla logits. El sesgo CTP de vigilia vive en el chat circadiano
+(`docs/gemma2_runtime_optimization.md`).
 
 Backends nativos opcionales:
 
@@ -339,30 +341,45 @@ cargo run --release --bin native_gemma2_chat -- --prompt "Explica la relatividad
 
 ### Gemma 2 adaptativo con memoria termodinámica
 
-El chat adaptativo captura resúmenes RMS por capa, trata cada bloque Transformer
-como un supernodo, propone máscaras conservadoras y las compara contra el
-forward completo. Una ruta solo se consolida cuando conserva el token principal,
-supera el umbral de similitud de logits y pasa el gate spin exacto fuera de
-línea. Si la confianza es insuficiente, limpia la KV cache y repite con todas las
-capas.
+El chat adaptativo captura resúmenes RMS por capa y trata cada bloque
+Transformer como un supernodo. **Durante vigilia no verifica máscaras:** un
+solo prefill, KV incremental si el prompt extiende el prefijo, y un anillo de
+memoria rápida sin flush. Las máscaras sparse se descubren en sueño (hasta 8
+replays): calidad ≥ 0.50 las retiene en trabajo; ≥ 0.92 más spin-gate las
+consolida. Si ninguna máscara parcial conserva la salida, el día siguiente
+sigue usando el modelo completo. El enrutamiento no registra un ahorro
+ficticio.
 
 ```powershell
 cargo run --release --bin native_gemma2_adaptive_chat
 cargo run --release --bin native_gemma2_adaptive_chat -- --prompt "Explica la relatividad" --max-tokens 128
-```
-
-La memoria rápida se vacía al llenarse y también con `/sueño` o al cerrar el
-chat. El estado persistente vive en `data/native_gemma2_adaptive/`: sustrato
-termodinámico, registro de rutas y checkpoint versionado. Para ejecutar solo
-consolidación, decaimiento selectivo y poda:
-
-```powershell
 cargo run --release --bin native_gemma2_adaptive_chat -- --sleep-only
 ```
 
-El enrutamiento es deliberadamente seguro: un Gemma denso no garantiza que
-omitir capas sea válido. Si ninguna máscara parcial conserva la salida, se usa
-el modelo completo y no se registra un ahorro ficticio.
+El estado persistente vive en `data/native_gemma2_adaptive/`. `--sleep-only`
+carga el GGUF, rejuega y consolida; ya no guarda historial a ceros.
+
+### Chat circadiano (Gemma + CTP)
+
+Ruta unificada: de día Gemma responde con un prefill y un sesgo CTP sobre
+embeddings (`wake_blend = 0.25`), sin segundo Transformer; de noche se
+descubren máscaras y se entrena el núcleo CTP.
+
+```powershell
+cargo run --release --bin native_gemma2_circadian_chat -- --chat dyamon
+cargo run --release --bin native_gemma2_circadian_chat -- --chat dyamon --max-tokens 64
+```
+
+```text
+/sueño    replay, máscaras, entrena CTP, persiste
+/limpiar  borra historial y ventana de embeddings (conserva pesos)
+/estado   turnos, recall, blend/phi CTP, rutas
+/salir    sueño + guardado
+```
+
+Persistencia: `data/native_gemma2_circadian/NOMBRE/{adaptive,thermo.cdt,wake,sleep}`.
+Arquitectura, umbrales y límites: `docs/gemma2_runtime_optimization.md`.
+Manuscrito: `docs/paper_inferencia_fasorial_consolidacion_cdt.md` §3.5 y §7.10.
 
 Busca el GGUF en `data/native_gemma2_paged_thermo/manifest.txt`, en
 `ollama-models/` o en la ruta indicada mediante `--model`/`GEMMA2_GGUF`. Para

@@ -1,8 +1,8 @@
 # Inferencia por descarte termodinámico y consolidación CDT:
 ## una arquitectura cognitiva con fasores, atractores y un modelo lingüístico periférico
 
-**Estado del manuscrito:** preprint técnico, versión 0.4
-**Fecha:** 2 de agosto de 2026
+**Estado del manuscrito:** preprint técnico, versión 0.5
+**Fecha:** 19 de agosto de 2026
 **Implementación de referencia:** `cdt_rqm_epr`, Rust
 
 ---
@@ -48,10 +48,15 @@ no demuestra generalización conceptual ni ventaja física.
 
 Por otra parte, un experimento preliminar de apagado de capas
 en Gemma 2 produjo 0 rutas dispersas verificadas y activó fallback completo en
-2 de 2 consultas. Este resultado negativo muestra que la arquitectura de
-seguridad funciona, pero también que un Transformer denso no se vuelve disperso
-por omisión directa de bloques: serán necesarios distillation, adapters o
-entrenamiento explícito de rutas.
+2 de 2 consultas. Ese resultado negativo mostró que verificar máscaras durante
+la vigilia es demasiado caro y demasiado estricto: un Transformer denso no se
+vuelve disperso por omisión directa de bloques. La arquitectura vigente separa
+los tiempos: la vigilia ejecuta un único prefill, reutiliza la KV cache y deja
+que el motor CTP sesgue los logits a partir de embeddings; el descubrimiento de
+máscaras y el entrenamiento CTP ocurren sólo durante sueño. Las pruebas
+unitarias y una prueba GGUF confirman que el sesgo tiene dimensión de
+vocabulario y norma finita; no se evalúa aquí si la mezcla mejora la calidad
+lingüística.
 
 Finalmente, se implementó un ciclo extremo a extremo donde Gemma 2 recibe una
 única cue parcial, propone fronteras futuras, y el motor postselecciona por
@@ -67,8 +72,8 @@ algorítmico bajo una entrada repetida, no de retrocausalidad física ni de
 generalización semántica.
 
 **Palabras clave:** computación termodinámica, fasores, energía libre,
-atractores, CDT, consolidación, memoria de dos velocidades, inferencia
-analógica, postselección, Handshake, modelos de lenguaje.
+atractores, CDT, consolidación, memoria de dos velocidades, ciclo circadiano,
+inferencia analógica, postselección, Handshake, modelos de lenguaje.
 
 ---
 
@@ -177,11 +182,11 @@ Verificador
       ├─ válido y estable ───────────────┐
       └─ inválido → rechazo/fallback     │
                                         ▼
-                              Búfer de memoria rápida
+                              Búfer anillo (vigilia, sin flush)
                                         │
-                              lleno o ciclo de sueño
+                              ciclo de sueño
                                         ▼
-                        Revalidación y consolidación CDT
+                        Replay, máscaras, revalidación y CTP/CDT
                                         │
                        memoria protegida y versionada
                                         │
@@ -217,7 +222,11 @@ Las soluciones verificadas entran en un búfer mutable. Este búfer permite:
 - asociación entre contexto, atractor y resultado;
 - descarte sin dañar conocimiento previo.
 
-Se vacía cuando alcanza su capacidad o cuando comienza un ciclo de sueño.
+Se vacía, en la arquitectura genérica, cuando alcanza su capacidad o cuando
+comienza un ciclo de sueño. En la ruta circadiana Gemma 2 el búfer es un anillo:
+al saturarse expulsa la experiencia más antigua y **no** consolida rutas
+durante vigilia. La consolidación, el descubrimiento de máscaras y el
+entrenamiento CTP ocurren únicamente al iniciar sueño.
 
 ### 3.3 Consolidación CDT
 
@@ -247,6 +256,50 @@ El LLM puede cumplir dos funciones restringidas:
 La solución numérica o lógica procede del motor externo. Cuando el compilador
 lingüístico produce una receta inválida, se usa un parser determinista o se
 solicita aclaración. Los pesos del LLM permanecen congelados.
+
+### 3.5 Ciclo circadiano Gemma 2 + CTP
+
+La implementación de chat unifica tres tiempos que antes se mezclaban en cada
+turno. El binario de referencia es `native_gemma2_circadian_chat`.
+
+```text
+Vigilia
+  historial + mensaje
+        │
+        ▼
+  plan_wake_prefill  ── un solo forward Transformer
+        │                 KV incremental si el prompt extiende el prefijo
+        ▼
+  embeddings W_emb (cola de thermo_window; sufijo si hay cache)
+        │
+        ▼
+  un paso CTP  →  logits_from_hidden(Φ)  →  sesgo de vocabulario
+        │
+        ▼
+  decode Gemma:  ℓ' = ℓ + α · RMS(ℓ)/RMS(b) · b
+        │         α = wake_blend (0,25 por defecto)
+        ▼
+  observe() al anillo  +  journal de vigilia
+        │
+        ▼
+Sueño  (/sueño o al salir)
+  replay ≤ 8 prompts
+        ├─ calidad ≥ 0,50 y máscara sparse → memoria de trabajo
+        ├─ calidad ≥ 0,92 + spin-gate → ruta lenta verificada
+        └─ basura / máscara de todas las capas → descarte
+  train CTP sobre el dataset de sueño
+  persistir adaptive + thermo.cdt
+```
+
+La vigilia **no** sustituye el decode de Gemma por `hybrid.generate()` y **no**
+ejecuta un segundo prefill Transformer para consultar el CTP. El sesgo se
+calcula una vez por turno y se aplica en cada paso de muestreo. Las máscaras
+sparse descubiertas en sueño se usan en el primer turno o cuando la KV no
+puede extenderse; cambiar de máscara a mitad de conversación invalidaría la
+cache.
+
+`/limpiar` vacía historial, KV y la ventana de embeddings (`reset_context`).
+No borra pesos CTP, `sleep_cycles` ni rutas adaptativas persistidas.
 
 ---
 
@@ -286,7 +339,10 @@ La implementación está escrita en Rust y emplea:
 - `NativeThermoCdtSubstrate` como sustrato consolidado;
 - `native_phasor_infinite_trainer` para ciclos wake/sleep;
 - `OperatorDeltaSnapshot` para persistencia compacta;
-- `native_gemma2_adaptive_chat` para telemetría y rutas de activación seguras;
+- `native_gemma2_circadian_chat` para vigilia de un prefill + sesgo CTP y
+  sueño como único sitio de aprendizaje;
+- `native_gemma2_adaptive_chat` para telemetría adaptativa sin híbrido CTP;
+- `gemma2_thermo_hybrid_llm` para embeddings, paso CTP y mezcla de logits;
 - un gate spin exacto pequeño durante consolidación, fuera de la ruta por token.
 
 El minimizador fasorial usa:
@@ -311,7 +367,10 @@ checkpoint persiste por separado estado global y deltas estructurales.
 Las métricas observadas proceden de:
 
 - `data/native_phasor_infinite_training/latest.state.json`;
-- una ejecución registrada del binario adaptativo con Gemma 2 2B GGUF;
+- una ejecución registrada del binario adaptativo con Gemma 2 2B GGUF
+  (26 de julio de 2026; evidencia histórica de verificación en vigilia);
+- pruebas de librería del ciclo circadiano (19 de agosto de 2026), incluida una
+  prueba GGUF ignorada de sesgo CTP en vigilia;
 - suite automatizada de librería y del binario adaptativo.
 
 El checkpoint fasorial fue leído en el ciclo 115.876. Las dos consultas Gemma 2
@@ -392,6 +451,12 @@ una medición independiente de generalización ni demuestra ausencia de olvido.
 
 ### 7.2 Enrutamiento adaptativo de Gemma 2
 
+#### 7.2.1 Evidencia histórica: verificación en vigilia
+
+Las dos consultas del 26 de julio de 2026 verificaban máscaras candidatas
+durante el chat: un prefill completo, comparación de logits y, si fallaba,
+limpieza de KV y repetición con todas las capas.
+
 | Métrica | Resultado observado |
 |---|---:|
 | Consultas instrumentadas | 2 |
@@ -411,7 +476,8 @@ selección de familias. Al omitir incluso una capa candidata cambió el token
 principal o no se alcanzó
 el umbral de similitud de logits. El verificador limpió la KV cache y repitió la
 inferencia con el modelo completo. Es un resultado negativo importante:
-demuestra el fallback, no una mejora de eficiencia.
+demuestra el fallback, no una mejora de eficiencia. Motivó desplazar el
+aprendizaje al sueño (sección 7.10).
 
 ### 7.3 Qué demuestran y qué no demuestran los resultados
 
@@ -423,7 +489,9 @@ Los resultados apoyan que:
 - el fallback evita aceptar rutas Transformer degradadas;
 - el entrenamiento observado es estable durante más de \(10^5\) ciclos.
 - una consolidación aceptada puede modificar las fases de arista CDT y ampliar
-  de forma reproducible la cuenca del patrón consolidado en un fixture sintético.
+  de forma reproducible la cuenca del patrón consolidado en un fixture sintético;
+- la vigilia circadiana puede sesgar logits de Gemma con un paso CTP sobre
+  embeddings, sin un segundo prefill Transformer.
 
 Los resultados todavía no demuestran que:
 
@@ -432,7 +500,9 @@ Los resultados todavía no demuestran que:
 - no exista olvido catastrófico;
 - la dinámica digital supere a GPU o CPU en energía;
 - un chip físico procese literalmente millones de hipótesis útiles;
-- el sistema posea consciencia o cognición general.
+- el sistema posea consciencia o cognición general;
+- el sesgo CTP en vigilia mejore respuestas abiertas, ni que las máscaras
+  descubiertas en sueño reduzcan capas durante un decode incremental.
 
 ### 7.4 Experimento causal de deformación del paisaje
 
@@ -812,6 +882,57 @@ esta corrida. El benchmark sintético sí mide recuerdo ciego, pero utiliza un
 prior controlado con prototipos conocidos. Ambas evidencias deben mantenerse
 separadas.
 
+### 7.10 Ciclo circadiano: un prefill, aprendizaje en sueño, sesgo CTP en vigilia
+
+El 19 de agosto de 2026 se implementó la separación de tiempos descrita en
+§3.5. No sustituye el experimento histórico de §7.2.1: lo corrige como
+política de ejecución.
+
+**Fase 1 — vigilia barata.** `plan_wake_prefill` programa como máximo un
+forward Transformer. Si el prompt nuevo extiende exactamente los tokens
+cacheados y la máscara no cambia, sólo se calcula el sufijo. `observe()`
+escribe en un anillo y no llama a `flush_fast_memory`. Una prueba GGUF
+(`incremental_wake_prefill_is_faster_on_gemma2_gguf`) confirmó que el segundo
+turno prefilla sólo el sufijo.
+
+**Fase 2 — sueño como único sitio de aprendizaje.** Hasta 8 prompts (búfer
+más reciente, luego journal no entrenado) se rejuegan con forward completo.
+Calidad ≥ 0,50 y máscara sparse se retienen en memoria de trabajo; ≥ 0,92 más
+spin-gate se enlazan como rutas lentas. Después se entrena el CTP sobre el
+dataset de sueño. La prueba GGUF `sleep_discovers_masks_on_gemma2_gguf`
+completó un replay. Esto no implica que existan rutas dispersas útiles en
+sesiones reales: el umbral 0,92 sigue siendo estricto.
+
+**Fase 3 — sesgo CTP sin segundo Transformer.** Tras el prefill, el híbrido
+ingiere embeddings (`W_emb·√d`), ejecuta un paso termodinámico y proyecta Φ
+al vocabulario con `logits_from_hidden`. El mismo vector se mezcla en cada
+paso de decode:
+
+\[
+\ell'_i = \ell_i + \alpha\,\frac{\mathrm{RMS}(\ell)}{\mathrm{RMS}(b)}\,b_i,
+\qquad \alpha=\texttt{wake\_blend}\in[0,1].
+\]
+
+`α = 0` deja los logits intactos. Los `thermo.cdt` antiguos sin el campo
+deserializan `α = 0,25`. `/limpiar` llama a `reset_context` y conserva
+`sleep_cycles`.
+
+| Prueba | Resultado |
+|---|---|
+| `mix_logits` con `α = 0` | logits Gemma inalterados |
+| `mix_logits` longitudes distintas | 0 mezclas |
+| `mix_logits` con `α = 1` y sesgo concentrado | puede cambiar el top-1 |
+| `reset_context` | conserva `sleep_cycles` y `tokens_processed` |
+| `wake_blend` ausente en JSON | valor por defecto 0,25 |
+| `wake_bias_from_embeddings_on_gemma2_gguf` | sesgo finito del vocabulario, \( \|\Phi\| > 0 \), mezcla cambia logits; 26 s |
+
+Estas pruebas demuestran que el mecanismo está cableado y que el sesgo es
+numéricamente no nulo sobre Gemma 2 2B GGUF. **No** demuestran mejora de
+calidad lingüística, ahorro de capas en decode ni superioridad frente al chat
+Gemma denso. El decode de hasta 256 tokens en CPU Q4 sigue siendo el coste
+dominante; el prefill incremental reduce el TTFT del segundo turno, no el
+tiempo por token generado.
+
 ---
 
 ## 8. Predicciones falsables
@@ -909,6 +1030,9 @@ La formulación científicamente defendible es:
 12. Las energías de ciclos con fronteras distintas no son comparables de forma
     absoluta; deben normalizarse por cardinalidad o evaluarse bajo una frontera
     común antes de inferir progreso a partir de \(F\).
+13. El ciclo circadiano está cubierto por pruebas de política y una prueba GGUF
+    de sesgo; no hay evaluación ciega de calidad de chat ni ablación de
+    `wake_blend`.
 
 ---
 
@@ -934,9 +1058,11 @@ La formulación científicamente defendible es:
 
 - distillation de la ejecución completa;
 - adapters residuales para compensar capas omitidas;
-- entrenamiento de máscaras por tarea;
-- evaluación de KL, top-k, exactitud final, latencia y consumo;
-- habilitación del apagado sólo después de superar gates de calidad.
+- el sueño ya rejuega prompts y propone máscaras; falta medir KL, top-k y
+  exactitud **después** de aplicar esas máscaras en un cache miss;
+- ablación de `wake_blend` (0, 0,25, 1) sobre un conjunto de prompts fijos;
+- habilitación del apagado en decode incremental sólo después de superar
+  gates de calidad, porque cambiar la máscara rompe la KV cache.
 
 ### Fase D: prototipo físico
 
@@ -955,7 +1081,9 @@ Este trabajo propone separar inferencia, consolidación y lenguaje. Los fasores
 realizan búsqueda por relajación y descarte de modos incompatibles; CDT conserva
 únicamente atractores verificados; el LLM traduce entre lenguaje y
 representaciones operativas. La memoria de dos velocidades permite plasticidad
-rápida sin escribir inmediatamente sobre conocimiento protegido.
+rápida sin escribir inmediatamente sobre conocimiento protegido. En Gemma 2,
+esa separación es circadiana: un prefill y un sesgo CTP de día; replay,
+máscaras y entrenamiento del núcleo de noche.
 
 La evidencia actual demuestra descenso de energía, persistencia wake/sleep,
 fallback seguro y, en un experimento causal sintético, que consolidar un patrón
@@ -963,7 +1091,9 @@ verificado deforma el paisaje para aumentar su cuenca de recuperación y reducir
 las iteraciones. La nueva postselección futura mejora el recuerdo frente a
 interferencia en tres escalas sintéticas, y la corrida con Gemma 2 demuestra que
 propuestas lingüísticas imperfectas pueden ser filtradas y reconsolidadas hasta
-formar una cuenca estable. No demuestra todavía generalización conceptual,
+formar una cuenca estable. El ciclo circadiano demuestra que el CTP puede
+proyectarse al vocabulario de Gemma sin un segundo Transformer; no demuestra
+todavía que esa proyección mejore el lenguaje, ni generalización conceptual,
 ausencia de olvido, ventaja sobre baselines de capacidad equivalente, ventaja
 energética, retrocausalidad ni procesamiento físico masivo. Precisamente por
 ello, la propuesta se expresa como una hipótesis experimental: si un sustrato

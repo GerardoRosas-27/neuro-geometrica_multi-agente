@@ -61,6 +61,14 @@ impl Gemma2Session {
         &self.cached_tokens
     }
 
+    pub fn active_mask(&self) -> Option<&LayerExecutionMask> {
+        self.active_mask.as_ref()
+    }
+
+    pub fn last_logits(&self) -> Option<&Tensor> {
+        self.last_logits.as_ref()
+    }
+
     pub fn reset(&mut self, model: &mut QuantizedGemma2) {
         model.clear_kv_cache();
         self.cached_tokens.clear();
@@ -134,8 +142,34 @@ impl Gemma2Session {
         prompt_tokens: &[u32],
         mask: Option<&LayerExecutionMask>,
         config: Gemma2GenerationConfig,
+        on_text: impl FnMut(&str),
+        on_token: impl FnMut(u32, usize),
+        should_stop: impl FnMut(&str) -> bool,
+    ) -> Result<Gemma2Generation> {
+        self.generate_observed_with_logits(
+            model,
+            tokenizer,
+            prompt_tokens,
+            mask,
+            config,
+            on_text,
+            on_token,
+            |_, _| Ok(()),
+            should_stop,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn generate_observed_with_logits(
+        &mut self,
+        model: &mut QuantizedGemma2,
+        tokenizer: &Gemma2Tokenizer,
+        prompt_tokens: &[u32],
+        mask: Option<&LayerExecutionMask>,
+        config: Gemma2GenerationConfig,
         mut on_text: impl FnMut(&str),
         mut on_token: impl FnMut(u32, usize),
+        mut on_logits: impl FnMut(&mut Tensor, usize) -> Result<()>,
         mut should_stop: impl FnMut(&str) -> bool,
     ) -> Result<Gemma2Generation> {
         if prompt_tokens.is_empty() {
@@ -184,6 +218,8 @@ impl Gemma2Session {
         let decode_started = Instant::now();
         let mut first_token_seconds = None;
         for _ in 0..config.max_tokens {
+            on_logits(&mut logits, generated.len())?;
+            self.last_logits = Some(logits.clone());
             let token = sampler.sample(&logits)?;
             if first_token_seconds.is_none() {
                 first_token_seconds = Some(started.elapsed().as_secs_f64());
@@ -261,11 +297,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn exact_prefix_extension_is_required_for_kv_reuse() {
-        let cached = [1, 2, 3, 4];
-        assert!([1, 2, 3, 4, 5].starts_with(&cached));
-        assert!(![1, 2, 9, 4, 5].starts_with(&cached));
-        assert!(![1, 2, 3].starts_with(&cached));
+    fn second_turn_reuses_prompt_plus_generated_prefix() {
+        let prompt_turn_1 = [1u32, 2, 3, 4];
+        let generated = [10u32, 11];
+        let mut cached = prompt_turn_1.to_vec();
+        cached.extend_from_slice(&generated);
+        let mut prompt_turn_2 = cached.clone();
+        prompt_turn_2.extend_from_slice(&[20, 21, 22]);
+        assert!(prompt_turn_2.starts_with(&cached));
+        assert_eq!(&prompt_turn_2[cached.len()..], &[20, 21, 22]);
     }
 
     #[test]

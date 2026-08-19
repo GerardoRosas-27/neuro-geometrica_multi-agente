@@ -1,17 +1,12 @@
 //! Gemma 2 con enrutamiento adaptativo y memoria termodinámica de dos velocidades.
 
 use candle_core::quantized::gguf_file;
-use candle_core::Tensor;
-use cdt_rqm_epr::adaptive_gemma2::{
-    AdaptiveGemma2Config, AdaptiveThermoMemory, RecalledLayerRoute,
-};
+use cdt_rqm_epr::adaptive_gemma2::{AdaptiveGemma2Config, AdaptiveThermoMemory};
 use cdt_rqm_epr::gemma_phasor_coupling::{GemmaPhasorCouplingConfig, GemmaPhasorWorker};
 use cdt_rqm_epr::native_gemma2::{
-    resolve_gemma2_device, resolve_gemma2_model_path, Gemma2ForwardOutput, Gemma2Tokenizer,
-    LayerExecutionMask, QuantizedGemma2,
+    resolve_gemma2_device, resolve_gemma2_model_path, Gemma2Tokenizer, QuantizedGemma2,
 };
 use cdt_rqm_epr::native_gemma2_runtime::{chat_tokens, Gemma2GenerationConfig, Gemma2Session};
-use cdt_rqm_epr::thermo_router::{ActivationFingerprint, TransformerActivationAdapter};
 use std::env;
 use std::fs::File;
 use std::io::{self, Write};
@@ -36,17 +31,6 @@ struct Config {
     thermo: bool,
 }
 
-struct PreparedForward {
-    output: Gemma2ForwardOutput,
-    mask: LayerExecutionMask,
-    context_fingerprint: ActivationFingerprint,
-    activation_fingerprint: ActivationFingerprint,
-    route_id: Option<cdt_rqm_epr::thermo_router::RouteId>,
-    quality: f32,
-    fallback: bool,
-    recalled_memory_tokens: usize,
-}
-
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = parse_args()?;
     let model_path = resolve_gemma2_model_path(config.model.as_deref())?;
@@ -57,10 +41,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         AdaptiveGemma2Config::default(),
     )?;
     if config.sleep_only {
-        let report = memory.consolidate_sleep()?;
+        let device = resolve_gemma2_device(&config.device)?;
+        let mut file = File::open(&model_path)?;
+        let content = gguf_file::Content::read(&mut file)?;
+        let mut model = QuantizedGemma2::from_gguf(content, &mut file, &device)?;
+        let report = memory.consolidate_sleep_with_model(&mut model, &[])?;
         println!(
-            "sleep=true flushed={} pruned_routes={} pruned_relations={} remaining_routes={}",
-            report.flushed, report.pruned_routes, report.pruned_relations, report.remaining_routes
+            "sleep=true replayed={} discovered={} flushed={} working={} pruned_routes={} remaining_routes={}",
+            report.replayed,
+            report.discovered_masks,
+            report.flushed,
+            report.retained_working,
+            report.pruned_routes,
+            report.remaining_routes
         );
         return Ok(());
     }
@@ -100,7 +93,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             context_limit,
         )?;
         println!();
-        memory.consolidate_sleep()?;
+        memory.consolidate_sleep_with_model(&mut model, &[])?;
         return Ok(());
     }
 
@@ -130,10 +123,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             continue;
         }
         if matches!(input.to_ascii_lowercase().as_str(), "/sueño" | "/sueno") {
-            let report = memory.consolidate_sleep()?;
+            let report = memory.consolidate_sleep_with_model(&mut model, &[])?;
             println!(
-                "Sueño: {} memorias consolidadas, {} rutas y {} relaciones podadas.",
-                report.flushed, report.pruned_routes, report.pruned_relations
+                "Sueño: replay={} máscaras={} flushed={} working={} rutas podadas={}.",
+                report.replayed,
+                report.discovered_masks,
+                report.flushed,
+                report.retained_working,
+                report.pruned_routes
             );
             continue;
         }
@@ -151,10 +148,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!();
         history.push((input.to_string(), response));
     }
-    let report = memory.consolidate_sleep()?;
+    let report = memory.consolidate_sleep_with_model(&mut model, &[])?;
     println!(
-        "Memoria guardada: flushed={} routes={}",
-        report.flushed, report.remaining_routes
+        "Memoria guardada: replay={} máscaras={} flushed={} routes={}",
+        report.replayed, report.discovered_masks, report.flushed, report.remaining_routes
     );
     Ok(())
 }
@@ -175,18 +172,32 @@ fn answer(
 ) -> Result<String, Box<dyn std::error::Error>> {
     let prompt_limit = context_limit.saturating_sub(config.max_tokens).max(32);
     let prompt_tokens = chat_tokens(tokenizer, history, input, prompt_limit)?;
-    let prepared = prepare_forward(model, memory, &prompt_tokens)?;
+    let prepared = memory.prepare_forward(
+        model,
+        &prompt_tokens,
+        session.cached_tokens(),
+        session.active_mask(),
+        session.last_logits(),
+    )?;
     eprintln!(
-        "[route={} layers={}/{} quality={:.3} fallback={} memory_tokens={}]",
+        "[route={} layers={}/{} quality={:.3} fallback={} memory_tokens={} prefill={} cache={}]",
         prepared
             .route_id
             .map(|route| route.0.to_string())
-            .unwrap_or_else(|| "new".to_string()),
+            .unwrap_or_else(|| {
+                if prepared.recalled_memory_tokens > 0 {
+                    "working".to_string()
+                } else {
+                    "new".to_string()
+                }
+            }),
         prepared.mask.executed_count(),
         prepared.mask.layer_count(),
         prepared.quality,
         prepared.fallback,
-        prepared.recalled_memory_tokens
+        prepared.recalled_memory_tokens,
+        prepared.prefill_tokens,
+        prepared.cache_reused,
     );
     session.adopt_prefill(&prompt_tokens, Some(&prepared.mask), prepared.output.logits)?;
     print!("\nGemma> ");
@@ -239,183 +250,6 @@ fn answer(
         prepared.fallback,
     )?;
     Ok(generation.text)
-}
-
-fn prepare_forward(
-    model: &mut QuantizedGemma2,
-    memory: &mut AdaptiveThermoMemory,
-    prompt_tokens: &[u32],
-) -> Result<PreparedForward, Box<dyn std::error::Error>> {
-    let prompt = Tensor::new(prompt_tokens, model.device())?.unsqueeze(0)?;
-    let context_fingerprint = memory.context_fingerprint(prompt_tokens);
-    let recalled = memory.recall(&context_fingerprint, model.layer_count());
-    if let Some(route) = recalled.as_ref().filter(|_| !memory.should_revalidate()) {
-        model.clear_kv_cache();
-        let output = model.forward_with_mask(&prompt, 0, Some(&route.mask), true, false)?;
-        let logits = output.logits.squeeze(0)?.to_vec1::<f32>()?;
-        let self_quality = output_confidence(&logits);
-        if self_quality >= 0.05 && logits.iter().all(|value| value.is_finite()) {
-            let activations = memory.activation_fingerprint(&context_fingerprint, &output.trace);
-            return Ok(PreparedForward {
-                output,
-                mask: route.mask.clone(),
-                context_fingerprint,
-                activation_fingerprint: activations,
-                route_id: Some(route.route_id),
-                quality: self_quality.max(0.30),
-                fallback: false,
-                recalled_memory_tokens: route.memory_tokens.len(),
-            });
-        }
-        return full_fallback(
-            model,
-            memory,
-            &prompt,
-            context_fingerprint,
-            Some(route.clone()),
-        );
-    }
-
-    memory.note_revalidation();
-    model.clear_kv_cache();
-    let full_mask = LayerExecutionMask::all(model.layer_count());
-    let full = model.forward_with_mask(&prompt, 0, Some(&full_mask), true, false)?;
-    let activation_fingerprint = memory.activation_fingerprint(&context_fingerprint, &full.trace);
-    let candidates = memory.progressive_candidate_masks(&full.trace);
-    if candidates.is_empty() {
-        return Ok(PreparedForward {
-            output: full,
-            mask: full_mask,
-            context_fingerprint,
-            activation_fingerprint,
-            route_id: recalled.as_ref().map(|route| route.route_id),
-            quality: 1.0,
-            fallback: false,
-            recalled_memory_tokens: recalled
-                .as_ref()
-                .map(|route| route.memory_tokens.len())
-                .unwrap_or(0),
-        });
-    }
-
-    let full_logits = full.logits.squeeze(0)?.to_vec1::<f32>()?;
-    let mut best = None::<(LayerExecutionMask, f32, Gemma2ForwardOutput)>;
-    let mut last_quality = 0.0;
-    let mut cache_matches_best = false;
-    for candidate in candidates
-        .into_iter()
-        .take(memory.config.max_candidate_prefills)
-    {
-        model.clear_kv_cache();
-        let sparse = model.forward_with_mask(&prompt, 0, Some(&candidate), false, false)?;
-        let sparse_logits = sparse.logits.squeeze(0)?.to_vec1::<f32>()?;
-        last_quality = logit_agreement(&full_logits, &sparse_logits);
-        if last_quality < memory.config.min_verified_quality {
-            cache_matches_best = false;
-            break;
-        }
-        best = Some((candidate, last_quality, sparse));
-        cache_matches_best = true;
-    }
-    if let Some((candidate, quality, sparse)) = best {
-        let output = if cache_matches_best {
-            sparse
-        } else {
-            model.clear_kv_cache();
-            model.forward_with_mask(&prompt, 0, Some(&candidate), false, false)?
-        };
-        return Ok(PreparedForward {
-            output,
-            mask: candidate,
-            context_fingerprint,
-            activation_fingerprint,
-            route_id: recalled.as_ref().map(|route| route.route_id),
-            quality,
-            fallback: false,
-            recalled_memory_tokens: recalled
-                .as_ref()
-                .map(|route| route.memory_tokens.len())
-                .unwrap_or(0),
-        });
-    }
-    model.clear_kv_cache();
-    let output = model.forward_with_mask(&prompt, 0, Some(&full_mask), true, false)?;
-    Ok(PreparedForward {
-        output,
-        mask: full_mask,
-        context_fingerprint,
-        activation_fingerprint,
-        route_id: recalled.as_ref().map(|route| route.route_id),
-        quality: last_quality,
-        fallback: true,
-        recalled_memory_tokens: recalled
-            .as_ref()
-            .map(|route| route.memory_tokens.len())
-            .unwrap_or(0),
-    })
-}
-
-fn full_fallback(
-    model: &mut QuantizedGemma2,
-    memory: &AdaptiveThermoMemory,
-    prompt: &Tensor,
-    context_fingerprint: ActivationFingerprint,
-    route: Option<RecalledLayerRoute>,
-) -> Result<PreparedForward, Box<dyn std::error::Error>> {
-    model.clear_kv_cache();
-    let mask = LayerExecutionMask::all(model.layer_count());
-    let output = model.forward_with_mask(prompt, 0, Some(&mask), true, false)?;
-    let logits = output.logits.squeeze(0)?.to_vec1::<f32>()?;
-    let activations = memory.activation_fingerprint(&context_fingerprint, &output.trace);
-    Ok(PreparedForward {
-        output,
-        mask,
-        context_fingerprint,
-        activation_fingerprint: activations,
-        route_id: route.as_ref().map(|route| route.route_id),
-        quality: output_confidence(&logits).max(0.5),
-        fallback: true,
-        recalled_memory_tokens: route
-            .as_ref()
-            .map(|route| route.memory_tokens.len())
-            .unwrap_or(0),
-    })
-}
-
-fn output_confidence(logits: &[f32]) -> f32 {
-    TransformerActivationAdapter::new(8)
-        .capture(logits)
-        .confidence
-}
-
-fn logit_agreement(full: &[f32], sparse: &[f32]) -> f32 {
-    if full.len() != sparse.len() || full.is_empty() {
-        return 0.0;
-    }
-    let full_top = full
-        .iter()
-        .enumerate()
-        .max_by(|left, right| left.1.total_cmp(right.1))
-        .map(|(index, _)| index);
-    let sparse_top = sparse
-        .iter()
-        .enumerate()
-        .max_by(|left, right| left.1.total_cmp(right.1))
-        .map(|(index, _)| index);
-    if full_top != sparse_top {
-        return 0.0;
-    }
-    let (squared_error, squared_signal) =
-        full.iter()
-            .zip(sparse)
-            .fold((0.0f64, 0.0f64), |(error, signal), (left, right)| {
-                (
-                    error + (*left as f64 - *right as f64).powi(2),
-                    signal + (*left as f64).powi(2),
-                )
-            });
-    let relative_rmse = (squared_error / squared_signal.max(f64::EPSILON)).sqrt();
-    (-4.0 * relative_rmse).exp() as f32
 }
 
 fn parse_args() -> Result<Config, Box<dyn std::error::Error>> {
