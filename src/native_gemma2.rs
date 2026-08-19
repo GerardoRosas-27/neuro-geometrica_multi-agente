@@ -652,8 +652,8 @@ fn grouped_query_attention(
     softcap: f64,
     attention_mask: Option<&Tensor>,
 ) -> Result<Tensor> {
-    let (_, query_heads, query_length, head_dim) = query.dims4()?;
-    let (_, key_value_heads, _, key_head_dim) = key.dims4()?;
+    let (batch, query_heads, query_length, head_dim) = query.dims4()?;
+    let (_, key_value_heads, key_length, key_head_dim) = key.dims4()?;
     if key_head_dim != head_dim || query_heads != key_value_heads * groups {
         candle_core::bail!(
             "GQA incompatible: query_heads={query_heads}, kv_heads={key_value_heads}, \
@@ -672,14 +672,18 @@ fn grouped_query_attention(
         return candle_nn::ops::softmax_last_dim(&weights)?.matmul(&repeated_value);
     }
 
-    // Decode: evita materializar K/V repetido para todo el contexto.
-    let mut attended = Vec::with_capacity(query_heads);
-    for query_head in 0..query_heads {
-        let key_value_head = query_head / groups;
-        let query_head = query.narrow(1, query_head, 1)?;
-        let key_head = key.narrow(1, key_value_head, 1)?;
-        let value_head = value.narrow(1, key_value_head, 1)?;
-        let mut weights = (query_head.matmul(&key_head.transpose(2, 3)?)? * scale)?;
+    // Decode/sufijo corto: procesa juntas las cabezas Q que comparten K/V.
+    // Evita tanto repetir todo el contexto como lanzar un matmul por Q-head.
+    let mut attended = Vec::with_capacity(key_value_heads);
+    for key_value_head in 0..key_value_heads {
+        let query_group = query.narrow(1, key_value_head * groups, groups)?;
+        let key_head = key
+            .narrow(1, key_value_head, 1)?
+            .expand((batch, groups, key_length, head_dim))?;
+        let value_head = value
+            .narrow(1, key_value_head, 1)?
+            .expand((batch, groups, key_length, head_dim))?;
+        let mut weights = (query_group.matmul(&key_head.transpose(2, 3)?)? * scale)?;
         weights = ((&weights / softcap)?.tanh()? * softcap)?;
         if let Some(mask) = attention_mask {
             weights = weights.broadcast_add(mask)?;

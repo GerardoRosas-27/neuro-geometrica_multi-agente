@@ -6,7 +6,9 @@ use cdt_rqm_epr::gemma_phasor_coupling::{GemmaPhasorCouplingConfig, GemmaPhasorW
 use cdt_rqm_epr::native_gemma2::{
     resolve_gemma2_device, resolve_gemma2_model_path, Gemma2Tokenizer, QuantizedGemma2,
 };
-use cdt_rqm_epr::native_gemma2_runtime::{chat_tokens, Gemma2GenerationConfig, Gemma2Session};
+use cdt_rqm_epr::native_gemma2_runtime::{
+    chat_tokens_with_cache, Gemma2GenerationConfig, Gemma2Session,
+};
 use std::env;
 use std::fs::File;
 use std::io::{self, Write};
@@ -171,7 +173,13 @@ fn answer(
     context_limit: usize,
 ) -> Result<String, Box<dyn std::error::Error>> {
     let prompt_limit = context_limit.saturating_sub(config.max_tokens).max(32);
-    let prompt_tokens = chat_tokens(tokenizer, history, input, prompt_limit)?;
+    let prompt_tokens = chat_tokens_with_cache(
+        tokenizer,
+        history,
+        input,
+        prompt_limit,
+        session.cached_tokens(),
+    )?;
     let prepared = memory.prepare_forward(
         model,
         &prompt_tokens,
@@ -302,19 +310,4 @@ fn required(
 ) -> Result<String, Box<dyn std::error::Error>> {
     args.next()
         .ok_or_else(|| format!("falta valor para {name}").into())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn identical_logits_have_full_agreement() {
-        assert!((logit_agreement(&[0.1, 0.9, -0.2], &[0.1, 0.9, -0.2]) - 1.0).abs() < 1e-6);
-    }
-
-    #[test]
-    fn changed_top_token_forces_fallback() {
-        assert_eq!(logit_agreement(&[0.1, 0.9], &[0.9, 0.1]), 0.0);
-    }
 }

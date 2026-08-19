@@ -390,7 +390,9 @@ impl AdaptiveThermoMemory {
                 .and_then(|tensor| tensor.unsqueeze(0))
                 .map_err(|error| error.to_string())?;
             model
-                .forward_with_mask(&prompt, plan.position, Some(&plan.mask), true, false)
+                // Vigilia no aprende máscaras: las trazas RMS por capa se
+                // capturan durante replay de sueño, fuera de la ruta crítica.
+                .forward_with_mask(&prompt, plan.position, Some(&plan.mask), false, false)
                 .map_err(|error| error.to_string())?
         };
         let logits = output

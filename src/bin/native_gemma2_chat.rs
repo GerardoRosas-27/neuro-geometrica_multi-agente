@@ -6,7 +6,9 @@ use cdt_rqm_epr::gemma_phasor_coupling::{GemmaPhasorCouplingConfig, GemmaPhasorW
 use cdt_rqm_epr::native_gemma2::{
     resolve_gemma2_device, resolve_gemma2_model_path, Gemma2Tokenizer, QuantizedGemma2,
 };
-use cdt_rqm_epr::native_gemma2_runtime::{chat_tokens, Gemma2GenerationConfig, Gemma2Session};
+use cdt_rqm_epr::native_gemma2_runtime::{
+    chat_tokens_with_cache, Gemma2GenerationConfig, Gemma2Session,
+};
 use std::env;
 use std::fs::File;
 use std::io::{self, Write};
@@ -130,7 +132,13 @@ fn answer(
     context_limit: usize,
 ) -> Result<String, Box<dyn std::error::Error>> {
     let prompt_limit = context_limit.saturating_sub(config.max_tokens).max(32);
-    let prompt_tokens = chat_tokens(tokenizer, history, input, prompt_limit)?;
+    let prompt_tokens = chat_tokens_with_cache(
+        tokenizer,
+        history,
+        input,
+        prompt_limit,
+        session.cached_tokens(),
+    )?;
     print!("\nGemma> ");
     io::stdout().flush()?;
     let generation = session.generate_observed(

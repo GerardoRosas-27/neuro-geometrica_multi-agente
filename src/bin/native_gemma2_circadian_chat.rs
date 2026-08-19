@@ -11,14 +11,16 @@ use cdt_rqm_epr::gemma2_circadian_bridge::{
     CircadianPaths, CircadianSleepConfig, WakeJournal, DEFAULT_CIRCADIAN_ROOT,
 };
 use cdt_rqm_epr::gemma2_thermo_hybrid_llm::{
-    apply_wake_bias, Gemma2ThermoHybridConfig, Gemma2ThermoHybridLlm, Gemma2WakeBiasReport,
+    apply_wake_bias_tensor, Gemma2ThermoHybridConfig, Gemma2ThermoHybridLlm, Gemma2WakeBiasReport,
 };
 use cdt_rqm_epr::gemma2_thermo_hybrid_session::sanitize_chat_name;
 use cdt_rqm_epr::gemma_phasor_coupling::{GemmaPhasorCouplingConfig, GemmaPhasorWorker};
 use cdt_rqm_epr::native_gemma2::{
     resolve_gemma2_device, resolve_gemma2_model_path, Gemma2Tokenizer, QuantizedGemma2,
 };
-use cdt_rqm_epr::native_gemma2_runtime::{chat_tokens, Gemma2GenerationConfig, Gemma2Session};
+use cdt_rqm_epr::native_gemma2_runtime::{
+    chat_tokens_with_cache, Gemma2GenerationConfig, Gemma2Session,
+};
 use std::cell::Cell;
 use std::env;
 use std::fs::File;
@@ -299,7 +301,13 @@ fn wake_turn(
     context_limit: usize,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let prompt_limit = context_limit.saturating_sub(config.max_tokens).max(32);
-    let prompt_tokens = chat_tokens(tokenizer, &session.history, input, prompt_limit)?;
+    let prompt_tokens = chat_tokens_with_cache(
+        tokenizer,
+        &session.history,
+        input,
+        prompt_limit,
+        session.gemma_session.cached_tokens(),
+    )?;
     let cached_tokens = session.gemma_session.cached_tokens().to_vec();
     let cached_mask = session.gemma_session.active_mask().cloned();
     let cached_logits = session.gemma_session.last_logits().cloned();
@@ -345,17 +353,20 @@ fn wake_turn(
     } else {
         prompt_tokens.as_slice()
     };
+    let ctp_started = Instant::now();
     let observed = session
         .hybrid
         .observe_prompt_tokens(model, suffix, prepared.cache_reused)?;
     let blend = session.hybrid.config().wake_blend;
     let (ctp_bias, mut ctp_report) = if blend > 0.0 && session.hybrid.context_len() > 0 {
-        session.hybrid.compute_wake_bias(model)?
+        let (bias, report) = session.hybrid.compute_wake_bias(model)?;
+        (Some(bias), report)
     } else {
-        (Vec::new(), Gemma2WakeBiasReport::default())
+        (None, Gemma2WakeBiasReport::default())
     };
     ctp_report.observed_tokens = observed;
     ctp_report.blend = blend;
+    let ctp_seconds = ctp_started.elapsed().as_secs_f64();
     let mixed = Cell::new(0usize);
 
     print!("\nGemma> ");
@@ -383,10 +394,10 @@ fn wake_turn(
             }
         },
         |logits, step| {
-            if ctp_bias.is_empty() {
+            let Some(ctp_bias) = ctp_bias.as_ref() else {
                 return Ok(());
-            }
-            let changed = apply_wake_bias(logits, &ctp_bias, blend)
+            };
+            let changed = apply_wake_bias_tensor(logits, ctp_bias, blend)
                 .map_err(|error| candle_core::Error::Msg(error.to_string()))?;
             if step == 0 {
                 mixed.set(changed);
@@ -403,14 +414,23 @@ fn wake_turn(
     session.last_ctp = ctp_report;
     if session.last_ctp.mixed > 0 {
         eprintln!(
-            "[ctp blend={:.2} phi={:.3} bias={:.3} mixed={} ctx={}]",
+            "[ctp blend={:.2} phi={:.3} bias={:.3} mixed={} ctx={} {:.3}s]",
             session.last_ctp.blend,
             session.last_ctp.phi_norm,
             session.last_ctp.ctp_bias_norm,
             session.last_ctp.mixed,
             session.last_ctp.context_length,
+            ctp_seconds,
         );
     }
+    eprintln!(
+        "[decode {:.2} tok/s model={:.3}s logits={:.3}s text={:.3}s cache={}]",
+        generation.metrics.decode_tokens_per_second(),
+        generation.metrics.model_decode_seconds,
+        generation.metrics.logits_processing_seconds,
+        generation.metrics.text_decode_seconds,
+        generation.metrics.cache_reused,
+    );
 
     session.adaptive.observe(
         prepared.context_fingerprint,

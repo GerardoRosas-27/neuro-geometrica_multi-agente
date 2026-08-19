@@ -26,6 +26,9 @@ pub struct Gemma2GenerationMetrics {
     pub prefill_seconds: f64,
     pub time_to_first_token_seconds: f64,
     pub decode_seconds: f64,
+    pub model_decode_seconds: f64,
+    pub logits_processing_seconds: f64,
+    pub text_decode_seconds: f64,
 }
 
 impl Gemma2GenerationMetrics {
@@ -196,7 +199,7 @@ impl Gemma2Session {
         let prefill_started = Instant::now();
         let mut logits = if suffix.is_empty() {
             self.last_logits
-                .clone()
+                .take()
                 .ok_or_else(|| candle_core::Error::Msg("sesión Gemma sin logits".to_string()))?
         } else {
             let input = Tensor::new(suffix, model.device())?.unsqueeze(0)?;
@@ -205,7 +208,6 @@ impl Gemma2Session {
                 .logits
                 .squeeze(0)?;
             self.cached_tokens.extend_from_slice(suffix);
-            self.last_logits = Some(logits.clone());
             logits
         };
         let prefill_seconds = prefill_started.elapsed().as_secs_f64();
@@ -217,10 +219,14 @@ impl Gemma2Session {
         let mut streamed_text = String::new();
         let decode_started = Instant::now();
         let mut first_token_seconds = None;
+        let mut model_decode_seconds = 0.0;
+        let mut logits_processing_seconds = 0.0;
+        let mut text_decode_seconds = 0.0;
         for _ in 0..config.max_tokens {
+            let logits_started = Instant::now();
             on_logits(&mut logits, generated.len())?;
-            self.last_logits = Some(logits.clone());
             let token = sampler.sample(&logits)?;
+            logits_processing_seconds += logits_started.elapsed().as_secs_f64();
             if first_token_seconds.is_none() {
                 first_token_seconds = Some(started.elapsed().as_secs_f64());
             }
@@ -229,25 +235,30 @@ impl Gemma2Session {
             }
             generated.push(token);
             on_token(token, self.cached_tokens.len());
+            let text_started = Instant::now();
             if let Some(fragment) = decoder.step(token)? {
                 streamed_text.push_str(&fragment);
                 on_text(&fragment);
                 if should_stop(&streamed_text) {
+                    text_decode_seconds += text_started.elapsed().as_secs_f64();
                     break;
                 }
             }
+            text_decode_seconds += text_started.elapsed().as_secs_f64();
             if self.cached_tokens.len() >= config.context_limit {
                 break;
             }
             let next = Tensor::new(&[token], model.device())?.unsqueeze(0)?;
+            let model_started = Instant::now();
             logits = model
                 .forward_with_mask(&next, self.cached_tokens.len(), mask, false, false)?
                 .logits
                 .squeeze(0)?;
+            model_decode_seconds += model_started.elapsed().as_secs_f64();
             self.cached_tokens.push(token);
-            self.last_logits = Some(logits.clone());
         }
         let decode_seconds = decode_started.elapsed().as_secs_f64();
+        self.last_logits = Some(logits);
         let text = tokenizer.decode(&generated, true)?.trim().to_string();
         Ok(Gemma2Generation {
             text,
@@ -260,9 +271,37 @@ impl Gemma2Session {
                 time_to_first_token_seconds: first_token_seconds
                     .unwrap_or_else(|| started.elapsed().as_secs_f64()),
                 decode_seconds,
+                model_decode_seconds,
+                logits_processing_seconds,
+                text_decode_seconds,
             },
         })
     }
+}
+
+/// Construye el siguiente prompt sobre los IDs exactos ya presentes en KV.
+/// Evita `encode(decode(ids))`, que no garantiza recuperar la tokenización
+/// original y puede provocar un prefill completo silencioso.
+pub fn chat_tokens_with_cache(
+    tokenizer: &Gemma2Tokenizer,
+    history: &[(String, String)],
+    input: &str,
+    limit: usize,
+    cached_tokens: &[u32],
+) -> Result<Vec<u32>> {
+    if !cached_tokens.is_empty() {
+        let suffix = tokenizer.encode(&format!(
+            "<end_of_turn>\n<start_of_turn>user\n{input}<end_of_turn>\n\
+             <start_of_turn>model\n"
+        ))?;
+        if cached_tokens.len() + suffix.len() <= limit {
+            let mut tokens = Vec::with_capacity(cached_tokens.len() + suffix.len());
+            tokens.extend_from_slice(cached_tokens);
+            tokens.extend(suffix);
+            return Ok(tokens);
+        }
+    }
+    chat_tokens(tokenizer, history, input, limit)
 }
 
 pub fn chat_tokens(
@@ -306,6 +345,16 @@ mod tests {
         prompt_turn_2.extend_from_slice(&[20, 21, 22]);
         assert!(prompt_turn_2.starts_with(&cached));
         assert_eq!(&prompt_turn_2[cached.len()..], &[20, 21, 22]);
+    }
+
+    #[test]
+    fn cached_prompt_builder_preserves_the_exact_prefix() {
+        let cached = [2u32, 10, 11, 12];
+        let suffix = [107u32, 108, 20, 21];
+        let mut next = Vec::from(cached);
+        next.extend(suffix);
+        assert!(next.starts_with(&cached));
+        assert_eq!(&next[cached.len()..], &suffix);
     }
 
     #[test]

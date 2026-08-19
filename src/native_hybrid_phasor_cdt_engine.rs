@@ -469,6 +469,15 @@ impl NativeHybridPhasorCdtEngine {
         self.infer_and_stage_with_goal(cue, &[])
     }
 
+    /// Inferencia transitoria para la ruta interactiva. Relaja el campo y
+    /// devuelve el mismo reporte, pero no añade atractores a la cola de sueño.
+    pub fn infer_without_stage(
+        &mut self,
+        cue: &[NativePhasorCue],
+    ) -> Result<NativeWakeInferenceReport, NativeHybridError> {
+        self.infer_with_goal(cue, &[], false)
+    }
+
     /// Wake con estructura de dos vectores de estado: `cue` fija la evidencia
     /// hacia adelante y `goal` fija la frontera hacia atrás por la que se
     /// post-selecciona. Ambas coexisten en F cuando `cue_as_boundary` está
@@ -481,6 +490,15 @@ impl NativeHybridPhasorCdtEngine {
         &mut self,
         cue: &[NativePhasorCue],
         goal: &[NativePhasorCue],
+    ) -> Result<NativeWakeInferenceReport, NativeHybridError> {
+        self.infer_with_goal(cue, goal, true)
+    }
+
+    fn infer_with_goal(
+        &mut self,
+        cue: &[NativePhasorCue],
+        goal: &[NativePhasorCue],
+        stage: bool,
     ) -> Result<NativeWakeInferenceReport, NativeHybridError> {
         if cue.is_empty() {
             return Err(NativeHybridError::EmptyCue);
@@ -538,7 +556,7 @@ impl NativeHybridPhasorCdtEngine {
         };
         let confidence = ((minimization.final_report.phase_coherence + 1.0) * 0.5)
             / (1.0 + minimization.final_report.gradient_residual);
-        let pending_id = if gate.passed {
+        let pending_id = if stage && gate.passed {
             Some(self.stage_pending_attractor(
                 confidence,
                 minimization.final_report.free_energy,

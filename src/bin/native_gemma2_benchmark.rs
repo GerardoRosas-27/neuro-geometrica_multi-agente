@@ -53,7 +53,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     println!(
         "kind,prompt_tokens,generated_tokens,median_ttft_ms,median_prefill_tok_s,\
-         median_decode_tok_s,median_prefill_ms,kv_reused"
+         median_decode_tok_s,median_prefill_ms,model_decode_ms,logits_ms,text_decode_ms,kv_reused"
     );
 
     for prompt_length in prompt_lengths {
@@ -128,12 +128,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 fn print_report(kind: &str, prompt_length: usize, metrics: Gemma2GenerationMetrics) {
     println!(
-        "{kind},{prompt_length},{},{:.3},{:.3},{:.3},{:.3},{}",
+        "{kind},{prompt_length},{},{:.3},{:.3},{:.3},{:.3},{:.3},{:.3},{:.3},{}",
         metrics.generated_tokens,
         metrics.time_to_first_token_seconds * 1_000.0,
         metrics.prefill_tokens_per_second(),
         metrics.decode_tokens_per_second(),
         metrics.prefill_seconds * 1_000.0,
+        metrics.model_decode_seconds * 1_000.0,
+        metrics.logits_processing_seconds * 1_000.0,
+        metrics.text_decode_seconds * 1_000.0,
         metrics.cache_reused,
     );
 }

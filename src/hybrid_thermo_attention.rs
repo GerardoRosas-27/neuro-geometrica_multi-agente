@@ -445,6 +445,25 @@ impl HybridThermoAttention {
         raw_tokens: &[Vec<f32>],
         values: &[Vec<f32>],
     ) -> Result<(Vec<Vec<f32>>, HybridThermoAttentionReport), HybridThermoAttentionError> {
+        self.forward_with_mode(raw_tokens, values, true)
+    }
+
+    /// Vigilia interactiva: usa el estado consolidado para inferir, pero no
+    /// modifica W_Q/W_K ni crea candidatos pendientes para el sueño.
+    pub fn forward_inference(
+        &mut self,
+        raw_tokens: &[Vec<f32>],
+        values: &[Vec<f32>],
+    ) -> Result<(Vec<Vec<f32>>, HybridThermoAttentionReport), HybridThermoAttentionError> {
+        self.forward_with_mode(raw_tokens, values, false)
+    }
+
+    fn forward_with_mode(
+        &mut self,
+        raw_tokens: &[Vec<f32>],
+        values: &[Vec<f32>],
+        learn: bool,
+    ) -> Result<(Vec<Vec<f32>>, HybridThermoAttentionReport), HybridThermoAttentionError> {
         if raw_tokens.is_empty() {
             return Err(HybridThermoAttentionError::EmptySequence);
         }
@@ -496,10 +515,12 @@ impl HybridThermoAttention {
             self.config.boundary_threshold,
             self.config.cdt_seed,
         );
-        let wake = self
-            .hybrid
-            .infer_and_stage(&cues)
-            .map_err(|e| HybridThermoAttentionError::Hybrid(e.to_string()))?;
+        let wake = if learn {
+            self.hybrid.infer_and_stage(&cues)
+        } else {
+            self.hybrid.infer_without_stage(&cues)
+        }
+        .map_err(|e| HybridThermoAttentionError::Hybrid(e.to_string()))?;
 
         // 5. Extrae nuevo B_CTP del campo fasorial relajado.
         self.extract_ctp_bias(n);
@@ -516,7 +537,11 @@ impl HybridThermoAttention {
         }
 
         // 7. Plasticidad Langevin-Hebbiana sobre W_Q, W_K.
-        let plasticity_delta = self.plasticity_update(&attention, raw_tokens);
+        let plasticity_delta = if learn {
+            self.plasticity_update(&attention, raw_tokens)
+        } else {
+            0.0
+        };
 
         let phasor_report = self.hybrid.phasor.report();
         Ok((
@@ -948,6 +973,23 @@ mod tests {
         assert!(report.ctp_bias_norm > 0.0);
         assert!(report.softmax_entropy > 0.0);
         assert_eq!(engine.ctp_bias().len(), 6);
+    }
+
+    #[test]
+    fn inference_mode_does_not_update_projections_or_stage_attractors() {
+        let config = test_hybrid_config();
+        let mut engine = HybridThermoAttention::new(config).expect("engine");
+        let tokens = synthetic_sequence(5, 8, 140);
+        let values = synthetic_sequence(5, 4, 141);
+        let before = engine.export_learned_state();
+        let (_, report) = engine
+            .forward_inference(&tokens, &values)
+            .expect("inference");
+        let after = engine.export_learned_state();
+        assert_eq!(report.plasticity_delta_norm, 0.0);
+        assert_eq!(report.pending_attractors, 0);
+        assert_eq!(before.w_q, after.w_q);
+        assert_eq!(before.w_k, after.w_k);
     }
 
     #[test]

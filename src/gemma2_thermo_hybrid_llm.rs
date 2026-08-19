@@ -75,6 +75,12 @@ pub struct Gemma2WakeBiasReport {
     pub blend: f32,
 }
 
+#[derive(Clone, Debug)]
+pub struct Gemma2WakeBias {
+    pub logits: Tensor,
+    pub rms: f32,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct Gemma2ThermoStepReport {
     pub thermo: HybridThermoAttentionReport,
@@ -224,15 +230,18 @@ impl Gemma2ThermoHybridLlm {
     pub fn compute_wake_bias(
         &mut self,
         model: &QuantizedGemma2,
-    ) -> Result<(Vec<f32>, Gemma2WakeBiasReport), Gemma2ThermoHybridError> {
-        let (phi, _) = self.run_thermo_step()?;
+    ) -> Result<(Gemma2WakeBias, Gemma2WakeBiasReport), Gemma2ThermoHybridError> {
+        let (phi, _) = self.run_thermo_step_inference()?;
         let phi_tensor = f32_vec_to_tensor(&phi, model.device())?;
-        let bias = model
+        let bias_logits = model
             .logits_from_hidden(&phi_tensor)
             .and_then(|tensor| tensor.squeeze(0))
-            .and_then(|tensor| tensor.to_vec1::<f32>())
             .map_err(|error| Gemma2ThermoHybridError::Candle(error.to_string()))?;
-        let ctp_bias_norm = vector_norm(&bias);
+        let ctp_bias_norm = tensor_norm(&bias_logits)?;
+        let bias = Gemma2WakeBias {
+            rms: ctp_bias_norm / (bias_logits.elem_count() as f32).sqrt(),
+            logits: bias_logits,
+        };
         Ok((
             bias,
             Gemma2WakeBiasReport {
@@ -296,8 +305,18 @@ impl Gemma2ThermoHybridLlm {
         model: &QuantizedGemma2,
         token_ids: &[u32],
     ) -> Result<(), Gemma2ThermoHybridError> {
-        for &token_id in token_ids {
-            let embedding = embed_token_to_vec(model, token_id)?;
+        if token_ids.is_empty() {
+            return Ok(());
+        }
+        let ids = Tensor::new(token_ids, model.device())
+            .and_then(|tensor| tensor.unsqueeze(0))
+            .map_err(|error| Gemma2ThermoHybridError::Candle(error.to_string()))?;
+        let embeddings = model
+            .embed_token_ids(&ids)
+            .and_then(|tensor| tensor.squeeze(0))
+            .and_then(|tensor| tensor.to_vec2::<f32>())
+            .map_err(|error| Gemma2ThermoHybridError::Candle(error.to_string()))?;
+        for embedding in embeddings {
             self.push_context(embedding);
         }
         Ok(())
@@ -492,8 +511,20 @@ impl Gemma2ThermoHybridLlm {
         if self.context.is_empty() {
             return Err(Gemma2ThermoHybridError::EmptyContext);
         }
-        let values = self.context.clone();
-        let (out, report) = self.thermo.forward(&self.context, &values)?;
+        let (out, report) = self.thermo.forward(&self.context, &self.context)?;
+        let phi = out.last().cloned().unwrap_or_default();
+        Ok((phi, report))
+    }
+
+    fn run_thermo_step_inference(
+        &mut self,
+    ) -> Result<(Vec<f32>, HybridThermoAttentionReport), Gemma2ThermoHybridError> {
+        if self.context.is_empty() {
+            return Err(Gemma2ThermoHybridError::EmptyContext);
+        }
+        let (out, report) = self
+            .thermo
+            .forward_inference(&self.context, &self.context)?;
         let phi = out.last().cloned().unwrap_or_default();
         Ok((phi, report))
     }
@@ -593,6 +624,16 @@ fn vector_norm(values: &[f32]) -> f32 {
     values.iter().map(|v| v * v).sum::<f32>().sqrt()
 }
 
+fn tensor_norm(tensor: &Tensor) -> Result<f32, Gemma2ThermoHybridError> {
+    tensor
+        .to_dtype(candle_core::DType::F32)
+        .and_then(|tensor| tensor.sqr())
+        .and_then(|tensor| tensor.sum_all())
+        .and_then(|tensor| tensor.sqrt())
+        .and_then(|tensor| tensor.to_scalar::<f32>())
+        .map_err(|error| Gemma2ThermoHybridError::Candle(error.to_string()))
+}
+
 fn rms(values: &[f32]) -> f32 {
     if values.is_empty() {
         return 0.0;
@@ -639,6 +680,38 @@ pub fn apply_wake_bias(
     *logits = Tensor::new(values.as_slice(), logits.device())
         .map_err(|error| Gemma2ThermoHybridError::Candle(error.to_string()))?;
     Ok(mixed)
+}
+
+/// Mezcla el sesgo directamente en el dispositivo. Evita materializar el
+/// vocabulario como `Vec<f32>` y volver a crear un tensor en cada token.
+pub fn apply_wake_bias_tensor(
+    logits: &mut Tensor,
+    bias: &Gemma2WakeBias,
+    blend: f32,
+) -> Result<usize, Gemma2ThermoHybridError> {
+    if logits.elem_count() != bias.logits.elem_count() || logits.elem_count() == 0 {
+        return Ok(0);
+    }
+    let blend = blend.clamp(0.0, 1.0);
+    if blend <= 0.0 || !bias.rms.is_finite() || bias.rms < 1.0e-8 {
+        return Ok(0);
+    }
+    let gemma_rms = logits
+        .to_dtype(candle_core::DType::F32)
+        .and_then(|tensor| tensor.sqr())
+        .and_then(|tensor| tensor.mean_all())
+        .and_then(|tensor| tensor.sqrt())
+        .map_err(|error| Gemma2ThermoHybridError::Candle(error.to_string()))?;
+    let scale = (&gemma_rms * (blend / bias.rms) as f64)
+        .map_err(|error| Gemma2ThermoHybridError::Candle(error.to_string()))?;
+    let scaled = bias
+        .logits
+        .broadcast_mul(&scale)
+        .map_err(|error| Gemma2ThermoHybridError::Candle(error.to_string()))?;
+    *logits = logits
+        .broadcast_add(&scaled)
+        .map_err(|error| Gemma2ThermoHybridError::Candle(error.to_string()))?;
+    Ok(logits.elem_count())
 }
 
 #[cfg(test)]
@@ -832,6 +905,29 @@ mod tests {
     }
 
     #[test]
+    fn tensor_wake_bias_matches_cpu_formula() {
+        let device = candle_core::Device::Cpu;
+        let original = vec![2.0f32, 0.1, 0.0, -0.2];
+        let bias_values = vec![0.0f32, 1.0, 0.0, 0.0];
+        let mut expected = original.clone();
+        mix_logits(&mut expected, &bias_values, 0.25);
+
+        let mut logits = Tensor::new(original.as_slice(), &device).unwrap();
+        let bias = Gemma2WakeBias {
+            logits: Tensor::new(bias_values.as_slice(), &device).unwrap(),
+            rms: rms(&bias_values),
+        };
+        assert_eq!(
+            apply_wake_bias_tensor(&mut logits, &bias, 0.25).unwrap(),
+            expected.len()
+        );
+        let actual = logits.to_vec1::<f32>().unwrap();
+        for (actual, expected) in actual.iter().zip(expected) {
+            assert!((actual - expected).abs() < 1.0e-5);
+        }
+    }
+
+    #[test]
     fn reset_context_preserves_sleep_cycles() {
         let d = 4;
         let config = Gemma2ThermoHybridConfig {
@@ -919,14 +1015,15 @@ mod tests {
         assert_eq!(llm.context_len(), observed.min(8));
 
         let (bias, report) = llm.compute_wake_bias(&model).unwrap();
-        assert!(!bias.is_empty());
-        assert!(bias.iter().all(|value| value.is_finite()));
+        let bias_values = bias.logits.to_vec1::<f32>().unwrap();
+        assert!(!bias_values.is_empty());
+        assert!(bias_values.iter().all(|value| value.is_finite()));
         assert!(report.phi_norm > 0.0);
         assert!(report.ctp_bias_norm > 0.0);
 
-        let mut gemma = vec![0.0f32; bias.len()];
+        let mut gemma = vec![0.0f32; bias_values.len()];
         gemma[0] = 1.0;
-        let changed = mix_logits(&mut gemma, &bias, 0.25);
+        let changed = mix_logits(&mut gemma, &bias_values, 0.25);
         assert!(changed > 0);
         assert_ne!(gemma[0], 1.0);
     }
