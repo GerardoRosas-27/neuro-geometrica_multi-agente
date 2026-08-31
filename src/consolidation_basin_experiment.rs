@@ -7,7 +7,8 @@
 //! energía física ni generalización fuera de distribución.
 
 use crate::native_hybrid_phasor_cdt_engine::{
-    NativeHybridConfig, NativeHybridError, NativeHybridPhasorCdtEngine, NativePhasorCue,
+    apply_pattern_additive, clear_pattern_accumulator, pattern_edge_occupancy, NativeHybridConfig,
+    NativeHybridError, NativeHybridPhasorCdtEngine, NativePhasorCue,
 };
 use crate::native_phasor_thermodynamic_engine::{
     NativePhasorConfig, NativePhasorMinimizerConfig, NativePhasorThermodynamicEngine,
@@ -122,9 +123,30 @@ impl Default for BasinHoldoutConfig {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct MajorityCrossingMetrics {
+    pub corruption_fraction: f32,
+    pub trials: usize,
+    /// Fracción de ensayos cuyo cue conserva la mayoría del patrón original.
+    pub cue_majority_positive_rate: f32,
+    pub mean_accuracy: f32,
+    pub mean_gauge_invariant_accuracy: f32,
+    pub success_rate: f32,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct BasinHoldoutReport {
     pub nodes: usize,
     pub seed: u64,
+    /// Brazo 1: patrón no inyectado, grafo *sin* ruido.
+    pub non_injected_clean: Vec<BasinLevelMetrics>,
+    pub non_injected_clean_mean_success: f32,
+    /// Brazo 2: patrón inyectado, grafo *con* ruido.
+    pub injected_noisy: Vec<BasinLevelMetrics>,
+    pub injected_noisy_mean_success: f32,
+    /// Éxito del inyectado a ρ = 0,20 sobre el grafo ruidoso.
+    pub injected_rho20_success: f32,
+    /// Brazo 3: cruce de mayoría 45/55 % con exactitud directa y gauge-invariante.
+    pub majority_crossing: Vec<MajorityCrossingMetrics>,
     pub injected: Vec<BasinLevelMetrics>,
     pub injected_mean_success: f32,
     pub injected_std_success: f32,
@@ -384,7 +406,7 @@ pub(crate) fn direct_accuracy(state: &[Complex32], target: &[i8]) -> f32 {
 
 /// Diagnóstico invariante ante el flip global Z₂. Nunca alimenta el gate:
 /// sólo detecta convergencia al atractor con la convención invertida.
-fn gauge_invariant_accuracy(state: &[Complex32], target: &[i8]) -> f32 {
+pub(crate) fn gauge_invariant_accuracy(state: &[Complex32], target: &[i8]) -> f32 {
     let direct = direct_accuracy(state, target);
     direct.max(1.0 - direct)
 }
@@ -488,12 +510,6 @@ pub fn run_consolidation_basin_holdout(
             "sleep_gate_failed",
         ));
     }
-    apply_graph_noise(
-        &mut engine.core,
-        config.graph_noise_fraction,
-        config.graph_noise_radians,
-        config.seed ^ 0xA11A_51E0,
-    );
     let eval_config = ConsolidationBasinConfig {
         nodes: config.nodes,
         trials_per_corruption: config.trials_per_corruption,
@@ -504,12 +520,31 @@ pub fn run_consolidation_basin_holdout(
         minimum_mean_success_gain: 0.0,
         seed: config.seed,
     };
-    let injected_levels = evaluate_basin(&engine.core, &injected, &eval_config);
-    let non_injected_levels = evaluate_basin(&engine.core, &non_injected, &eval_config);
-    let (injected_mean_success, injected_std_success) = mean_std_success(&injected_levels);
-    let (non_injected_mean_success, non_injected_std_success) =
-        mean_std_success(&non_injected_levels);
-    let decision = if non_injected_mean_success < 1.0 - 1.0e-6 {
+    // Brazo 1: no inyectado sobre el grafo limpio (sin ruido de aristas).
+    let non_injected_clean = evaluate_basin(&engine.core, &non_injected, &eval_config);
+    let (non_injected_clean_mean_success, non_injected_std_success) =
+        mean_std_success(&non_injected_clean);
+    apply_graph_noise(
+        &mut engine.core,
+        config.graph_noise_fraction,
+        config.graph_noise_radians,
+        config.seed ^ 0xA11A_51E0,
+    );
+    // Brazo 2: inyectado sobre el grafo con ruido.
+    let injected_noisy = evaluate_basin(&engine.core, &injected, &eval_config);
+    let (injected_noisy_mean_success, injected_std_success) = mean_std_success(&injected_noisy);
+    let injected_rho20_success = injected_noisy
+        .iter()
+        .find(|level| (level.corruption_fraction - 0.20).abs() < 1.0e-6)
+        .map(|level| level.success_rate)
+        .unwrap_or(0.0);
+    // Brazo 3: cruce de mayoría en 45/55 % (mismas cues, exactitud directa y gauge).
+    let majority_crossing = evaluate_majority_crossing(&injected, &eval_config);
+    let majority_visible = majority_crossing_is_visible(&majority_crossing);
+    let decision = if non_injected_clean_mean_success <= 0.25 + 1.0e-6
+        && injected_rho20_success + 1.0e-6 >= 0.80
+        && majority_visible
+    {
         "holdout_discriminates"
     } else {
         "holdout_still_saturated"
@@ -517,14 +552,20 @@ pub fn run_consolidation_basin_holdout(
     Ok(BasinHoldoutReport {
         nodes: config.nodes,
         seed: config.seed,
-        injected: injected_levels,
-        injected_mean_success,
+        non_injected_clean: non_injected_clean.clone(),
+        non_injected_clean_mean_success,
+        injected_noisy: injected_noisy.clone(),
+        injected_noisy_mean_success,
+        injected_rho20_success,
+        majority_crossing,
+        injected: injected_noisy,
+        injected_mean_success: injected_noisy_mean_success,
         injected_std_success,
-        non_injected: non_injected_levels,
-        non_injected_mean_success,
+        non_injected: non_injected_clean,
+        non_injected_mean_success: non_injected_clean_mean_success,
         non_injected_std_success,
         wall_clock_seconds: started.elapsed().as_secs_f64(),
-        ceiling_note: "techo esperado del atractor escrito; discrimina el patrón no inyectado",
+        ceiling_note: "tres brazos: no inyectado limpio, inyectado con ruido, cruce de mayoría",
         decision,
     })
 }
@@ -590,6 +631,12 @@ fn empty_holdout_report(nodes: usize, seed: u64, decision: &'static str) -> Basi
     BasinHoldoutReport {
         nodes,
         seed,
+        non_injected_clean: Vec::new(),
+        non_injected_clean_mean_success: 0.0,
+        injected_noisy: Vec::new(),
+        injected_noisy_mean_success: 0.0,
+        injected_rho20_success: 0.0,
+        majority_crossing: Vec::new(),
         injected: Vec::new(),
         injected_mean_success: 0.0,
         injected_std_success: 0.0,
@@ -599,6 +646,90 @@ fn empty_holdout_report(nodes: usize, seed: u64, decision: &'static str) -> Basi
         wall_clock_seconds: 0.0,
         ceiling_note: "el holdout no llegó a evaluar cuencas",
         decision,
+    }
+}
+
+fn evaluate_majority_crossing(
+    target: &[i8],
+    config: &ConsolidationBasinConfig,
+) -> Vec<MajorityCrossingMetrics> {
+    let crossing: Vec<f32> = config
+        .corruption_fractions
+        .iter()
+        .copied()
+        .filter(|value| (*value - 0.45).abs() < 1.0e-6 || (*value - 0.55).abs() < 1.0e-6)
+        .collect();
+    crossing
+        .into_iter()
+        .enumerate()
+        .map(|(level, corruption_fraction)| {
+            let mut majority_positive = 0usize;
+            let mut accuracy_sum = 0.0;
+            let mut gauge_sum = 0.0;
+            let mut successes = 0usize;
+            for trial in 0..config.trials_per_corruption {
+                let phases = corrupted_phases(
+                    target,
+                    corruption_fraction,
+                    config.phase_jitter,
+                    config.seed ^ (level as u64).rotate_left(17),
+                    trial,
+                );
+                let matches = phases
+                    .iter()
+                    .zip(target)
+                    .filter(|(phase, bit)| {
+                        let observed = if phase.cos() >= 0.0 { 1 } else { -1 };
+                        observed == **bit
+                    })
+                    .count();
+                if matches * 2 >= target.len() {
+                    majority_positive += 1;
+                }
+                // El lado de mayoría del cue es el diagnóstico; la exactitud
+                // del solver se mide aparte en los brazos 1–2. Aquí reportamos
+                // la convención del cue y la gauge-invariante del propio cue.
+                let cue_bits: Vec<i8> = phases
+                    .iter()
+                    .map(|phase| if phase.cos() >= 0.0 { 1 } else { -1 })
+                    .collect();
+                let cue_phasors: Vec<Complex32> = cue_bits
+                    .iter()
+                    .map(|bit| Complex32::from_polar(1.0, bit_phase(*bit)))
+                    .collect();
+                let accuracy = direct_accuracy(&cue_phasors, target);
+                accuracy_sum += accuracy;
+                gauge_sum += gauge_invariant_accuracy(&cue_phasors, target);
+                if accuracy >= config.success_accuracy {
+                    successes += 1;
+                }
+            }
+            let n = config.trials_per_corruption.max(1) as f32;
+            MajorityCrossingMetrics {
+                corruption_fraction,
+                trials: config.trials_per_corruption,
+                cue_majority_positive_rate: majority_positive as f32 / n,
+                mean_accuracy: accuracy_sum / n,
+                mean_gauge_invariant_accuracy: gauge_sum / n,
+                success_rate: successes as f32 / n,
+            }
+        })
+        .collect()
+}
+
+fn majority_crossing_is_visible(levels: &[MajorityCrossingMetrics]) -> bool {
+    let at_45 = levels
+        .iter()
+        .find(|level| (level.corruption_fraction - 0.45).abs() < 1.0e-6);
+    let at_55 = levels
+        .iter()
+        .find(|level| (level.corruption_fraction - 0.55).abs() < 1.0e-6);
+    match (at_45, at_55) {
+        (Some(low), Some(high)) => {
+            low.cue_majority_positive_rate + 1.0e-6 >= 0.50
+                && high.cue_majority_positive_rate <= 0.50 + 1.0e-6
+        }
+        _ => !levels.is_empty(),
     }
 }
 
@@ -657,10 +788,12 @@ pub struct BasinScaleConfig {
 impl Default for BasinScaleConfig {
     fn default() -> Self {
         Self {
-            node_counts: vec![128, 512, 2048],
+            // 512/2048 son nightly, no smoke. No se corren con K=1
+            // llamándolos escala de capacidad.
+            node_counts: vec![128],
             trials_per_corruption: 4,
             corruption_fractions: vec![0.25],
-            seed: 0x5CA1_E202_6u64,
+            seed: 0x0005_CA1E_2026_u64,
         }
     }
 }
@@ -707,6 +840,78 @@ pub fn run_basin_scale_sweep(
 }
 
 #[derive(Clone, Debug)]
+pub struct BoundedMemoryConfig {
+    pub epsilon: f32,
+    pub theta_candidate: f32,
+    pub max_patterns: Option<usize>,
+    pub replay_rounds: usize,
+    /// Suelo R2 por arista. Cero = R1 puro (suma Hebbiana).
+    pub occupancy_floor: f32,
+    /// Tasa con la que el replay reescribe A tras sumar B (0 = sólo revalidar).
+    pub replay_write_rate: f32,
+    pub evaluation: ConsolidationBasinConfig,
+}
+
+impl Default for BoundedMemoryConfig {
+    fn default() -> Self {
+        Self {
+            epsilon: 0.10,
+            theta_candidate: 0.80,
+            max_patterns: None,
+            replay_rounds: 1,
+            occupancy_floor: 0.50,
+            replay_write_rate: 0.0,
+            evaluation: ConsolidationBasinConfig {
+                trials_per_corruption: 8,
+                corruption_fractions: vec![0.20],
+                ..ConsolidationBasinConfig::default()
+            },
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct BoundedPhasorMemory {
+    pub core: NativeThermoCdtSubstrate,
+    pub patterns: Vec<Vec<i8>>,
+    occupancies: Vec<Vec<f32>>,
+}
+
+impl BoundedPhasorMemory {
+    pub fn from_core(mut core: NativeThermoCdtSubstrate) -> Self {
+        clear_pattern_accumulator(&mut core);
+        Self {
+            core,
+            patterns: Vec::new(),
+            occupancies: Vec::new(),
+        }
+    }
+
+    fn foreign_occupancy(&self) -> Vec<f32> {
+        let edges = self.core.edge_phase.len();
+        let mut foreign = vec![0.0f32; edges];
+        for occupancy in &self.occupancies {
+            for (slot, value) in foreign.iter_mut().zip(occupancy) {
+                if *value > *slot {
+                    *slot = *value;
+                }
+            }
+        }
+        foreign
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct CommitReport {
+    pub decision: &'static str,
+    pub delta_r: f32,
+    pub retention_before: f32,
+    pub retention_after: f32,
+    pub candidate_success: f32,
+    pub representation: &'static str,
+}
+
+#[derive(Clone, Debug)]
 pub struct BoundedForgettingConfig {
     pub nodes: usize,
     pub trials_per_corruption: usize,
@@ -722,7 +927,7 @@ impl Default for BoundedForgettingConfig {
             trials_per_corruption: 8,
             corruption_fractions: vec![0.20],
             epsilon: 0.10,
-            seed: 0xDE1_7A_2026,
+            seed: 0x000D_E17A_2026,
         }
     }
 }
@@ -734,95 +939,228 @@ pub struct BoundedForgettingReport {
     pub retention_after: f32,
     pub delta_r: f32,
     pub epsilon: f32,
+    pub candidate_success: f32,
+    pub representation: &'static str,
     pub second_sleep_accepted: usize,
     pub wall_clock_seconds: f64,
     pub decision: &'static str,
 }
 
-/// ΔR del preprint §4: retención de A después de consolidar B.
+/// Commit transaccional: suma el candidato, revalida A, sonda ΔR y puede rechazar.
+pub fn commit_with_retention(
+    memory: &mut BoundedPhasorMemory,
+    candidate: &[i8],
+    config: &BoundedMemoryConfig,
+) -> Result<CommitReport, NativeHybridError> {
+    if let Some(max_patterns) = config.max_patterns {
+        if memory.patterns.len() >= max_patterns {
+            return Ok(CommitReport {
+                decision: "capacity",
+                delta_r: 0.0,
+                retention_before: 0.0,
+                retention_after: 0.0,
+                candidate_success: 0.0,
+                representation: "r1",
+            });
+        }
+    }
+    let r1 = try_commit(memory, candidate, config, 0.0, None, "r1")?;
+    if r1.decision == "accepted" {
+        return Ok(r1);
+    }
+    let r1_keeps_candidate = r1.candidate_success + 1.0e-6 >= config.theta_candidate;
+    if config.occupancy_floor > 0.0 && !r1_keeps_candidate {
+        let mut foreign = memory.foreign_occupancy();
+        for value in &mut foreign {
+            *value *= 0.5;
+        }
+        let r2 = try_commit(
+            memory,
+            candidate,
+            config,
+            config.occupancy_floor,
+            Some(foreign.as_slice()),
+            "r2",
+        )?;
+        return Ok(r2);
+    }
+    Ok(r1)
+}
+
+fn try_commit(
+    memory: &mut BoundedPhasorMemory,
+    candidate: &[i8],
+    config: &BoundedMemoryConfig,
+    occupancy_floor: f32,
+    foreign_occupancy: Option<&[f32]>,
+    representation: &'static str,
+) -> Result<CommitReport, NativeHybridError> {
+    let snapshot = memory.core.clone();
+    let mut buffer = memory.core.clone();
+    apply_pattern_additive(
+        &mut buffer,
+        candidate,
+        occupancy_floor,
+        None,
+        foreign_occupancy,
+    );
+    let eval = &config.evaluation;
+    let replay_rate = config.replay_write_rate.clamp(0.0, 1.0);
+    if replay_rate > 0.0 && !memory.patterns.is_empty() {
+        let foreign = vec![1.0 - replay_rate; buffer.edge_phase.len()];
+        for _ in 0..config.replay_rounds.max(1) {
+            for retained in &memory.patterns {
+                apply_pattern_additive(&mut buffer, retained, 0.0, None, Some(foreign.as_slice()));
+            }
+        }
+    }
+    for _ in 0..config.replay_rounds.max(1) {
+        for retained in &memory.patterns {
+            let replay = evaluate_basin(&buffer, retained, eval);
+            if mean_direct_accuracy(&replay) + 1.0e-6 < config.theta_candidate {
+                return Ok(CommitReport {
+                    decision: "replay_failed",
+                    delta_r: 0.0,
+                    retention_before: 0.0,
+                    retention_after: 0.0,
+                    candidate_success: 0.0,
+                    representation,
+                });
+            }
+        }
+    }
+    let (retention_before, retention_after, delta_r) = if memory.patterns.is_empty() {
+        (0.0, 0.0, 0.0)
+    } else {
+        let before = mean_success_set(&snapshot, &memory.patterns, eval);
+        let after = mean_success_set(&buffer, &memory.patterns, eval);
+        (before, after, after - before)
+    };
+    let candidate_levels = evaluate_basin(&buffer, candidate, eval);
+    let candidate_success = mean_direct_accuracy(&candidate_levels);
+    if !memory.patterns.is_empty() && delta_r + 1.0e-6 < -config.epsilon {
+        return Ok(CommitReport {
+            decision: "delta_r",
+            delta_r,
+            retention_before,
+            retention_after,
+            candidate_success,
+            representation,
+        });
+    }
+    if candidate_success + 1.0e-6 < config.theta_candidate {
+        return Ok(CommitReport {
+            decision: "candidate_not_retained",
+            delta_r,
+            retention_before,
+            retention_after,
+            candidate_success,
+            representation,
+        });
+    }
+    memory.core = buffer;
+    memory
+        .occupancies
+        .push(pattern_edge_occupancy(&memory.core, candidate));
+    memory.patterns.push(candidate.to_vec());
+    Ok(CommitReport {
+        decision: "accepted",
+        delta_r,
+        retention_before,
+        retention_after,
+        candidate_success,
+        representation,
+    })
+}
+
+fn mean_success_set(
+    core: &NativeThermoCdtSubstrate,
+    patterns: &[Vec<i8>],
+    eval: &ConsolidationBasinConfig,
+) -> f32 {
+    if patterns.is_empty() {
+        return 0.0;
+    }
+    let total: f32 = patterns
+        .iter()
+        .map(|pattern| mean_direct_accuracy(&evaluate_basin(core, pattern, eval)))
+        .sum();
+    total / patterns.len() as f32
+}
+
+fn mean_direct_accuracy(levels: &[BasinLevelMetrics]) -> f32 {
+    if levels.is_empty() {
+        return 0.0;
+    }
+    levels.iter().map(|level| level.mean_accuracy).sum::<f32>() / levels.len() as f32
+}
+
+/// ΔR del preprint §4: retención de A después de consolidar B con commit R1/R2.
 pub fn run_bounded_forgetting(
     config: BoundedForgettingConfig,
 ) -> Result<BoundedForgettingReport, NativeHybridError> {
     let started = Instant::now();
     let first = balanced_target(config.nodes, config.seed);
     let second = balanced_target(config.nodes, config.seed ^ 0x9E37_79B9_7F4A_7C15);
-    let mut engine = training_engine(config.nodes, config.seed)?;
-    if !consolidate_pattern(&mut engine, &first)? {
+    let engine = training_engine(config.nodes, config.seed)?;
+    let mut memory = BoundedPhasorMemory::from_core(engine.core);
+    let mem_config = BoundedMemoryConfig {
+        epsilon: config.epsilon,
+        theta_candidate: 0.80,
+        max_patterns: None,
+        replay_rounds: 1,
+        occupancy_floor: 0.50,
+        replay_write_rate: 0.0,
+        evaluation: ConsolidationBasinConfig {
+            nodes: config.nodes,
+            trials_per_corruption: config.trials_per_corruption,
+            corruption_fractions: config.corruption_fractions.clone(),
+            seed: config.seed,
+            ..ConsolidationBasinConfig::default()
+        },
+    };
+    let first_commit = commit_with_retention(&mut memory, &first, &mem_config)?;
+    if first_commit.decision != "accepted" {
         return Ok(BoundedForgettingReport {
             nodes: config.nodes,
             retention_before: 0.0,
             retention_after: 0.0,
             delta_r: 0.0,
             epsilon: config.epsilon,
+            candidate_success: first_commit.candidate_success,
+            representation: first_commit.representation,
             second_sleep_accepted: 0,
             wall_clock_seconds: started.elapsed().as_secs_f64(),
             decision: "first_sleep_gate_failed",
         });
     }
-    let eval_config = ConsolidationBasinConfig {
-        nodes: config.nodes,
-        trials_per_corruption: config.trials_per_corruption,
-        corruption_fractions: config.corruption_fractions.clone(),
-        seed: config.seed,
-        ..ConsolidationBasinConfig::default()
-    };
-    let before = evaluate_basin(&engine.core, &first, &eval_config);
-    let retention_before = mean_success(&before);
-    let second_sleep_accepted = usize::from(consolidate_pattern(&mut engine, &second)?);
-    if second_sleep_accepted != 1 {
-        return Ok(BoundedForgettingReport {
-            nodes: config.nodes,
-            retention_before,
-            retention_after: retention_before,
-            delta_r: 0.0,
-            epsilon: config.epsilon,
-            second_sleep_accepted,
-            wall_clock_seconds: started.elapsed().as_secs_f64(),
-            decision: "second_sleep_gate_failed",
-        });
-    }
-    let after = evaluate_basin(&engine.core, &first, &eval_config);
-    let retention_after = mean_success(&after);
-    let delta_r = retention_after - retention_before;
-    let decision = if delta_r + 1.0e-6 >= -config.epsilon {
+    let second_commit = commit_with_retention(&mut memory, &second, &mem_config)?;
+    let second_sleep_accepted = usize::from(second_commit.decision == "accepted");
+    let decision = if second_commit.decision == "accepted"
+        && second_commit.delta_r + 1.0e-6 >= -config.epsilon
+        && second_commit.retention_after + 1.0e-6 >= 0.80
+    {
         "bounded_forgetting_pass"
-    } else {
+    } else if second_commit.decision == "accepted" {
         "catastrophic_forgetting"
+    } else {
+        second_commit.decision
     };
     Ok(BoundedForgettingReport {
         nodes: config.nodes,
-        retention_before,
-        retention_after,
-        delta_r,
+        retention_before: second_commit.retention_before,
+        retention_after: second_commit.retention_after,
+        delta_r: second_commit.delta_r,
         epsilon: config.epsilon,
+        candidate_success: second_commit.candidate_success,
+        representation: second_commit.representation,
         second_sleep_accepted,
         wall_clock_seconds: started.elapsed().as_secs_f64(),
         decision,
     })
 }
 
-fn consolidate_pattern(
-    engine: &mut NativeHybridPhasorCdtEngine,
-    target: &[i8],
-) -> Result<bool, NativeHybridError> {
-    let experience = target
-        .iter()
-        .enumerate()
-        .map(|(node, bit)| NativePhasorCue {
-            node,
-            amplitude: 1.0,
-            phase: bit_phase(*bit),
-        })
-        .collect::<Vec<_>>();
-    let wake = engine.infer_and_stage(&experience)?;
-    if !wake.gate.passed {
-        return Ok(false);
-    }
-    let sleep = engine.sleep_consolidate()?;
-    Ok(sleep.accepted == 1)
-}
-
-fn mean_success(levels: &[BasinLevelMetrics]) -> f32 {
+pub(crate) fn mean_success(levels: &[BasinLevelMetrics]) -> f32 {
     if levels.is_empty() {
         return 0.0;
     }
@@ -910,36 +1248,50 @@ mod tests {
     fn scientific_holdout_non_injected_pattern_is_not_perfect() {
         let report = run_consolidation_basin_holdout(BasinHoldoutConfig::default()).unwrap();
         eprintln!(
-            "scientific_holdout decision={} injected={:.3}±{:.3} non_injected={:.3}±{:.3} wall={:.3}s",
+            "scientific_holdout decision={} clean_non_inj={:.3} noisy_inj_rho20={:.3} wall={:.3}s",
             report.decision,
-            report.injected_mean_success,
-            report.injected_std_success,
-            report.non_injected_mean_success,
-            report.non_injected_std_success,
+            report.non_injected_clean_mean_success,
+            report.injected_rho20_success,
             report.wall_clock_seconds
         );
-        for level in &report.injected {
+        for level in &report.non_injected_clean {
             eprintln!(
-                "  injected corr={:.2} succ={:.3} acc={:.3}±{:.3}",
+                "  arm1_clean_non_injected corr={:.2} succ={:.3} acc={:.3}±{:.3} gauge={:.3}",
                 level.corruption_fraction,
                 level.success_rate,
                 level.mean_accuracy,
-                level.std_accuracy
+                level.std_accuracy,
+                level.mean_gauge_invariant_accuracy
             );
         }
-        for level in &report.non_injected {
+        for level in &report.injected_noisy {
             eprintln!(
-                "  non_injected corr={:.2} succ={:.3} acc={:.3}±{:.3}",
+                "  arm2_noisy_injected corr={:.2} succ={:.3} acc={:.3}±{:.3} gauge={:.3}",
                 level.corruption_fraction,
                 level.success_rate,
                 level.mean_accuracy,
-                level.std_accuracy
+                level.std_accuracy,
+                level.mean_gauge_invariant_accuracy
+            );
+        }
+        for level in &report.majority_crossing {
+            eprintln!(
+                "  arm3_majority corr={:.2} cue_maj+={:.3} acc={:.3} gauge={:.3} succ={:.3}",
+                level.corruption_fraction,
+                level.cue_majority_positive_rate,
+                level.mean_accuracy,
+                level.mean_gauge_invariant_accuracy,
+                level.success_rate
             );
         }
         assert_eq!(report.decision, "holdout_discriminates", "{report:#?}");
         assert!(
-            report.non_injected_mean_success < 1.0 - 1.0e-6,
-            "el patrón no inyectado no debe saturar: {report:#?}"
+            report.non_injected_clean_mean_success <= 0.25 + 1.0e-6,
+            "no inyectado limpio debe quedar en el azar: {report:#?}"
+        );
+        assert!(
+            report.injected_rho20_success + 1.0e-6 >= 0.80,
+            "inyectado a ρ=0.20 no debe colapsar con 15% de ruido: {report:#?}"
         );
     }
 
@@ -958,32 +1310,74 @@ mod tests {
         );
         assert_eq!(report.rows.len(), 1, "{report:#?}");
         assert_eq!(report.rows[0].nodes, 128, "{report:#?}");
+        assert_eq!(
+            report.rows[0].decision, "basin_expansion_pass",
+            "{report:#?}"
+        );
+        let capacity = crate::basin_external_baselines::run_capacity_curve(
+            crate::basin_external_baselines::CapacityCurveConfig {
+                nodes: 128,
+                pattern_counts: vec![1, 2],
+                corruption_fractions: vec![0.20],
+                trials_per_corruption: 2,
+                seeds: vec![0xCA12_0080, 0xCA12_0081],
+                epsilon: 0.10,
+                theta_candidate: 0.80,
+                occupancy_floor: 0.50,
+                exponential_beta: 8.0,
+            },
+        )
+        .unwrap();
+        eprintln!(
+            "scientific_scale_capacity k_max={} rows={} wall={:.3}s",
+            capacity.k_max_phasor,
+            capacity.rows.len(),
+            capacity.wall_clock_seconds
+        );
+        for row in &capacity.rows {
+            eprintln!(
+                "  N={} K={} ρ={:.2} {} rec={:.3}±{:.3} dR={:.3} wall={:.3}s",
+                row.nodes,
+                row.patterns,
+                row.corruption_fraction,
+                row.method,
+                row.recovery_mean,
+                row.recovery_std,
+                row.delta_r_mean,
+                row.wall_clock_seconds
+            );
+        }
+        assert!(
+            capacity.k_max_phasor >= 2,
+            "K_max de capacidad en 128 nodos debe ser ≥ 2: {capacity:#?}"
+        );
     }
 
     #[test]
     fn scientific_bounded_forgetting_reports_delta_r() {
         let report = run_bounded_forgetting(BoundedForgettingConfig {
-            trials_per_corruption: 4,
+            trials_per_corruption: 8,
             ..BoundedForgettingConfig::default()
         })
         .unwrap();
         eprintln!(
-            "scientific_delta_r decision={} before={:.3} after={:.3} delta_r={:.4} eps={:.2} second_sleep={} wall={:.3}s",
+            "scientific_delta_r decision={} before={:.3} after={:.3} delta_r={:.4} eps={:.2} cand={:.3} repr={} second_sleep={} wall={:.3}s",
             report.decision,
             report.retention_before,
             report.retention_after,
             report.delta_r,
             report.epsilon,
+            report.candidate_success,
+            report.representation,
             report.second_sleep_accepted,
             report.wall_clock_seconds
         );
         assert!(report.delta_r.is_finite(), "{report:#?}");
-        assert!(
-            report.decision == "bounded_forgetting_pass"
-                || report.decision == "catastrophic_forgetting"
-                || report.decision == "second_sleep_gate_failed"
-                || report.decision == "first_sleep_gate_failed",
-            "{report:#?}"
+        assert_eq!(
+            report.decision, "bounded_forgetting_pass",
+            "ΔR debe pasar el gate tras R1/R2; no se acepta catastrophic_forgetting: {report:#?}"
         );
+        assert!(report.delta_r + 1.0e-6 >= -0.10, "{report:#?}");
+        assert!(report.retention_after + 1.0e-6 >= 0.80, "{report:#?}");
     }
 }

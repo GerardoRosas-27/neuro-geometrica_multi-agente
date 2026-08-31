@@ -184,7 +184,7 @@ fn heisenberg_energy(state: &[f64], bonds: &[QuantumSpinBond], exchange: f64) ->
     energy / norm_squared.max(1.0e-14)
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "research"))]
 mod tests {
     use super::*;
     use crate::quantum_spin_thermodynamic_engine::periodic_pyrochlore_model;

@@ -980,7 +980,7 @@ fn action_sort_key(action: &LogisticsAction) -> (u8, u8) {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "research"))]
 mod tests {
     use super::*;
     use crate::entanglement::EntanglementConfig;

@@ -948,6 +948,100 @@ impl NativeHybridPhasorCdtEngine {
     }
 }
 
+/// Pone el acumulador Hebbiano de aristas en cero. La topología no cambia.
+/// El commit de K patrones parte de aquí para que `apply_pattern_additive`
+/// sume términos `ξ_i ξ_j` y no los mezcle con el prior geométrico.
+pub fn clear_pattern_accumulator(core: &mut NativeThermoCdtSubstrate) {
+    core.edge_weight.fill(0.0);
+    core.edge_phase.fill(0.0);
+}
+
+/// Superposición Hebbiana de un patrón sobre las fases de arista.
+///
+/// Para cada arista `e=(i,j)`: `W_e ← W_e + rate·ξ_i ξ_j` y `φ_e = arg(W_e)`.
+/// Acumula; no asigna. `occupancy_floor` es el suelo R2 (cero = R1 puro):
+/// un episodio no puede dejar `|W_e|` por debajo de ese valor si la arista
+/// ya soportaba otro patrón. `anchors` pondera por nodo (`None` = todos).
+/// `foreign_occupancy[e]` reduce la tasa (`rate = 1 - occupancy_ajena`).
+pub fn apply_pattern_additive(
+    core: &mut NativeThermoCdtSubstrate,
+    pattern: &[i8],
+    occupancy_floor: f32,
+    anchors: Option<&[f32]>,
+    foreign_occupancy: Option<&[f32]>,
+) {
+    let nodes = pattern.len().min(core.node_count());
+    let edge_count = core
+        .edge_a
+        .len()
+        .min(core.edge_b.len())
+        .min(core.edge_weight.len())
+        .min(core.edge_phase.len());
+    let floor = occupancy_floor.max(0.0);
+    for edge in 0..edge_count {
+        let left = core.edge_a[edge];
+        let right = core.edge_b[edge];
+        if left >= nodes || right >= nodes {
+            continue;
+        }
+        let anchor_left = anchors
+            .and_then(|values| values.get(left).copied())
+            .unwrap_or(1.0)
+            .clamp(0.0, 1.0);
+        let anchor_right = anchors
+            .and_then(|values| values.get(right).copied())
+            .unwrap_or(1.0)
+            .clamp(0.0, 1.0);
+        let foreign = foreign_occupancy
+            .and_then(|values| values.get(edge).copied())
+            .unwrap_or(0.0)
+            .clamp(0.0, 1.0);
+        let rate = (1.0 - foreign) * anchor_left.min(anchor_right);
+        if rate <= 0.0 {
+            continue;
+        }
+        let term = f32::from(pattern[left]) * f32::from(pattern[right]) * rate;
+        let signed = core.edge_weight[edge] * core.edge_phase[edge].cos();
+        let mut proposed = signed + term;
+        if floor > 0.0 && signed.abs() >= floor && proposed.abs() < floor {
+            let sign = if signed >= 0.0 { 1.0 } else { -1.0 };
+            proposed = sign * floor;
+        }
+        core.edge_weight[edge] = proposed.abs();
+        core.edge_phase[edge] = if proposed >= 0.0 {
+            0.0
+        } else {
+            std::f32::consts::PI
+        };
+    }
+}
+
+/// Ocupación por arista de un patrón ya escrito: 1 si el signo de `W_e`
+/// coincide con `ξ_i ξ_j`, 0 si no. Alimenta el suelo R2 del siguiente commit.
+pub fn pattern_edge_occupancy(core: &NativeThermoCdtSubstrate, pattern: &[i8]) -> Vec<f32> {
+    let nodes = pattern.len().min(core.node_count());
+    let edge_count = core
+        .edge_a
+        .len()
+        .min(core.edge_b.len())
+        .min(core.edge_weight.len())
+        .min(core.edge_phase.len());
+    let mut occupancy = vec![0.0f32; edge_count];
+    for (edge, occupancy_slot) in occupancy.iter_mut().enumerate() {
+        let left = core.edge_a[edge];
+        let right = core.edge_b[edge];
+        if left >= nodes || right >= nodes || core.edge_weight[edge] <= 0.0 {
+            continue;
+        }
+        let term = f32::from(pattern[left]) * f32::from(pattern[right]);
+        let signed = core.edge_weight[edge] * core.edge_phase[edge].cos();
+        if signed.signum() == term.signum() {
+            *occupancy_slot = 1.0;
+        }
+    }
+    occupancy
+}
+
 /// Edición reversible sobre la memoria de atractores consolidados. Deshacer
 /// en orden inverso restaura la memoria exacta previa a la transacción sin
 /// clonarla entera por ciclo de sueño.
@@ -1251,5 +1345,37 @@ mod tests {
         assert!(sleep.mean_storage_delta_free_energy > 0.0, "{sleep:?}");
         assert!(engine.attractors().is_empty());
         assert_eq!(engine.core.phase, phases_before);
+    }
+
+    #[test]
+    fn apply_pattern_additive_accumulates_and_does_not_assign() {
+        let mut engine = engine(NativeHybridConfig::default());
+        let first = vec![1i8; 32];
+        let mut second = vec![1i8; 32];
+        for bit in second.iter_mut().skip(16) {
+            *bit = -1;
+        }
+        clear_pattern_accumulator(&mut engine.core);
+        apply_pattern_additive(&mut engine.core, &first, 0.0, None, None);
+        let after_first = engine.core.edge_weight.clone();
+        apply_pattern_additive(&mut engine.core, &second, 0.0, None, None);
+        let mut saw_sum = false;
+        let mut saw_cancel = false;
+        for (edge, (weight, first_weight)) in
+            engine.core.edge_weight.iter().zip(&after_first).enumerate()
+        {
+            let left = engine.core.edge_a[edge];
+            let right = engine.core.edge_b[edge];
+            let agree = first[left] * first[right] == second[left] * second[right];
+            if agree {
+                assert!((weight - 2.0).abs() < 1.0e-5);
+                saw_sum = true;
+            } else {
+                assert!(*weight < 1.0e-5);
+                saw_cancel = true;
+            }
+            assert!((first_weight - 1.0).abs() < 1.0e-5);
+        }
+        assert!(saw_sum && saw_cancel);
     }
 }

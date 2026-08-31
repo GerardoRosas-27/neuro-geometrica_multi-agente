@@ -33,7 +33,8 @@ jobs:
         run: cargo clippy --all-targets -- -D warnings
 
       # Smoke: un ensayo de cuenca y el resto de la librería, sin el gate
-      # científico pesado (multisemilla + holdout endurecido).
+      # científico pesado (multisemilla + holdout + ΔR + capacidad) y sin
+      # los protocolos cognitivos al 100 % (viven detrás de `research`).
       - name: Tests smoke
         run: cargo test --release --lib -- --skip scientific
 
@@ -52,7 +53,11 @@ jobs:
       - name: Cache de compilación
         uses: Swatinem/rust-cache@v2
 
-      # Multisemilla de cuenca y holdout con patrón no inyectado, corrupción
-      # > 40 %, ruido de grafo y semilla ausente del fixture de desarrollo.
+      # Multisemilla de cuenca, holdout desmezclado, ΔR como gate, curva
+      # de capacidad y escala 128 con K_max ≥ 2.
       - name: Gate científico
         run: cargo test --release --lib scientific -- --nocapture
+
+  # Los protocolos `research` (OS cognitivo, generalización 100 %, VMC/PEPS
+  # de test, unificado) NO corren en cada push. Activar a mano:
+  #   cargo test --release --lib --features research

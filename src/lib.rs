@@ -1,8 +1,14 @@
 pub mod adaptive_gemma2;
+/// Protocolo cognitivo al 100 %. Feature `research`, fuera de smoke.
+#[cfg(feature = "research")]
 pub mod advanced_cognitive_validation;
 pub mod basin_external_baselines;
+/// Protocolo cognitivo al 100 %. Feature `research`, fuera de smoke.
+#[cfg(feature = "research")]
 pub mod cognitive_generalization_benchmark;
 pub mod cognitive_logistics;
+/// SO cognitivo de laboratorio. Feature `research`, fuera de smoke.
+#[cfg(feature = "research")]
 pub mod cognitive_os;
 pub mod consolidation_basin_experiment;
 /// Gate de cognición emergente. El entrenador infinito no lo usa; sale del
@@ -58,8 +64,12 @@ pub mod thermodynamic_attractor_comparison;
 /// Comparación de estructuras temporales de inferencia: evidencia sola,
 /// evidencia como frontera y dos vectores de estado con post-selección.
 pub mod transactional_training_experiment;
+/// Familias de transformación. Feature `research`, fuera de smoke.
+#[cfg(feature = "research")]
 pub mod transformation_family_discovery;
+/// Orquestador CDT–spin–RQM–EPR. Compila porque el entrenador gated lo
+/// invoca; no es el paper de cuenca. Tests detrás de `research`.
 pub mod unified_spin_cognitive_engine;
-/// VMC Jastrow complejo. El motor unificado puede invocarlo; no alimenta
-/// la tesis de cuenca. Ver docs/archive.md.
+/// VMC Jastrow complejo. Compila porque el unificado lo invoca; no justifica
+/// el módulo en el crate público. Tests detrás de `research`. Ver docs/archive.md.
 pub mod variational_spin_liquid_vmc;
