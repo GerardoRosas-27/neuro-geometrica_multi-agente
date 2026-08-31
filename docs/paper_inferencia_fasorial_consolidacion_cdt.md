@@ -325,8 +325,20 @@ Una afirmación fuerte de ausencia de olvido requeriría demostrar:
 \]
 
 para un conjunto retenido e independiente de tareas, después de aprender nuevas
-tareas. La ejecución actual todavía no proporciona ese experimento longitudinal
-controlado; por tanto, el manuscrito no afirma olvido cero.
+tareas. Ese experimento existe ahora: `run_bounded_forgetting` consolida un
+patrón A, mide \(R_{\mathrm{antes}}\), consolida un patrón B distinto y vuelve
+a medir A. El manuscrito no afirma olvido cero; publica \(\Delta R\) y exige
+\(\Delta R \geq -\epsilon\) con \(\epsilon\) versionado en config (0,10 por
+defecto). Comando:
+
+```powershell
+cargo test --release --lib scientific_bounded_forgetting -- --nocapture
+```
+
+El siguiente experimento, en el orden del propio preprint (algoritmo →
+ventaja computacional → escalabilidad → mapa físico), es la escala de cuenca
+a 128 / 512 / 2048 nodos (`run_basin_scale_sweep`), no otro motor ni un mapa
+de hardware.
 
 ---
 

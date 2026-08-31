@@ -52,3 +52,14 @@ el número suelto.
 
 Los artefactos viven en `data/gemma2_developmental_infinite_training/`
 (ignorado por Git).
+
+## Olvido acotado ΔR y escala
+
+```powershell
+cargo test --release --lib scientific_bounded_forgetting -- --nocapture
+cargo test --release --lib scientific_basin_scale -- --nocapture
+```
+
+Escala completa (128 / 512 / 2048) vía `run_basin_scale_sweep` con
+`BasinScaleConfig::default()`. 512 y 2048 no corren en smoke; el test CI
+usa 128 nodos.

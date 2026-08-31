@@ -652,6 +652,190 @@ fn sanitize_config(mut config: ConsolidationBasinConfig) -> ConsolidationBasinCo
     config
 }
 
+
+#[derive(Clone, Debug)]
+pub struct BasinScaleConfig {
+    pub node_counts: Vec<usize>,
+    pub trials_per_corruption: usize,
+    pub corruption_fractions: Vec<f32>,
+    pub seed: u64,
+}
+
+impl Default for BasinScaleConfig {
+    fn default() -> Self {
+        Self {
+            node_counts: vec![128, 512, 2048],
+            trials_per_corruption: 4,
+            corruption_fractions: vec![0.25],
+            seed: 0x5CA1_E202_6u64,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct BasinScaleRow {
+    pub nodes: usize,
+    pub decision: &'static str,
+    pub mean_success_gain: f32,
+    pub wall_clock_seconds: f64,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct BasinScaleReport {
+    pub rows: Vec<BasinScaleRow>,
+    pub wall_clock_seconds: f64,
+}
+
+/// Escalado de cuenca: 128 / 512 / 2048 nodos, no un motor nuevo.
+pub fn run_basin_scale_sweep(
+    config: BasinScaleConfig,
+) -> Result<BasinScaleReport, NativeHybridError> {
+    let started = Instant::now();
+    let mut rows = Vec::new();
+    for nodes in config.node_counts {
+        let report = run_consolidation_basin_experiment(ConsolidationBasinConfig {
+            nodes,
+            trials_per_corruption: config.trials_per_corruption,
+            corruption_fractions: config.corruption_fractions.clone(),
+            seed: config.seed ^ nodes as u64,
+            ..ConsolidationBasinConfig::default()
+        })?;
+        rows.push(BasinScaleRow {
+            nodes,
+            decision: report.decision,
+            mean_success_gain: report.mean_success_gain,
+            wall_clock_seconds: report.wall_clock_seconds,
+        });
+    }
+    Ok(BasinScaleReport {
+        rows,
+        wall_clock_seconds: started.elapsed().as_secs_f64(),
+    })
+}
+
+#[derive(Clone, Debug)]
+pub struct BoundedForgettingConfig {
+    pub nodes: usize,
+    pub trials_per_corruption: usize,
+    pub corruption_fractions: Vec<f32>,
+    pub epsilon: f32,
+    pub seed: u64,
+}
+
+impl Default for BoundedForgettingConfig {
+    fn default() -> Self {
+        Self {
+            nodes: 32,
+            trials_per_corruption: 8,
+            corruption_fractions: vec![0.20],
+            epsilon: 0.10,
+            seed: 0xDE1_7A_2026,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct BoundedForgettingReport {
+    pub nodes: usize,
+    pub retention_before: f32,
+    pub retention_after: f32,
+    pub delta_r: f32,
+    pub epsilon: f32,
+    pub second_sleep_accepted: usize,
+    pub wall_clock_seconds: f64,
+    pub decision: &'static str,
+}
+
+/// ΔR del preprint §4: retención de A después de consolidar B.
+pub fn run_bounded_forgetting(
+    config: BoundedForgettingConfig,
+) -> Result<BoundedForgettingReport, NativeHybridError> {
+    let started = Instant::now();
+    let first = balanced_target(config.nodes, config.seed);
+    let second = balanced_target(config.nodes, config.seed ^ 0x9E37_79B9_7F4A_7C15);
+    let mut engine = training_engine(config.nodes, config.seed)?;
+    if !consolidate_pattern(&mut engine, &first)? {
+        return Ok(BoundedForgettingReport {
+            nodes: config.nodes,
+            retention_before: 0.0,
+            retention_after: 0.0,
+            delta_r: 0.0,
+            epsilon: config.epsilon,
+            second_sleep_accepted: 0,
+            wall_clock_seconds: started.elapsed().as_secs_f64(),
+            decision: "first_sleep_gate_failed",
+        });
+    }
+    let eval_config = ConsolidationBasinConfig {
+        nodes: config.nodes,
+        trials_per_corruption: config.trials_per_corruption,
+        corruption_fractions: config.corruption_fractions.clone(),
+        seed: config.seed,
+        ..ConsolidationBasinConfig::default()
+    };
+    let before = evaluate_basin(&engine.core, &first, &eval_config);
+    let retention_before = mean_success(&before);
+    let second_sleep_accepted = usize::from(consolidate_pattern(&mut engine, &second)?);
+    if second_sleep_accepted != 1 {
+        return Ok(BoundedForgettingReport {
+            nodes: config.nodes,
+            retention_before,
+            retention_after: retention_before,
+            delta_r: 0.0,
+            epsilon: config.epsilon,
+            second_sleep_accepted,
+            wall_clock_seconds: started.elapsed().as_secs_f64(),
+            decision: "second_sleep_gate_failed",
+        });
+    }
+    let after = evaluate_basin(&engine.core, &first, &eval_config);
+    let retention_after = mean_success(&after);
+    let delta_r = retention_after - retention_before;
+    let decision = if delta_r + 1.0e-6 >= -config.epsilon {
+        "bounded_forgetting_pass"
+    } else {
+        "catastrophic_forgetting"
+    };
+    Ok(BoundedForgettingReport {
+        nodes: config.nodes,
+        retention_before,
+        retention_after,
+        delta_r,
+        epsilon: config.epsilon,
+        second_sleep_accepted,
+        wall_clock_seconds: started.elapsed().as_secs_f64(),
+        decision,
+    })
+}
+
+fn consolidate_pattern(
+    engine: &mut NativeHybridPhasorCdtEngine,
+    target: &[i8],
+) -> Result<bool, NativeHybridError> {
+    let experience = target
+        .iter()
+        .enumerate()
+        .map(|(node, bit)| NativePhasorCue {
+            node,
+            amplitude: 1.0,
+            phase: bit_phase(*bit),
+        })
+        .collect::<Vec<_>>();
+    let wake = engine.infer_and_stage(&experience)?;
+    if !wake.gate.passed {
+        return Ok(false);
+    }
+    let sleep = engine.sleep_consolidate()?;
+    Ok(sleep.accepted == 1)
+}
+
+fn mean_success(levels: &[BasinLevelMetrics]) -> f32 {
+    if levels.is_empty() {
+        return 0.0;
+    }
+    levels.iter().map(|level| level.success_rate).sum::<f32>() / levels.len() as f32
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -716,6 +900,36 @@ mod tests {
         assert!(
             report.non_injected_mean_success < 1.0 - 1.0e-6,
             "el patrón no inyectado no debe saturar: {report:#?}"
+        );
+    }
+
+    #[test]
+    fn scientific_basin_scale_runs_128_nodes() {
+        let report = run_basin_scale_sweep(BasinScaleConfig {
+            node_counts: vec![128],
+            trials_per_corruption: 2,
+            corruption_fractions: vec![0.25],
+            ..BasinScaleConfig::default()
+        })
+        .unwrap();
+        assert_eq!(report.rows.len(), 1, "{report:#?}");
+        assert_eq!(report.rows[0].nodes, 128, "{report:#?}");
+    }
+
+    #[test]
+    fn scientific_bounded_forgetting_reports_delta_r() {
+        let report = run_bounded_forgetting(BoundedForgettingConfig {
+            trials_per_corruption: 4,
+            ..BoundedForgettingConfig::default()
+        })
+        .unwrap();
+        assert!(report.delta_r.is_finite(), "{report:#?}");
+        assert!(
+            report.decision == "bounded_forgetting_pass"
+                || report.decision == "catastrophic_forgetting"
+                || report.decision == "second_sleep_gate_failed"
+                || report.decision == "first_sleep_gate_failed",
+            "{report:#?}"
         );
     }
 }
