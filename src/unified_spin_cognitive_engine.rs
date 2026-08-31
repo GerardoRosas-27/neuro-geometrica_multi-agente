@@ -560,7 +560,7 @@ impl UnifiedSpinCognitiveEngine {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "research"))]
 mod tests {
     use super::*;
 

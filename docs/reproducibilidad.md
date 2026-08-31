@@ -53,13 +53,24 @@ el número suelto.
 Los artefactos viven en `data/gemma2_developmental_infinite_training/`
 (ignorado por Git).
 
-## Olvido acotado ΔR y escala
+## Olvido acotado ΔR, capacidad y escala
 
 ```powershell
 cargo test --release --lib scientific_bounded_forgetting -- --nocapture
+cargo test --release --lib scientific_capacity_curve -- --nocapture
 cargo test --release --lib scientific_basin_scale -- --nocapture
+cargo run --release --bin native_consolidation_basin_experiment
 ```
 
-Escala completa (128 / 512 / 2048) vía `run_basin_scale_sweep` con
-`BasinScaleConfig::default()`. 512 y 2048 no corren en smoke; el test CI
-usa 128 nodos.
+El binario canónico imprime un JSON con `basin` (tabla 7.4, un slot),
+`baselines`, `bounded_forgetting` (ΔR) y `capacity` (*K(N, ρ)* vs Hopfield
+y Hebb). No se publican cifras inventadas: las del preprint 0.6 siguen
+siendo el slot único; la tesis v2 se lee del JSON.
+
+El test CI de 128 nodos aserta `decision` **y** `K_max ≥ 2`. 512 y 2048
+quedan como nightly y **no** se corren con *K*=1. El feature `research`
+no entra en cada push:
+
+```powershell
+cargo test --release --lib --features research
+```

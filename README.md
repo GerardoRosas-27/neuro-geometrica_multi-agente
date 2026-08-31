@@ -5,9 +5,19 @@ Laboratorio nativo en Rust (`cdt_rqm_epr`). **Una tesis, un motor, un paper.**
 > Una consolidación CDT de un patrón verificado deforma el paisaje fasorial
 > y amplía de forma causal la cuenca de recuperación.
 
-Ese es el resultado principal. El resto del crate es infraestructura, demos
-de ingeniería o trabajo en curso. No se afirma consciencia, cognición general,
-ventaja en julios ni generalización conceptual.
+Ese es el resultado **previo de un slot** (tabla 7.4 del preprint 0.6). El
+resto del crate es infraestructura, demos de ingeniería o trabajo en curso.
+No se afirma consciencia, cognición general, ventaja en julios ni
+generalización conceptual.
+
+**Tesis v2 (siguiente resultado, falsable):** el sistema almacena *K*
+patrones verificados sobre el mismo sustrato fasorial. Consolidar el patrón
+*k* deja la retención del conjunto retenido *A* en ΔR ≥ −ε. La curva
+*K(N, ρ)* se publica junto a Hopfield y Hebb sobre las mismas cues. Si
+ΔR < −ε o la curva no discrimina, el commit se rechaza y no hay resultado.
+No se inventan cifras: las mide
+`native_consolidation_basin_experiment` (`bounded_forgetting` + `capacity`).
+Arquitectura: [`docs/arquitectura_siguiente_ciclo.md`](docs/arquitectura_siguiente_ciclo.md).
 
 ## Resultado principal
 
@@ -36,12 +46,14 @@ compatibilidad; no citarlo como el resultado vigente.
 
 `.github/workflows/ci.yml` separa **smoke** (`cargo fmt`, `clippy -D warnings`,
 `cargo test --release --lib -- --skip scientific`) del **gate científico**
-(`cargo test --release --lib scientific`): multisemilla de cuenca y holdout
-con patrón no inyectado.
+(`cargo test --release --lib scientific`): multisemilla de cuenca, holdout
+desmezclado, ΔR como gate y curva de capacidad. Los protocolos cognitivos al
+100 % no corren en smoke; viven detrás de `--features research` y **no** se
+lanzan en cada push.
 
 El 100 % post-sueño del patrón inyectado es el techo esperado de escribir un
-atractor. La métrica discriminante publicada es la recuperación del patrón no
-inyectado (media ± desviación).
+atractor. La métrica discriminante del slot único es el holdout; la de la
+tesis v2 es ΔR y *K_max(N, ρ)* frente a Hopfield/Hebb.
 
 `.cargo/config.toml` fija `target-cpu=native` en local. Los binarios y los
 tiempos de pared no son comparables entre máquinas.
@@ -70,8 +82,9 @@ Entrenador de desarrollo: **gated**. Sin `GEMMA_SPIN_MAX_CYCLES` o
 ya pase `symbolic_accuracy` y el gate funcional. Detalle:
 [`docs/reproducibilidad.md`](docs/reproducibilidad.md).
 
-Los módulos huérfanos (VMC, PEPS, red plástica, comparador, gate emergente no
-integrado) viven detrás del feature `research` o en `docs/archive.md`.
+Los módulos de laboratorio (OS cognitivo, generalización 100 %, VMC, PEPS,
+unificado de test, red plástica) viven detrás del feature `research` o en
+[`docs/archive.md`](docs/archive.md). Eso **no** se corre en cada push:
 
 ```powershell
 cargo test --release --lib --features research

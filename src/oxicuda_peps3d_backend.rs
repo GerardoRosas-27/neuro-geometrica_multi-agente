@@ -143,7 +143,7 @@ pub fn pyrochlore_site_map(nx: usize, ny: usize, nz: usize) -> Vec<Site3d> {
     mapping
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "research"))]
 mod tests {
     use super::*;
     use crate::quantum_spin_thermodynamic_engine::periodic_pyrochlore_model;
