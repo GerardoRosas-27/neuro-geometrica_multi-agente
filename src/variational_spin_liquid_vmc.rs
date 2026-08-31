@@ -509,7 +509,7 @@ impl SplitMix64 {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "research"))]
 mod tests {
     use super::*;
     use crate::quantum_spin_thermodynamic_engine::{

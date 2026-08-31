@@ -12,6 +12,12 @@ protocolo reproducible es `consolidation_basin_experiment`; el comando es
 este manuscrito describe infraestructura, evidencia de sesión o trabajo en
 curso. `docs/paper.md` es bitácora histórica, no este resultado.
 
+**Nota de ciclo (no reescribe el manuscrito).** La tabla 7.4 es el resultado
+previo de *un slot*. La tesis v2 —memoria de *K* patrones con ΔR ≥ −ε y curva
+*K(N, ρ)* frente a Hopfield/Hebb— es el siguiente resultado; se lee de los
+campos `bounded_forgetting` y `capacity` del mismo binario. No se anticipan
+cifras aquí.
+
 **Periferia lingüística (opción C).** Gemma 2 2B no forma parte del claim de
 este preprint: no se presenta como motor de razonamiento ni como resultado.
 El chat circadiano es una demo de ingeniería. Las secciones 3.4, 3.5, 7.2 y
