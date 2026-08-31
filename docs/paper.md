@@ -1,5 +1,13 @@
 # Motor Unificado CDT–Spin–RQM–EPR–Cognición
 
+> **Bitácora histórica / apéndice de compatibilidad.** Este documento no es el
+> preprint vigente. El resultado principal del repositorio es la deformación
+> causal de cuenca en `docs/paper_inferencia_fasorial_consolidacion_cdt.md`.
+> Las cifras de sesión (ciclo 116350, 221,6 M de ejemplos, gates al 100 % de
+> fixtures inyectados, chat Gemma) se conservan aquí como registro, no como
+> tabla principal. No citar este archivo y el preprint fasorial como el mismo
+> resultado.
+
 ## 1. Resumen
 
 El repositorio conserva el motor CDT-RQM-EPR histórico como compatibilidad y

@@ -1,9 +1,21 @@
 # Inferencia por descarte termodinámico y consolidación CDT:
 ## una arquitectura cognitiva con fasores, atractores y un modelo lingüístico periférico
 
-**Estado del manuscrito:** preprint técnico, versión 0.5
-**Fecha:** 19 de agosto de 2026
+**Estado del manuscrito:** preprint técnico, versión 0.6
+**Fecha:** 31 de agosto de 2026
 **Implementación de referencia:** `cdt_rqm_epr`, Rust
+
+**Resultado principal.** Una consolidación CDT de un patrón verificado deforma
+el paisaje fasorial y amplía de forma causal la cuenca de recuperación. El
+protocolo reproducible es `consolidation_basin_experiment`; el comando es
+`cargo run --release --bin native_consolidation_basin_experiment`. El resto de
+este manuscrito describe infraestructura, evidencia de sesión o trabajo en
+curso. `docs/paper.md` es bitácora histórica, no este resultado.
+
+**Periferia lingüística (opción C).** Gemma 2 2B no forma parte del claim de
+este preprint: no se presenta como motor de razonamiento ni como resultado.
+El chat circadiano es una demo de ingeniería. Las secciones 3.4, 3.5, 7.2 y
+7.10 describen esa infraestructura; no alimentan la tesis de cuenca.
 
 ---
 
@@ -20,21 +32,17 @@ coherentes forman mínimos estables. Estos mínimos actúan como atractores
 inferenciales. Tras una verificación independiente, sólo los atractores útiles
 se transfieren al sustrato CDT como cambios locales de nodos, fases y aristas.
 
-En este enfoque, un modelo de lenguaje grande no constituye la memoria ni el
-motor principal de razonamiento. Sus pesos permanecen congelados y el modelo
-actúa como periférico lingüístico: traduce lenguaje a una representación
-operativa y expresa en lenguaje el resultado calculado por el sustrato. La
+Fuera del claim de este preprint, el crate incluye un chat Gemma 2 como demo
+de ingeniería. Un modelo de lenguaje grande no constituye la memoria ni el
+motor de la tesis de cuenca. La
 memoria se divide en una capa rápida, volátil y maleable y una capa consolidada,
 protegida y versionada. El sistema no garantiza literalmente “cero olvido”;
 busca olvido catastrófico acotado mediante revalidación, repetición durante
 sueño, decaimiento selectivo, checkpoints y rollback transaccional.
 
-La implementación actual acumuló 115.876 ciclos wake y 28.969 ciclos sleep. De
-los ciclos wake, 115.785 fueron verificados (99,921 %) y 91 rechazados. Las
-115.785 soluciones aceptadas fueron revalidadas y consolidadas sin rechazos
-registrados durante sleep. En el último ciclo persistido, la energía libre
-descendió de -3,474102 a -18,544695 y el residuo final fue
-9,541141 × 10⁻⁴.
+Las cifras de sesión (115.876 ciclos wake, 221,6 M de ejemplos, ciclo 116350)
+no son la tabla principal; se recogen en el apéndice de sesión. El comando
+que regenera el resultado principal está en `docs/reproducibilidad.md`.
 
 Además, un experimento causal pareado de 32 nodos y 144 inferencias por
 condición midió directamente el paisaje antes y después de consolidar un patrón
@@ -46,17 +54,9 @@ repitió en una prueba automatizada con ocho semillas fijas independientes.
 Esto demuestra deformación y ampliación de cuenca dentro del fixture controlado;
 no demuestra generalización conceptual ni ventaja física.
 
-Por otra parte, un experimento preliminar de apagado de capas
-en Gemma 2 produjo 0 rutas dispersas verificadas y activó fallback completo en
-2 de 2 consultas. Ese resultado negativo mostró que verificar máscaras durante
-la vigilia es demasiado caro y demasiado estricto: un Transformer denso no se
-vuelve disperso por omisión directa de bloques. La arquitectura vigente separa
-los tiempos: la vigilia ejecuta un único prefill, reutiliza la KV cache y deja
-que el motor CTP sesgue los logits a partir de embeddings; el descubrimiento de
-máscaras y el entrenamiento CTP ocurren sólo durante sueño. Las pruebas
-unitarias y una prueba GGUF confirman que el sesgo tiene dimensión de
-vocabulario y norma finita; no se evalúa aquí si la mezcla mejora la calidad
-lingüística.
+(Infraestructura, fuera del claim.) Un experimento preliminar de apagado de
+capas en Gemma 2 produjo 0 rutas dispersas verificadas. No se usa como
+evidencia del resultado principal.
 
 Finalmente, se implementó un ciclo extremo a extremo donde Gemma 2 recibe una
 única cue parcial, propone fronteras futuras, y el motor postselecciona por
@@ -94,8 +94,8 @@ Este trabajo estudia una separación funcional:
   posibilidades y convergen hacia mínimos de energía libre;
 - **CDT para memoria consolidada:** conserva sólo soluciones verificadas como
   modificaciones estructurales locales;
-- **modelo lingüístico periférico:** compila peticiones y verbaliza respuestas,
-  pero no es la fuente final de verdad ni el depósito principal de memoria.
+- **(fuera del claim)** un chat Gemma 2 puede verbalizar; no es el motor ni
+  el resultado de este preprint.
 
 La propuesta no presupone consciencia ni cognición general. Presenta un
 mecanismo computacional medible y una hipótesis física falsable sobre cómo la
@@ -244,7 +244,7 @@ estabilidad y relaciones topológicas. El objetivo no es copiar una respuesta,
 sino deformar el paisaje para que una experiencia futura converja más
 fácilmente al atractor correcto.
 
-### 3.4 LLM como periférico lingüístico
+### 3.4 LLM como periférico lingüístico (infraestructura, fuera del claim)
 
 El LLM puede cumplir dos funciones restringidas:
 
@@ -257,7 +257,7 @@ La solución numérica o lógica procede del motor externo. Cuando el compilador
 lingüístico produce una receta inválida, se usa un parser determinista o se
 solicita aclaración. Los pesos del LLM permanecen congelados.
 
-### 3.5 Ciclo circadiano Gemma 2 + CTP
+### 3.5 Ciclo circadiano Gemma 2 + CTP (infraestructura, fuera del claim)
 
 La implementación de chat unifica tres tiempos que antes se mezclaban en cada
 turno. El binario de referencia es `native_gemma2_circadian_chat`.
@@ -325,8 +325,20 @@ Una afirmación fuerte de ausencia de olvido requeriría demostrar:
 \]
 
 para un conjunto retenido e independiente de tareas, después de aprender nuevas
-tareas. La ejecución actual todavía no proporciona ese experimento longitudinal
-controlado; por tanto, el manuscrito no afirma olvido cero.
+tareas. Ese experimento existe ahora: `run_bounded_forgetting` consolida un
+patrón A, mide \(R_{\mathrm{antes}}\), consolida un patrón B distinto y vuelve
+a medir A. El manuscrito no afirma olvido cero; publica \(\Delta R\) y exige
+\(\Delta R \geq -\epsilon\) con \(\epsilon\) versionado en config (0,10 por
+defecto). Comando:
+
+```powershell
+cargo test --release --lib scientific_bounded_forgetting -- --nocapture
+```
+
+El siguiente experimento, en el orden del propio preprint (algoritmo →
+ventaja computacional → escalabilidad → mapa físico), es la escala de cuenca
+a 128 / 512 / 2048 nodos (`run_basin_scale_sweep`), no otro motor ni un mapa
+de hardware.
 
 ---
 
@@ -421,7 +433,7 @@ B_\mathrm{fallback}
 
 ## 7. Resultados
 
-### 7.1 Entrenamiento fasorial wake/sleep
+### 7.1 Entrenamiento fasorial wake/sleep (cifras de sesión, no tabla principal)
 
 | Métrica | Resultado observado |
 |---|---:|
@@ -449,7 +461,7 @@ La tasa sleep de 100 % se refiere únicamente a experiencias que ya habían
 superado el verificador wake y fueron revalidadas por el mismo sistema. No es
 una medición independiente de generalización ni demuestra ausencia de olvido.
 
-### 7.2 Enrutamiento adaptativo de Gemma 2
+### 7.2 Enrutamiento adaptativo de Gemma 2 (infraestructura, fuera del claim)
 
 #### 7.2.1 Evidencia histórica: verificación en vigilia
 
@@ -486,12 +498,11 @@ Los resultados apoyan que:
 - el minimizador reduce la energía libre implementada;
 - el sistema puede sostener ciclos wake/sleep y persistir deltas;
 - la consolidación está condicionada a verificación;
-- el fallback evita aceptar rutas Transformer degradadas;
-- el entrenamiento observado es estable durante más de \(10^5\) ciclos.
+- el entrenamiento observado es estable durante más de \(10^5\) ciclos;
 - una consolidación aceptada puede modificar las fases de arista CDT y ampliar
-  de forma reproducible la cuenca del patrón consolidado en un fixture sintético;
-- la vigilia circadiana puede sesgar logits de Gemma con un paso CTP sobre
-  embeddings, sin un segundo prefill Transformer.
+  de forma reproducible la cuenca del patrón consolidado en un fixture sintético.
+
+La periferia Gemma/CTP no se lista como resultado de este preprint.
 
 Los resultados todavía no demuestran que:
 
@@ -585,6 +596,38 @@ decision=basin_expansion_pass
 La prueba multisemilla repite el gate con ocho semillas deterministas. Su
 objetivo es detectar dependencia accidental del grafo o del patrón; no sustituye
 un intervalo de confianza sobre una distribución externa.
+
+El 100 % de recuperación post-sueño del patrón **inyectado** es el techo
+esperado del protocolo: el patrón se escribe ya verificado. No se cita como
+evidencia de cognición. El reporte de cada nivel incluye ahora la desviación
+típica de la exactitud directa entre ensayos (`std_accuracy`).
+
+La tarea discriminante es un holdout que no comparte semilla de desarrollo,
+usa 48 nodos, corrupción 20/45/55 %, ruido de grafo (15 % de aristas, ±0,40 rad)
+y un segundo patrón **nunca consolidado**:
+
+```powershell
+cargo test --release --lib scientific_holdout -- --nocapture
+```
+
+La métrica cognitiva principal publicada para este holdout es la tasa de
+éxito del patrón no inyectado (media ± desviación entre niveles). El test
+exige que deje de ser 1,0. Los números concretos salen de esa corrida; no se
+fijan a mano en este manuscrito.
+
+### 7.4.1 Baselines externos (mismo fixture)
+
+Sobre 32 nodos, las mismas cues y 300 iteraciones se comparan cuatro métodos.
+Hopfield clásico y Hopfield moderno son ajenos al crate. El brazo fasorial
+pre-sueño es la relajación sin consolidación CDT. Hebb escribe fases ±π en
+las mismas aristas, sin gate de sueño. El comando canónico imprime la tabla
+(tiempo de pared, energía del **modelo**, recuperación, saturación). Esas
+unidades no son julios.
+
+```powershell
+cargo run --release --bin native_consolidation_basin_experiment
+cargo test --release --lib scientific_basin_baselines -- --nocapture
+```
 
 ### 7.5 Tres niveles de afirmación
 
@@ -882,7 +925,7 @@ esta corrida. El benchmark sintético sí mide recuerdo ciego, pero utiliza un
 prior controlado con prototipos conocidos. Ambas evidencias deben mantenerse
 separadas.
 
-### 7.10 Ciclo circadiano: un prefill, aprendizaje en sueño, sesgo CTP en vigilia
+### 7.10 Ciclo circadiano: un prefill, aprendizaje en sueño, sesgo CTP en vigilia (fuera del claim)
 
 El 19 de agosto de 2026 se implementó la separación de tiempos descrita en
 §3.5. No sustituye el experimento histórico de §7.2.1: lo corrige como
@@ -1101,6 +1144,28 @@ termodinámico físico puede implementar el mismo paisaje con relajación parale
 podría convertir una búsqueda digital costosa en evolución física eficiente. La
 oportunidad no es obtener cómputo gratuito, sino utilizar de forma medible la
 dinámica de la naturaleza como parte del computador.
+
+---
+
+## Apéndice A. Cifras de sesión (no regenerables desde el checkout)
+
+Estas magnitudes describen corridas históricas. No hay checkpoint versionado
+en Git. No sustituyen el experimento de cuenca.
+
+| Magnitud | Valor de sesión | Regeneración |
+|---|---:|---|
+| Ciclos wake fasoriales | 115.876 | no; ver `docs/paper.md` |
+| Ciclos sleep | 28.969 | no |
+| Ejemplos unificados citados | 221,6 M | no; no está en el checkout |
+| Ciclo 116350 | sesión | no |
+| `symbolic_accuracy` del trainer de desarrollo | 0 (ciclo 491) | gated; no reanudar infinito |
+
+Comando de una corrida corta versionada:
+
+```powershell
+$env:GEMMA_SPIN_MAX_CYCLES="9"
+cargo run --release --bin native_gemma2_spin_infinite_trainer
+```
 
 ---
 

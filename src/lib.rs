@@ -3,12 +3,14 @@ pub mod advanced_cognitive_validation;
 pub mod cognitive_generalization_benchmark;
 pub mod cognitive_logistics;
 pub mod cognitive_os;
+pub mod basin_external_baselines;
 pub mod consolidation_basin_experiment;
-/// Gate de cognición emergente. Estado: sólo tests propios; el entrenador
-/// infinito reimplementa su propio gate. Pendiente decidir integración real o
-/// retiro (ver análisis de módulos huérfanos, jul-2026).
+/// Gate de cognición emergente. El entrenador infinito no lo usa; sale del
+/// crate público (feature `research`). Ver docs/archive.md.
+#[cfg(feature = "research")]
 pub mod emergent_cognition_training;
-/// Comparador de motores. Estado: sólo tests propios, sin binario asociado.
+/// Comparador huérfano. Feature `research`. Ver docs/archive.md.
+#[cfg(feature = "research")]
 pub mod engine_comparison;
 pub mod entanglement;
 /// Entrenamiento donde un prior generativo propone futuros y F postselecciona
@@ -30,8 +32,9 @@ pub mod native_gemma2_runtime;
 pub mod native_hybrid_phasor_cdt_engine;
 pub mod native_multi_operator_core;
 pub mod native_phasor_thermodynamic_engine;
-/// Red plástica de simetría. Estado: sólo tests propios; ningún módulo ni
-/// binario la consume todavía.
+/// Red plástica de simetría. Nadie la consume. Feature `research`.
+/// Ver docs/archive.md.
+#[cfg(feature = "research")]
 pub mod native_plastic_symmetry_network;
 pub mod native_rng;
 pub mod native_thermo_rqm_epr;
@@ -56,7 +59,6 @@ pub mod thermodynamic_attractor_comparison;
 pub mod transactional_training_experiment;
 pub mod transformation_family_discovery;
 pub mod unified_spin_cognitive_engine;
-/// VMC Jastrow complejo. Estado: validado contra energía exacta en tests,
-/// aún sin consumidores fuera de ellos; candidato a backend variacional del
-/// motor unificado.
+/// VMC Jastrow complejo. El motor unificado puede invocarlo; no alimenta
+/// la tesis de cuenca. Ver docs/archive.md.
 pub mod variational_spin_liquid_vmc;
