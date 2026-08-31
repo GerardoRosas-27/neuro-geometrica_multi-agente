@@ -40,12 +40,9 @@ protegida y versionada. El sistema no garantiza literalmente “cero olvido”;
 busca olvido catastrófico acotado mediante revalidación, repetición durante
 sueño, decaimiento selectivo, checkpoints y rollback transaccional.
 
-La implementación actual acumuló 115.876 ciclos wake y 28.969 ciclos sleep. De
-los ciclos wake, 115.785 fueron verificados (99,921 %) y 91 rechazados. Las
-115.785 soluciones aceptadas fueron revalidadas y consolidadas sin rechazos
-registrados durante sleep. En el último ciclo persistido, la energía libre
-descendió de -3,474102 a -18,544695 y el residuo final fue
-9,541141 × 10⁻⁴.
+Las cifras de sesión (115.876 ciclos wake, 221,6 M de ejemplos, ciclo 116350)
+no son la tabla principal; se recogen en el apéndice de sesión. El comando
+que regenera el resultado principal está en `docs/reproducibilidad.md`.
 
 Además, un experimento causal pareado de 32 nodos y 144 inferencias por
 condición midió directamente el paisaje antes y después de consolidar un patrón
@@ -424,7 +421,7 @@ B_\mathrm{fallback}
 
 ## 7. Resultados
 
-### 7.1 Entrenamiento fasorial wake/sleep
+### 7.1 Entrenamiento fasorial wake/sleep (cifras de sesión, no tabla principal)
 
 | Métrica | Resultado observado |
 |---|---:|
@@ -1135,6 +1132,28 @@ termodinámico físico puede implementar el mismo paisaje con relajación parale
 podría convertir una búsqueda digital costosa en evolución física eficiente. La
 oportunidad no es obtener cómputo gratuito, sino utilizar de forma medible la
 dinámica de la naturaleza como parte del computador.
+
+---
+
+## Apéndice A. Cifras de sesión (no regenerables desde el checkout)
+
+Estas magnitudes describen corridas históricas. No hay checkpoint versionado
+en Git. No sustituyen el experimento de cuenca.
+
+| Magnitud | Valor de sesión | Regeneración |
+|---|---:|---|
+| Ciclos wake fasoriales | 115.876 | no; ver `docs/paper.md` |
+| Ciclos sleep | 28.969 | no |
+| Ejemplos unificados citados | 221,6 M | no; no está en el checkout |
+| Ciclo 116350 | sesión | no |
+| `symbolic_accuracy` del trainer de desarrollo | 0 (ciclo 491) | gated; no reanudar infinito |
+
+Comando de una corrida corta versionada:
+
+```powershell
+$env:GEMMA_SPIN_MAX_CYCLES="9"
+cargo run --release --bin native_gemma2_spin_infinite_trainer
+```
 
 ---
 

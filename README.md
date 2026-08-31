@@ -54,10 +54,13 @@ Chat Gemma 2 (demo de ingeniería, no claim del preprint):
 cargo run --release --bin native_gemma2_circadian_chat -- --chat dyamon
 ```
 
-Entrenador de desarrollo: está **gated** (véase P4). No reanudar el ciclo
-infinito para «ver si pasa». Los módulos huérfanos (VMC, PEPS, red plástica,
-comparador, gate emergente no integrado) viven detrás del feature `research`
-o en `docs/archive.md`.
+Entrenador de desarrollo: **gated**. Sin `GEMMA_SPIN_MAX_CYCLES` o
+`GEMMA_SPIN_TRAIN_HOURS` no arranca. El infinito exige un checkpoint que
+ya pase `symbolic_accuracy` y el gate funcional. Detalle:
+[`docs/reproducibilidad.md`](docs/reproducibilidad.md).
+
+Los módulos huérfanos (VMC, PEPS, red plástica, comparador, gate emergente no
+integrado) viven detrás del feature `research` o en `docs/archive.md`.
 
 ```powershell
 cargo test --release --lib --features research

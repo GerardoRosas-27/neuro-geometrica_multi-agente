@@ -41,6 +41,7 @@ struct TrainerConfig {
     milestone_every: u64,
     retain_milestones: usize,
     minimum_seen_lessons: usize,
+    allow_infinite: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -378,8 +379,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         recover_observed_cycle_850(&config)?;
         return Ok(());
     }
+    if plan_request.is_none() {
+        if let Some(reason) = trainer_is_gated(
+            config.max_cycles,
+            config.duration,
+            config.allow_infinite,
+            None,
+            None,
+        ) {
+            return Err(reason.into());
+        }
+    }
     let model_path = resolve_gemma2_model_path(None)?;
-    println!("Gemma2 + spin-liquid infinite trainer");
+    println!("Gemma2 + spin-liquid infinite trainer (gated)");
     println!("GGUF={} ollama_runtime=false", model_path.display());
     println!(
         "root={} checkpoint_cycles={} checkpoint_seconds={} milestone_cycles={} max_cycles={:?}",
@@ -416,6 +428,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut last_checkpoint = Instant::now();
     let metrics_path = config.root.join("metrics.jsonl");
     let mut last_metrics = validate(&engine, &state.lessons_seen, config.minimum_seen_lessons);
+    if plan_request.is_none() {
+        if let Some(reason) = trainer_is_gated(
+            config.max_cycles,
+            config.duration,
+            config.allow_infinite,
+            Some(last_metrics.symbolic_accuracy),
+            Some(last_metrics.functional_cognition_gate),
+        ) {
+            return Err(reason.into());
+        }
+    }
 
     loop {
         if config
@@ -613,6 +636,41 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+
+fn trainer_is_gated(
+    max_cycles: Option<u64>,
+    duration: Option<Duration>,
+    allow_infinite: bool,
+    symbolic_accuracy: Option<f64>,
+    functional_cognition_gate: Option<bool>,
+) -> Option<&'static str> {
+    let bounded = max_cycles.is_some() || duration.is_some();
+    if bounded {
+        return None;
+    }
+    if !allow_infinite {
+        return Some(
+            concat!(
+                "entrenador gated: fija GEMMA_SPIN_MAX_CYCLES o ",
+                "GEMMA_SPIN_TRAIN_HOURS para una corrida corta versionada; ",
+                "el ciclo infinito exige GEMMA_SPIN_ALLOW_INFINITE=1 y un ",
+                "checkpoint con symbolic_accuracy>0 y functional_cognition_gate"
+            ),
+        );
+    }
+    match (symbolic_accuracy, functional_cognition_gate) {
+        (None, None) => None,
+        (Some(accuracy), Some(true)) if accuracy > 0.0 => None,
+        _ => Some(
+            concat!(
+                "entrenador gated: symbolic_accuracy y ",
+                "functional_cognition_gate no pasan; no se reanuda el ciclo ",
+                "infinito para ver si pasa"
+            ),
+        ),
+    }
+}
+
 impl TrainerConfig {
     fn from_env() -> Self {
         let hours = env_f64("GEMMA_SPIN_TRAIN_HOURS", 0.0);
@@ -634,6 +692,9 @@ impl TrainerConfig {
             milestone_every: env_u64("GEMMA_SPIN_MILESTONE_EVERY", 50).max(1),
             retain_milestones: env_usize("GEMMA_SPIN_RETAIN_MILESTONES", 24).max(1),
             minimum_seen_lessons: env_usize("GEMMA_SPIN_MINIMUM_SEEN", 6).clamp(1, LESSONS.len()),
+            allow_infinite: env::var("GEMMA_SPIN_ALLOW_INFINITE").is_ok_and(|value| {
+                value == "1" || value.eq_ignore_ascii_case("true")
+            }),
         }
     }
 }
@@ -1502,6 +1563,14 @@ fn argument_value(name: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn infinite_trainer_stays_gated_without_a_passing_checkpoint() {
+        assert!(trainer_is_gated(None, None, false, None, None).is_some());
+        assert!(trainer_is_gated(Some(9), None, false, None, None).is_none());
+        assert!(trainer_is_gated(None, None, true, Some(0.0), Some(false)).is_some());
+        assert!(trainer_is_gated(None, None, true, Some(0.8), Some(true)).is_none());
+    }
 
     #[test]
     fn teacher_score_requires_expected_grounding() {
