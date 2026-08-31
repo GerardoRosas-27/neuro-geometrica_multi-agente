@@ -34,8 +34,14 @@ compatibilidad; no citarlo como el resultado vigente.
 
 ## Integración continua
 
-`.github/workflows/ci.yml` ejecuta `cargo fmt`, `clippy -D warnings` y
-`cargo test --release --lib` (incluye el gate de cuenca).
+`.github/workflows/ci.yml` separa **smoke** (`cargo fmt`, `clippy -D warnings`,
+`cargo test --release --lib -- --skip scientific`) del **gate científico**
+(`cargo test --release --lib scientific`): multisemilla de cuenca y holdout
+con patrón no inyectado.
+
+El 100 % post-sueño del patrón inyectado es el techo esperado de escribir un
+atractor. La métrica discriminante publicada es la recuperación del patrón no
+inyectado (media ± desviación).
 
 `.cargo/config.toml` fija `target-cpu=native` en local. Los binarios y los
 tiempos de pared no son comparables entre máquinas.

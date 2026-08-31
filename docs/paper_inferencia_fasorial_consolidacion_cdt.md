@@ -593,6 +593,24 @@ La prueba multisemilla repite el gate con ocho semillas deterministas. Su
 objetivo es detectar dependencia accidental del grafo o del patrón; no sustituye
 un intervalo de confianza sobre una distribución externa.
 
+El 100 % de recuperación post-sueño del patrón **inyectado** es el techo
+esperado del protocolo: el patrón se escribe ya verificado. No se cita como
+evidencia de cognición. El reporte de cada nivel incluye ahora la desviación
+típica de la exactitud directa entre ensayos (`std_accuracy`).
+
+La tarea discriminante es un holdout que no comparte semilla de desarrollo,
+usa 48 nodos, corrupción 20/45/55 %, ruido de grafo (15 % de aristas, ±0,40 rad)
+y un segundo patrón **nunca consolidado**:
+
+```powershell
+cargo test --release --lib scientific_holdout -- --nocapture
+```
+
+La métrica cognitiva principal publicada para este holdout es la tasa de
+éxito del patrón no inyectado (media ± desviación entre niveles). El test
+exige que deje de ser 1,0. Los números concretos salen de esa corrida; no se
+fijan a mano en este manuscrito.
+
 ### 7.5 Tres niveles de afirmación
 
 Para evitar mezclar implementación, algoritmo y física, el estado de la

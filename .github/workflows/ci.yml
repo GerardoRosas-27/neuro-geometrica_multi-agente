@@ -9,8 +9,8 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  test:
-    name: fmt, clippy y gates de regresión
+  smoke:
+    name: fmt, clippy y smoke
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -29,9 +29,27 @@ jobs:
       - name: Clippy
         run: cargo clippy --all-targets -- -D warnings
 
-      # Los tests de biblioteca incluyen los gates científicos de regresión
-      # (cuenca de consolidación multi-semilla, generalización cognitiva,
-      # validación adversarial y descubrimiento de familia). Se ejecutan en
-      # release: son numéricamente pesados y en debug tardarían órdenes más.
-      - name: Tests y gates científicos
-        run: cargo test --release --lib
+      # Smoke: un ensayo de cuenca y el resto de la librería, sin el gate
+      # científico pesado (multisemilla + holdout endurecido).
+      - name: Tests smoke
+        run: cargo test --release --lib -- --skip scientific
+
+  scientific:
+    name: gate científico
+    runs-on: windows-latest
+    needs: smoke
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache de compilación
+        uses: Swatinem/rust-cache@v2
+
+      # Multisemilla de cuenca y holdout con patrón no inyectado, corrupción
+      # > 40 %, ruido de grafo y semilla ausente del fixture de desarrollo.
+      - name: Gate científico
+        run: cargo test --release --lib scientific -- --nocapture

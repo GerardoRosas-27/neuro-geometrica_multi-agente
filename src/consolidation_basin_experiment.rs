@@ -59,6 +59,8 @@ pub struct BasinLevelMetrics {
     /// Exactitud directa: fracción de nodos cuyo signo coincide con el target.
     /// Es la métrica primaria; el flip global Z₂ cuenta como fallo.
     pub mean_accuracy: f32,
+    /// Desviación típica muestral de la exactitud directa entre ensayos.
+    pub std_accuracy: f32,
     /// Diagnóstico invariante ante el flip global Z₂ (un estado invertido
     /// completo cuenta como acierto). No alimenta el gate ni `successes`;
     /// sirve para distinguir recuperación real de un cambio de gauge global:
@@ -84,6 +86,53 @@ pub struct ConsolidationBasinReport {
     /// Tiempo de pared total del experimento (segundos). Permite detectar
     /// regresiones de coste, no sólo de tasas.
     pub wall_clock_seconds: f64,
+    pub decision: &'static str,
+}
+
+/// Holdout que no comparte semilla, patrón ni techo de corrupción con el
+/// fixture de desarrollo. El 100 % post-sueño del patrón inyectado es el
+/// techo esperado de escribir un atractor; esta tarea discrimina.
+#[derive(Clone, Debug)]
+pub struct BasinHoldoutConfig {
+    pub nodes: usize,
+    pub trials_per_corruption: usize,
+    pub corruption_fractions: Vec<f32>,
+    pub phase_jitter: f32,
+    pub success_accuracy: f32,
+    pub graph_noise_fraction: f32,
+    pub graph_noise_radians: f32,
+    pub seed: u64,
+}
+
+impl Default for BasinHoldoutConfig {
+    fn default() -> Self {
+        Self {
+            nodes: 48,
+            trials_per_corruption: 8,
+            corruption_fractions: vec![0.20, 0.45, 0.55],
+            phase_jitter: 0.10,
+            success_accuracy: 0.90,
+            graph_noise_fraction: 0.15,
+            graph_noise_radians: 0.40,
+            // Semilla ausente del fixture de desarrollo (0xBA51_CD72_2026 y
+            // 0xA11C_E001..=0xA11C_E008).
+            seed: 0xC0FF_EE42_2026,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct BasinHoldoutReport {
+    pub nodes: usize,
+    pub seed: u64,
+    pub injected: Vec<BasinLevelMetrics>,
+    pub injected_mean_success: f32,
+    pub injected_std_success: f32,
+    pub non_injected: Vec<BasinLevelMetrics>,
+    pub non_injected_mean_success: f32,
+    pub non_injected_std_success: f32,
+    pub wall_clock_seconds: f64,
+    pub ceiling_note: &'static str,
     pub decision: &'static str,
 }
 
@@ -288,16 +337,22 @@ fn evaluate_basin(
                 energy_sum += energy;
                 iteration_sum += iterations;
             }
+            let n = config.trials_per_corruption as f32;
+            let mean_accuracy = accuracy_sum / n;
+            let std_accuracy = sample_std(
+                results.iter().map(|(_, accuracy, _, _, _)| *accuracy),
+                mean_accuracy,
+            );
             BasinLevelMetrics {
                 corruption_fraction,
                 trials: config.trials_per_corruption,
                 successes,
-                success_rate: successes as f32 / config.trials_per_corruption as f32,
-                mean_accuracy: accuracy_sum / config.trials_per_corruption as f32,
-                mean_gauge_invariant_accuracy: gauge_accuracy_sum
-                    / config.trials_per_corruption as f32,
-                mean_final_energy: energy_sum / config.trials_per_corruption as f32,
-                mean_iterations: iteration_sum as f32 / config.trials_per_corruption as f32,
+                success_rate: successes as f32 / n,
+                mean_accuracy,
+                std_accuracy,
+                mean_gauge_invariant_accuracy: gauge_accuracy_sum / n,
+                mean_final_energy: energy_sum / n,
+                mean_iterations: iteration_sum as f32 / n,
             }
         })
         .collect()
@@ -398,6 +453,161 @@ fn target_checksum(target: &[i8]) -> u64 {
         })
 }
 
+/// Holdout endurecido: más nodos, semilla nueva, ruido de grafo, corrupción
+/// por encima del 40 % y un patrón que nunca se consolidó.
+pub fn run_consolidation_basin_holdout(
+    config: BasinHoldoutConfig,
+) -> Result<BasinHoldoutReport, NativeHybridError> {
+    let started = Instant::now();
+    let config = sanitize_holdout_config(config);
+    let injected = balanced_target(config.nodes, config.seed);
+    let non_injected = balanced_target(config.nodes, config.seed ^ 0x9E37_79B9_7F4A_7C15);
+    let mut engine = training_engine(config.nodes, config.seed)?;
+    let full_experience = injected
+        .iter()
+        .enumerate()
+        .map(|(node, bit)| NativePhasorCue {
+            node,
+            amplitude: 1.0,
+            phase: bit_phase(*bit),
+        })
+        .collect::<Vec<_>>();
+    let wake = engine.infer_and_stage(&full_experience)?;
+    if !wake.gate.passed {
+        return Ok(empty_holdout_report(
+            config.nodes,
+            config.seed,
+            "wake_gate_failed",
+        ));
+    }
+    let sleep = engine.sleep_consolidate()?;
+    if sleep.accepted != 1 {
+        return Ok(empty_holdout_report(
+            config.nodes,
+            config.seed,
+            "sleep_gate_failed",
+        ));
+    }
+    apply_graph_noise(
+        &mut engine.core,
+        config.graph_noise_fraction,
+        config.graph_noise_radians,
+        config.seed ^ 0xA11A_51E0,
+    );
+    let eval_config = ConsolidationBasinConfig {
+        nodes: config.nodes,
+        trials_per_corruption: config.trials_per_corruption,
+        corruption_fractions: config.corruption_fractions.clone(),
+        phase_jitter: config.phase_jitter,
+        success_accuracy: config.success_accuracy,
+        basin_success_rate: 0.80,
+        minimum_mean_success_gain: 0.0,
+        seed: config.seed,
+    };
+    let injected_levels = evaluate_basin(&engine.core, &injected, &eval_config);
+    let non_injected_levels = evaluate_basin(&engine.core, &non_injected, &eval_config);
+    let (injected_mean_success, injected_std_success) = mean_std_success(&injected_levels);
+    let (non_injected_mean_success, non_injected_std_success) =
+        mean_std_success(&non_injected_levels);
+    let decision = if non_injected_mean_success < 1.0 - 1.0e-6 {
+        "holdout_discriminates"
+    } else {
+        "holdout_still_saturated"
+    };
+    Ok(BasinHoldoutReport {
+        nodes: config.nodes,
+        seed: config.seed,
+        injected: injected_levels,
+        injected_mean_success,
+        injected_std_success,
+        non_injected: non_injected_levels,
+        non_injected_mean_success,
+        non_injected_std_success,
+        wall_clock_seconds: started.elapsed().as_secs_f64(),
+        ceiling_note: "techo esperado del atractor escrito; discrimina el patrón no inyectado",
+        decision,
+    })
+}
+
+fn apply_graph_noise(
+    core: &mut NativeThermoCdtSubstrate,
+    fraction: f32,
+    radians: f32,
+    seed: u64,
+) {
+    if core.edge_phase.is_empty() || fraction <= 0.0 || radians <= 0.0 {
+        return;
+    }
+    let mut ranked = (0..core.edge_phase.len())
+        .map(|edge| (splitmix64(seed ^ edge as u64), edge))
+        .collect::<Vec<_>>();
+    ranked.sort_unstable();
+    let count = ((core.edge_phase.len() as f32 * fraction.clamp(0.0, 1.0)).round() as usize)
+        .min(core.edge_phase.len());
+    for (_, edge) in ranked.into_iter().take(count) {
+        let unit = unit_from_u64(splitmix64(seed.rotate_left(13) ^ edge as u64));
+        core.edge_phase[edge] = (core.edge_phase[edge]
+            + radians * (2.0 * unit - 1.0))
+            .rem_euclid(std::f32::consts::TAU);
+    }
+}
+
+fn mean_std_success(levels: &[BasinLevelMetrics]) -> (f32, f32) {
+    if levels.is_empty() {
+        return (0.0, 0.0);
+    }
+    let mean = levels.iter().map(|level| level.success_rate).sum::<f32>() / levels.len() as f32;
+    let std = sample_std(levels.iter().map(|level| level.success_rate), mean);
+    (mean, std)
+}
+
+fn sample_std(values: impl Iterator<Item = f32> + Clone, mean: f32) -> f32 {
+    let count = values.clone().count();
+    if count < 2 {
+        return 0.0;
+    }
+    let variance = values.map(|value| (value - mean).powi(2)).sum::<f32>() / (count - 1) as f32;
+    variance.max(0.0).sqrt()
+}
+
+fn sanitize_holdout_config(mut config: BasinHoldoutConfig) -> BasinHoldoutConfig {
+    config.nodes = config.nodes.max(8);
+    config.trials_per_corruption = config.trials_per_corruption.max(1);
+    config.phase_jitter = config.phase_jitter.clamp(0.0, 0.5);
+    config.success_accuracy = config.success_accuracy.clamp(0.5, 1.0);
+    config.graph_noise_fraction = config.graph_noise_fraction.clamp(0.0, 1.0);
+    config.graph_noise_radians = config.graph_noise_radians.clamp(0.0, std::f32::consts::PI);
+    config.corruption_fractions = config
+        .corruption_fractions
+        .into_iter()
+        .map(|value| value.clamp(0.0, 0.70))
+        .collect();
+    config
+        .corruption_fractions
+        .sort_by(|left, right| left.total_cmp(right));
+    config.corruption_fractions.dedup();
+    if config.corruption_fractions.is_empty() {
+        config.corruption_fractions.push(0.55);
+    }
+    config
+}
+
+fn empty_holdout_report(nodes: usize, seed: u64, decision: &'static str) -> BasinHoldoutReport {
+    BasinHoldoutReport {
+        nodes,
+        seed,
+        injected: Vec::new(),
+        injected_mean_success: 0.0,
+        injected_std_success: 0.0,
+        non_injected: Vec::new(),
+        non_injected_mean_success: 0.0,
+        non_injected_std_success: 0.0,
+        wall_clock_seconds: 0.0,
+        ceiling_note: "el holdout no llegó a evaluar cuencas",
+        decision,
+    }
+}
+
 fn empty_failed_report(
     nodes: usize,
     trials_per_corruption: usize,
@@ -475,7 +685,7 @@ mod tests {
     }
 
     #[test]
-    fn basin_expansion_repeats_across_fixed_independent_seeds() {
+    fn scientific_basin_expansion_repeats_across_fixed_independent_seeds() {
         for seed in [
             0xA11C_E001,
             0xA11C_E002,
@@ -497,5 +707,15 @@ mod tests {
                 "seed={seed:#x} {report:#?}"
             );
         }
+    }
+
+    #[test]
+    fn scientific_holdout_non_injected_pattern_is_not_perfect() {
+        let report = run_consolidation_basin_holdout(BasinHoldoutConfig::default()).unwrap();
+        assert_eq!(report.decision, "holdout_discriminates", "{report:#?}");
+        assert!(
+            report.non_injected_mean_success < 1.0 - 1.0e-6,
+            "el patrón no inyectado no debe saturar: {report:#?}"
+        );
     }
 }
