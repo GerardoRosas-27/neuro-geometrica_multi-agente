@@ -383,10 +383,8 @@ mod tests {
 
     #[test]
     fn system_prompt_keeps_dyamon_out_of_user_history() {
-        let prompt = render_chat_prompt(
-            &[("hola".to_string(), "buenas".to_string())],
-            "quién eres",
-        );
+        let prompt =
+            render_chat_prompt(&[("hola".to_string(), "buenas".to_string())], "quién eres");
         assert!(prompt.contains("Responde siempre en español"));
         assert!(prompt.contains("Dyamon"));
         assert!(prompt.contains("<start_of_turn>user\nhola"));

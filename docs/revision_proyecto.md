@@ -263,3 +263,10 @@ cargo test --release --lib
 ```
 
 El resto de binarios es contexto. No es el resultado.
+
+---
+
+## 9. Siguiente documento
+
+Evaluación de P0–P6 (tests + binario canónico, 31 ago 2026) y arquitectura
+del ciclo siguiente: [`arquitectura_siguiente_ciclo.md`](arquitectura_siguiente_ciclo.md).

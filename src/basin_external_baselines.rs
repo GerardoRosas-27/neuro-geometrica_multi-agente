@@ -45,8 +45,18 @@ pub fn run_basin_external_baselines(
     let cues = collect_cues(&target, &config);
     let mut methods = Vec::new();
 
-    methods.push(evaluate_hopfield(&target, &cues, config.success_accuracy, false));
-    methods.push(evaluate_hopfield(&target, &cues, config.success_accuracy, true));
+    methods.push(evaluate_hopfield(
+        &target,
+        &cues,
+        config.success_accuracy,
+        false,
+    ));
+    methods.push(evaluate_hopfield(
+        &target,
+        &cues,
+        config.success_accuracy,
+        true,
+    ));
 
     let engine = training_engine(nodes, config.seed)?;
     let pre_started = Instant::now();
@@ -221,14 +231,14 @@ fn summarize_phasor_levels(
         method,
         foreign_to_crate,
         wall_clock_seconds,
-        mean_model_energy: levels.iter().map(|level| level.mean_final_energy).sum::<f32>() / n,
-        mean_success_rate: levels.iter().map(|level| level.success_rate).sum::<f32>() / n,
-        mean_accuracy: levels.iter().map(|level| level.mean_accuracy).sum::<f32>() / n,
-        mean_saturation: levels
+        mean_model_energy: levels
             .iter()
-            .map(|level| level.mean_accuracy)
+            .map(|level| level.mean_final_energy)
             .sum::<f32>()
             / n,
+        mean_success_rate: levels.iter().map(|level| level.success_rate).sum::<f32>() / n,
+        mean_accuracy: levels.iter().map(|level| level.mean_accuracy).sum::<f32>() / n,
+        mean_saturation: levels.iter().map(|level| level.mean_accuracy).sum::<f32>() / n,
     }
 }
 
@@ -293,5 +303,21 @@ mod tests {
                 .any(|method| method.method == "fasorial_sin_consolidacion_cdt"),
             "{table:#?}"
         );
+        eprintln!(
+            "scientific_baselines nodes={} budget={} trials={}",
+            table.nodes, table.iteration_budget, table.trials_per_corruption
+        );
+        for method in &table.methods {
+            eprintln!(
+                "  {} foreign={} wall={:.4}s energy={:.4} succ={:.3} acc={:.3} sat={:.3}",
+                method.method,
+                method.foreign_to_crate,
+                method.wall_clock_seconds,
+                method.mean_model_energy,
+                method.mean_success_rate,
+                method.mean_accuracy,
+                method.mean_saturation
+            );
+        }
     }
 }

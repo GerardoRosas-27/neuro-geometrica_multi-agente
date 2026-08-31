@@ -636,7 +636,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-
 fn trainer_is_gated(
     max_cycles: Option<u64>,
     duration: Option<Duration>,
@@ -649,25 +648,21 @@ fn trainer_is_gated(
         return None;
     }
     if !allow_infinite {
-        return Some(
-            concat!(
-                "entrenador gated: fija GEMMA_SPIN_MAX_CYCLES o ",
-                "GEMMA_SPIN_TRAIN_HOURS para una corrida corta versionada; ",
-                "el ciclo infinito exige GEMMA_SPIN_ALLOW_INFINITE=1 y un ",
-                "checkpoint con symbolic_accuracy>0 y functional_cognition_gate"
-            ),
-        );
+        return Some(concat!(
+            "entrenador gated: fija GEMMA_SPIN_MAX_CYCLES o ",
+            "GEMMA_SPIN_TRAIN_HOURS para una corrida corta versionada; ",
+            "el ciclo infinito exige GEMMA_SPIN_ALLOW_INFINITE=1 y un ",
+            "checkpoint con symbolic_accuracy>0 y functional_cognition_gate"
+        ));
     }
     match (symbolic_accuracy, functional_cognition_gate) {
         (None, None) => None,
         (Some(accuracy), Some(true)) if accuracy > 0.0 => None,
-        _ => Some(
-            concat!(
-                "entrenador gated: symbolic_accuracy y ",
-                "functional_cognition_gate no pasan; no se reanuda el ciclo ",
-                "infinito para ver si pasa"
-            ),
-        ),
+        _ => Some(concat!(
+            "entrenador gated: symbolic_accuracy y ",
+            "functional_cognition_gate no pasan; no se reanuda el ciclo ",
+            "infinito para ver si pasa"
+        )),
     }
 }
 
@@ -692,9 +687,8 @@ impl TrainerConfig {
             milestone_every: env_u64("GEMMA_SPIN_MILESTONE_EVERY", 50).max(1),
             retain_milestones: env_usize("GEMMA_SPIN_RETAIN_MILESTONES", 24).max(1),
             minimum_seen_lessons: env_usize("GEMMA_SPIN_MINIMUM_SEEN", 6).clamp(1, LESSONS.len()),
-            allow_infinite: env::var("GEMMA_SPIN_ALLOW_INFINITE").is_ok_and(|value| {
-                value == "1" || value.eq_ignore_ascii_case("true")
-            }),
+            allow_infinite: env::var("GEMMA_SPIN_ALLOW_INFINITE")
+                .is_ok_and(|value| value == "1" || value.eq_ignore_ascii_case("true")),
         }
     }
 }

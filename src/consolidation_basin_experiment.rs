@@ -330,7 +330,7 @@ pub(crate) fn evaluate_basin(
             let mut gauge_accuracy_sum = 0.0;
             let mut energy_sum = 0.0;
             let mut iteration_sum = 0;
-            for (success, accuracy, gauge_accuracy, energy, iterations) in results {
+            for &(success, accuracy, gauge_accuracy, energy, iterations) in &results {
                 successes += success;
                 accuracy_sum += accuracy;
                 gauge_accuracy_sum += gauge_accuracy;
@@ -529,12 +529,7 @@ pub fn run_consolidation_basin_holdout(
     })
 }
 
-fn apply_graph_noise(
-    core: &mut NativeThermoCdtSubstrate,
-    fraction: f32,
-    radians: f32,
-    seed: u64,
-) {
+fn apply_graph_noise(core: &mut NativeThermoCdtSubstrate, fraction: f32, radians: f32, seed: u64) {
     if core.edge_phase.is_empty() || fraction <= 0.0 || radians <= 0.0 {
         return;
     }
@@ -546,8 +541,7 @@ fn apply_graph_noise(
         .min(core.edge_phase.len());
     for (_, edge) in ranked.into_iter().take(count) {
         let unit = unit_from_u64(splitmix64(seed.rotate_left(13) ^ edge as u64));
-        core.edge_phase[edge] = (core.edge_phase[edge]
-            + radians * (2.0 * unit - 1.0))
+        core.edge_phase[edge] = (core.edge_phase[edge] + radians * (2.0 * unit - 1.0))
             .rem_euclid(std::f32::consts::TAU);
     }
 }
@@ -651,7 +645,6 @@ fn sanitize_config(mut config: ConsolidationBasinConfig) -> ConsolidationBasinCo
     }
     config
 }
-
 
 #[derive(Clone, Debug)]
 pub struct BasinScaleConfig {
@@ -886,6 +879,26 @@ mod tests {
                 ..ConsolidationBasinConfig::default()
             })
             .unwrap();
+            eprintln!(
+                "scientific_basin seed={seed:#x} decision={} gain={:.4} wall={:.3}s pre_crit={:.2} post_crit={:.2}",
+                report.decision,
+                report.mean_success_gain,
+                report.wall_clock_seconds,
+                report.pre_critical_corruption,
+                report.post_critical_corruption
+            );
+            for (pre, post) in report.pre.iter().zip(&report.post) {
+                eprintln!(
+                    "  corr={:.2} pre_succ={:.3} post_succ={:.3} pre_acc={:.3}±{:.3} post_acc={:.3}±{:.3}",
+                    pre.corruption_fraction,
+                    pre.success_rate,
+                    post.success_rate,
+                    pre.mean_accuracy,
+                    pre.std_accuracy,
+                    post.mean_accuracy,
+                    post.std_accuracy
+                );
+            }
             assert_eq!(
                 report.decision, "basin_expansion_pass",
                 "seed={seed:#x} {report:#?}"
@@ -896,6 +909,33 @@ mod tests {
     #[test]
     fn scientific_holdout_non_injected_pattern_is_not_perfect() {
         let report = run_consolidation_basin_holdout(BasinHoldoutConfig::default()).unwrap();
+        eprintln!(
+            "scientific_holdout decision={} injected={:.3}±{:.3} non_injected={:.3}±{:.3} wall={:.3}s",
+            report.decision,
+            report.injected_mean_success,
+            report.injected_std_success,
+            report.non_injected_mean_success,
+            report.non_injected_std_success,
+            report.wall_clock_seconds
+        );
+        for level in &report.injected {
+            eprintln!(
+                "  injected corr={:.2} succ={:.3} acc={:.3}±{:.3}",
+                level.corruption_fraction,
+                level.success_rate,
+                level.mean_accuracy,
+                level.std_accuracy
+            );
+        }
+        for level in &report.non_injected {
+            eprintln!(
+                "  non_injected corr={:.2} succ={:.3} acc={:.3}±{:.3}",
+                level.corruption_fraction,
+                level.success_rate,
+                level.mean_accuracy,
+                level.std_accuracy
+            );
+        }
         assert_eq!(report.decision, "holdout_discriminates", "{report:#?}");
         assert!(
             report.non_injected_mean_success < 1.0 - 1.0e-6,
@@ -912,6 +952,10 @@ mod tests {
             ..BasinScaleConfig::default()
         })
         .unwrap();
+        eprintln!(
+            "scientific_scale rows={:?} wall={:.3}s",
+            report.rows, report.wall_clock_seconds
+        );
         assert_eq!(report.rows.len(), 1, "{report:#?}");
         assert_eq!(report.rows[0].nodes, 128, "{report:#?}");
     }
@@ -923,6 +967,16 @@ mod tests {
             ..BoundedForgettingConfig::default()
         })
         .unwrap();
+        eprintln!(
+            "scientific_delta_r decision={} before={:.3} after={:.3} delta_r={:.4} eps={:.2} second_sleep={} wall={:.3}s",
+            report.decision,
+            report.retention_before,
+            report.retention_after,
+            report.delta_r,
+            report.epsilon,
+            report.second_sleep_accepted,
+            report.wall_clock_seconds
+        );
         assert!(report.delta_r.is_finite(), "{report:#?}");
         assert!(
             report.decision == "bounded_forgetting_pass"
