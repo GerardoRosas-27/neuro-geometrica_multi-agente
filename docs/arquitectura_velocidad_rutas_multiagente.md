@@ -4,7 +4,7 @@
 
 **Fecha:** 31 de agosto de 2026
 **Rama:** `feature/optimizacion-velocidad-rutas`
-**Estado:** V1–V4 implementados (sin GGUF en CI). V5–V8 pendientes.
+**Estado:** V1–V6 implementados (sin GGUF en CI). V7 aparcado (`exit_after` / early exit). V8 pendiente (benchmark CSV, sin cifras inventadas).
 
 ### Qué hay en código (para el bot que continúe)
 
@@ -14,8 +14,10 @@
 | V2 LRC | `src/layer_route_cache.rs`, persistencia `layer-routes.json` | 7 tests del módulo |
 | V3 chat | log `layers=a/b route=hit\|miss tok/s=…`, `observe_layer_route_turn` | binario `native_gemma2_circadian_chat` compila |
 | V4 KL sueño | `replay_prompt_for_mask` promociona por KL ≤ 0,15, sin umbral 0,92 | `kl_promotion_*`, `lrc_promoted_route_*` |
+| V5 local/global | `conservative_candidate_mask` prefiere ventana; prohibe dos globales consecutivos; `max_skip_fraction` = 0,15 | `candidate_mask_never_skips_two_consecutive_globals`, `candidate_mask_prefers_local_layers_over_globals` |
+| V6 grafo 6 nodos | `src/agent_graph.rs`, chat Router→hablante→Verifier, `agent-graph.json` | router sintético + verifier de strings; GGUF `#[ignore]` |
 
-Pendiente: V5 (local vs global), V6 (grafo de 6 nodos), V7 (early exit), V8 (benchmark CSV). Los tests GGUF siguen `#[ignore]`.
+Pendiente: V7 early exit aparcado (no `exit_after` hasta medir tok/s de V3–V5). V8 benchmark CSV sin cifras inventadas. Los tests GGUF siguen `#[ignore]`.
 **Alcance:** Gemma 2 nativo (Candle/GGUF) + grafo de agentes sobre *un* runtime.
 **Fuera de alcance:** tesis de cuenca / CL-MPM (otra línea de trabajo), entrenar pesos del LLM, chip físico, consciencia.
 
@@ -658,10 +660,14 @@ Router→hablante→Verifier.
 **Gate:** test sin GGUF del router (huellas sintéticas) y del verifier
 (strings). Un test de integración opcional ignored-GGUF.
 
-### PR-V7 — Early exit (sólo si V3–V5 no llegan a +15 % tok/s)
+### PR-V7 — Early exit (APARCADO)
 
-**Qué:** `forward_with_mask` acepta `exit_after: Option<usize>`. Aplica
-`norm+lm_head` al hidden de esa capa. Rutas LRC con `skip_kind=EarlyExit`.
+No se implementa `exit_after` en este lote. Middle skip local (V5) y el grafo
+(V6) van antes; early exit exige una tabla k=12,16,20,23 vs denso que aún no
+existe. Se reabre solo si V3–V5 no llegan a +15 % tok/s medido (no inventado).
+
+**Qué (cuando se retome):** `forward_with_mask` acepta `exit_after: Option<usize>`.
+Aplica `norm+lm_head` al hidden de esa capa. Rutas LRC con `skip_kind=EarlyExit`.
 
 **Gate:** tabla k=12,16,20,23 vs denso. Se elige un k o se abandona.
 

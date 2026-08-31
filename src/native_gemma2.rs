@@ -98,6 +98,9 @@ pub struct LayerActivationSummary {
     pub input_rms: f32,
     pub output_rms: f32,
     pub delta_rms: f32,
+    /// Atencion de ventana deslizante (local). `false` = global.
+    #[serde(default)]
+    pub sliding_window: bool,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -465,6 +468,7 @@ impl QuantizedGemma2 {
                     trace.layers.push(LayerActivationSummary {
                         layer: layer_index,
                         executed: false,
+                        sliding_window: layer.sliding_window.is_some(),
                         ..LayerActivationSummary::default()
                     });
                 }
@@ -497,6 +501,7 @@ impl QuantizedGemma2 {
                     input_rms: input_rms.unwrap_or_default(),
                     output_rms,
                     delta_rms,
+                    sliding_window: layer.sliding_window.is_some(),
                 });
             }
         }
@@ -547,6 +552,13 @@ impl QuantizedGemma2 {
 
     pub fn layer_count(&self) -> usize {
         self.layers.len()
+    }
+
+    /// Gemma 2 alterna local (ventana) y global. Las pares son locales.
+    pub fn layer_uses_sliding_window(&self, layer: usize) -> bool {
+        self.layers
+            .get(layer)
+            .is_some_and(|layer| layer.sliding_window.is_some())
     }
 
     pub fn device(&self) -> &Device {

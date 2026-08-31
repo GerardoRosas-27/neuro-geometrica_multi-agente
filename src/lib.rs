@@ -2,6 +2,7 @@ pub mod adaptive_gemma2;
 /// Protocolo cognitivo al 100 %. Feature `research`, fuera de smoke.
 #[cfg(feature = "research")]
 pub mod advanced_cognitive_validation;
+pub mod agent_graph;
 pub mod basin_external_baselines;
 /// Protocolo cognitivo al 100 %. Feature `research`, fuera de smoke.
 #[cfg(feature = "research")]

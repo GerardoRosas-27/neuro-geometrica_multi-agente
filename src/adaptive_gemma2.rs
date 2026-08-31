@@ -401,11 +401,42 @@ impl AdaptiveThermoMemory {
         cached_mask: Option<&LayerExecutionMask>,
         cached_logits: Option<&Tensor>,
     ) -> Result<PreparedAdaptiveForward, String> {
+        self.prepare_forward_with_forced_mask(
+            model,
+            prompt_tokens,
+            cached_tokens,
+            cached_mask,
+            cached_logits,
+            None,
+        )
+    }
+
+    /// Prefill con una mascara impuesta por el grafo (DenseTalker / Compiler).
+    #[allow(clippy::too_many_arguments)]
+    pub fn prepare_forward_with_forced_mask(
+        &mut self,
+        model: &mut QuantizedGemma2,
+        prompt_tokens: &[u32],
+        cached_tokens: &[u32],
+        cached_mask: Option<&LayerExecutionMask>,
+        cached_logits: Option<&Tensor>,
+        forced_mask: Option<&LayerExecutionMask>,
+    ) -> Result<PreparedAdaptiveForward, String> {
         let context_fingerprint = self.context_fingerprint(prompt_tokens);
         let wake_fingerprint = fingerprint_wake(prompt_tokens);
-        let recalled = self
-            .recall_layer_route(&wake_fingerprint, model.layer_count())
-            .or_else(|| self.recall(&context_fingerprint, model.layer_count()));
+        let recalled = if let Some(mask) = forced_mask {
+            Some(RecalledLayerRoute {
+                route_id: None,
+                mask: mask.clone(),
+                memory_tokens: Vec::new(),
+                score: 1.0,
+                margin: 1.0,
+                layer_route_id: None,
+            })
+        } else {
+            self.recall_layer_route(&wake_fingerprint, model.layer_count())
+                .or_else(|| self.recall(&context_fingerprint, model.layer_count()))
+        };
         let plan = plan_wake_prefill(
             prompt_tokens,
             cached_tokens,
@@ -1034,26 +1065,66 @@ pub fn conservative_candidate_mask(
     let skip_budget = ((layer_count as f32 * config.max_skip_fraction.clamp(0.0, 0.5)).floor()
         as usize)
         .min(layer_count.saturating_sub(minimum));
+    let mut sliding = vec![false; layer_count];
+    for layer in &trace.layers {
+        if layer.layer < layer_count {
+            sliding[layer.layer] = layer.sliding_window;
+        }
+    }
     let mut ranked = trace
         .layers
         .iter()
         .filter(|layer| layer.executed && layer.layer > 0 && layer.layer + 1 < layer_count)
-        .map(|layer| (layer.layer, layer.delta_rms))
+        .map(|layer| {
+            let local_rank = u8::from(!layer.sliding_window);
+            (layer.layer, local_rank, layer.delta_rms)
+        })
         .collect::<Vec<_>>();
-    ranked.sort_by(|left, right| left.1.total_cmp(&right.1));
+    ranked.sort_by(|left, right| left.1.cmp(&right.1).then(left.2.total_cmp(&right.2)));
     let mut enabled = vec![true; layer_count];
     let mut skipped = 0;
-    for (layer, _) in ranked {
+    for (layer, _, _) in ranked {
         if skipped >= skip_budget {
             break;
         }
         if !enabled[layer - 1] || !enabled[layer + 1] {
             continue;
         }
+        if would_skip_consecutive_globals(&enabled, &sliding, layer) {
+            continue;
+        }
         enabled[layer] = false;
         skipped += 1;
     }
     LayerExecutionMask::from_enabled(enabled)
+}
+
+fn would_skip_consecutive_globals(enabled: &[bool], sliding: &[bool], layer: usize) -> bool {
+    if sliding.get(layer).copied().unwrap_or(false) {
+        return false;
+    }
+    let previous = (0..layer)
+        .rev()
+        .find(|&index| !sliding.get(index).copied().unwrap_or(false));
+    let next =
+        ((layer + 1)..enabled.len()).find(|&index| !sliding.get(index).copied().unwrap_or(false));
+    previous.is_some_and(|index| !enabled[index]) || next.is_some_and(|index| !enabled[index])
+}
+
+/// Hay dos capas globales consecutivas (en la subsecuencia global) apagadas.
+pub fn mask_has_consecutive_global_skips(mask: &LayerExecutionMask, sliding: &[bool]) -> bool {
+    let mut last_global_skipped = false;
+    for layer in 0..mask.layer_count() {
+        if sliding.get(layer).copied().unwrap_or(false) {
+            continue;
+        }
+        let skipped = !mask.executes(layer);
+        if skipped && last_global_skipped {
+            return true;
+        }
+        last_global_skipped = skipped;
+    }
+    false
 }
 
 pub fn progressive_candidate_masks(
@@ -1185,6 +1256,73 @@ mod tests {
         for layer in 1..11 {
             assert!(mask.executes(layer) || (mask.executes(layer - 1) && mask.executes(layer + 1)));
         }
+    }
+
+    fn gemma_like_trace(layers: usize, delta: impl Fn(usize) -> f32) -> Gemma2ForwardTrace {
+        Gemma2ForwardTrace {
+            layers: (0..layers)
+                .map(|layer| LayerActivationSummary {
+                    layer,
+                    executed: true,
+                    delta_rms: delta(layer),
+                    sliding_window: layer % 2 == 0,
+                    ..LayerActivationSummary::default()
+                })
+                .collect(),
+            executed_layers: layers,
+            skipped_layers: 0,
+        }
+    }
+
+    #[test]
+    fn default_skip_fraction_stays_conservative() {
+        assert!((AdaptiveGemma2Config::default().max_skip_fraction - 0.15).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn candidate_mask_never_skips_two_consecutive_globals() {
+        let trace = gemma_like_trace(26, |layer| if layer % 2 == 0 { 1.0 } else { 0.01 });
+        let mask = conservative_candidate_mask(
+            &trace,
+            &AdaptiveGemma2Config {
+                max_skip_fraction: 0.15,
+                minimum_executed_layers: 8,
+                ..AdaptiveGemma2Config::default()
+            },
+        );
+        let sliding = (0..26).map(|layer| layer % 2 == 0).collect::<Vec<_>>();
+        assert!(!mask_has_consecutive_global_skips(&mask, &sliding));
+        assert!(mask.executes(0));
+        assert!(mask.executes(25));
+        for layer in 1..25 {
+            assert!(mask.executes(layer) || (mask.executes(layer - 1) && mask.executes(layer + 1)));
+        }
+    }
+
+    #[test]
+    fn candidate_mask_prefers_local_layers_over_globals() {
+        let trace = gemma_like_trace(12, |layer| if layer % 2 == 0 { 5.0 } else { 0.01 });
+        let mask = conservative_candidate_mask(
+            &trace,
+            &AdaptiveGemma2Config {
+                max_skip_fraction: 0.15,
+                minimum_executed_layers: 8,
+                ..AdaptiveGemma2Config::default()
+            },
+        );
+        let skipped = (0..12)
+            .filter(|layer| !mask.executes(*layer))
+            .collect::<Vec<_>>();
+        assert!(
+            !skipped.is_empty(),
+            "el presupuesto de 0.15 debe saltar alguna capa local"
+        );
+        assert!(
+            skipped.iter().all(|layer| layer % 2 == 0),
+            "el ranking debe preferir locales aunque el delta_rms global sea menor: {skipped:?}"
+        );
+        let sliding = (0..12).map(|layer| layer % 2 == 0).collect::<Vec<_>>();
+        assert!(!mask_has_consecutive_global_skips(&mask, &sliding));
     }
 
     #[test]

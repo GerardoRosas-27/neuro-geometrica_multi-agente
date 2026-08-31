@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "generation": 0,
+  "config": {
+    "min_claim_overlap": 0.35,
+    "epsilon": 0.05,
+    "alpha": 0.1,
+    "lambda_quality": 1.0,
+    "mu_fallback": 0.5,
+    "seed": 2796275360
+  },
+  "nodes": [
+    {
+      "id": 0,
+      "role": "Router",
+      "route_pref": null,
+      "claim": { "entries": [], "confidence": 0.0, "entropy": 0.0 },
+      "budget": { "max_new_tokens": 0, "max_executed_layers": 0, "timeout_ms": 120000 },
+      "stats": { "calls": 0, "accepts": 0, "rejects": 0, "mean_ms": 0.0 }
+    },
+    {
+      "id": 1,
+      "role": "FastTalker",
+      "route_pref": null,
+      "claim": { "entries": [], "confidence": 0.0, "entropy": 0.0 },
+      "budget": { "max_new_tokens": 256, "max_executed_layers": 22, "timeout_ms": 120000 },
+      "stats": { "calls": 0, "accepts": 0, "rejects": 0, "mean_ms": 0.0 }
+    },
+    {
+      "id": 2,
+      "role": "DenseTalker",
+      "route_pref": null,
+      "claim": { "entries": [], "confidence": 0.0, "entropy": 0.0 },
+      "budget": { "max_new_tokens": 256, "max_executed_layers": 26, "timeout_ms": 120000 },
+      "stats": { "calls": 0, "accepts": 0, "rejects": 0, "mean_ms": 0.0 }
+    },
+    {
+      "id": 3,
+      "role": "Verifier",
+      "route_pref": null,
+      "claim": { "entries": [], "confidence": 0.0, "entropy": 0.0 },
+      "budget": { "max_new_tokens": 0, "max_executed_layers": 0, "timeout_ms": 120000 },
+      "stats": { "calls": 0, "accepts": 0, "rejects": 0, "mean_ms": 0.0 }
+    },
+    {
+      "id": 4,
+      "role": "Compiler",
+      "route_pref": null,
+      "claim": {
+        "entries": [[1364871759, 1.0], [2065850687, 0.8]],
+        "confidence": 0.85,
+        "entropy": 0.4
+      },
+      "budget": { "max_new_tokens": 768, "max_executed_layers": 26, "timeout_ms": 120000 },
+      "stats": { "calls": 0, "accepts": 0, "rejects": 0, "mean_ms": 0.0 }
+    },
+    {
+      "id": 5,
+      "role": "Memory",
+      "route_pref": null,
+      "claim": { "entries": [], "confidence": 0.0, "entropy": 0.0 },
+      "budget": { "max_new_tokens": 0, "max_executed_layers": 0, "timeout_ms": 120000 },
+      "stats": { "calls": 0, "accepts": 0, "rejects": 0, "mean_ms": 0.0 }
+    }
+  ],
+  "edges": [
+    { "src": 0, "dst": 1, "weight": 1.0, "successes": 0, "failures": 0, "mean_latency_ms": 0.0, "last_used": 0 },
+    { "src": 0, "dst": 2, "weight": 0.8, "successes": 0, "failures": 0, "mean_latency_ms": 0.0, "last_used": 0 },
+    { "src": 0, "dst": 4, "weight": 0.7, "successes": 0, "failures": 0, "mean_latency_ms": 0.0, "last_used": 0 },
+    { "src": 0, "dst": 5, "weight": 1.0, "successes": 0, "failures": 0, "mean_latency_ms": 0.0, "last_used": 0 },
+    { "src": 1, "dst": 3, "weight": 0.5, "successes": 0, "failures": 0, "mean_latency_ms": 0.0, "last_used": 0 },
+    { "src": 2, "dst": 3, "weight": 0.5, "successes": 0, "failures": 0, "mean_latency_ms": 0.0, "last_used": 0 },
+    { "src": 4, "dst": 3, "weight": 0.5, "successes": 0, "failures": 0, "mean_latency_ms": 0.0, "last_used": 0 }
+  ]
+}
