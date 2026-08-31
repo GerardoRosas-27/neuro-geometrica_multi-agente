@@ -4,7 +4,18 @@
 
 **Fecha:** 31 de agosto de 2026
 **Rama:** `feature/optimizacion-velocidad-rutas`
-**Estado:** diseño. Este documento no autoriza código en esta rama hasta un PR explícito.
+**Estado:** V1–V4 implementados (sin GGUF en CI). V5–V8 pendientes.
+
+### Qué hay en código (para el bot que continúe)
+
+| PR | Código | Tests |
+|---|---|---|
+| V1 KV-A | `plan_wake_prefill` aplica máscara recordada; si cambia, no reutiliza KV | `kv_a_*`, `later_wake_turn_*` |
+| V2 LRC | `src/layer_route_cache.rs`, persistencia `layer-routes.json` | 7 tests del módulo |
+| V3 chat | log `layers=a/b route=hit\|miss tok/s=…`, `observe_layer_route_turn` | binario `native_gemma2_circadian_chat` compila |
+| V4 KL sueño | `replay_prompt_for_mask` promociona por KL ≤ 0,15, sin umbral 0,92 | `kl_promotion_*`, `lrc_promoted_route_*` |
+
+Pendiente: V5 (local vs global), V6 (grafo de 6 nodos), V7 (early exit), V8 (benchmark CSV). Los tests GGUF siguen `#[ignore]`.
 **Alcance:** Gemma 2 nativo (Candle/GGUF) + grafo de agentes sobre *un* runtime.
 **Fuera de alcance:** tesis de cuenca / CL-MPM (otra línea de trabajo), entrenar pesos del LLM, chip físico, consciencia.
 

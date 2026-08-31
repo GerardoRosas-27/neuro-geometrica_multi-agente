@@ -1,6 +1,10 @@
 //! Enrutamiento adaptativo y memoria termodinámica de dos velocidades para Gemma 2.
 
 use crate::entanglement::EntanglementConfig;
+use crate::layer_route_cache::{
+    fingerprint_wake, logits_kl, top1_agree, LayerRouteCache, LayerRouteCacheConfig,
+    LAYER_ROUTES_FILE,
+};
 use crate::matrix_free_cognitive_substrate::LatentConceptId;
 use crate::native_checkpoint::{atomic_write, save_native_checkpoint_transactional};
 use crate::native_gemma2::{
@@ -44,6 +48,10 @@ pub struct AdaptiveGemma2Config {
     pub sleep_decay: f32,
     pub protected_utility: f32,
     pub relation_budget: usize,
+    /// Confianza mínima para aplicar una ruta LRC en vigilia.
+    pub lrc_min_confidence: f32,
+    /// KL máxima (denso || sparse) para promocionar a LRC en sueño.
+    pub lrc_max_kl_promote: f32,
 }
 
 impl Default for AdaptiveGemma2Config {
@@ -61,6 +69,8 @@ impl Default for AdaptiveGemma2Config {
             sleep_decay: 0.995,
             protected_utility: 0.85,
             relation_budget: 16_384,
+            lrc_min_confidence: 0.55,
+            lrc_max_kl_promote: 0.15,
         }
     }
 }
@@ -145,6 +155,7 @@ pub struct RecalledLayerRoute {
     pub memory_tokens: Vec<u32>,
     pub score: f32,
     pub margin: f32,
+    pub layer_route_id: Option<u64>,
 }
 
 pub struct PreparedAdaptiveForward {
@@ -158,6 +169,8 @@ pub struct PreparedAdaptiveForward {
     pub recalled_memory_tokens: usize,
     pub prefill_tokens: usize,
     pub cache_reused: bool,
+    pub layer_route_id: Option<u64>,
+    pub layer_route_hit: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -178,10 +191,11 @@ impl WakePrefillPlan {
     }
 }
 
-/// Vigilia: como máximo un prefill. Si la KV cache cubre un prefijo exacto,
-/// solo se planea el sufijo nuevo. Las máscaras sparse recordadas no se
-/// aplican mientras se pueda reutilizar la cache: cambiar de máscara
-/// obligaría a rehacer todo el historial.
+/// Vigilia KV-A: la máscara se elige al empezar el turno.
+///
+/// Si el prompt extiende la KV y la máscara recordada coincide con la activa,
+/// se reutiliza la cache (incluido sparse→sparse). Si la máscara cambia, no
+/// se reutiliza: el llamador limpia KV y hace prefill con la máscara nueva.
 pub fn plan_wake_prefill(
     prompt_tokens: &[u32],
     cached_tokens: &[u32],
@@ -189,26 +203,28 @@ pub fn plan_wake_prefill(
     recalled_mask: Option<&LayerExecutionMask>,
     layer_count: usize,
 ) -> WakePrefillPlan {
-    let extending = !cached_tokens.is_empty()
-        && cached_mask.is_some()
-        && prompt_tokens.starts_with(cached_tokens);
-    if extending {
-        let mask = cached_mask
-            .cloned()
-            .unwrap_or_else(|| LayerExecutionMask::all(layer_count));
+    let cached = cached_mask
+        .filter(|mask| mask.layer_count() == layer_count)
+        .cloned();
+    let recalled = recalled_mask
+        .filter(|mask| mask.layer_count() == layer_count)
+        .cloned();
+    let chosen = recalled
+        .or_else(|| cached.clone())
+        .unwrap_or_else(|| LayerExecutionMask::all(layer_count));
+    let extending =
+        !cached_tokens.is_empty() && cached.is_some() && prompt_tokens.starts_with(cached_tokens);
+    let same_mask = cached.as_ref() == Some(&chosen);
+    if extending && same_mask {
         return WakePrefillPlan {
-            mask,
+            mask: chosen,
             position: cached_tokens.len(),
             suffix_start: cached_tokens.len(),
             reuse_cache: true,
         };
     }
-    let mask = recalled_mask
-        .filter(|mask| mask.layer_count() == layer_count)
-        .cloned()
-        .unwrap_or_else(|| LayerExecutionMask::all(layer_count));
     WakePrefillPlan {
-        mask,
+        mask: chosen,
         position: 0,
         suffix_start: 0,
         reuse_cache: false,
@@ -227,12 +243,27 @@ pub struct SleepConsolidationReport {
     pub pruned_routes: usize,
     pub pruned_relations: usize,
     pub remaining_routes: usize,
+    #[serde(default)]
+    pub lrc_promoted: usize,
+    #[serde(default)]
+    pub sleep_mean_kl: f32,
+    #[serde(default)]
+    pub sleep_top1_agree: f32,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct SleepReplayOutcome {
+    discovered: bool,
+    promoted: bool,
+    kl: Option<f32>,
+    top1_agree: f32,
 }
 
 pub struct AdaptiveThermoMemory {
     pub config: AdaptiveGemma2Config,
     pub substrate: NativeThermoRqmEprSubstrate,
     pub router: ThermoAssociativeRouter,
+    pub lrc: LayerRouteCache,
     root: PathBuf,
     state: AdaptivePersistentState,
 }
@@ -273,10 +304,20 @@ impl AdaptiveThermoMemory {
                 ..AdaptivePersistentState::default()
             });
         state.buffer.capacity = config.buffer_capacity.max(1);
+        let lrc = LayerRouteCache::load_or_new(
+            root.join(LAYER_ROUTES_FILE),
+            LayerRouteCacheConfig {
+                min_confidence: config.lrc_min_confidence,
+                max_kl_promote: config.lrc_max_kl_promote,
+                min_overlap: 0.35,
+                max_routes: config.max_routes,
+            },
+        );
         Ok(Self {
             config,
             substrate,
             router,
+            lrc,
             root,
             state,
         })
@@ -327,6 +368,7 @@ impl AdaptiveThermoMemory {
             memory_tokens,
             score: self.router.last_recall_score,
             margin: self.router.last_recall_margin,
+            layer_route_id: None,
         })
     }
 
@@ -347,6 +389,7 @@ impl AdaptiveThermoMemory {
             memory_tokens: entry.memory_tokens.clone(),
             score: fingerprint_overlap(fingerprint, &entry.context),
             margin: 1.0,
+            layer_route_id: None,
         })
     }
 
@@ -359,7 +402,10 @@ impl AdaptiveThermoMemory {
         cached_logits: Option<&Tensor>,
     ) -> Result<PreparedAdaptiveForward, String> {
         let context_fingerprint = self.context_fingerprint(prompt_tokens);
-        let recalled = self.recall(&context_fingerprint, model.layer_count());
+        let wake_fingerprint = fingerprint_wake(prompt_tokens);
+        let recalled = self
+            .recall_layer_route(&wake_fingerprint, model.layer_count())
+            .or_else(|| self.recall(&context_fingerprint, model.layer_count()));
         let plan = plan_wake_prefill(
             prompt_tokens,
             cached_tokens,
@@ -420,7 +466,51 @@ impl AdaptiveThermoMemory {
                 .unwrap_or(0),
             prefill_tokens: suffix.len(),
             cache_reused: plan.reuse_cache,
+            layer_route_id: recalled.as_ref().and_then(|route| route.layer_route_id),
+            layer_route_hit: recalled
+                .as_ref()
+                .and_then(|route| route.layer_route_id)
+                .is_some(),
         })
+    }
+
+    fn recall_layer_route(
+        &self,
+        fingerprint: &ActivationFingerprint,
+        layer_count: usize,
+    ) -> Option<RecalledLayerRoute> {
+        let route = self.lrc.lookup_confident(fingerprint)?;
+        if route.mask.layer_count() != layer_count
+            || route.mask.executed_count() < self.config.minimum_executed_layers.min(layer_count)
+        {
+            return None;
+        }
+        Some(RecalledLayerRoute {
+            route_id: None,
+            mask: route.mask.clone(),
+            memory_tokens: Vec::new(),
+            score: route.confidence,
+            margin: route.confidence,
+            layer_route_id: Some(route.id),
+        })
+    }
+
+    pub fn observe_layer_route_turn(
+        &mut self,
+        prompt_tokens: &[u32],
+        mask: &LayerExecutionMask,
+        fallback: bool,
+    ) {
+        self.lrc.observe_turn(
+            &fingerprint_wake(prompt_tokens),
+            mask,
+            fallback,
+            self.state.generation,
+        );
+    }
+
+    pub fn layer_route_count(&self) -> usize {
+        self.lrc.len()
     }
 
     pub fn working_memory_len(&self) -> usize {
@@ -531,7 +621,7 @@ impl AdaptiveThermoMemory {
     }
 
     pub fn consolidate_sleep(&mut self) -> Result<SleepConsolidationReport, String> {
-        self.finish_sleep(0, 0)
+        self.finish_sleep(0, 0, 0, 0.0, 0.0)
     }
 
     pub fn consolidate_sleep_with_model(
@@ -539,14 +629,24 @@ impl AdaptiveThermoMemory {
         model: &mut QuantizedGemma2,
         extra_prompts: &[Vec<u32>],
     ) -> Result<SleepConsolidationReport, String> {
-        let (replayed, discovered) = self.discover_sleep_masks(model, extra_prompts)?;
-        self.finish_sleep(replayed, discovered)
+        let (replayed, discovered, lrc_promoted, sleep_mean_kl, sleep_top1_agree) =
+            self.discover_sleep_masks(model, extra_prompts)?;
+        self.finish_sleep(
+            replayed,
+            discovered,
+            lrc_promoted,
+            sleep_mean_kl,
+            sleep_top1_agree,
+        )
     }
 
     fn finish_sleep(
         &mut self,
         replayed: usize,
         discovered: usize,
+        lrc_promoted: usize,
+        sleep_mean_kl: f32,
+        sleep_top1_agree: f32,
     ) -> Result<SleepConsolidationReport, String> {
         let flushed = self.flush_fast_memory()?;
         let retained_working = self.state.buffer.len();
@@ -567,6 +667,9 @@ impl AdaptiveThermoMemory {
             pruned_routes,
             pruned_relations,
             remaining_routes: self.router.registry.routes().len(),
+            lrc_promoted,
+            sleep_mean_kl,
+            sleep_top1_agree,
         })
     }
 
@@ -574,7 +677,7 @@ impl AdaptiveThermoMemory {
         &mut self,
         model: &mut QuantizedGemma2,
         extra_prompts: &[Vec<u32>],
-    ) -> Result<(usize, usize), String> {
+    ) -> Result<(usize, usize, usize, f32, f32), String> {
         let buffer_tokens = self
             .state
             .buffer
@@ -590,22 +693,36 @@ impl AdaptiveThermoMemory {
         );
         let mut replayed = 0usize;
         let mut discovered = 0usize;
+        let mut lrc_promoted = 0usize;
+        let mut kl_sum = 0.0f32;
+        let mut top1_sum = 0.0f32;
+        let mut probed = 0usize;
         for prompt in prompts {
             replayed += 1;
-            if self.replay_prompt_for_mask(model, &prompt)? {
+            let outcome = self.replay_prompt_for_mask(model, &prompt)?;
+            if outcome.discovered {
                 discovered += 1;
             }
+            if outcome.promoted {
+                lrc_promoted += 1;
+            }
+            if let Some(kl) = outcome.kl {
+                kl_sum += kl;
+                top1_sum += outcome.top1_agree;
+                probed += 1;
+            }
         }
-        Ok((replayed, discovered))
+        let n = probed.max(1) as f32;
+        Ok((replayed, discovered, lrc_promoted, kl_sum / n, top1_sum / n))
     }
 
     fn replay_prompt_for_mask(
         &mut self,
         model: &mut QuantizedGemma2,
         prompt_tokens: &[u32],
-    ) -> Result<bool, String> {
+    ) -> Result<SleepReplayOutcome, String> {
         if prompt_tokens.len() < 2 {
-            return Ok(false);
+            return Ok(SleepReplayOutcome::default());
         }
         model.clear_kv_cache();
         let full_mask = LayerExecutionMask::all(model.layer_count());
@@ -622,7 +739,7 @@ impl AdaptiveThermoMemory {
             .map_err(|error| error.to_string())?;
         let context = self.context_fingerprint(prompt_tokens);
         let activations = self.activation_fingerprint(&context, &full.trace);
-        let mut best = None::<(LayerExecutionMask, f32)>;
+        let mut best = None::<(LayerExecutionMask, f32, f32, f32)>;
         for candidate in self
             .progressive_candidate_masks(&full.trace)
             .into_iter()
@@ -638,25 +755,41 @@ impl AdaptiveThermoMemory {
                 .and_then(|tensor| tensor.to_vec1::<f32>())
                 .map_err(|error| error.to_string())?;
             let quality = logit_agreement(&full_logits, &sparse_logits);
+            let kl = logits_kl(&full_logits, &sparse_logits);
+            let agree = top1_agree(&full_logits, &sparse_logits);
             if best
                 .as_ref()
-                .map(|(_, current)| quality > *current)
+                .map(|(_, current, _, _)| quality > *current)
                 .unwrap_or(true)
             {
-                best = Some((candidate, quality));
+                best = Some((candidate, quality, kl, agree));
             }
+        }
+        let mut outcome = SleepReplayOutcome {
+            kl: best.as_ref().map(|(_, _, kl, _)| *kl),
+            top1_agree: best.as_ref().map(|(_, _, _, agree)| *agree).unwrap_or(0.0),
+            ..SleepReplayOutcome::default()
+        };
+        if let Some((mask, _, kl, agree)) = best.as_ref() {
+            outcome.promoted = self.lrc.promote(
+                fingerprint_wake(prompt_tokens),
+                mask.clone(),
+                *kl,
+                *agree,
+                self.state.generation,
+            );
         }
         let (mask, quality, usable) = choose_sleep_mask(
             &full_mask,
-            best,
+            best.map(|(mask, quality, _, _)| (mask, quality)),
             self.config.min_runtime_quality,
             self.config.min_verified_quality,
         );
-        if !usable {
-            return Ok(false);
+        if usable {
+            self.upsert_sleep_experience(prompt_tokens, mask, context, activations, quality);
+            outcome.discovered = true;
         }
-        self.upsert_sleep_experience(prompt_tokens, mask, context, activations, quality);
-        Ok(true)
+        Ok(outcome)
     }
 
     fn upsert_sleep_experience(
@@ -701,6 +834,7 @@ impl AdaptiveThermoMemory {
             self.root.join("thermo-memory.cdt_native"),
         )?;
         self.router.save(self.root.join("routes.json"))?;
+        self.lrc.save(self.root.join(LAYER_ROUTES_FILE))?;
         let body = serde_json::to_vec_pretty(&self.state).map_err(|error| error.to_string())?;
         atomic_write(&self.root.join("adaptive-state.json"), &body)
     }
@@ -1196,9 +1330,7 @@ mod tests {
         let mut prompt = cached.clone();
         prompt.extend_from_slice(&[20, 21, 22, 23]);
         let mask = LayerExecutionMask::all(8);
-        let sparse =
-            LayerExecutionMask::from_enabled(vec![true, false, true, true, true, true, true, true]);
-        let plan = plan_wake_prefill(&prompt, &cached, Some(&mask), Some(&sparse), 8);
+        let plan = plan_wake_prefill(&prompt, &cached, Some(&mask), Some(&mask), 8);
         assert!(plan.reuse_cache);
         assert_eq!(plan.position, cached.len());
         assert_eq!(plan.prefill_tokens(prompt.len()), 4);
@@ -1208,6 +1340,34 @@ mod tests {
             plan.prefill_tokens(prompt.len()) as f32 / prompt.len() as f32 <= 0.25,
             "el segundo turno no debe rehacer el historial"
         );
+    }
+
+    #[test]
+    fn kv_a_reuses_kv_when_the_recalled_sparse_mask_stays() {
+        let cached = vec![1u32, 2, 3, 4, 5, 6, 7, 8];
+        let mut prompt = cached.clone();
+        prompt.extend_from_slice(&[9, 10]);
+        let sparse =
+            LayerExecutionMask::from_enabled(vec![true, false, true, true, true, true, true, true]);
+        let plan = plan_wake_prefill(&prompt, &cached, Some(&sparse), Some(&sparse), 8);
+        assert!(plan.reuse_cache);
+        assert_eq!(plan.mask, sparse);
+        assert_eq!(plan.prefill_tokens(prompt.len()), 2);
+    }
+
+    #[test]
+    fn kv_a_prefills_when_the_recalled_mask_changes() {
+        let cached = vec![1u32, 2, 3, 4, 5, 6, 7, 8];
+        let mut prompt = cached.clone();
+        prompt.extend_from_slice(&[9, 10]);
+        let dense = LayerExecutionMask::all(8);
+        let sparse =
+            LayerExecutionMask::from_enabled(vec![true, false, true, true, true, true, true, true]);
+        let plan = plan_wake_prefill(&prompt, &cached, Some(&dense), Some(&sparse), 8);
+        assert!(!plan.reuse_cache);
+        assert_eq!(plan.mask, sparse);
+        assert_eq!(plan.position, 0);
+        assert_eq!(plan.prefill_tokens(prompt.len()), prompt.len());
     }
 
     #[test]
@@ -1491,6 +1651,54 @@ mod tests {
                 || report.replayed == 1,
             "el sueño debe rejugar el prompt de vigilia"
         );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn lrc_promoted_route_wins_the_wake_plan_over_dense_cache() {
+        let (mut memory, root) = temp_memory("lrc-wake", 4);
+        memory.config.minimum_executed_layers = 6;
+        let tokens = vec![1u32, 2, 3, 4, 5, 6, 7, 8];
+        let mask = sparse_mask(8);
+        assert!(memory.lrc.promote(
+            crate::layer_route_cache::fingerprint_wake(&tokens),
+            mask.clone(),
+            0.04,
+            1.0,
+            1
+        ));
+        let recalled = memory
+            .recall_layer_route(&crate::layer_route_cache::fingerprint_wake(&tokens), 8)
+            .expect("LRC debe devolver la máscara promocionada");
+        let cached = tokens.clone();
+        let mut prompt = cached.clone();
+        prompt.extend_from_slice(&[9, 10]);
+        let plan = plan_wake_prefill(
+            &prompt,
+            &cached,
+            Some(&LayerExecutionMask::all(8)),
+            Some(&recalled.mask),
+            8,
+        );
+        assert!(!plan.reuse_cache);
+        assert_eq!(plan.mask.executed_count(), 7);
+        assert!(!plan.mask.executes(4));
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn kl_promotion_does_not_require_the_legacy_verified_threshold() {
+        let full = LayerExecutionMask::all(8);
+        let sparse = sparse_mask(8);
+        let (_, _, usable) = choose_sleep_mask(&full, Some((sparse.clone(), 0.40)), 0.50, 0.92);
+        assert!(!usable);
+        let (mut memory, root) = temp_memory("lrc-kl", 2);
+        let fp = crate::layer_route_cache::fingerprint_wake(&[11, 12, 13, 14]);
+        assert!(
+            memory.lrc.promote(fp.clone(), sparse, 0.08, 1.0, 1),
+            "KL 0.08 debe promocionar aunque logit_agreement sea bajo"
+        );
+        assert!(memory.lrc.lookup_confident(&fp).is_some());
         let _ = fs::remove_dir_all(&root);
     }
 }

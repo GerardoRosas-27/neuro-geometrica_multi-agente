@@ -320,18 +320,24 @@ fn wake_turn(
         cached_logits.as_ref(),
     )?;
     session.last_recalled_memory_tokens = prepared.recalled_memory_tokens;
-    eprintln!(
-        "[vigilia route={} layers={}/{} quality={:.3} fallback={} memory_tokens={} prefill={} cache={} {:.3}s]",
+    let route_label = if prepared.layer_route_hit {
+        prepared
+            .layer_route_id
+            .map(|id| format!("lrc:{id}"))
+            .unwrap_or_else(|| "lrc".to_string())
+    } else if prepared.route_id.is_some() {
         prepared
             .route_id
             .map(|route| route.0.to_string())
-            .unwrap_or_else(|| {
-                if prepared.recalled_memory_tokens > 0 {
-                    "working".to_string()
-                } else {
-                    "new".to_string()
-                }
-            }),
+            .unwrap_or_default()
+    } else if prepared.recalled_memory_tokens > 0 {
+        "working".to_string()
+    } else {
+        "miss".to_string()
+    };
+    eprintln!(
+        "[vigilia route={} layers={}/{} quality={:.3} fallback={} memory_tokens={} prefill={} cache={} {:.3}s]",
+        route_label,
         prepared.mask.executed_count(),
         prepared.mask.layer_count(),
         prepared.quality,
@@ -424,11 +430,15 @@ fn wake_turn(
         );
     }
     eprintln!(
-        "[decode {:.2} tok/s model={:.3}s logits={:.3}s text={:.3}s cache={}]",
+        "[decode {:.2} tok/s layers={}/{} route={} cache={}]",
         generation.metrics.decode_tokens_per_second(),
-        generation.metrics.model_decode_seconds,
-        generation.metrics.logits_processing_seconds,
-        generation.metrics.text_decode_seconds,
+        prepared.mask.executed_count(),
+        prepared.mask.layer_count(),
+        if prepared.layer_route_hit {
+            "hit"
+        } else {
+            "miss"
+        },
         generation.metrics.cache_reused,
     );
 
@@ -441,6 +451,9 @@ fn wake_turn(
         prepared.route_id,
         prepared.fallback,
     )?;
+    session
+        .adaptive
+        .observe_layer_route_turn(&prompt_tokens, &prepared.mask, prepared.fallback);
 
     session.turns = session.turns.saturating_add(1);
     let record = new_wake_record(
@@ -487,12 +500,15 @@ fn sleep_and_persist(
     } else {
         let report = session.adaptive.consolidate_sleep_with_model(model, &[])?;
         println!(
-            "Sueño adaptativo: replay={} máscaras={} flushed={} working={} routes={}",
+            "Sueño adaptativo: replay={} máscaras={} flushed={} working={} routes={} lrc={} kl={:.3} top1={:.2}",
             report.replayed,
             report.discovered_masks,
             report.flushed,
             report.retained_working,
-            report.remaining_routes
+            report.remaining_routes,
+            report.lrc_promoted,
+            report.sleep_mean_kl,
+            report.sleep_top1_agree
         );
     }
     Ok(())
@@ -501,12 +517,15 @@ fn sleep_and_persist(
 fn print_sleep_report(report: cdt_rqm_epr::gemma2_circadian_bridge::CircadianSleepReport) {
     println!("── Sueño ──");
     println!(
-        "  Adaptativo: replay={} máscaras={} flushed={} working={} routes={} relaciones_podadas={}",
+        "  Adaptativo: replay={} máscaras={} flushed={} working={} routes={} lrc={} kl={:.3} top1={:.2} relaciones_podadas={}",
         report.adaptive.replayed,
         report.adaptive.discovered_masks,
         report.adaptive.flushed,
         report.adaptive.retained_working,
         report.adaptive.remaining_routes,
+        report.adaptive.lrc_promoted,
+        report.adaptive.sleep_mean_kl,
+        report.adaptive.sleep_top1_agree,
         report.adaptive.pruned_relations
     );
     println!(
@@ -544,6 +563,10 @@ fn print_status(session: &CircadianSession) {
     println!(
         "  Rutas adaptativas:  {}",
         session.adaptive.router.registry.routes().len()
+    );
+    println!(
+        "  Rutas LRC:          {}",
+        session.adaptive.layer_route_count()
     );
 }
 
