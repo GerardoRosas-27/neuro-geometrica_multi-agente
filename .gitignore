@@ -28,3 +28,7 @@
 /.venv-netket/
 __pycache__/
 /build_log*.txt
+
+# Journals y estado de sesión (Dyamon y chats). Conservar el fixture de
+# ejemplo en data/examples/.
+/data/native_gemma2_circadian/

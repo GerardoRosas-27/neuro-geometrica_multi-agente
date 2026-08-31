@@ -7,6 +7,9 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  # `.cargo/config.toml` fija target-cpu=native. Los wall-clock de este
+  # runner (windows-latest) no son comparables entre máquinas; los binarios
+  # de CI no se publican como artefactos portables.
 
 jobs:
   smoke:

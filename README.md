@@ -46,6 +46,17 @@ inyectado (media ± desviación).
 `.cargo/config.toml` fija `target-cpu=native` en local. Los binarios y los
 tiempos de pared no son comparables entre máquinas.
 
+## Puntos de entrada
+
+Un binario por rol. El resto está en `src/bin/archive/`.
+
+| Rol | Comando |
+|---|---|
+| Resultado principal | `cargo run --release --bin native_consolidation_basin_experiment` |
+| Chat (demo) | `cargo run --release --bin native_gemma2_circadian_chat -- --chat dyamon` |
+| Trainer (gated) | `GEMMA_SPIN_MAX_CYCLES=9 cargo run --release --bin native_gemma2_spin_infinite_trainer` |
+| Visualizador | `cargo run --release --bin native_cognitive_sleep_visualizer` |
+
 ## Infraestructura (no es el resultado)
 
 Chat Gemma 2 (demo de ingeniería, no claim del preprint):
