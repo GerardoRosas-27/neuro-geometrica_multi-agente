@@ -3,6 +3,7 @@ pub mod advanced_cognitive_validation;
 pub mod cognitive_generalization_benchmark;
 pub mod cognitive_logistics;
 pub mod cognitive_os;
+pub mod basin_external_baselines;
 pub mod consolidation_basin_experiment;
 /// Gate de cognición emergente. El entrenador infinito no lo usa; sale del
 /// crate público (feature `research`). Ver docs/archive.md.

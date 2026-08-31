@@ -214,7 +214,7 @@ pub fn run_consolidation_basin_experiment(
     })
 }
 
-fn training_engine(
+pub(crate) fn training_engine(
     nodes: usize,
     seed: u64,
 ) -> Result<NativeHybridPhasorCdtEngine, NativeHybridError> {
@@ -262,7 +262,7 @@ fn training_engine(
     )
 }
 
-fn evaluate_basin(
+pub(crate) fn evaluate_basin(
     core: &NativeThermoCdtSubstrate,
     target: &[i8],
     config: &ConsolidationBasinConfig,
@@ -370,7 +370,7 @@ fn critical_corruption(levels: &[BasinLevelMetrics], threshold: f32) -> f32 {
 /// ante un flip global Z₂, pero el cue corrompido conserva la convención de
 /// signo mayoritaria, así que una recuperación genuina debe respetarla: un
 /// estado completamente invertido se cuenta aquí como fallo.
-fn direct_accuracy(state: &[Complex32], target: &[i8]) -> f32 {
+pub(crate) fn direct_accuracy(state: &[Complex32], target: &[i8]) -> f32 {
     let matches = state
         .iter()
         .zip(target)
@@ -389,7 +389,7 @@ fn gauge_invariant_accuracy(state: &[Complex32], target: &[i8]) -> f32 {
     direct.max(1.0 - direct)
 }
 
-fn corrupted_phases(
+pub(crate) fn corrupted_phases(
     target: &[i8],
     corruption_fraction: f32,
     jitter: f32,
@@ -424,7 +424,7 @@ fn corrupted_phases(
         .collect()
 }
 
-fn balanced_target(nodes: usize, seed: u64) -> Vec<i8> {
+pub(crate) fn balanced_target(nodes: usize, seed: u64) -> Vec<i8> {
     (0..nodes)
         .map(|node| {
             if splitmix64(seed ^ node as u64) & 1 == 0 {
@@ -436,7 +436,7 @@ fn balanced_target(nodes: usize, seed: u64) -> Vec<i8> {
         .collect()
 }
 
-fn bit_phase(bit: i8) -> f32 {
+pub(crate) fn bit_phase(bit: i8) -> f32 {
     if bit >= 0 {
         0.0
     } else {

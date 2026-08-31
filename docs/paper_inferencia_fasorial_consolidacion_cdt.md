@@ -611,6 +611,20 @@ La métrica cognitiva principal publicada para este holdout es la tasa de
 exige que deje de ser 1,0. Los números concretos salen de esa corrida; no se
 fijan a mano en este manuscrito.
 
+### 7.4.1 Baselines externos (mismo fixture)
+
+Sobre 32 nodos, las mismas cues y 300 iteraciones se comparan cuatro métodos.
+Hopfield clásico y Hopfield moderno son ajenos al crate. El brazo fasorial
+pre-sueño es la relajación sin consolidación CDT. Hebb escribe fases ±π en
+las mismas aristas, sin gate de sueño. El comando canónico imprime la tabla
+(tiempo de pared, energía del **modelo**, recuperación, saturación). Esas
+unidades no son julios.
+
+```powershell
+cargo run --release --bin native_consolidation_basin_experiment
+cargo test --release --lib scientific_basin_baselines -- --nocapture
+```
+
 ### 7.5 Tres niveles de afirmación
 
 Para evitar mezclar implementación, algoritmo y física, el estado de la
