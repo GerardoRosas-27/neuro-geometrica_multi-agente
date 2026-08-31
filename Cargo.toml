@@ -13,6 +13,8 @@ codegen-units = 1
 default = []
 cuda = ["candle-core/cuda", "candle-nn/cuda", "candle-transformers/cuda"]
 mkl = ["candle-core/mkl", "candle-nn/mkl", "candle-transformers/mkl"]
+# Motores huérfanos que no alimentan la tesis de cuenca. Ver docs/archive.md.
+research = []
 
 [dependencies]
 candle-core = "0.11.0"

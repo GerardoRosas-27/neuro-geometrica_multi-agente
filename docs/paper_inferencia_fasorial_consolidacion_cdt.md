@@ -1,9 +1,16 @@
 # Inferencia por descarte termodinámico y consolidación CDT:
 ## una arquitectura cognitiva con fasores, atractores y un modelo lingüístico periférico
 
-**Estado del manuscrito:** preprint técnico, versión 0.5
-**Fecha:** 19 de agosto de 2026
+**Estado del manuscrito:** preprint técnico, versión 0.6
+**Fecha:** 31 de agosto de 2026
 **Implementación de referencia:** `cdt_rqm_epr`, Rust
+
+**Resultado principal.** Una consolidación CDT de un patrón verificado deforma
+el paisaje fasorial y amplía de forma causal la cuenca de recuperación. El
+protocolo reproducible es `consolidation_basin_experiment`; el comando es
+`cargo run --release --bin native_consolidation_basin_experiment`. El resto de
+este manuscrito describe infraestructura, evidencia de sesión o trabajo en
+curso. `docs/paper.md` es bitácora histórica, no este resultado.
 
 ---
 
