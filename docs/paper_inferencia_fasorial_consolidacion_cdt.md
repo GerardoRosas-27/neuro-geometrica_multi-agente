@@ -12,6 +12,11 @@ protocolo reproducible es `consolidation_basin_experiment`; el comando es
 este manuscrito describe infraestructura, evidencia de sesión o trabajo en
 curso. `docs/paper.md` es bitácora histórica, no este resultado.
 
+**Periferia lingüística (opción C).** Gemma 2 2B no forma parte del claim de
+este preprint: no se presenta como motor de razonamiento ni como resultado.
+El chat circadiano es una demo de ingeniería. Las secciones 3.4, 3.5, 7.2 y
+7.10 describen esa infraestructura; no alimentan la tesis de cuenca.
+
 ---
 
 ## Resumen
@@ -27,10 +32,9 @@ coherentes forman mínimos estables. Estos mínimos actúan como atractores
 inferenciales. Tras una verificación independiente, sólo los atractores útiles
 se transfieren al sustrato CDT como cambios locales de nodos, fases y aristas.
 
-En este enfoque, un modelo de lenguaje grande no constituye la memoria ni el
-motor principal de razonamiento. Sus pesos permanecen congelados y el modelo
-actúa como periférico lingüístico: traduce lenguaje a una representación
-operativa y expresa en lenguaje el resultado calculado por el sustrato. La
+Fuera del claim de este preprint, el crate incluye un chat Gemma 2 como demo
+de ingeniería. Un modelo de lenguaje grande no constituye la memoria ni el
+motor de la tesis de cuenca. La
 memoria se divide en una capa rápida, volátil y maleable y una capa consolidada,
 protegida y versionada. El sistema no garantiza literalmente “cero olvido”;
 busca olvido catastrófico acotado mediante revalidación, repetición durante
@@ -53,17 +57,9 @@ repitió en una prueba automatizada con ocho semillas fijas independientes.
 Esto demuestra deformación y ampliación de cuenca dentro del fixture controlado;
 no demuestra generalización conceptual ni ventaja física.
 
-Por otra parte, un experimento preliminar de apagado de capas
-en Gemma 2 produjo 0 rutas dispersas verificadas y activó fallback completo en
-2 de 2 consultas. Ese resultado negativo mostró que verificar máscaras durante
-la vigilia es demasiado caro y demasiado estricto: un Transformer denso no se
-vuelve disperso por omisión directa de bloques. La arquitectura vigente separa
-los tiempos: la vigilia ejecuta un único prefill, reutiliza la KV cache y deja
-que el motor CTP sesgue los logits a partir de embeddings; el descubrimiento de
-máscaras y el entrenamiento CTP ocurren sólo durante sueño. Las pruebas
-unitarias y una prueba GGUF confirman que el sesgo tiene dimensión de
-vocabulario y norma finita; no se evalúa aquí si la mezcla mejora la calidad
-lingüística.
+(Infraestructura, fuera del claim.) Un experimento preliminar de apagado de
+capas en Gemma 2 produjo 0 rutas dispersas verificadas. No se usa como
+evidencia del resultado principal.
 
 Finalmente, se implementó un ciclo extremo a extremo donde Gemma 2 recibe una
 única cue parcial, propone fronteras futuras, y el motor postselecciona por
@@ -101,8 +97,8 @@ Este trabajo estudia una separación funcional:
   posibilidades y convergen hacia mínimos de energía libre;
 - **CDT para memoria consolidada:** conserva sólo soluciones verificadas como
   modificaciones estructurales locales;
-- **modelo lingüístico periférico:** compila peticiones y verbaliza respuestas,
-  pero no es la fuente final de verdad ni el depósito principal de memoria.
+- **(fuera del claim)** un chat Gemma 2 puede verbalizar; no es el motor ni
+  el resultado de este preprint.
 
 La propuesta no presupone consciencia ni cognición general. Presenta un
 mecanismo computacional medible y una hipótesis física falsable sobre cómo la
@@ -251,7 +247,7 @@ estabilidad y relaciones topológicas. El objetivo no es copiar una respuesta,
 sino deformar el paisaje para que una experiencia futura converja más
 fácilmente al atractor correcto.
 
-### 3.4 LLM como periférico lingüístico
+### 3.4 LLM como periférico lingüístico (infraestructura, fuera del claim)
 
 El LLM puede cumplir dos funciones restringidas:
 
@@ -264,7 +260,7 @@ La solución numérica o lógica procede del motor externo. Cuando el compilador
 lingüístico produce una receta inválida, se usa un parser determinista o se
 solicita aclaración. Los pesos del LLM permanecen congelados.
 
-### 3.5 Ciclo circadiano Gemma 2 + CTP
+### 3.5 Ciclo circadiano Gemma 2 + CTP (infraestructura, fuera del claim)
 
 La implementación de chat unifica tres tiempos que antes se mezclaban en cada
 turno. El binario de referencia es `native_gemma2_circadian_chat`.
@@ -456,7 +452,7 @@ La tasa sleep de 100 % se refiere únicamente a experiencias que ya habían
 superado el verificador wake y fueron revalidadas por el mismo sistema. No es
 una medición independiente de generalización ni demuestra ausencia de olvido.
 
-### 7.2 Enrutamiento adaptativo de Gemma 2
+### 7.2 Enrutamiento adaptativo de Gemma 2 (infraestructura, fuera del claim)
 
 #### 7.2.1 Evidencia histórica: verificación en vigilia
 
@@ -493,12 +489,11 @@ Los resultados apoyan que:
 - el minimizador reduce la energía libre implementada;
 - el sistema puede sostener ciclos wake/sleep y persistir deltas;
 - la consolidación está condicionada a verificación;
-- el fallback evita aceptar rutas Transformer degradadas;
-- el entrenamiento observado es estable durante más de \(10^5\) ciclos.
+- el entrenamiento observado es estable durante más de \(10^5\) ciclos;
 - una consolidación aceptada puede modificar las fases de arista CDT y ampliar
-  de forma reproducible la cuenca del patrón consolidado en un fixture sintético;
-- la vigilia circadiana puede sesgar logits de Gemma con un paso CTP sobre
-  embeddings, sin un segundo prefill Transformer.
+  de forma reproducible la cuenca del patrón consolidado en un fixture sintético.
+
+La periferia Gemma/CTP no se lista como resultado de este preprint.
 
 Los resultados todavía no demuestran que:
 
@@ -921,7 +916,7 @@ esta corrida. El benchmark sintético sí mide recuerdo ciego, pero utiliza un
 prior controlado con prototipos conocidos. Ambas evidencias deben mantenerse
 separadas.
 
-### 7.10 Ciclo circadiano: un prefill, aprendizaje en sueño, sesgo CTP en vigilia
+### 7.10 Ciclo circadiano: un prefill, aprendizaje en sueño, sesgo CTP en vigilia (fuera del claim)
 
 El 19 de agosto de 2026 se implementó la separación de tiempos descrita en
 §3.5. No sustituye el experimento histórico de §7.2.1: lo corrige como

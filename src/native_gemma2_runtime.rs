@@ -279,6 +279,40 @@ impl Gemma2Session {
     }
 }
 
+/// Idioma forzado del chat. La identidad Dyamon vive aquí, no en el historial
+/// de usuario.
+pub const GEMMA2_FORCED_LANGUAGE: &str = "es";
+pub const GEMMA2_SYSTEM_INSTRUCTION: &str = concat!(
+    "Responde siempre en español. Eres un asistente técnico de ingeniería. ",
+    "Tu nombre interno es Dyamon y no forma parte del historial del usuario; ",
+    "no lo menciones salvo que te lo pregunten. No digas que eres un large ",
+    "language model. Si no hay un resultado del motor, abstente en lugar de ",
+    "inventar."
+);
+
+pub fn gemma2_system_prefix() -> String {
+    let mut prefix = String::from("<start_of_turn>user\n");
+    prefix.push_str(GEMMA2_SYSTEM_INSTRUCTION);
+    prefix.push_str("<end_of_turn>\n<start_of_turn>model\n");
+    prefix.push_str("Entendido. Responderé en español.<end_of_turn>\n");
+    prefix
+}
+
+pub fn render_chat_prompt(history: &[(String, String)], input: &str) -> String {
+    let mut prompt = gemma2_system_prefix();
+    for (user, assistant) in history {
+        prompt.push_str("<start_of_turn>user\n");
+        prompt.push_str(user);
+        prompt.push_str("<end_of_turn>\n<start_of_turn>model\n");
+        prompt.push_str(assistant);
+        prompt.push_str("<end_of_turn>\n");
+    }
+    prompt.push_str("<start_of_turn>user\n");
+    prompt.push_str(input);
+    prompt.push_str("<end_of_turn>\n<start_of_turn>model\n");
+    prompt
+}
+
 /// Construye el siguiente prompt sobre los IDs exactos ya presentes en KV.
 /// Evita `encode(decode(ids))`, que no garantiza recuperar la tokenización
 /// original y puede provocar un prefill completo silencioso.
@@ -311,17 +345,7 @@ pub fn chat_tokens(
     limit: usize,
 ) -> Result<Vec<u32>> {
     for skip in 0..=history.len() {
-        let mut prompt = String::new();
-        for (user, assistant) in &history[skip..] {
-            prompt.push_str("<start_of_turn>user\n");
-            prompt.push_str(user);
-            prompt.push_str("<end_of_turn>\n<start_of_turn>model\n");
-            prompt.push_str(assistant);
-            prompt.push_str("<end_of_turn>\n");
-        }
-        prompt.push_str("<start_of_turn>user\n");
-        prompt.push_str(input);
-        prompt.push_str("<end_of_turn>\n<start_of_turn>model\n");
+        let prompt = render_chat_prompt(&history[skip..], input);
         let mut tokens = vec![tokenizer.bos_id];
         tokens.extend(tokenizer.encode(&prompt)?);
         if tokens.len() <= limit {
@@ -355,6 +379,19 @@ mod tests {
         next.extend(suffix);
         assert!(next.starts_with(&cached));
         assert_eq!(&next[cached.len()..], &suffix);
+    }
+
+    #[test]
+    fn system_prompt_keeps_dyamon_out_of_user_history() {
+        let prompt = render_chat_prompt(
+            &[("hola".to_string(), "buenas".to_string())],
+            "quién eres",
+        );
+        assert!(prompt.contains("Responde siempre en español"));
+        assert!(prompt.contains("Dyamon"));
+        assert!(prompt.contains("<start_of_turn>user\nhola"));
+        assert!(!prompt.contains("<start_of_turn>user\nDyamon"));
+        assert_eq!(GEMMA2_FORCED_LANGUAGE, "es");
     }
 
     #[test]

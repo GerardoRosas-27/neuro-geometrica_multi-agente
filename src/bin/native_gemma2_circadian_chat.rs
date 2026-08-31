@@ -549,7 +549,8 @@ fn print_status(session: &CircadianSession) {
 
 fn print_banner() {
     println!("╔══════════════════════════════════════════════════════════════╗");
-    println!("║  CHAT CIRCADIANO — Gemma adaptativo (día) + CTP (sueño)      ║");
+    println!("║  CHAT CIRCADIANO — demo de ingeniería, no claim del preprint ║");
+    println!("║  Idioma forzado: español. Identidad Dyamon fuera del historial║");
     println!("╚══════════════════════════════════════════════════════════════╝");
 }
 
