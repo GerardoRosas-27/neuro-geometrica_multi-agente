@@ -13,6 +13,7 @@ use std::env;
 use std::fs;
 use std::io::{Read, Seek};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use tokenizers::models::unigram::Unigram;
 use tokenizers::pre_tokenizers::metaspace::{Metaspace, PrependScheme};
 use tokenizers::{AddedToken, Tokenizer};
@@ -21,6 +22,133 @@ const DEFAULT_MAX_CONTEXT: usize = 8_192;
 const DEFAULT_ROPE_FREQUENCY: f32 = 10_000.0;
 const DEFAULT_ATTENTION_SOFTCAP: f64 = 50.0;
 const DEFAULT_FINAL_SOFTCAP: f64 = 30.0;
+
+/// Contadores T1.1. Apagados por defecto: el chat release no paga el hot path.
+/// Actívalos con `GEMMA2_PROFILE=1` o `set_gemma2_profile(true)` (solo el bench).
+static PROFILE_ENABLED: AtomicBool = AtomicBool::new(false);
+static TENSOR_NEW: AtomicU64 = AtomicU64::new(0);
+static HIDDEN_CLONE: AtomicU64 = AtomicU64::new(0);
+static QMATMUL_FORWARD: AtomicU64 = AtomicU64::new(0);
+static SEQ1_FORWARDS: AtomicU64 = AtomicU64::new(0);
+static LAST_SEQ1_TENSOR_NEW: AtomicU64 = AtomicU64::new(0);
+static LAST_SEQ1_HIDDEN_CLONE: AtomicU64 = AtomicU64::new(0);
+static LAST_SEQ1_QMATMUL_FORWARD: AtomicU64 = AtomicU64::new(0);
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Gemma2ProfileCounters {
+    pub tensor_new: u64,
+    pub hidden_clone: u64,
+    pub qmatmul_forward: u64,
+    pub seq1_forwards: u64,
+    pub last_seq1_tensor_new: u64,
+    pub last_seq1_hidden_clone: u64,
+    pub last_seq1_qmatmul_forward: u64,
+}
+
+pub fn gemma2_profile_enabled() -> bool {
+    PROFILE_ENABLED.load(Ordering::Relaxed)
+}
+
+pub fn set_gemma2_profile(enabled: bool) {
+    PROFILE_ENABLED.store(enabled, Ordering::Relaxed);
+    reset_gemma2_profile();
+}
+
+pub fn init_gemma2_profile_from_env() {
+    let enabled = env::var("GEMMA2_PROFILE")
+        .map(|value| {
+            let value = value.trim();
+            value == "1" || value.eq_ignore_ascii_case("true") || value.eq_ignore_ascii_case("yes")
+        })
+        .unwrap_or(false);
+    set_gemma2_profile(enabled);
+}
+
+pub fn reset_gemma2_profile() {
+    TENSOR_NEW.store(0, Ordering::Relaxed);
+    HIDDEN_CLONE.store(0, Ordering::Relaxed);
+    QMATMUL_FORWARD.store(0, Ordering::Relaxed);
+    SEQ1_FORWARDS.store(0, Ordering::Relaxed);
+    LAST_SEQ1_TENSOR_NEW.store(0, Ordering::Relaxed);
+    LAST_SEQ1_HIDDEN_CLONE.store(0, Ordering::Relaxed);
+    LAST_SEQ1_QMATMUL_FORWARD.store(0, Ordering::Relaxed);
+}
+
+pub fn snapshot_gemma2_profile() -> Gemma2ProfileCounters {
+    Gemma2ProfileCounters {
+        tensor_new: TENSOR_NEW.load(Ordering::Relaxed),
+        hidden_clone: HIDDEN_CLONE.load(Ordering::Relaxed),
+        qmatmul_forward: QMATMUL_FORWARD.load(Ordering::Relaxed),
+        seq1_forwards: SEQ1_FORWARDS.load(Ordering::Relaxed),
+        last_seq1_tensor_new: LAST_SEQ1_TENSOR_NEW.load(Ordering::Relaxed),
+        last_seq1_hidden_clone: LAST_SEQ1_HIDDEN_CLONE.load(Ordering::Relaxed),
+        last_seq1_qmatmul_forward: LAST_SEQ1_QMATMUL_FORWARD.load(Ordering::Relaxed),
+    }
+}
+
+#[inline(always)]
+pub fn record_tensor_new() {
+    if PROFILE_ENABLED.load(Ordering::Relaxed) {
+        TENSOR_NEW.fetch_add(1, Ordering::Relaxed);
+    }
+}
+
+#[inline(always)]
+fn record_hidden_clone() {
+    if PROFILE_ENABLED.load(Ordering::Relaxed) {
+        HIDDEN_CLONE.fetch_add(1, Ordering::Relaxed);
+    }
+}
+
+#[inline(always)]
+fn qmatmul_forward(module: &QMatMul, xs: &Tensor) -> Result<Tensor> {
+    if PROFILE_ENABLED.load(Ordering::Relaxed) {
+        QMATMUL_FORWARD.fetch_add(1, Ordering::Relaxed);
+    }
+    module.forward(xs)
+}
+
+struct Seq1ProfileGuard {
+    tensor_new: u64,
+    hidden_clone: u64,
+    qmatmul_forward: u64,
+}
+
+fn begin_seq1_profile(sequence_length: usize) -> Option<Seq1ProfileGuard> {
+    if sequence_length != 1 || !PROFILE_ENABLED.load(Ordering::Relaxed) {
+        return None;
+    }
+    Some(Seq1ProfileGuard {
+        tensor_new: TENSOR_NEW.load(Ordering::Relaxed),
+        hidden_clone: HIDDEN_CLONE.load(Ordering::Relaxed),
+        qmatmul_forward: QMATMUL_FORWARD.load(Ordering::Relaxed),
+    })
+}
+
+fn finish_seq1_profile(guard: Option<Seq1ProfileGuard>) {
+    let Some(guard) = guard else {
+        return;
+    };
+    LAST_SEQ1_TENSOR_NEW.store(
+        TENSOR_NEW
+            .load(Ordering::Relaxed)
+            .saturating_sub(guard.tensor_new),
+        Ordering::Relaxed,
+    );
+    LAST_SEQ1_HIDDEN_CLONE.store(
+        HIDDEN_CLONE
+            .load(Ordering::Relaxed)
+            .saturating_sub(guard.hidden_clone),
+        Ordering::Relaxed,
+    );
+    LAST_SEQ1_QMATMUL_FORWARD.store(
+        QMATMUL_FORWARD
+            .load(Ordering::Relaxed)
+            .saturating_sub(guard.qmatmul_forward),
+        Ordering::Relaxed,
+    );
+    SEQ1_FORWARDS.fetch_add(1, Ordering::Relaxed);
+}
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct LayerExecutionMask {
@@ -126,9 +254,9 @@ struct Mlp {
 
 impl Mlp {
     fn forward(&self, xs: &Tensor) -> Result<Tensor> {
-        let gate = self.gate.forward(xs)?.gelu()?;
-        let up = self.up.forward(xs)?;
-        self.down.forward(&(gate * up)?)
+        let gate = qmatmul_forward(&self.gate, xs)?.gelu()?;
+        let up = qmatmul_forward(&self.up, xs)?;
+        qmatmul_forward(&self.down, &(gate * up)?)
     }
 }
 
@@ -227,19 +355,13 @@ impl Layer {
         attention_mask: Option<&Tensor>,
     ) -> Result<Tensor> {
         let (batch, sequence_length, _) = xs.dims3()?;
-        let query = self
-            .query
-            .forward(xs)?
+        let query = qmatmul_forward(&self.query, xs)?
             .reshape((batch, sequence_length, self.heads, self.head_dim))?
             .transpose(1, 2)?;
-        let key = self
-            .key
-            .forward(xs)?
+        let key = qmatmul_forward(&self.key, xs)?
             .reshape((batch, sequence_length, self.kv_heads, self.head_dim))?
             .transpose(1, 2)?;
-        let value = self
-            .value
-            .forward(xs)?
+        let value = qmatmul_forward(&self.value, xs)?
             .reshape((batch, sequence_length, self.kv_heads, self.head_dim))?
             .transpose(1, 2)?;
         let (query, key) = self.rotary.apply(&query, &key, position)?;
@@ -257,7 +379,7 @@ impl Layer {
         )?
         .transpose(1, 2)?
         .reshape((batch, sequence_length, self.heads * self.head_dim))?;
-        self.output.forward(&attended)
+        qmatmul_forward(&self.output, &attended)
     }
 }
 
@@ -392,6 +514,7 @@ impl QuantizedGemma2 {
         capture_sequence_hidden: bool,
     ) -> Result<Gemma2ForwardOutput> {
         let (_, sequence_length) = token_ids.dims2()?;
+        let seq1_profile = begin_seq1_profile(sequence_length);
         if position + sequence_length > self.max_context {
             candle_core::bail!(
                 "contexto Gemma 2 excedido: {} > {}",
@@ -474,6 +597,7 @@ impl QuantizedGemma2 {
                 }
                 continue;
             }
+            record_hidden_clone();
             let layer_input = hidden.clone();
             let input_rms = capture_trace.then(|| tensor_rms(&hidden)).transpose()?;
             let residual = &hidden;
@@ -506,13 +630,15 @@ impl QuantizedGemma2 {
             }
         }
         let sequence_hidden = if capture_sequence_hidden {
+            record_hidden_clone();
             Some(hidden.clone())
         } else {
             None
         };
         let last = hidden.i((.., sequence_length - 1, ..))?;
-        let logits = self.output.forward(&self.norm.forward(&last)?)?;
+        let logits = qmatmul_forward(&self.output, &self.norm.forward(&last)?)?;
         let logits = (&logits / self.final_softcap)?.tanh()? * self.final_softcap;
+        finish_seq1_profile(seq1_profile);
         Ok(Gemma2ForwardOutput {
             logits: logits?,
             trace,
@@ -611,7 +737,7 @@ impl QuantizedGemma2 {
         } else {
             hidden.clone()
         };
-        let logits = self.output.forward(&self.norm.forward(&hidden)?)?;
+        let logits = qmatmul_forward(&self.output, &self.norm.forward(&hidden)?)?;
         (&logits / self.final_softcap)?.tanh()? * self.final_softcap
     }
 }
@@ -1112,5 +1238,27 @@ mod tests {
             (0..67).map(|index| index % 3 != 0).collect::<Vec<_>>(),
         );
         assert_eq!(LayerExecutionMask::decode(&mask.encode()), Some(mask));
+    }
+
+    #[test]
+    fn gemma2_profile_is_off_by_default_and_counts_when_enabled() {
+        set_gemma2_profile(false);
+        assert!(!gemma2_profile_enabled());
+        let before = snapshot_gemma2_profile();
+        record_tensor_new();
+        record_hidden_clone();
+        assert_eq!(snapshot_gemma2_profile(), before, "apagado no incrementa");
+        set_gemma2_profile(true);
+        assert!(gemma2_profile_enabled());
+        record_tensor_new();
+        record_hidden_clone();
+        let snap = snapshot_gemma2_profile();
+        assert_eq!(snap.tensor_new, 1);
+        assert_eq!(snap.hidden_clone, 1);
+        assert_eq!(snap.qmatmul_forward, 0);
+        set_gemma2_profile(false);
+        record_tensor_new();
+        assert_eq!(snapshot_gemma2_profile().tensor_new, 0);
+        assert!(!gemma2_profile_enabled());
     }
 }

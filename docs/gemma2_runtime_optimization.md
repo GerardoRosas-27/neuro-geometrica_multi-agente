@@ -313,3 +313,61 @@ rompen top-1 salvo la 17. El skip actual de 3 capas a la vez (KL media 0,72
 en V8) no implica que una capa suelta sea cara: `delta_rms` no rankea como
 KL (p. ej. capa 23, `delta_rms` 4,16 y KL 0,050; capa 5, `delta_rms` 1,38 y
 KL 0,242). T2.2 puede usar esta cola. Este PR no cambia la máscara.
+
+### T1.1 — Perfil del decode token a token (31 ago 2026 ~21:21 CT)
+
+Camino K. Solo medición: no se reescriben kernels, máscaras, skip ni CTP.
+Windows CPU, Gemma 2 2B GGUF, release, `target-cpu=native`. Comando:
+
+```powershell
+$env:GEMMA2_PROFILE="1"
+$env:GEMMA2_BENCH_PROMPT_COUNT="1"
+$env:GEMMA2_BENCH_REPS="1"
+cargo run --release --bin native_gemma2_circadian_chat -- --bench-routes --max-tokens 64
+```
+
+Un prompt (`BENCH_PROMPTS[0]`, «Explica en una frase qué es un residual.»),
+1 repetición. El bench **no** mezcla CTP (`on_logits` es no-op). Los
+contadores `Tensor::new` / `hidden.clone` / `QMatMul::forward` viven detrás
+de `GEMMA2_PROFILE=1` (apagados por defecto; el chat release no los paga).
+`input_alloc_s` cronometra `Tensor::new(&[token])` + `unsqueeze` por paso.
+
+CSV de esa corrida:
+
+```
+backend,prompt_id,executed_layers,layer_count,kl_vs_dense,decode_tok_s,model_decode_tok_s,ttft_s,lrc_hit,fallback,generated_tokens,model_frac,logits_s,text_s,input_alloc_s,tensor_new,hidden_clone,qmatmul_fwd,seq1_fwds,last_seq1_tensor_new,last_seq1_hidden_clone,last_seq1_qmatmul
+native_dense,0,26,26,0.000000,6.3957,7.0113,1.7549,0,0,24,0.9122,0.328837,0.000458,0.000124,24,624,4392,24,0,26,183
+native_sparse,0,23,26,0.591629,6.9995,7.7170,1.8187,0,1,64,0.9070,0.848551,0.001000,0.000313,64,1472,10368,64,0,23,162
+ollama,0,26,26,0.000000,13.0065,13.0065,0.5337,0,0,28,1.0000,0.000000,0.000000,0.000000,0,0,0,0,0,0,0
+```
+
+Fracciones del decode nativo (denso, 24 tokens por EOS; sparse, 64):
+
+| backend | modelo / decode | sampler (logits, sin CTP) | UTF-8 | Tensor::new+unsqueeze |
+|---|---:|---:|---:|---:|
+| native_dense | 91,22 % | 0,328837 s (~8,8 %) | 0,000458 s (~0,01 %) | 0,000124 s (~0,003 %) |
+| native_sparse | 90,70 % | 0,848551 s (~9,3 %) | 0,001000 s (~0,01 %) | 0,000313 s (~0,003 %) |
+
+Dentro de **un** `forward` seq=1 (columna `last_seq1_*`):
+
+| backend | Tensor::new | hidden.clone | QMatMul::forward |
+|---|---:|---:|---:|
+| dense 26/26 | 0 | 26 | 183 |
+| sparse 23/26 | 0 | 23 | 162 |
+
+`Tensor::new` en el decode está **fuera** de `forward` (el `Tensor::new(&[token])`
+del bucle). Por eso `last_seq1_tensor_new=0` y el total es 1 por token generado
+(24 / 64). `QMatMul::forward` por paso = capas×(4 attn + 3 MLP) + 1 lm_head
+(26×7+1=183; 23×7+1=162). `hidden.clone` = una vez por capa ejecutada.
+
+**H1 verdadera:** `model_decode` ≥ 85 % del decode (91,22 % denso, 90,70 %
+sparse). El hueco vs Ollama (13,01 tok/s eval) es de kernels, no de sampler
+ni UTF-8.
+
+**H2 falsa:** `Tensor::new(&[token])` + `unsqueeze` por paso no es visible
+(>5 %). Son ~0,003 % del decode (0,000124 s denso / 0,000313 s sparse).
+
+**H3 no se midió aquí.** El 8,8–9,3 % de logits es `LogitsProcessor::sample`
+del bench, sin CTP. No se «arregla» CTP para ganar a Ollama.
+
+Este PR no cambia máscaras, skip, early-exit, cuenca, MKL ni llama.cpp.

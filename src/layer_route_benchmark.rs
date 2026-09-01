@@ -9,8 +9,8 @@ use crate::layer_route_cache::{
     fingerprint_wake, is_sparse_mask, logits_kl, top1_agree, LayerRouteCache, LayerRouteCacheConfig,
 };
 use crate::native_gemma2::{
-    resolve_gemma2_device, resolve_gemma2_model_path, Gemma2Tokenizer, LayerExecutionMask,
-    QuantizedGemma2,
+    gemma2_profile_enabled, init_gemma2_profile_from_env, resolve_gemma2_device,
+    resolve_gemma2_model_path, Gemma2Tokenizer, LayerExecutionMask, QuantizedGemma2,
 };
 use crate::native_gemma2_runtime::{Gemma2GenerationConfig, Gemma2Session};
 use candle_core::quantized::gguf_file;
@@ -48,8 +48,14 @@ impl Default for RouteSpeedConfig {
     fn default() -> Self {
         Self {
             generated_tokens: DEFAULT_GENERATED,
-            prompt_count: BENCH_PROMPTS.len(),
-            repetitions: 2,
+            prompt_count: std::env::var("GEMMA2_BENCH_PROMPT_COUNT")
+                .ok()
+                .and_then(|value| value.parse().ok())
+                .unwrap_or(BENCH_PROMPTS.len()),
+            repetitions: std::env::var("GEMMA2_BENCH_REPS")
+                .ok()
+                .and_then(|value| value.parse().ok())
+                .unwrap_or(2),
             ollama_host: std::env::var("OLLAMA_HOST")
                 .unwrap_or_else(|_| DEFAULT_OLLAMA_HOST.into()),
             ollama_port: std::env::var("OLLAMA_PORT")
@@ -79,6 +85,19 @@ pub struct RouteSpeedRow {
     pub lrc_hit: bool,
     pub fallback: bool,
     pub generated_tokens: usize,
+    /// model_decode_seconds / decode_seconds. 1.0 en la fila ollama.
+    pub model_frac: f64,
+    pub logits_s: f64,
+    pub text_s: f64,
+    /// Tensor::new(&[token]) + unsqueeze por paso.
+    pub input_alloc_s: f64,
+    pub tensor_new: u64,
+    pub hidden_clone: u64,
+    pub qmatmul_fwd: u64,
+    pub seq1_fwds: u64,
+    pub last_seq1_tensor_new: u64,
+    pub last_seq1_hidden_clone: u64,
+    pub last_seq1_qmatmul: u64,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -98,7 +117,7 @@ pub struct RouteSpeedReport {
 
 impl RouteSpeedReport {
     pub fn csv_header() -> &'static str {
-        "backend,prompt_id,executed_layers,layer_count,kl_vs_dense,decode_tok_s,model_decode_tok_s,ttft_s,lrc_hit,fallback,generated_tokens"
+        "backend,prompt_id,executed_layers,layer_count,kl_vs_dense,decode_tok_s,model_decode_tok_s,ttft_s,lrc_hit,fallback,generated_tokens,model_frac,logits_s,text_s,input_alloc_s,tensor_new,hidden_clone,qmatmul_fwd,seq1_fwds,last_seq1_tensor_new,last_seq1_hidden_clone,last_seq1_qmatmul"
     }
 
     pub fn to_csv(&self) -> String {
@@ -106,7 +125,7 @@ impl RouteSpeedReport {
         out.push('\n');
         for row in &self.rows {
             out.push_str(&format!(
-                "{},{},{},{},{:.6},{:.4},{:.4},{:.4},{},{},{}\n",
+                "{},{},{},{},{:.6},{:.4},{:.4},{:.4},{},{},{},{:.4},{:.6},{:.6},{:.6},{},{},{},{},{},{},{}\n",
                 row.backend,
                 row.prompt_id,
                 row.executed_layers,
@@ -117,7 +136,18 @@ impl RouteSpeedReport {
                 row.ttft_seconds,
                 u8::from(row.lrc_hit),
                 u8::from(row.fallback),
-                row.generated_tokens
+                row.generated_tokens,
+                row.model_frac,
+                row.logits_s,
+                row.text_s,
+                row.input_alloc_s,
+                row.tensor_new,
+                row.hidden_clone,
+                row.qmatmul_fwd,
+                row.seq1_fwds,
+                row.last_seq1_tensor_new,
+                row.last_seq1_hidden_clone,
+                row.last_seq1_qmatmul
             ));
         }
         out
@@ -346,6 +376,10 @@ pub fn run_route_speed_benchmark_with_model(
         top_p: 1.0,
         seed: 0x4745_4D4D_4132,
     };
+    init_gemma2_profile_from_env();
+    if gemma2_profile_enabled() {
+        eprintln!("T1.1 GEMMA2_PROFILE=1: contadores Tensor::new / hidden.clone / QMatMul::forward activos");
+    }
     let mut rows = Vec::new();
     let prompts = &BENCH_PROMPTS[..config.prompt_count.clamp(1, BENCH_PROMPTS.len())];
     for (prompt_id, prompt) in prompts.iter().copied().enumerate() {
@@ -403,6 +437,17 @@ pub fn run_route_speed_benchmark_with_model(
             lrc_hit: false,
             fallback: false,
             generated_tokens: dense_metrics.generated_tokens,
+            model_frac: dense_metrics.model_frac,
+            logits_s: dense_metrics.logits_s,
+            text_s: dense_metrics.text_s,
+            input_alloc_s: dense_metrics.input_alloc_s,
+            tensor_new: dense_metrics.tensor_new,
+            hidden_clone: dense_metrics.hidden_clone,
+            qmatmul_fwd: dense_metrics.qmatmul_fwd,
+            seq1_fwds: dense_metrics.seq1_fwds,
+            last_seq1_tensor_new: dense_metrics.last_seq1_tensor_new,
+            last_seq1_hidden_clone: dense_metrics.last_seq1_hidden_clone,
+            last_seq1_qmatmul: dense_metrics.last_seq1_qmatmul,
         });
 
         let sparse_metrics = timed_generate_median(
@@ -425,6 +470,17 @@ pub fn run_route_speed_benchmark_with_model(
             lrc_hit,
             fallback,
             generated_tokens: sparse_metrics.generated_tokens,
+            model_frac: sparse_metrics.model_frac,
+            logits_s: sparse_metrics.logits_s,
+            text_s: sparse_metrics.text_s,
+            input_alloc_s: sparse_metrics.input_alloc_s,
+            tensor_new: sparse_metrics.tensor_new,
+            hidden_clone: sparse_metrics.hidden_clone,
+            qmatmul_fwd: sparse_metrics.qmatmul_fwd,
+            seq1_fwds: sparse_metrics.seq1_fwds,
+            last_seq1_tensor_new: sparse_metrics.last_seq1_tensor_new,
+            last_seq1_hidden_clone: sparse_metrics.last_seq1_hidden_clone,
+            last_seq1_qmatmul: sparse_metrics.last_seq1_qmatmul,
         });
 
         if config.compare_ollama {
@@ -443,6 +499,17 @@ pub fn run_route_speed_benchmark_with_model(
                     lrc_hit: false,
                     fallback: false,
                     generated_tokens: sample.generated_tokens,
+                    model_frac: 1.0,
+                    logits_s: 0.0,
+                    text_s: 0.0,
+                    input_alloc_s: 0.0,
+                    tensor_new: 0,
+                    hidden_clone: 0,
+                    qmatmul_fwd: 0,
+                    seq1_fwds: 0,
+                    last_seq1_tensor_new: 0,
+                    last_seq1_hidden_clone: 0,
+                    last_seq1_qmatmul: 0,
                 }),
                 Err(error) => eprintln!("ollama omitido prompt={prompt_id}: {error}"),
             }
@@ -456,6 +523,17 @@ struct TimedSample {
     model_decode_tok_s: f64,
     ttft_seconds: f64,
     generated_tokens: usize,
+    model_frac: f64,
+    logits_s: f64,
+    text_s: f64,
+    input_alloc_s: f64,
+    tensor_new: u64,
+    hidden_clone: u64,
+    qmatmul_fwd: u64,
+    seq1_fwds: u64,
+    last_seq1_tensor_new: u64,
+    last_seq1_hidden_clone: u64,
+    last_seq1_qmatmul: u64,
 }
 
 fn median_f64(values: &[f64]) -> f64 {
@@ -480,12 +558,41 @@ fn timed_generate(
     session.reset(model);
     let generation = session.generate(model, tokenizer, tokens, mask, *config, |_| {})?;
     let generated = generation.metrics.generated_tokens;
+    let profile = generation.metrics.profile;
+    if gemma2_profile_enabled() {
+        eprintln!(
+            "T1.1 decode gen={} model={:.1}% logits={:.1}% utf8={:.1}% alloc={:.1}% seq1 tensor_new={} hidden_clone={} qmatmul={} (n_fwd={}) totals tensor_new={} hidden_clone={} qmatmul={}",
+            generated,
+            100.0 * generation.metrics.model_decode_fraction(),
+            100.0 * generation.metrics.logits_processing_fraction(),
+            100.0 * generation.metrics.text_decode_fraction(),
+            100.0 * generation.metrics.input_alloc_fraction(),
+            profile.last_seq1_tensor_new,
+            profile.last_seq1_hidden_clone,
+            profile.last_seq1_qmatmul_forward,
+            profile.seq1_forwards,
+            profile.tensor_new,
+            profile.hidden_clone,
+            profile.qmatmul_forward
+        );
+    }
     Ok(TimedSample {
         decode_tok_s: generation.metrics.decode_tokens_per_second(),
         model_decode_tok_s: generated as f64
             / generation.metrics.model_decode_seconds.max(f64::EPSILON),
         ttft_seconds: generation.metrics.time_to_first_token_seconds,
         generated_tokens: generated,
+        model_frac: generation.metrics.model_decode_fraction(),
+        logits_s: generation.metrics.logits_processing_seconds,
+        text_s: generation.metrics.text_decode_seconds,
+        input_alloc_s: generation.metrics.input_alloc_seconds,
+        tensor_new: profile.tensor_new,
+        hidden_clone: profile.hidden_clone,
+        qmatmul_fwd: profile.qmatmul_forward,
+        seq1_fwds: profile.seq1_forwards,
+        last_seq1_tensor_new: profile.last_seq1_tensor_new,
+        last_seq1_hidden_clone: profile.last_seq1_hidden_clone,
+        last_seq1_qmatmul: profile.last_seq1_qmatmul_forward,
     })
 }
 
@@ -501,19 +608,39 @@ fn timed_generate_median(
     let mut decode = Vec::with_capacity(reps);
     let mut model_decode = Vec::with_capacity(reps);
     let mut ttft = Vec::with_capacity(reps);
-    let mut generated = 0usize;
+    let mut model_frac = Vec::with_capacity(reps);
+    let mut logits_s = Vec::with_capacity(reps);
+    let mut text_s = Vec::with_capacity(reps);
+    let mut input_alloc_s = Vec::with_capacity(reps);
+    let mut last = None;
     for _ in 0..reps {
         let sample = timed_generate(model, tokenizer, tokens, mask, config)?;
         decode.push(sample.decode_tok_s);
         model_decode.push(sample.model_decode_tok_s);
         ttft.push(sample.ttft_seconds);
-        generated = sample.generated_tokens;
+        model_frac.push(sample.model_frac);
+        logits_s.push(sample.logits_s);
+        text_s.push(sample.text_s);
+        input_alloc_s.push(sample.input_alloc_s);
+        last = Some(sample);
     }
+    let last = last.expect("repetitions >= 1");
     Ok(TimedSample {
         decode_tok_s: median_f64(&decode),
         model_decode_tok_s: median_f64(&model_decode),
         ttft_seconds: median_f64(&ttft),
-        generated_tokens: generated,
+        generated_tokens: last.generated_tokens,
+        model_frac: median_f64(&model_frac),
+        logits_s: median_f64(&logits_s),
+        text_s: median_f64(&text_s),
+        input_alloc_s: median_f64(&input_alloc_s),
+        tensor_new: last.tensor_new,
+        hidden_clone: last.hidden_clone,
+        qmatmul_fwd: last.qmatmul_fwd,
+        seq1_fwds: last.seq1_fwds,
+        last_seq1_tensor_new: last.last_seq1_tensor_new,
+        last_seq1_hidden_clone: last.last_seq1_hidden_clone,
+        last_seq1_qmatmul: last.last_seq1_qmatmul,
     })
 }
 
@@ -721,6 +848,13 @@ mod tests {
             "lrc_hit",
             "fallback",
             "generated_tokens",
+            "model_frac",
+            "logits_s",
+            "text_s",
+            "input_alloc_s",
+            "tensor_new",
+            "hidden_clone",
+            "qmatmul_fwd",
         ] {
             assert!(header.contains(column), "{header}");
         }
@@ -741,6 +875,17 @@ mod tests {
                 lrc_hit: false,
                 fallback: false,
                 generated_tokens: 16,
+                model_frac: 0.91,
+                logits_s: 0.05,
+                text_s: 0.01,
+                input_alloc_s: 0.001,
+                tensor_new: 0,
+                hidden_clone: 0,
+                qmatmul_fwd: 0,
+                seq1_fwds: 0,
+                last_seq1_tensor_new: 0,
+                last_seq1_hidden_clone: 0,
+                last_seq1_qmatmul: 0,
             },
             RouteSpeedRow {
                 backend: "native_sparse".into(),
@@ -754,6 +899,17 @@ mod tests {
                 lrc_hit: false,
                 fallback: false,
                 generated_tokens: 16,
+                model_frac: 0.91,
+                logits_s: 0.05,
+                text_s: 0.01,
+                input_alloc_s: 0.001,
+                tensor_new: 0,
+                hidden_clone: 0,
+                qmatmul_fwd: 0,
+                seq1_fwds: 0,
+                last_seq1_tensor_new: 0,
+                last_seq1_hidden_clone: 0,
+                last_seq1_qmatmul: 0,
             },
             RouteSpeedRow {
                 backend: "native_sparse".into(),
@@ -767,6 +923,17 @@ mod tests {
                 lrc_hit: true,
                 fallback: true,
                 generated_tokens: 16,
+                model_frac: 0.91,
+                logits_s: 0.05,
+                text_s: 0.01,
+                input_alloc_s: 0.001,
+                tensor_new: 0,
+                hidden_clone: 0,
+                qmatmul_fwd: 0,
+                seq1_fwds: 0,
+                last_seq1_tensor_new: 0,
+                last_seq1_hidden_clone: 0,
+                last_seq1_qmatmul: 0,
             },
             RouteSpeedRow {
                 backend: "ollama".into(),
@@ -780,6 +947,17 @@ mod tests {
                 lrc_hit: false,
                 fallback: false,
                 generated_tokens: 16,
+                model_frac: 0.91,
+                logits_s: 0.05,
+                text_s: 0.01,
+                input_alloc_s: 0.001,
+                tensor_new: 0,
+                hidden_clone: 0,
+                qmatmul_fwd: 0,
+                seq1_fwds: 0,
+                last_seq1_tensor_new: 0,
+                last_seq1_hidden_clone: 0,
+                last_seq1_qmatmul: 0,
             },
         ];
         let report = aggregate_rows(&rows);
