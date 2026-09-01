@@ -463,3 +463,71 @@ ese comando como camino de producto.
 
 No se introduce `llama-cpp-sys`. Native denso 7,61 / Ollama 13,12 ≈ 0,58×;
 sigue ≥ 0,5× Ollama, T1.5 no entra en este commit.
+
+### T2.2 — Máscara greedy por presupuesto de KL (31 ago 2026 ~22:12 CT)
+
+Camino S. Nueva `kl_budget_mask`: apaga en orden de KL incremental
+(ranking sintético o T2.1) mientras la suma cabe en
+`lrc_max_kl_promote = 0,15`, quedan ≥ 8 capas y no hay dos globales
+consecutivos (V5). No se sube `max_skip_fraction` (sigue 0,15); el
+limitador es el presupuesto de KL. `conservative_candidate_mask`
+(delta_rms) no es el candidato de producto.
+
+El LRC / sueño usa `kl_budget_mask` (cola T2.1) como objetivo
+progresivo; promociona solo si KL medida ≤ 0,15. El sparse de V8 usa
+`kl_budget_mask_from_trace`.
+
+Windows CPU, Gemma 2 2B GGUF, release, `rayon_threads=4`.
+`max_skip_fraction` no se tocó.
+
+**Intento A** — 5 capas más baratas por T2.1 (suma individual 0,130):
+`skipped=[7, 8, 12, 20, 21]` 21/26. Env residual T1.1
+`GEMMA2_BENCH_PROMPT_COUNT=1` `REPS=1`. Un prompt, 64 tokens.
+
+```
+backend,prompt_id,executed_layers,layer_count,kl_vs_dense,decode_tok_s,model_decode_tok_s,ttft_s,lrc_hit,fallback,generated_tokens,model_frac,logits_s,text_s,input_alloc_s,tensor_new,hidden_clone,qmatmul_fwd,seq1_fwds,last_seq1_tensor_new,last_seq1_hidden_clone,last_seq1_qmatmul
+native_dense,0,26,26,0.000000,6.4879,7.0883,1.7351,0,0,24,0.9153,0.312715,0.000430,0.000119,0,0,0,0,0,0,0
+native_sparse,0,21,26,0.234202,7.5140,8.3474,1.4128,0,1,64,0.9002,0.848677,0.001077,0.000328,0,0,0,0,0,0,0
+ollama,0,26,26,0.000000,16.9600,16.9600,0.4340,0,0,28,1.0000,0.000000,0.000000,0.000000,0,0,0,0,0,0,0
+```
+
+`layers=21/26 kl=0.2342 fallback=1`. Las KL de una capa **no** se suman:
+estimación 0,13, combinada 0,234 > 0,15. Skip con KL alta. No se promociona.
+
+**Intento B** — solo la capa más barata (7), 25/26. Canónico:
+`GEMMA2_BENCH_PROMPT_COUNT=3` `REPS=2` `--max-tokens 64`.
+
+```
+backend,prompt_id,executed_layers,layer_count,kl_vs_dense,decode_tok_s,model_decode_tok_s,ttft_s,lrc_hit,fallback,generated_tokens,model_frac,logits_s,text_s,input_alloc_s,tensor_new,hidden_clone,qmatmul_fwd,seq1_fwds,last_seq1_tensor_new,last_seq1_hidden_clone,last_seq1_qmatmul
+native_dense,0,26,26,0.000000,6.5446,7.2048,1.8360,0,0,24,0.9084,0.335261,0.000432,0.000117,0,0,0,0,0,0,0
+native_sparse,0,25,26,0.018273,6.8644,7.5267,1.6504,0,0,64,0.9120,0.819233,0.001044,0.000307,0,0,0,0,0,0,0
+ollama,0,26,26,0.000000,14.7423,14.7423,0.2979,0,0,28,1.0000,0.000000,0.000000,0.000000,0,0,0,0,0,0,0
+native_dense,1,26,26,0.000000,6.6019,7.2692,2.1885,0,0,27,0.9082,0.374839,0.000444,0.000137,0,0,0,0,0,0,0
+native_sparse,1,25,26,0.200145,6.9849,7.6518,2.1466,1,1,64,0.9128,0.797022,0.001054,0.000340,0,0,0,0,0,0,0
+ollama,1,26,26,0.000000,14.4300,14.4300,0.1929,0,0,35,1.0000,0.000000,0.000000,0.000000,0,0,0,0,0,0,0
+native_dense,2,26,26,0.000000,6.8945,7.6054,1.9078,0,0,14,0.9065,0.189496,0.000219,0.000066,0,0,0,0,0,0,0
+native_sparse,2,25,26,0.424085,6.9193,7.6062,1.8335,0,1,64,0.9097,0.833861,0.001016,0.000332,0,0,0,0,0,0,0
+ollama,2,26,26,0.000000,14.4164,14.4164,0.2957,0,0,45,1.0000,0.000000,0.000000,0.000000,0,0,0,0,0,0,0
+```
+
+| prompt | capas | KL vs denso | LRC hit | fallback |
+|---|---:|---:|---:|---:|
+| 0 (calibración T2.1) | 25/26 | 0,018273 | 0 | 0 |
+| 1 | 25/26 | 0,200145 | 1 | 1 |
+| 2 | 25/26 | 0,424085 | 0 | 1 |
+
+`layers=25.0/26 kl=0.2142 lrc_hit=0.33 fallback=0.67`. La capa 7 es barata
+**solo** en el prompt 0 (coincide con T2.1). En el set V8 media 0,214 > 0,15.
+Nunca hubo KL alta con `fallback=0`. Skip estático de una capa no generaliza.
+
+**Veredicto:** el candidato de producto (`kl_budget_mask_from_trace` /
+sparse V8) es **26/26**. Gate: `fallback_rate = 1` y máscara = 26/26
+(honesto). Camino S de middle-skip estático no cabe en el presupuesto del
+set; T2.3 (early-exit) o T2.4 (calibración por prompt en sueño) pueden
+reabrir. No se cita tok/s de 8 tokens. No se inventa CSV 26/26: la máquina
+Windows se desconectó durante esa corrida canónica; los números de arriba
+son los medidos.
+
+Tests sin GGUF: ranking sintético apaga baratas primero, para antes de
+0,15, no dos globales consecutivos, `executed ≥ 8`; ranking vacío / KL
+alta → todo encendido. `cargo test --lib adaptive_gemma2` 29 ok.

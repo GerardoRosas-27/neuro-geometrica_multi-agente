@@ -1,10 +1,10 @@
 //! Benchmark V8: capas, KL, tok/s sparse vs 26/26, hit LRC, fallback,
 //! y comparación opcional con Ollama (`gemma2:2b` por defecto).
 //!
-//! T2.1: ablation KL por capa (`run_layer_kl_ablation`). Solo mide; no cambia
-//! `conservative_candidate_mask`.
+//! T2.1: ablation KL por capa (`run_layer_kl_ablation`).
+//! T2.2: el sparse de V8 usa `kl_budget_mask` (ranking KL), no `delta_rms`.
 
-use crate::adaptive_gemma2::{conservative_candidate_mask, AdaptiveGemma2Config};
+use crate::adaptive_gemma2::{kl_budget_mask_from_trace, AdaptiveGemma2Config};
 use crate::layer_route_cache::{
     fingerprint_wake, is_sparse_mask, logits_kl, top1_agree, LayerRouteCache, LayerRouteCacheConfig,
 };
@@ -400,7 +400,17 @@ pub fn run_route_speed_benchmark_with_model(
             .to_vec1::<f32>()
             .unwrap_or_default();
         let sparse_mask =
-            conservative_candidate_mask(&dense_prefill.trace, &AdaptiveGemma2Config::default());
+            kl_budget_mask_from_trace(&dense_prefill.trace, &AdaptiveGemma2Config::default());
+        if prompt_id == 0 {
+            let skipped: Vec<usize> = (0..sparse_mask.layer_count())
+                .filter(|layer| !sparse_mask.executes(*layer))
+                .collect();
+            eprintln!(
+                "T2.2 kl_budget_mask skipped={skipped:?} executed={}/{}",
+                sparse_mask.executed_count(),
+                sparse_mask.layer_count()
+            );
+        }
         model.clear_kv_cache();
         let sparse_prefill =
             model.forward_with_mask(&input, 0, Some(&sparse_mask), false, false)?;
@@ -1010,7 +1020,19 @@ mod tests {
         eprintln!("{}", report.to_csv());
         eprintln!("{}", report.summary());
         assert_eq!(report.layer_count, 26);
-        assert!(report.mean_executed_layers < 26.0, "{}", report.summary());
+        let skip_ok = report.mean_kl <= 0.15 && report.mean_executed_layers < 26.0;
+        let honest_refuse = report.fallback_rate >= 1.0
+            && (report.mean_executed_layers - report.layer_count as f32).abs() < f32::EPSILON;
+        assert!(
+            skip_ok || honest_refuse,
+            "T2.2: skip con KL ok o 26/26 con fallback=1; no skip con KL alta: {}",
+            report.summary()
+        );
+        assert!(
+            report.mean_kl <= 0.15 || report.fallback_rate >= 1.0,
+            "nunca KL alta con fallback=0: {}",
+            report.summary()
+        );
         assert!(report.mean_kl.is_finite());
         assert!(report.native_dense_mean_tok_s > 0.0);
         assert!(report.native_sparse_mean_tok_s > 0.0);

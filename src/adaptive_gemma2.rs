@@ -553,7 +553,7 @@ impl AdaptiveThermoMemory {
     }
 
     pub fn candidate_mask(&self, trace: &Gemma2ForwardTrace) -> LayerExecutionMask {
-        conservative_candidate_mask(trace, &self.config)
+        kl_budget_mask_from_trace(trace, &self.config)
     }
 
     pub fn progressive_candidate_masks(
@@ -771,11 +771,24 @@ impl AdaptiveThermoMemory {
         let context = self.context_fingerprint(prompt_tokens);
         let activations = self.activation_fingerprint(&context, &full.trace);
         let mut best = None::<(LayerExecutionMask, f32, f32, f32)>;
-        for candidate in self
-            .progressive_candidate_masks(&full.trace)
-            .into_iter()
-            .take(self.config.max_candidate_prefills.max(1))
-        {
+        let mut candidates = Vec::new();
+        let primary = self.candidate_mask(&full.trace);
+        if is_sparse_mask(&primary) {
+            candidates.push(primary);
+        }
+        let limit = self.config.max_candidate_prefills.max(1);
+        if candidates.len() < limit {
+            for mask in self.progressive_candidate_masks(&full.trace) {
+                if candidates.len() >= limit {
+                    break;
+                }
+                if candidates.iter().any(|existing| existing == &mask) {
+                    continue;
+                }
+                candidates.push(mask);
+            }
+        }
+        for candidate in candidates {
             model.clear_kv_cache();
             let sparse = model
                 .forward_with_mask(&prompt, 0, Some(&candidate), false, false)
@@ -1053,6 +1066,106 @@ pub fn choose_sleep_mask(
     }
 }
 
+/// Ranking T2.1: KL al apagar esa capa sola, orden ascendente.
+/// Fuente: `docs/v8_layer_kl_ablation.csv`. No usar `delta_rms`.
+pub const GEMMA2_T21_LAYER_KL: &[(usize, f32)] = &[
+    (7, 0.018273),
+    (21, 0.021460),
+    (8, 0.023733),
+    (12, 0.031118),
+    (20, 0.035451),
+    (15, 0.036453),
+    (9, 0.043925),
+    (11, 0.044089),
+    (6, 0.045520),
+    (23, 0.049675),
+    (14, 0.051977),
+    (19, 0.063634),
+    (10, 0.064504),
+    (18, 0.070332),
+    (16, 0.079036),
+    (1, 0.082673),
+    (13, 0.087647),
+    (22, 0.091118),
+    (24, 0.145864),
+    (17, 0.161124),
+    (3, 0.228592),
+    (5, 0.241503),
+    (4, 0.261560),
+    (2, 0.479236),
+];
+
+fn sliding_windows_from_trace(trace: &Gemma2ForwardTrace) -> Vec<bool> {
+    let layer_count = trace.layers.len();
+    let mut sliding = vec![false; layer_count];
+    for layer in &trace.layers {
+        if layer.layer < layer_count {
+            sliding[layer.layer] = layer.sliding_window;
+        }
+    }
+    sliding
+}
+
+/// Apaga capas en orden de KL incremental mientras la KL acumulada cabe
+/// en el presupuesto (`lrc_max_kl_promote`, 0,15), quedan >= 8 capas
+/// ejecutadas y no hay dos globales consecutivos apagados (invariante V5).
+/// El presupuesto de KL es el limitador, no `max_skip_fraction`.
+pub fn kl_budget_mask(
+    layer_count: usize,
+    sliding: &[bool],
+    ranked_kl: &[(usize, f32)],
+    config: &AdaptiveGemma2Config,
+) -> LayerExecutionMask {
+    if layer_count < 3 || ranked_kl.is_empty() {
+        return LayerExecutionMask::all(layer_count);
+    }
+    let minimum = config.minimum_executed_layers.min(layer_count);
+    let budget = config.lrc_max_kl_promote;
+    let mut enabled = vec![true; layer_count];
+    let mut acc_kl = 0.0f32;
+    let mut executed = layer_count;
+    for &(layer, kl) in ranked_kl {
+        if executed <= minimum {
+            break;
+        }
+        if layer == 0 || layer + 1 >= layer_count || layer >= layer_count {
+            continue;
+        }
+        if !enabled[layer] {
+            continue;
+        }
+        if !kl.is_finite() || kl < 0.0 || kl > budget {
+            continue;
+        }
+        if acc_kl + kl > budget {
+            continue;
+        }
+        if would_skip_consecutive_globals(&enabled, sliding, layer) {
+            continue;
+        }
+        enabled[layer] = false;
+        acc_kl += kl;
+        executed -= 1;
+    }
+    LayerExecutionMask::from_enabled(enabled)
+}
+
+/// Mascara de producto para V8 / LRC.
+///
+/// `kl_budget_mask` sigue apagando en orden de KL con ranking sintetico.
+/// El ranking T2.1 es KL de **una** capa en el prompt 0. V8 T2.2 midio:
+/// - 5 capas baratas (7,8,12,20,21), 1 prompt: KL 0,234 > 0,15
+/// - solo capa 7, 3 prompts: KL 0,018 / 0,200 / 0,424 (media 0,214)
+/// Ningun skip estatico cabe en el presupuesto del set. Camino S se niega
+/// a saltar: 26/26. El limitador es KL, no `max_skip_fraction`.
+pub fn kl_budget_mask_from_trace(
+    trace: &Gemma2ForwardTrace,
+    config: &AdaptiveGemma2Config,
+) -> LayerExecutionMask {
+    let _ = config;
+    LayerExecutionMask::all(trace.layers.len())
+}
+
 pub fn conservative_candidate_mask(
     trace: &Gemma2ForwardTrace,
     config: &AdaptiveGemma2Config,
@@ -1135,7 +1248,8 @@ pub fn progressive_candidate_masks(
     if layer_count < 3 {
         return Vec::new();
     }
-    let target = conservative_candidate_mask(trace, config);
+    let sliding = sliding_windows_from_trace(trace);
+    let target = kl_budget_mask(layer_count, &sliding, GEMMA2_T21_LAYER_KL, config);
     let skipped = (1..layer_count.saturating_sub(1))
         .filter(|layer| !target.executes(*layer))
         .collect::<Vec<_>>();
@@ -1323,6 +1437,108 @@ mod tests {
         );
         let sliding = (0..12).map(|layer| layer % 2 == 0).collect::<Vec<_>>();
         assert!(!mask_has_consecutive_global_skips(&mask, &sliding));
+    }
+
+    fn skipped_layers(mask: &LayerExecutionMask, layer_count: usize) -> Vec<usize> {
+        (0..layer_count)
+            .filter(|layer| !mask.executes(*layer))
+            .collect()
+    }
+
+    #[test]
+    fn kl_budget_mask_turns_off_cheap_layers_first_and_stops_before_budget() {
+        let layer_count = 26;
+        let sliding = (0..layer_count)
+            .map(|layer| layer % 2 == 0)
+            .collect::<Vec<_>>();
+        let ranked = [
+            (4, 0.04),
+            (8, 0.04),
+            (12, 0.04),
+            (16, 0.04),
+            (20, 0.04),
+            (7, 0.20),
+        ];
+        let mask = kl_budget_mask(
+            layer_count,
+            &sliding,
+            &ranked,
+            &AdaptiveGemma2Config::default(),
+        );
+        assert_eq!(skipped_layers(&mask, layer_count), vec![4, 8, 12]);
+        assert!(mask.executed_count() >= 8);
+        assert!(mask.executes(0) && mask.executes(25));
+        assert!(mask.executes(16) && mask.executes(20));
+        assert!(mask.executes(7), "KL individual 0.20 > presupuesto");
+        assert!(!mask_has_consecutive_global_skips(&mask, &sliding));
+    }
+
+    #[test]
+    fn kl_budget_mask_never_skips_two_consecutive_globals() {
+        let layer_count = 26;
+        let sliding = (0..layer_count)
+            .map(|layer| layer % 2 == 0)
+            .collect::<Vec<_>>();
+        let ranked = [(1, 0.05), (3, 0.05), (5, 0.05), (7, 0.05), (9, 0.05)];
+        let mask = kl_budget_mask(
+            layer_count,
+            &sliding,
+            &ranked,
+            &AdaptiveGemma2Config::default(),
+        );
+        let skipped = skipped_layers(&mask, layer_count);
+        assert_eq!(skipped, vec![1, 5, 9]);
+        assert!(mask.executed_count() >= 8);
+        assert!(!mask_has_consecutive_global_skips(&mask, &sliding));
+    }
+
+    #[test]
+    fn kl_budget_mask_all_on_if_ranking_empty_or_all_high_kl() {
+        let layer_count = 12;
+        let sliding = vec![false; layer_count];
+        let empty = kl_budget_mask(layer_count, &sliding, &[], &AdaptiveGemma2Config::default());
+        assert_eq!(empty.executed_count(), layer_count);
+        assert_eq!(skipped_layers(&empty, layer_count), Vec::<usize>::new());
+        let expensive = kl_budget_mask(
+            layer_count,
+            &sliding,
+            &[(1, 0.20), (2, 0.30), (5, 0.40)],
+            &AdaptiveGemma2Config::default(),
+        );
+        assert_eq!(expensive.executed_count(), layer_count);
+        assert_eq!(skipped_layers(&expensive, layer_count), Vec::<usize>::new());
+    }
+
+    #[test]
+    fn kl_budget_mask_t21_ranking_does_not_follow_delta_rms() {
+        let layer_count = 26;
+        let sliding = (0..layer_count)
+            .map(|layer| layer % 2 == 0)
+            .collect::<Vec<_>>();
+        let mask = kl_budget_mask(
+            layer_count,
+            &sliding,
+            GEMMA2_T21_LAYER_KL,
+            &AdaptiveGemma2Config::default(),
+        );
+        let skipped = skipped_layers(&mask, layer_count);
+        assert_eq!(skipped, vec![7, 8, 12, 20, 21]);
+        assert!(
+            mask.executes(2),
+            "capa 2 es la mas cara por KL; no se apaga por delta_rms"
+        );
+        assert!(mask.executed_count() >= 8);
+        assert!(!mask_has_consecutive_global_skips(&mask, &sliding));
+    }
+
+    #[test]
+    fn kl_budget_mask_from_trace_refuses_uncalibrated_combined_skip() {
+        let trace = gemma_like_trace(26, |layer| if layer == 2 { 0.01 } else { 9.0 });
+        let mask = kl_budget_mask_from_trace(&trace, &AdaptiveGemma2Config::default());
+        assert_eq!(mask.executed_count(), 26);
+        assert_eq!(skipped_layers(&mask, 26), Vec::<usize>::new());
+        assert!(mask.executes(2));
+        assert!(mask.executes(7));
     }
 
     #[test]
