@@ -209,3 +209,26 @@ termodinámicas; sus shards F32 no deben usarse como pesos del Transformer.
   rompería la KV cache y no está habilitado.
 - El sesgo CTP cambia logits; no hay todavía ablación de calidad lingüística
   ni de `wake_blend`.
+
+## V8 — rutas de capas vs 26/26 vs Ollama (31 ago 2026)
+
+Comando:
+
+```powershell
+cargo test --release --lib native_sparse_vs_dense_and_ollama -- --nocapture --test-threads=1
+cargo run --release --bin native_gemma2_circadian_chat -- --bench-routes
+```
+
+Corrida release, Gemma 2 2B GGUF local, 2 prompts, 8 tokens generados, CPU:
+
+| backend | capas | KL vs denso | tok/s | LRC hit | fallback |
+|---|---:|---:|---:|---:|---:|
+| native_dense | 26/26 | — | 2,50 | 0 | 0 |
+| native_sparse | 23/26 | 0,53 | 2,72 | 0 | 1 |
+| ollama `gemma2:2b` | 26/26 | — | 14,66 | — | — |
+
+Sparse es ~9 % más rápido que denso nativo, pero KL 0,53 > 0,15: el producto
+**no promociona** la ruta (fallback 100 %, hit LRC 0). Ollama fue ~5–6× más
+rápido que el nativo en esta máquina. El decode de 8 tokens está dominado por
+arrancar el bucle; no sustituye un benchmark de 64 tokens. Las cifras no se
+citan como ventaja del preprint.

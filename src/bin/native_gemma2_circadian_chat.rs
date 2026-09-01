@@ -49,6 +49,7 @@ struct Config {
     top_p: f64,
     prompt: Option<String>,
     sleep_only: bool,
+    bench_routes: bool,
     device: String,
     thermo: bool,
 }
@@ -73,6 +74,18 @@ struct CircadianSession {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = parse_args()?;
+    if config.bench_routes {
+        let report = cdt_rqm_epr::layer_route_benchmark::run_route_speed_benchmark(
+            cdt_rqm_epr::layer_route_benchmark::RouteSpeedConfig {
+                generated_tokens: config.max_tokens.min(32).max(8),
+                device: config.device.clone(),
+                ..cdt_rqm_epr::layer_route_benchmark::RouteSpeedConfig::default()
+            },
+        )?;
+        print!("{}", report.to_csv());
+        eprintln!("{}", report.summary());
+        return Ok(());
+    }
     let model_path = resolve_gemma2_model_path(config.model.as_deref())?;
     let model_id = format!("gemma2:{}", model_path.display());
 
@@ -710,6 +723,7 @@ fn print_help() {
     println!(
         r"
 Comandos:
+  --bench-routes   CSV V8: capas, KL, tok/s sparse vs 26/26, LRC, fallback, Ollama
   /sueño, /sleep   Consolida adaptativo + exporta dataset + entrena CTP + guarda
   /limpiar         Borra historial visible (conserva memorias)
   /estado          Metricas de vigilia (LRC + grafo de 6 agentes)
@@ -748,6 +762,7 @@ fn parse_args() -> Result<Config, Box<dyn std::error::Error>> {
         top_p: 0.95,
         prompt: None,
         sleep_only: false,
+        bench_routes: false,
         device: env::var("GEMMA2_DEVICE").unwrap_or_else(|_| "cpu".to_string()),
         thermo: true,
     };
@@ -771,6 +786,7 @@ fn parse_args() -> Result<Config, Box<dyn std::error::Error>> {
             "--device" => config.device = required(&mut args, "--device")?,
             "--prompt" => config.prompt = Some(required(&mut args, "--prompt")?),
             "--sleep-only" => config.sleep_only = true,
+            "--bench-routes" => config.bench_routes = true,
             "--no-thermo" => config.thermo = false,
             "--help" | "-h" => {
                 print_help();

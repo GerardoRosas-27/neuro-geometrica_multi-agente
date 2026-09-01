@@ -31,6 +31,7 @@ pub mod gemma_operator_bridge;
 pub mod gemma_phasor_coupling;
 pub mod hybrid_thermo_attention;
 pub mod hybrid_thermo_attention_comparison;
+pub mod layer_route_benchmark;
 pub mod layer_route_cache;
 pub mod matrix_free_cognitive_substrate;
 pub mod native_checkpoint;
