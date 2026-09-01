@@ -531,3 +531,32 @@ son los medidos.
 Tests sin GGUF: ranking sintético apaga baratas primero, para antes de
 0,15, no dos globales consecutivos, `executed ≥ 8`; ranking vacío / KL
 alta → todo encendido. `cargo test --lib adaptive_gemma2` 29 ok.
+
+### T2.3 — Early-exit (reabrir V7) con tabla k (31 ago 2026)
+
+Camino S, cola. `forward_with_mask(..., exit_after: Option<usize>, ...)`.
+Si `exit_after = Some(k)`, tras la capa `k` se aplica `norm + lm_head` al
+hidden actual (head ligado al embedding) y no se corren `k+1…25`. La KV
+de capas `> k` no se toca. `None` deja a todos los callers en denso 26/26.
+
+No se mezcla con middle-skip en el mismo turno: máscara con agujeros +
+`exit_after` aborta. `k` fuera de rango aborta. `k = last` (25 en 2B) es
+equivalente a denso (`executed = layer_count`).
+
+LRC: `SkipKind::EarlyExit` vía `promote_kind`. La máscara de esa ruta es
+prefijo `0..=k`. Middle-skip sigue en `promote` (default).
+
+Helper de tabla: `run_early_exit_k_table` en `layer_route_benchmark.rs`,
+k ∈ {12, 16, 20, 23} × 1 prompt. Elegir el menor k con KL ≤ 0,15. Producto
+además exige tok/s ≥ +15 % vs denso.
+
+**Tabla k vs denso:** pendiente. La máquina Windows GGUF
+(`D:\\investigacion-ia-rust`) no estaba conectada en este commit. No se
+inventa KL ni tok/s. El test GGUF `early_exit_k_table_on_gemma2_gguf`
+omite si no hay modelo.
+
+Tests sin GGUF: k fuera de rango, k=last ≡ denso, no mezclar con
+middle-skip, `promote_kind` EarlyExit rechaza agujeros, CSV y
+`choose_smallest_early_exit_k`. No se tocó cuenca, no se subió
+`max_skip_fraction`, no hay quinto binario.
+

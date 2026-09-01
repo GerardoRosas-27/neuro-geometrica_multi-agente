@@ -78,6 +78,10 @@ pub struct Gemma2Session {
     cached_tokens: Vec<u32>,
     last_logits: Option<Tensor>,
     active_mask: Option<LayerExecutionMask>,
+    /// Ruta pedida. None = denso completo. No se mezcla con middle-skip.
+    exit_after: Option<usize>,
+    /// Ruta fijada en la KV actual.
+    active_exit_after: Option<usize>,
 }
 
 impl Gemma2Session {
@@ -102,6 +106,15 @@ impl Gemma2Session {
         self.cached_tokens.clear();
         self.last_logits = None;
         self.active_mask = None;
+        self.active_exit_after = None;
+    }
+
+    pub fn set_exit_after(&mut self, exit_after: Option<usize>) {
+        self.exit_after = exit_after;
+    }
+
+    pub fn exit_after(&self) -> Option<usize> {
+        self.exit_after
     }
 
     /// Adopta una KV cache que otro pipeline acaba de rellenar con el mismo
@@ -115,6 +128,7 @@ impl Gemma2Session {
         self.cached_tokens.clear();
         self.cached_tokens.extend_from_slice(prompt_tokens);
         self.active_mask = mask.cloned();
+        self.active_exit_after = self.exit_after;
         self.last_logits = Some(logits.squeeze(0)?);
         Ok(())
     }
@@ -213,13 +227,15 @@ impl Gemma2Session {
             reset_gemma2_profile();
         }
         let started = Instant::now();
-        let same_mask = self.active_mask.as_ref() == mask;
-        let extends_cache = same_mask
+        let same_route =
+            self.active_mask.as_ref() == mask && self.active_exit_after == self.exit_after;
+        let extends_cache = same_route
             && !self.cached_tokens.is_empty()
             && prompt_tokens.starts_with(&self.cached_tokens);
         if !extends_cache {
             self.reset(model);
             self.active_mask = mask.cloned();
+            self.active_exit_after = self.exit_after;
         }
         let prefix = if extends_cache {
             self.cached_tokens.len()
@@ -235,7 +251,7 @@ impl Gemma2Session {
         } else {
             let input = Tensor::new(suffix, model.device())?.unsqueeze(0)?;
             let logits = model
-                .forward_with_mask(&input, prefix, mask, false, false)?
+                .forward_with_mask(&input, prefix, mask, self.exit_after, false, false)?
                 .logits
                 .squeeze(0)?;
             self.cached_tokens.extend_from_slice(suffix);
@@ -289,7 +305,14 @@ impl Gemma2Session {
             input_alloc_seconds += alloc_started.elapsed().as_secs_f64();
             let model_started = Instant::now();
             logits = model
-                .forward_with_mask(&next, self.cached_tokens.len(), mask, false, false)?
+                .forward_with_mask(
+                    &next,
+                    self.cached_tokens.len(),
+                    mask,
+                    self.exit_after,
+                    false,
+                    false,
+                )?
                 .logits
                 .squeeze(0)?;
             model_decode_seconds += model_started.elapsed().as_secs_f64();

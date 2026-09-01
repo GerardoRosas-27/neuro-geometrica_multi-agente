@@ -3,15 +3,17 @@
 //!
 //! T2.1: ablation KL por capa (`run_layer_kl_ablation`).
 //! T2.2: el sparse de V8 usa `kl_budget_mask` (ranking KL), no `delta_rms`.
+//! T2.3: early-exit `exit_after=k` (`run_early_exit_k_table`). No mezcla con middle-skip.
 
 use crate::adaptive_gemma2::{kl_budget_mask_from_trace, AdaptiveGemma2Config};
 use crate::layer_route_cache::{
     fingerprint_wake, is_sparse_mask, logits_kl, top1_agree, LayerRouteCache, LayerRouteCacheConfig,
 };
 use crate::native_gemma2::{
-    gemma2_profile_enabled, gemma2_rayon_threads, init_gemma2_profile_from_env,
-    init_gemma2_rayon_threads, resolve_gemma2_device, resolve_gemma2_model_path, Gemma2Tokenizer,
-    LayerExecutionMask, QuantizedGemma2, DEFAULT_GEMMA2_RAYON_THREADS,
+    early_exit_executed_layers, gemma2_profile_enabled, gemma2_rayon_threads,
+    init_gemma2_profile_from_env, init_gemma2_rayon_threads, resolve_gemma2_device,
+    resolve_gemma2_model_path, Gemma2Tokenizer, LayerExecutionMask, QuantizedGemma2,
+    DEFAULT_GEMMA2_RAYON_THREADS,
 };
 use crate::native_gemma2_runtime::{Gemma2GenerationConfig, Gemma2Session};
 use candle_core::quantized::gguf_file;
@@ -393,7 +395,8 @@ pub fn run_route_speed_benchmark_with_model(
         tokens.extend(tokenizer.encode(prompt)?);
         let input = Tensor::new(tokens.as_slice(), model.device())?.unsqueeze(0)?;
         model.clear_kv_cache();
-        let dense_prefill = model.forward_with_mask(&input, 0, Some(&dense_mask), true, false)?;
+        let dense_prefill =
+            model.forward_with_mask(&input, 0, Some(&dense_mask), None, true, false)?;
         let dense_logits = dense_prefill
             .logits
             .squeeze(0)?
@@ -413,7 +416,7 @@ pub fn run_route_speed_benchmark_with_model(
         }
         model.clear_kv_cache();
         let sparse_prefill =
-            model.forward_with_mask(&input, 0, Some(&sparse_mask), false, false)?;
+            model.forward_with_mask(&input, 0, Some(&sparse_mask), None, false, false)?;
         let sparse_logits = sparse_prefill
             .logits
             .squeeze(0)?
@@ -570,7 +573,19 @@ fn timed_generate(
     mask: Option<&LayerExecutionMask>,
     config: &Gemma2GenerationConfig,
 ) -> Result<TimedSample, Box<dyn std::error::Error>> {
+    timed_generate_exit(model, tokenizer, tokens, mask, None, config)
+}
+
+fn timed_generate_exit(
+    model: &mut QuantizedGemma2,
+    tokenizer: &Gemma2Tokenizer,
+    tokens: &[u32],
+    mask: Option<&LayerExecutionMask>,
+    exit_after: Option<usize>,
+    config: &Gemma2GenerationConfig,
+) -> Result<TimedSample, Box<dyn std::error::Error>> {
     let mut session = Gemma2Session::new();
+    session.set_exit_after(exit_after);
     session.reset(model);
     let generation = session.generate(model, tokenizer, tokens, mask, *config, |_| {})?;
     let generated = generation.metrics.generated_tokens;
@@ -772,7 +787,7 @@ pub fn run_layer_kl_ablation(
     let dense_mask = LayerExecutionMask::all(layer_count);
     let input = Tensor::new(prompt_tokens, model.device())?.unsqueeze(0)?;
     model.clear_kv_cache();
-    let dense = model.forward_with_mask(&input, 0, Some(&dense_mask), true, false)?;
+    let dense = model.forward_with_mask(&input, 0, Some(&dense_mask), None, true, false)?;
     let dense_logits = dense
         .logits
         .squeeze(0)?
@@ -799,7 +814,7 @@ pub fn run_layer_kl_ablation(
         );
         let mask = single_layer_off_mask(layer_count, skip);
         model.clear_kv_cache();
-        let sparse = model.forward_with_mask(&input, 0, Some(&mask), false, false)?;
+        let sparse = model.forward_with_mask(&input, 0, Some(&mask), None, false, false)?;
         let sparse_logits = sparse
             .logits
             .squeeze(0)?
@@ -832,9 +847,234 @@ pub fn run_layer_kl_ablation_on_prompt(
     run_layer_kl_ablation(&mut model, &tokens)
 }
 
+pub const EARLY_EXIT_KS: [usize; 4] = [12, 16, 20, 23];
+pub const EARLY_EXIT_MAX_KL: f32 = 0.15;
+pub const EARLY_EXIT_MIN_SPEEDUP: f64 = 1.15;
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct EarlyExitRow {
+    pub k: Option<usize>,
+    pub executed_layers: usize,
+    pub layer_count: usize,
+    pub kl_vs_dense: f32,
+    pub top1: f32,
+    pub decode_tok_s: Option<f64>,
+    pub model_decode_tok_s: Option<f64>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct EarlyExitTable {
+    pub prompt: String,
+    pub layer_count: usize,
+    pub dense: EarlyExitRow,
+    pub rows: Vec<EarlyExitRow>,
+}
+
+impl EarlyExitTable {
+    pub fn csv_header() -> &'static str {
+        "k,executed_layers,layer_count,kl_vs_dense,top1,decode_tok_s,model_decode_tok_s"
+    }
+
+    pub fn to_csv(&self) -> String {
+        let mut out = String::from(Self::csv_header());
+        out.push('\n');
+        for row in std::iter::once(&self.dense).chain(self.rows.iter()) {
+            out.push_str(&early_exit_row_csv(row));
+            out.push('\n');
+        }
+        out
+    }
+}
+
+fn early_exit_row_csv(row: &EarlyExitRow) -> String {
+    let k = row
+        .k
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "dense".into());
+    let tok = row
+        .decode_tok_s
+        .map(|value| format!("{value:.4}"))
+        .unwrap_or_else(|| "n/a".into());
+    let model_tok = row
+        .model_decode_tok_s
+        .map(|value| format!("{value:.4}"))
+        .unwrap_or_else(|| "n/a".into());
+    format!(
+        "{k},{},{},{:.6},{:.4},{tok},{model_tok}",
+        row.executed_layers, row.layer_count, row.kl_vs_dense, row.top1
+    )
+}
+
+/// Menor k con KL ≤ umbral. None ⇒ wontfix V7 (ningún early-exit cabe).
+pub fn choose_smallest_early_exit_k(rows: &[EarlyExitRow], max_kl: f32) -> Option<usize> {
+    rows.iter()
+        .filter(|row| row.k.is_some() && row.kl_vs_dense.is_finite() && row.kl_vs_dense <= max_kl)
+        .filter_map(|row| row.k)
+        .min()
+}
+
+pub fn early_exit_has_speedup(row: &EarlyExitRow, dense_tok_s: f64, min_speedup: f64) -> bool {
+    row.decode_tok_s
+        .or(row.model_decode_tok_s)
+        .map(|tok_s| dense_tok_s > 0.0 && tok_s >= dense_tok_s * min_speedup)
+        .unwrap_or(false)
+}
+
+/// k de producto: menor con KL ok y tok/s ≥ +15 % vs denso. Si tok/s no se midió,
+/// no se declara victoria de velocidad.
+pub fn choose_product_early_exit_k(
+    rows: &[EarlyExitRow],
+    dense_tok_s: Option<f64>,
+    max_kl: f32,
+    min_speedup: f64,
+) -> Option<usize> {
+    let Some(dense_tok_s) = dense_tok_s else {
+        return None;
+    };
+    let mut candidates: Vec<&EarlyExitRow> = rows
+        .iter()
+        .filter(|row| row.k.is_some() && row.kl_vs_dense.is_finite() && row.kl_vs_dense <= max_kl)
+        .collect();
+    candidates.sort_by_key(|row| row.k.unwrap_or(usize::MAX));
+    candidates
+        .into_iter()
+        .find(|row| early_exit_has_speedup(row, dense_tok_s, min_speedup))
+        .and_then(|row| row.k)
+}
+
+/// Prefill denso vs early-exit k ∈ {12,16,20,23}. Opcionalmente un generate corto
+/// para tok/s (denso + los k de `tok_s_ks`). Máscara densa: no se mezcla middle-skip.
+pub fn run_early_exit_k_table(
+    model: &mut QuantizedGemma2,
+    tokenizer: &Gemma2Tokenizer,
+    prompt_tokens: &[u32],
+    generate_config: Option<&Gemma2GenerationConfig>,
+    tok_s_ks: &[usize],
+) -> Result<EarlyExitTable, Box<dyn std::error::Error>> {
+    let layer_count = model.layer_count();
+    let dense_mask = LayerExecutionMask::all(layer_count);
+    let input = Tensor::new(prompt_tokens, model.device())?.unsqueeze(0)?;
+    model.clear_kv_cache();
+    let dense = model.forward_with_mask(&input, 0, Some(&dense_mask), None, false, false)?;
+    let dense_logits = dense
+        .logits
+        .squeeze(0)?
+        .to_vec1::<f32>()
+        .unwrap_or_default();
+    let mut dense_row = EarlyExitRow {
+        k: None,
+        executed_layers: layer_count,
+        layer_count,
+        kl_vs_dense: 0.0,
+        top1: 1.0,
+        decode_tok_s: None,
+        model_decode_tok_s: None,
+    };
+    if let Some(config) = generate_config {
+        eprintln!("T2.3 tok/s denso generated={}", config.max_tokens);
+        let sample = timed_generate_exit(
+            model,
+            tokenizer,
+            prompt_tokens,
+            Some(&dense_mask),
+            None,
+            config,
+        )?;
+        dense_row.decode_tok_s = Some(sample.decode_tok_s);
+        dense_row.model_decode_tok_s = Some(sample.model_decode_tok_s);
+    }
+    let mut rows = Vec::new();
+    for (ordinal, k) in EARLY_EXIT_KS.iter().copied().enumerate() {
+        if k >= layer_count {
+            return Err(format!("exit_after {k} fuera de rango para {layer_count} capas").into());
+        }
+        eprintln!(
+            "T2.3 early-exit k={k} ({}/{})",
+            ordinal + 1,
+            EARLY_EXIT_KS.len()
+        );
+        model.clear_kv_cache();
+        let exit = model.forward_with_mask(&input, 0, Some(&dense_mask), Some(k), false, false)?;
+        let expected = early_exit_executed_layers(Some(k), layer_count);
+        if exit.trace.executed_layers != expected {
+            return Err(format!(
+                "early-exit k={k} ejecutó {} capas, se esperaban {expected}",
+                exit.trace.executed_layers
+            )
+            .into());
+        }
+        let exit_logits = exit.logits.squeeze(0)?.to_vec1::<f32>().unwrap_or_default();
+        let mut row = EarlyExitRow {
+            k: Some(k),
+            executed_layers: exit.trace.executed_layers,
+            layer_count,
+            kl_vs_dense: logits_kl(&dense_logits, &exit_logits),
+            top1: top1_agree(&dense_logits, &exit_logits),
+            decode_tok_s: None,
+            model_decode_tok_s: None,
+        };
+        if let Some(config) = generate_config {
+            if tok_s_ks.contains(&k) {
+                eprintln!("T2.3 tok/s k={k} generated={}", config.max_tokens);
+                let sample = timed_generate_exit(
+                    model,
+                    tokenizer,
+                    prompt_tokens,
+                    Some(&dense_mask),
+                    Some(k),
+                    config,
+                )?;
+                row.decode_tok_s = Some(sample.decode_tok_s);
+                row.model_decode_tok_s = Some(sample.model_decode_tok_s);
+            }
+        }
+        rows.push(row);
+    }
+    Ok(EarlyExitTable {
+        prompt: String::new(),
+        layer_count,
+        dense: dense_row,
+        rows,
+    })
+}
+
+pub fn run_early_exit_k_table_on_prompt(
+    model_path: &Path,
+    prompt: &str,
+    device: &str,
+    generated_tokens: usize,
+    tok_s_ks: &[usize],
+) -> Result<EarlyExitTable, Box<dyn std::error::Error>> {
+    let device = resolve_gemma2_device(device)?;
+    let mut file = std::fs::File::open(model_path)?;
+    let content = gguf_file::Content::read(&mut file)?;
+    let tokenizer = Gemma2Tokenizer::from_gguf(&content)?;
+    let mut model = QuantizedGemma2::from_gguf(content, &mut file, &device)?;
+    let mut tokens = vec![tokenizer.bos_id];
+    tokens.extend(tokenizer.encode(prompt)?);
+    let gen = if generated_tokens == 0 {
+        None
+    } else {
+        Some(Gemma2GenerationConfig {
+            max_tokens: generated_tokens,
+            context_limit: model.max_context(),
+            temperature: 0.01,
+            top_p: 1.0,
+            seed: 0x4745_4D4D_4132,
+        })
+    };
+    let mut table =
+        run_early_exit_k_table(&mut model, &tokenizer, &tokens, gen.as_ref(), tok_s_ks)?;
+    table.prompt = prompt.to_string();
+    Ok(table)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::native_gemma2::{
+        early_exit_executed_layers, early_exit_is_dense, early_exit_mask, validate_exit_after,
+    };
 
     #[test]
     fn default_generated_tokens_is_64() {
@@ -1179,6 +1419,145 @@ mod tests {
             eprintln!(
                 "Camino S middle-skip APARCADO: ninguna capa con KL <= 0.15 al apagarla sola."
             );
+        }
+    }
+
+    #[test]
+    fn early_exit_k_table_helpers_without_gguf() {
+        assert_eq!(EARLY_EXIT_KS, [12, 16, 20, 23]);
+        let dense = LayerExecutionMask::all(26);
+        assert!(validate_exit_after(26, &dense, Some(26)).is_err());
+        assert!(early_exit_is_dense(Some(25), 26));
+        assert_eq!(early_exit_executed_layers(Some(25), 26), 26);
+        assert_eq!(early_exit_mask(26, 25), dense);
+        assert_eq!(early_exit_executed_layers(Some(23), 26), 24);
+        let mut hole = vec![true; 26];
+        hole[7] = false;
+        assert!(
+            validate_exit_after(26, &LayerExecutionMask::from_enabled(hole), Some(20)).is_err()
+        );
+
+        let rows = vec![
+            EarlyExitRow {
+                k: Some(12),
+                executed_layers: 13,
+                layer_count: 26,
+                kl_vs_dense: 0.40,
+                top1: 0.0,
+                decode_tok_s: Some(12.0),
+                model_decode_tok_s: Some(12.0),
+            },
+            EarlyExitRow {
+                k: Some(16),
+                executed_layers: 17,
+                layer_count: 26,
+                kl_vs_dense: 0.20,
+                top1: 0.0,
+                decode_tok_s: Some(11.0),
+                model_decode_tok_s: Some(11.0),
+            },
+            EarlyExitRow {
+                k: Some(20),
+                executed_layers: 21,
+                layer_count: 26,
+                kl_vs_dense: 0.10,
+                top1: 1.0,
+                decode_tok_s: Some(10.0),
+                model_decode_tok_s: Some(10.0),
+            },
+            EarlyExitRow {
+                k: Some(23),
+                executed_layers: 24,
+                layer_count: 26,
+                kl_vs_dense: 0.04,
+                top1: 1.0,
+                decode_tok_s: Some(9.0),
+                model_decode_tok_s: Some(9.0),
+            },
+        ];
+        assert_eq!(choose_smallest_early_exit_k(&rows, 0.15), Some(20));
+        assert_eq!(
+            choose_product_early_exit_k(&rows, Some(8.0), 0.15, 1.15),
+            Some(20)
+        );
+        assert_eq!(
+            choose_product_early_exit_k(&rows, Some(9.2), 0.15, 1.15),
+            None,
+            "k=20 es +8.7% vs 9.2; k=23 es más lento"
+        );
+        let none_ok = vec![EarlyExitRow {
+            k: Some(23),
+            executed_layers: 24,
+            layer_count: 26,
+            kl_vs_dense: 0.40,
+            top1: 0.0,
+            decode_tok_s: Some(12.0),
+            model_decode_tok_s: Some(12.0),
+        }];
+        assert!(choose_smallest_early_exit_k(&none_ok, 0.15).is_none());
+        let table = EarlyExitTable {
+            prompt: "x".into(),
+            layer_count: 26,
+            dense: EarlyExitRow {
+                k: None,
+                executed_layers: 26,
+                layer_count: 26,
+                kl_vs_dense: 0.0,
+                top1: 1.0,
+                decode_tok_s: Some(8.0),
+                model_decode_tok_s: Some(8.0),
+            },
+            rows,
+        };
+        let csv = table.to_csv();
+        assert!(csv.starts_with(EarlyExitTable::csv_header()));
+        assert!(csv.contains("dense,26,26,0.000000,1.0000,8.0000,8.0000"));
+        assert!(csv.contains("20,21,26,0.100000,1.0000,10.0000,10.0000"));
+    }
+
+    #[test]
+    fn early_exit_k_table_on_gemma2_gguf() {
+        let path = match resolve_gemma2_model_path(None) {
+            Ok(path) => path,
+            Err(error) => {
+                eprintln!("GGUF ausente, se omite tabla k T2.3: {error}");
+                return;
+            }
+        };
+        let tok_s_ks = [20usize];
+        let table = run_early_exit_k_table_on_prompt(&path, BENCH_PROMPTS[0], "cpu", 16, &tok_s_ks)
+            .expect("tabla early-exit T2.3");
+        let csv = table.to_csv();
+        eprintln!("{csv}");
+        assert_eq!(table.layer_count, 26, "{csv}");
+        assert_eq!(table.rows.len(), 4, "{csv}");
+        assert_eq!(
+            table
+                .rows
+                .iter()
+                .filter_map(|row| row.k)
+                .collect::<Vec<_>>(),
+            EARLY_EXIT_KS.to_vec(),
+            "{csv}"
+        );
+        assert!(
+            table.rows.iter().all(|row| row.kl_vs_dense.is_finite()),
+            "{csv}"
+        );
+        for row in &table.rows {
+            let k = row.k.expect("k");
+            assert_eq!(row.executed_layers, k + 1, "{csv}");
+        }
+        let chosen = choose_smallest_early_exit_k(&table.rows, EARLY_EXIT_MAX_KL);
+        let product = choose_product_early_exit_k(
+            &table.rows,
+            table.dense.decode_tok_s,
+            EARLY_EXIT_MAX_KL,
+            EARLY_EXIT_MIN_SPEEDUP,
+        );
+        match chosen {
+            Some(k) => eprintln!("T2.3 menor k con KL<=0.15: {k} product={product:?}"),
+            None => eprintln!("T2.3 wontfix V7: ningún k con KL <= 0.15"),
         }
     }
 }

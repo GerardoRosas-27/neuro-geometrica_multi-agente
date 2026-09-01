@@ -368,6 +368,10 @@ función nueva `kl_budget_mask`).
 
 ### T2.3 — Early-exit (reabrir V7) con tabla k
 
+**Estado (31 ago 2026):** API `exit_after` + `SkipKind::EarlyExit` + tests
+sin GGUF hechos. Tabla k ∈ {12,16,20,23} **pendiente** (Windows GGUF
+desconectada). No se elige k ni `wontfix` sin números reales.
+
 **Blocked-by:** T2.1. Si middle-skip no deja capas baratas, early-exit
 puede: las últimas capas son las que se omiten, el residual ya “decidió”.
 

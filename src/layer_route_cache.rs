@@ -38,6 +38,16 @@ pub struct LayerRoute {
     pub confidence: f32,
 }
 
+impl LayerRoute {
+    /// k de early-exit si la ruta es cola; None en middle-skip.
+    pub fn exit_after(&self) -> Option<usize> {
+        match self.skip_kind {
+            SkipKind::EarlyExit => exit_after_from_mask(&self.mask),
+            SkipKind::MiddleSkip => None,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct LayerRouteCacheConfig {
     pub min_confidence: f32,
@@ -167,7 +177,7 @@ impl LayerRouteCache {
         self.recompute_confidence(index);
     }
 
-    /// Promueve una máscara sparse si KL ≤ umbral. Devuelve si se escribió.
+    /// Promueve una máscara sparse de middle-skip si KL ≤ umbral.
     pub fn promote(
         &mut self,
         fingerprint: ActivationFingerprint,
@@ -176,16 +186,38 @@ impl LayerRouteCache {
         top1_agree: f32,
         generation: u64,
     ) -> bool {
+        self.promote_kind(
+            fingerprint,
+            mask,
+            kl,
+            top1_agree,
+            generation,
+            SkipKind::MiddleSkip,
+        )
+    }
+
+    /// Promueve una ruta LRC. Early-exit exige máscara prefijo (cola), no agujeros.
+    pub fn promote_kind(
+        &mut self,
+        fingerprint: ActivationFingerprint,
+        mask: LayerExecutionMask,
+        kl: f32,
+        top1_agree: f32,
+        generation: u64,
+        skip_kind: SkipKind,
+    ) -> bool {
         if !kl.is_finite() || kl > self.config.max_kl_promote {
             return false;
         }
         if !is_sparse_mask(&mask) {
             return false;
         }
-        if let Some(index) = self
-            .best_index(&fingerprint)
-            .filter(|&index| self.routes[index].mask == mask)
-        {
+        if skip_kind == SkipKind::EarlyExit && !is_prefix_mask(&mask) {
+            return false;
+        }
+        if let Some(index) = self.best_index(&fingerprint).filter(|&index| {
+            self.routes[index].mask == mask && self.routes[index].skip_kind == skip_kind
+        }) {
             let route = &mut self.routes[index];
             route.mean_kl = if route.hits + route.misses_as_fallback == 0 {
                 kl
@@ -222,7 +254,7 @@ impl LayerRouteCache {
             id,
             fingerprint,
             mask,
-            skip_kind: SkipKind::MiddleSkip,
+            skip_kind,
             hits: 1,
             misses_as_fallback: 0,
             mean_kl: kl,
@@ -311,6 +343,28 @@ pub fn is_sparse_mask(mask: &LayerExecutionMask) -> bool {
     mask.executed_count() < mask.layer_count() && mask.executed_count() > 0
 }
 
+/// Prefijo `0..=k` encendido y cola apagada. La máscara densa también es prefijo.
+pub fn is_prefix_mask(mask: &LayerExecutionMask) -> bool {
+    let mut seen_off = false;
+    for layer in 0..mask.layer_count() {
+        if mask.executes(layer) {
+            if seen_off {
+                return false;
+            }
+        } else {
+            seen_off = true;
+        }
+    }
+    true
+}
+
+pub fn exit_after_from_mask(mask: &LayerExecutionMask) -> Option<usize> {
+    if !is_prefix_mask(mask) || mask.executed_count() == 0 {
+        return None;
+    }
+    Some(mask.executed_count() - 1)
+}
+
 /// KL(softmax(dense) || softmax(sparse)) en la última posición.
 pub fn logits_kl(dense: &[f32], sparse: &[f32]) -> f32 {
     if dense.len() != sparse.len() || dense.is_empty() {
@@ -355,6 +409,7 @@ fn log_softmax(logits: &[f32]) -> Vec<f64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::native_gemma2::early_exit_mask;
 
     fn sparse(layers: usize) -> LayerExecutionMask {
         let mut enabled = vec![true; layers];
@@ -437,6 +492,38 @@ mod tests {
         assert_eq!(loaded.len(), 1);
         assert!(loaded.lookup_confident(&fp).is_some());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn promote_early_exit_stores_kind_and_rejects_middle_holes() {
+        let mut cache = LayerRouteCache::new(LayerRouteCacheConfig::default());
+        let fp = fingerprint_wake(&[1, 2, 3, 4]);
+        let prefix = early_exit_mask(26, 20);
+        assert!(is_prefix_mask(&prefix));
+        assert_eq!(exit_after_from_mask(&prefix), Some(20));
+        assert!(cache.promote_kind(
+            fp.clone(),
+            prefix.clone(),
+            0.05,
+            1.0,
+            1,
+            SkipKind::EarlyExit
+        ));
+        let route = cache.lookup_confident(&fp).expect("ruta early-exit");
+        assert_eq!(route.skip_kind, SkipKind::EarlyExit);
+        assert_eq!(route.exit_after(), Some(20));
+        assert_eq!(route.mask.executed_count(), 21);
+
+        let mut hole = vec![true; 26];
+        hole[7] = false;
+        let middle = LayerExecutionMask::from_enabled(hole);
+        assert!(!is_prefix_mask(&middle));
+        let mut other = LayerRouteCache::new(LayerRouteCacheConfig::default());
+        assert!(
+            !other.promote_kind(fp, middle, 0.05, 1.0, 1, SkipKind::EarlyExit),
+            "no mezclar middle-skip y early-exit"
+        );
+        assert!(other.is_empty());
     }
 
     #[test]

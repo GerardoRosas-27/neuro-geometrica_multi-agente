@@ -469,7 +469,7 @@ impl AdaptiveThermoMemory {
             model
                 // Vigilia no aprende máscaras: las trazas RMS por capa se
                 // capturan durante replay de sueño, fuera de la ruta crítica.
-                .forward_with_mask(&prompt, plan.position, Some(&plan.mask), false, false)
+                .forward_with_mask(&prompt, plan.position, Some(&plan.mask), None, false, false)
                 .map_err(|error| error.to_string())?
         };
         let logits = output
@@ -761,7 +761,7 @@ impl AdaptiveThermoMemory {
             .and_then(|tensor| tensor.unsqueeze(0))
             .map_err(|error| error.to_string())?;
         let full = model
-            .forward_with_mask(&prompt, 0, Some(&full_mask), true, false)
+            .forward_with_mask(&prompt, 0, Some(&full_mask), None, true, false)
             .map_err(|error| error.to_string())?;
         let full_logits = full
             .logits
@@ -791,7 +791,7 @@ impl AdaptiveThermoMemory {
         for candidate in candidates {
             model.clear_kv_cache();
             let sparse = model
-                .forward_with_mask(&prompt, 0, Some(&candidate), false, false)
+                .forward_with_mask(&prompt, 0, Some(&candidate), None, false, false)
                 .map_err(|error| error.to_string())?;
             let sparse_logits = sparse
                 .logits

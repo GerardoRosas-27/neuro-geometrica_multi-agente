@@ -263,6 +263,66 @@ impl LayerExecutionMask {
             .collect();
         Some(Self { enabled })
     }
+
+    pub fn is_fully_enabled(&self) -> bool {
+        !self.enabled.is_empty() && self.enabled.iter().all(|enabled| *enabled)
+    }
+}
+
+/// `exit_after = Some(k)` corre las capas `0..=k` y aplica `norm + lm_head`
+/// al hidden actual. `k == layer_count-1` es equivalente a denso.
+/// `k >= layer_count` es error. No se mezcla con middle-skip en el mismo turno.
+pub fn validate_exit_after(
+    layer_count: usize,
+    mask: &LayerExecutionMask,
+    exit_after: Option<usize>,
+) -> Result<Option<usize>> {
+    let Some(k) = exit_after else {
+        return Ok(None);
+    };
+    if layer_count == 0 {
+        candle_core::bail!("exit_after requiere al menos una capa");
+    }
+    if k >= layer_count {
+        candle_core::bail!("exit_after {k} fuera de rango para modelo de {layer_count} capas");
+    }
+    if mask.layer_count() != layer_count {
+        candle_core::bail!(
+            "máscara Gemma 2 incompatible: {} capas para modelo de {}",
+            mask.layer_count(),
+            layer_count
+        );
+    }
+    if !mask.is_fully_enabled() {
+        candle_core::bail!("no se mezcla middle-skip y early-exit en el mismo turno");
+    }
+    Ok(Some(k))
+}
+
+pub fn early_exit_is_dense(exit_after: Option<usize>, layer_count: usize) -> bool {
+    match exit_after {
+        None => true,
+        Some(k) => layer_count > 0 && k + 1 == layer_count,
+    }
+}
+
+pub fn early_exit_executed_layers(exit_after: Option<usize>, layer_count: usize) -> usize {
+    match exit_after {
+        None => layer_count,
+        Some(k) => k.saturating_add(1).min(layer_count),
+    }
+}
+
+/// Prefijo `0..=k` encendido; cola apagada. k=last produce la máscara densa.
+pub fn early_exit_mask(layer_count: usize, k: usize) -> LayerExecutionMask {
+    let mut enabled = vec![false; layer_count];
+    if layer_count > 0 {
+        let last = k.min(layer_count - 1);
+        for slot in enabled.iter_mut().take(last + 1) {
+            *slot = true;
+        }
+    }
+    LayerExecutionMask::from_enabled(enabled)
 }
 
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
@@ -440,6 +500,7 @@ pub struct QuantizedGemma2 {
     final_softcap: f64,
     max_context: usize,
     active_mask: Option<LayerExecutionMask>,
+    active_exit_after: Option<usize>,
     device: Device,
 }
 
@@ -542,13 +603,14 @@ impl QuantizedGemma2 {
             final_softcap,
             max_context,
             active_mask: None,
+            active_exit_after: None,
             device: device.clone(),
         })
     }
 
     pub fn forward(&mut self, token_ids: &Tensor, position: usize) -> Result<Tensor> {
         Ok(self
-            .forward_with_mask(token_ids, position, None, false, false)?
+            .forward_with_mask(token_ids, position, None, None, false, false)?
             .logits)
     }
 
@@ -557,6 +619,7 @@ impl QuantizedGemma2 {
         token_ids: &Tensor,
         position: usize,
         mask: Option<&LayerExecutionMask>,
+        exit_after: Option<usize>,
         capture_trace: bool,
         capture_sequence_hidden: bool,
     ) -> Result<Gemma2ForwardOutput> {
@@ -579,11 +642,15 @@ impl QuantizedGemma2 {
                 self.layers.len()
             );
         }
+        let resolved_exit = validate_exit_after(self.layers.len(), &requested_mask, exit_after)?;
         if position == 0 {
             self.active_mask = Some(requested_mask.clone());
-        } else if self.active_mask.as_ref() != Some(&requested_mask) {
+            self.active_exit_after = resolved_exit;
+        } else if self.active_mask.as_ref() != Some(&requested_mask)
+            || self.active_exit_after != resolved_exit
+        {
             candle_core::bail!(
-                "la máscara de capas debe permanecer fija durante una generación; limpia KV cache para cambiarla"
+                "la máscara y exit_after deben permanecer fijos durante una generación; limpia KV cache para cambiarlos"
             );
         }
         let mut hidden =
@@ -632,7 +699,9 @@ impl QuantizedGemma2 {
             skipped_layers: 0,
         };
         for (layer_index, layer) in self.layers.iter_mut().enumerate() {
-            if !requested_mask.executes(layer_index) {
+            let skip_tail = resolved_exit.is_some_and(|k| layer_index > k);
+            if skip_tail || !requested_mask.executes(layer_index) {
+                // Middle-skip o cola de early-exit: KV de esta capa no se toca.
                 trace.skipped_layers += 1;
                 if capture_trace {
                     trace.layers.push(LayerActivationSummary {
@@ -700,7 +769,7 @@ impl QuantizedGemma2 {
         }
         self.clear_kv_cache();
         let ids = Tensor::new(token_ids, self.device())?.unsqueeze(0)?;
-        let output = self.forward_with_mask(&ids, 0, None, false, true)?;
+        let output = self.forward_with_mask(&ids, 0, None, None, false, true)?;
         let hidden = output
             .sequence_hidden
             .ok_or_else(|| candle_core::Error::Msg("prefill sin hidden".to_string()))?;
@@ -717,6 +786,7 @@ impl QuantizedGemma2 {
             layer.kv_cache.reset();
         }
         self.active_mask = None;
+        self.active_exit_after = None;
     }
 
     pub fn max_context(&self) -> usize {
@@ -1307,6 +1377,35 @@ mod tests {
         record_tensor_new();
         assert_eq!(snapshot_gemma2_profile().tensor_new, 0);
         assert!(!gemma2_profile_enabled());
+    }
+
+    #[test]
+    fn exit_after_out_of_range_is_rejected_and_last_layer_is_dense() {
+        let dense = LayerExecutionMask::all(26);
+        assert!(validate_exit_after(26, &dense, None).unwrap().is_none());
+        assert_eq!(validate_exit_after(26, &dense, Some(25)).unwrap(), Some(25));
+        assert!(early_exit_is_dense(None, 26));
+        assert!(early_exit_is_dense(Some(25), 26));
+        assert!(!early_exit_is_dense(Some(23), 26));
+        assert_eq!(early_exit_executed_layers(None, 26), 26);
+        assert_eq!(early_exit_executed_layers(Some(25), 26), 26);
+        assert_eq!(early_exit_executed_layers(Some(12), 26), 13);
+        assert_eq!(early_exit_executed_layers(Some(23), 26), 24);
+        assert_eq!(early_exit_mask(26, 25), dense);
+        let k20 = early_exit_mask(26, 20);
+        assert_eq!(k20.executed_count(), 21);
+        assert!(k20.executes(20));
+        assert!(!k20.executes(21));
+        assert!(validate_exit_after(26, &dense, Some(26)).is_err());
+        assert!(validate_exit_after(26, &dense, Some(99)).is_err());
+        let mut hole = vec![true; 26];
+        hole[7] = false;
+        let middle = LayerExecutionMask::from_enabled(hole);
+        assert!(
+            validate_exit_after(26, &middle, Some(20)).is_err(),
+            "no mezclar middle-skip y early-exit"
+        );
+        assert!(validate_exit_after(26, &middle, None).unwrap().is_none());
     }
 
     #[test]
