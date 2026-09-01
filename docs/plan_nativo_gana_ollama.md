@@ -307,6 +307,11 @@ Eso no es nativo.
 
 ### T2.1 — Ablation KL por capa (Camino S)
 
+**Estado (31 ago 2026):** hecho. CSV en `docs/v8_layer_kl_ablation.csv` y § T2.1
+de `docs/gemma2_runtime_optimization.md`. Diez capas con KL ≤ 0,05 al apagarlas
+solas; cinco con KL > 0,15. Camino S middle-skip **no** se aparca. La máscara
+`conservative_candidate_mask` no se cambió.
+
 **Blocked-by:** nada. Puede ir en paralelo a T0/T1.
 
 **Por qué:** el ranking por `delta_rms` + “preferir locales” saltó 3 capas

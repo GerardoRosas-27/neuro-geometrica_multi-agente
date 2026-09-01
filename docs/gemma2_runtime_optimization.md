@@ -262,3 +262,54 @@ Sparse sigue ~8 % más rápido que denso nativo, pero KL media 0,72 > 0,15: el
 producto **no promociona** la ruta (fallback 100 %, hit LRC 0). El test lib
 con N pedido = 32 en la misma máquina también pasó (tok/s denso 5,88 / sparse
 6,38 / Ollama 11,69). Las cifras no se citan como ventaja del preprint.
+
+### T2.1 — Ablation KL por capa (31 ago 2026 ~21:04 CT)
+
+Protocolo: 1 prompt (`BENCH_PROMPTS[0]`, «Explica en una frase qué es un residual.»),
+prefill denso con traza, luego 24 prefills sparse que apagan **una sola** capa
+`i ∈ 1..24` (no 0 ni la última). Gemma 2 2B GGUF, Windows CPU. Test
+`layer_kl_ablation_measures_one_layer_skips_on_gemma2_gguf` en 63 s de
+wall-clock (más ~4 min de compile release). CSV canónico:
+`docs/v8_layer_kl_ablation.csv`. Filas ordenadas por KL ascendente = cola de
+skip calibrada. `conservative_candidate_mask` **no** se tocó.
+
+```
+layer,sliding,delta_rms,kl,top1
+7,0,1.716770,0.018273,1
+21,0,3.012524,0.021460,1
+8,1,1.290439,0.023733,1
+12,1,1.642857,0.031118,1
+20,1,2.632482,0.035451,1
+15,0,2.120014,0.036453,1
+9,0,1.674762,0.043925,1
+11,0,1.622980,0.044089,1
+6,1,1.543405,0.045520,1
+23,0,4.160556,0.049675,1
+14,1,1.671279,0.051977,1
+19,0,2.281575,0.063634,1
+10,1,1.548858,0.064504,1
+18,1,2.098229,0.070332,1
+16,1,2.048503,0.079036,1
+1,0,1.509647,0.082673,1
+13,0,1.758550,0.087647,1
+22,1,3.393774,0.091118,1
+24,1,7.130063,0.145864,1
+17,0,2.247718,0.161124,1
+3,0,1.458264,0.228592,0
+5,0,1.383746,0.241503,0
+4,1,1.731286,0.261560,0
+2,1,1.471900,0.479236,0
+```
+
+| umbral | capas |
+|---|---|
+| KL ≤ 0,05 | 7, 21, 8, 12, 20, 15, 9, 11, 6, 23 |
+| 0,05 < KL ≤ 0,15 | 14, 19, 10, 18, 16, 1, 13, 22, 24 |
+| KL > 0,15 | 17, 3, 5, 4, 2 |
+
+**Veredicto Camino S:** no se aparca. Diez capas caben en KL ≤ 0,05 al
+apagarlas **solas**; diecinueve en KL ≤ 0,15. Las caras (2, 4, 5, 3, 17)
+rompen top-1 salvo la 17. El skip actual de 3 capas a la vez (KL media 0,72
+en V8) no implica que una capa suelta sea cara: `delta_rms` no rankea como
+KL (p. ej. capa 23, `delta_rms` 4,16 y KL 0,050; capa 5, `delta_rms` 1,38 y
+KL 0,242). T2.2 puede usar esta cola. Este PR no cambia la máscara.

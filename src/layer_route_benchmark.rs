@@ -1,9 +1,12 @@
 //! Benchmark V8: capas, KL, tok/s sparse vs 26/26, hit LRC, fallback,
 //! y comparación opcional con Ollama (`gemma2:2b` por defecto).
+//!
+//! T2.1: ablation KL por capa (`run_layer_kl_ablation`). Solo mide; no cambia
+//! `conservative_candidate_mask`.
 
 use crate::adaptive_gemma2::{conservative_candidate_mask, AdaptiveGemma2Config};
 use crate::layer_route_cache::{
-    fingerprint_wake, is_sparse_mask, logits_kl, LayerRouteCache, LayerRouteCacheConfig,
+    fingerprint_wake, is_sparse_mask, logits_kl, top1_agree, LayerRouteCache, LayerRouteCacheConfig,
 };
 use crate::native_gemma2::{
     resolve_gemma2_device, resolve_gemma2_model_path, Gemma2Tokenizer, LayerExecutionMask,
@@ -537,6 +540,155 @@ fn probe_ollama_median(
     })
 }
 
+/// Una fila de la ablation T2.1: apagar solo la capa `layer` y medir KL vs denso.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct LayerKlAblationRow {
+    pub layer: usize,
+    pub sliding: bool,
+    pub delta_rms: f32,
+    pub kl: f32,
+    pub top1: f32,
+}
+
+impl LayerKlAblationRow {
+    pub fn tuple(&self) -> (usize, f32, f32) {
+        (self.layer, self.kl, self.top1)
+    }
+}
+
+pub fn layer_kl_ablation_csv_header() -> &'static str {
+    "layer,sliding,delta_rms,kl,top1"
+}
+
+pub fn layer_kl_ablation_to_csv(rows: &[LayerKlAblationRow]) -> String {
+    let mut out = String::from(layer_kl_ablation_csv_header());
+    out.push('\n');
+    for row in rows {
+        out.push_str(&format!(
+            "{},{},{:.6},{:.6},{}\n",
+            row.layer,
+            u8::from(row.sliding),
+            row.delta_rms,
+            row.kl,
+            u8::from(row.top1 >= 0.5)
+        ));
+    }
+    out
+}
+
+/// Cola de skip calibrada: KL ascendente (desempate por indice de capa).
+pub fn calibrated_skip_queue(mut rows: Vec<LayerKlAblationRow>) -> Vec<LayerKlAblationRow> {
+    rows.sort_by(|left, right| {
+        left.kl
+            .total_cmp(&right.kl)
+            .then(left.layer.cmp(&right.layer))
+    });
+    rows
+}
+
+pub fn layers_at_most_kl(rows: &[LayerKlAblationRow], max_kl: f32) -> Vec<usize> {
+    rows.iter()
+        .filter(|row| row.kl.is_finite() && row.kl <= max_kl)
+        .map(|row| row.layer)
+        .collect()
+}
+
+pub fn layers_above_kl(rows: &[LayerKlAblationRow], min_kl: f32) -> Vec<usize> {
+    rows.iter()
+        .filter(|row| !row.kl.is_finite() || row.kl > min_kl)
+        .map(|row| row.layer)
+        .collect()
+}
+
+/// Mascara que apaga exactamente una capa. No se usa en el producto; solo mide.
+pub fn single_layer_off_mask(layer_count: usize, skip: usize) -> LayerExecutionMask {
+    let mut enabled = vec![true; layer_count];
+    if skip < layer_count {
+        enabled[skip] = false;
+    }
+    LayerExecutionMask::from_enabled(enabled)
+}
+
+/// Candidatas a apagar: no la 0 ni la ultima (`i in 1..layer_count-2`).
+pub fn ablation_skip_layers(layer_count: usize) -> Vec<usize> {
+    let last = layer_count.saturating_sub(1);
+    if last <= 1 {
+        Vec::new()
+    } else {
+        (1..last).collect()
+    }
+}
+
+/// Prefill denso con traza, luego un prefill sparse por cada capa media apagada.
+/// Devuelve filas ordenadas por KL ascendente (cola de skip calibrada).
+pub fn run_layer_kl_ablation(
+    model: &mut QuantizedGemma2,
+    prompt_tokens: &[u32],
+) -> Result<Vec<LayerKlAblationRow>, Box<dyn std::error::Error>> {
+    let layer_count = model.layer_count();
+    let dense_mask = LayerExecutionMask::all(layer_count);
+    let input = Tensor::new(prompt_tokens, model.device())?.unsqueeze(0)?;
+    model.clear_kv_cache();
+    let dense = model.forward_with_mask(&input, 0, Some(&dense_mask), true, false)?;
+    let dense_logits = dense
+        .logits
+        .squeeze(0)?
+        .to_vec1::<f32>()
+        .unwrap_or_default();
+    let mut summaries = vec![(false, 0.0f32); layer_count];
+    for layer in &dense.trace.layers {
+        if layer.layer < layer_count {
+            summaries[layer.layer] = (layer.sliding_window, layer.delta_rms);
+        }
+    }
+    for (index, summary) in summaries.iter_mut().enumerate() {
+        if !dense.trace.layers.iter().any(|layer| layer.layer == index) {
+            summary.0 = model.layer_uses_sliding_window(index);
+        }
+    }
+    let mut rows = Vec::new();
+    let skip_layers = ablation_skip_layers(layer_count);
+    for (ordinal, skip) in skip_layers.iter().copied().enumerate() {
+        eprintln!(
+            "T2.1 ablation skip layer {skip} ({}/{})",
+            ordinal + 1,
+            skip_layers.len()
+        );
+        let mask = single_layer_off_mask(layer_count, skip);
+        model.clear_kv_cache();
+        let sparse = model.forward_with_mask(&input, 0, Some(&mask), false, false)?;
+        let sparse_logits = sparse
+            .logits
+            .squeeze(0)?
+            .to_vec1::<f32>()
+            .unwrap_or_default();
+        let (sliding, delta_rms) = summaries[skip];
+        rows.push(LayerKlAblationRow {
+            layer: skip,
+            sliding,
+            delta_rms,
+            kl: logits_kl(&dense_logits, &sparse_logits),
+            top1: top1_agree(&dense_logits, &sparse_logits),
+        });
+    }
+    Ok(calibrated_skip_queue(rows))
+}
+
+pub fn run_layer_kl_ablation_on_prompt(
+    model_path: &Path,
+    prompt: &str,
+    device: &str,
+) -> Result<Vec<LayerKlAblationRow>, Box<dyn std::error::Error>> {
+    let device = resolve_gemma2_device(device)?;
+    let mut file = std::fs::File::open(model_path)?;
+    let content = gguf_file::Content::read(&mut file)?;
+    let tokenizer = Gemma2Tokenizer::from_gguf(&content)?;
+    let mut model = QuantizedGemma2::from_gguf(content, &mut file, &device)?;
+    let mut tokens = vec![tokenizer.bos_id];
+    tokens.extend(tokenizer.encode(prompt)?);
+    run_layer_kl_ablation(&mut model, &tokens)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -707,6 +859,119 @@ mod tests {
                 report.native_faster_than_ollama.is_some(),
                 "{}",
                 report.summary()
+            );
+        }
+    }
+
+    #[test]
+    fn layer_kl_ablation_csv_header_and_fake_rows() {
+        let header = layer_kl_ablation_csv_header();
+        for column in ["layer", "sliding", "delta_rms", "kl", "top1"] {
+            assert!(header.contains(column), "{header}");
+        }
+        let rows = calibrated_skip_queue(vec![
+            LayerKlAblationRow {
+                layer: 3,
+                sliding: false,
+                delta_rms: 0.40,
+                kl: 0.20,
+                top1: 0.0,
+            },
+            LayerKlAblationRow {
+                layer: 1,
+                sliding: true,
+                delta_rms: 0.10,
+                kl: 0.01,
+                top1: 1.0,
+            },
+            LayerKlAblationRow {
+                layer: 5,
+                sliding: true,
+                delta_rms: 0.30,
+                kl: 0.04,
+                top1: 1.0,
+            },
+        ]);
+        assert_eq!(
+            rows.iter().map(|row| row.layer).collect::<Vec<_>>(),
+            vec![1, 5, 3]
+        );
+        assert_eq!(
+            rows.iter().map(|row| row.tuple()).collect::<Vec<_>>(),
+            vec![(1, 0.01, 1.0), (5, 0.04, 1.0), (3, 0.20, 0.0)]
+        );
+        assert_eq!(layers_at_most_kl(&rows, 0.05), vec![1, 5]);
+        assert_eq!(layers_at_most_kl(&rows, 0.15), vec![1, 5]);
+        assert_eq!(layers_above_kl(&rows, 0.15), vec![3]);
+        let csv = layer_kl_ablation_to_csv(&rows);
+        assert!(csv.starts_with(header));
+        let lines: Vec<_> = csv.lines().collect();
+        assert_eq!(lines.len(), 4);
+        assert!(
+            lines[1].starts_with("1,1,0.100000,0.010000,1"),
+            "{}",
+            lines[1]
+        );
+        assert!(
+            lines[2].starts_with("5,1,0.300000,0.040000,1"),
+            "{}",
+            lines[2]
+        );
+        assert!(
+            lines[3].starts_with("3,0,0.400000,0.200000,0"),
+            "{}",
+            lines[3]
+        );
+    }
+
+    #[test]
+    fn layer_kl_ablation_single_layer_off_mask_keeps_edges() {
+        assert_eq!(ablation_skip_layers(26), (1..=24).collect::<Vec<_>>());
+        assert!(ablation_skip_layers(2).is_empty());
+        let mask = single_layer_off_mask(26, 7);
+        assert_eq!(mask.layer_count(), 26);
+        assert_eq!(mask.executed_count(), 25);
+        assert!(!mask.executes(7));
+        assert!(mask.executes(0));
+        assert!(mask.executes(25));
+        assert!(mask.executes(6));
+        assert!(mask.executes(8));
+    }
+
+    #[test]
+    fn layer_kl_ablation_measures_one_layer_skips_on_gemma2_gguf() {
+        let path = match resolve_gemma2_model_path(None) {
+            Ok(path) => path,
+            Err(error) => {
+                eprintln!("GGUF ausente, se omite: {error}");
+                return;
+            }
+        };
+        let rows =
+            run_layer_kl_ablation_on_prompt(&path, BENCH_PROMPTS[0], "cpu").expect("ablation T2.1");
+        let csv = layer_kl_ablation_to_csv(&rows);
+        eprintln!("{csv}");
+        let cheap = layers_at_most_kl(&rows, 0.05);
+        let budget = layers_at_most_kl(&rows, 0.15);
+        let expensive = layers_above_kl(&rows, 0.15);
+        eprintln!("KL<=0.05 layers={cheap:?}");
+        eprintln!("KL<=0.15 layers={budget:?}");
+        eprintln!("KL>0.15 layers={expensive:?}");
+        assert_eq!(rows.len(), 24, "{csv}");
+        assert!(
+            rows.iter().all(|row| (1..=24).contains(&row.layer)),
+            "{csv}"
+        );
+        assert!(rows.iter().all(|row| row.kl.is_finite()), "{csv}");
+        for pair in rows.windows(2) {
+            assert!(
+                pair[0].kl <= pair[1].kl + 1.0e-6,
+                "debe estar ordenado por KL: {csv}"
+            );
+        }
+        if budget.is_empty() {
+            eprintln!(
+                "Camino S middle-skip APARCADO: ninguna capa con KL <= 0.15 al apagarla sola."
             );
         }
     }
