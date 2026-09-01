@@ -212,23 +212,53 @@ termodinámicas; sus shards F32 no deben usarse como pesos del Transformer.
 
 ## V8 — rutas de capas vs 26/26 vs Ollama (31 ago 2026)
 
+Protocolo T0: 3 prompts (`BENCH_PROMPTS`), temperature 0,01, seed
+`0x4745_4D4D_4132`, device CPU, `repetitions=2` (mediana de tok/s).
+Máquina: Windows CPU. Gemma 2 2B GGUF local + Ollama `gemma2:2b` en
+`127.0.0.1:11434`.
+
+La cifra de 8 tokens (2,50 tok/s denso / 2,72 sparse / 14,66 Ollama) queda
+**retirada**. Ese N infla el denominador con el arranque del bucle; no se cita
+como figura publicada.
+
 Comando:
 
 ```powershell
-cargo test --release --lib native_sparse_vs_dense_and_ollama -- --nocapture --test-threads=1
-cargo run --release --bin native_gemma2_circadian_chat -- --bench-routes
+cargo test --release --lib layer_route_benchmark -- --nocapture --test-threads=1
+cargo run --release --bin native_gemma2_circadian_chat -- --bench-routes --max-tokens 64
 ```
 
-Corrida release, Gemma 2 2B GGUF local, 2 prompts, 8 tokens generados, CPU:
+`decode_tok_s` incluye sample + decode UTF-8. `model_decode_tok_s` =
+generated / `model_decode_seconds` en nativo. En la fila `ollama`,
+`model_decode_tok_s` = `decode_tok_s` (eval tok/s de Ollama ya es decode del
+modelo; no hay split sample/texto comparable).
 
-| backend | capas | KL vs denso | tok/s | LRC hit | fallback |
-|---|---:|---:|---:|---:|---:|
-| native_dense | 26/26 | — | 2,50 | 0 | 0 |
-| native_sparse | 23/26 | 0,53 | 2,72 | 0 | 1 |
-| ollama `gemma2:2b` | 26/26 | — | 14,66 | — | — |
+### CSV canónico (`--bench-routes --max-tokens 64`, Windows CPU, 31 ago 2026 ~20:52)
 
-Sparse es ~9 % más rápido que denso nativo, pero KL 0,53 > 0,15: el producto
-**no promociona** la ruta (fallback 100 %, hit LRC 0). Ollama fue ~5–6× más
-rápido que el nativo en esta máquina. El decode de 8 tokens está dominado por
-arrancar el bucle; no sustituye un benchmark de 64 tokens. Las cifras no se
-citan como ventaja del preprint.
+```
+backend,prompt_id,executed_layers,layer_count,kl_vs_dense,decode_tok_s,model_decode_tok_s,ttft_s,lrc_hit,fallback,generated_tokens
+native_dense,0,26,26,0.000000,6.6687,7.3309,1.7513,0,0,24
+native_sparse,0,23,26,0.591629,6.9507,7.6597,1.5352,0,1,64
+ollama,0,26,26,0.000000,13.2591,13.2591,0.2025,0,0,28
+native_dense,1,26,26,0.000000,6.5005,7.1248,2.1932,0,0,27
+native_sparse,1,23,26,0.471780,7.2410,7.9959,1.9209,0,1,64
+ollama,1,26,26,0.000000,12.9074,12.9074,0.1779,0,0,35
+native_dense,2,26,26,0.000000,6.6097,7.3241,1.9067,0,0,14
+native_sparse,2,23,26,1.082224,7.1696,7.9004,1.7108,0,1,64
+ollama,2,26,26,0.000000,12.2754,12.2754,0.1926,0,0,45
+```
+
+| backend | capas | KL vs denso | decode tok/s | model_decode tok/s | LRC hit | fallback |
+|---|---:|---:|---:|---:|---:|---:|
+| native_dense | 26/26 | — | 6,59 | 7,26 | 0 | 0 |
+| native_sparse | 23/26 | 0,72 | 7,12 | 7,85 | 0 | 1 |
+| ollama `gemma2:2b` | 26/26 | — | 12,81 | 12,81 | — | — |
+
+N real por fila (EOS puede cortar antes del pedido): denso 24/27/14, sparse
+64/64/64, Ollama 28/35/45. Pedir 64 no alarga el denso si el modelo emite EOS.
+No se declara victoria frente a Ollama.
+
+Sparse sigue ~8 % más rápido que denso nativo, pero KL media 0,72 > 0,15: el
+producto **no promociona** la ruta (fallback 100 %, hit LRC 0). El test lib
+con N pedido = 32 en la misma máquina también pasó (tok/s denso 5,88 / sparse
+6,38 / Ollama 11,69). Las cifras no se citan como ventaja del preprint.

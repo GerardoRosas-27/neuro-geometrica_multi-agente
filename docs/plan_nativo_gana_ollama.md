@@ -132,6 +132,8 @@ Un PR = una tarea. Tests verdes del módulo tocado + CSV si hay GGUF.
 
 ### T0 — Medición honesta a 64 tokens
 
+**Estado (31 ago 2026):** hecho. CSV canónico de `--bench-routes --max-tokens 64` (Windows CPU) en `docs/gemma2_runtime_optimization.md` § V8. La cifra de 8 tokens queda retirada.
+
 **Por qué:** el 2,5 tok/s de 8 tokens no es comparable a Ollama ni a la
 cifra histórica de 11 tok/s.
 

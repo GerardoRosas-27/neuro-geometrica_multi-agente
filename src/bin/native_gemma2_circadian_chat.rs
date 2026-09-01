@@ -75,9 +75,15 @@ struct CircadianSession {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = parse_args()?;
     if config.bench_routes {
+        // T0: sin min(32). El default del chat es 256; el protocolo V8 pide 64 tokens.
+        let generated_tokens = if config.max_tokens == DEFAULT_MAX_TOKENS {
+            64
+        } else {
+            config.max_tokens.max(8)
+        };
         let report = cdt_rqm_epr::layer_route_benchmark::run_route_speed_benchmark(
             cdt_rqm_epr::layer_route_benchmark::RouteSpeedConfig {
-                generated_tokens: config.max_tokens.min(32).max(8),
+                generated_tokens,
                 device: config.device.clone(),
                 ..cdt_rqm_epr::layer_route_benchmark::RouteSpeedConfig::default()
             },

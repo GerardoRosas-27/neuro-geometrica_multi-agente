@@ -24,7 +24,7 @@ pub const BENCH_PROMPTS: &[&str] = &[
     "Responde siempre en español. ¿Quién eres?",
 ];
 
-const DEFAULT_GENERATED: usize = 16;
+const DEFAULT_GENERATED: usize = 64;
 const DEFAULT_OLLAMA_HOST: &str = "127.0.0.1";
 const DEFAULT_OLLAMA_PORT: u16 = 11434;
 const DEFAULT_OLLAMA_MODEL: &str = "gemma2:2b";
@@ -33,6 +33,7 @@ const DEFAULT_OLLAMA_MODEL: &str = "gemma2:2b";
 pub struct RouteSpeedConfig {
     pub generated_tokens: usize,
     pub prompt_count: usize,
+    pub repetitions: usize,
     pub ollama_host: String,
     pub ollama_port: u16,
     pub ollama_model: String,
@@ -45,6 +46,7 @@ impl Default for RouteSpeedConfig {
         Self {
             generated_tokens: DEFAULT_GENERATED,
             prompt_count: BENCH_PROMPTS.len(),
+            repetitions: 2,
             ollama_host: std::env::var("OLLAMA_HOST")
                 .unwrap_or_else(|_| DEFAULT_OLLAMA_HOST.into()),
             ollama_port: std::env::var("OLLAMA_PORT")
@@ -67,6 +69,9 @@ pub struct RouteSpeedRow {
     pub layer_count: usize,
     pub kl_vs_dense: f32,
     pub decode_tok_s: f64,
+    /// generated / model_decode_seconds. Excluye sample + decode UTF-8.
+    /// En la fila `ollama` coincide con `decode_tok_s` (eval tok/s de Ollama ya es decode del modelo).
+    pub model_decode_tok_s: f64,
     pub ttft_seconds: f64,
     pub lrc_hit: bool,
     pub fallback: bool,
@@ -90,7 +95,7 @@ pub struct RouteSpeedReport {
 
 impl RouteSpeedReport {
     pub fn csv_header() -> &'static str {
-        "backend,prompt_id,executed_layers,layer_count,kl_vs_dense,decode_tok_s,ttft_s,lrc_hit,fallback,generated_tokens"
+        "backend,prompt_id,executed_layers,layer_count,kl_vs_dense,decode_tok_s,model_decode_tok_s,ttft_s,lrc_hit,fallback,generated_tokens"
     }
 
     pub fn to_csv(&self) -> String {
@@ -98,13 +103,14 @@ impl RouteSpeedReport {
         out.push('\n');
         for row in &self.rows {
             out.push_str(&format!(
-                "{},{},{},{},{:.6},{:.4},{:.4},{},{},{}\n",
+                "{},{},{},{},{:.6},{:.4},{:.4},{:.4},{},{},{}\n",
                 row.backend,
                 row.prompt_id,
                 row.executed_layers,
                 row.layer_count,
                 row.kl_vs_dense,
                 row.decode_tok_s,
+                row.model_decode_tok_s,
                 row.ttft_seconds,
                 u8::from(row.lrc_hit),
                 u8::from(row.fallback),
@@ -374,26 +380,35 @@ pub fn run_route_speed_benchmark_with_model(
             );
         }
 
-        let dense_metrics = timed_generate(&mut model, &tokenizer, &tokens, None, &gen_config)?;
+        let dense_metrics = timed_generate_median(
+            &mut model,
+            &tokenizer,
+            &tokens,
+            None,
+            &gen_config,
+            config.repetitions,
+        )?;
         rows.push(RouteSpeedRow {
             backend: "native_dense".into(),
             prompt_id,
             executed_layers: layer_count,
             layer_count,
             kl_vs_dense: 0.0,
-            decode_tok_s: dense_metrics.0,
-            ttft_seconds: dense_metrics.1,
+            decode_tok_s: dense_metrics.decode_tok_s,
+            model_decode_tok_s: dense_metrics.model_decode_tok_s,
+            ttft_seconds: dense_metrics.ttft_seconds,
             lrc_hit: false,
             fallback: false,
-            generated_tokens: dense_metrics.2,
+            generated_tokens: dense_metrics.generated_tokens,
         });
 
-        let sparse_metrics = timed_generate(
+        let sparse_metrics = timed_generate_median(
             &mut model,
             &tokenizer,
             &tokens,
             Some(&sparse_mask),
             &gen_config,
+            config.repetitions,
         )?;
         rows.push(RouteSpeedRow {
             backend: "native_sparse".into(),
@@ -401,15 +416,17 @@ pub fn run_route_speed_benchmark_with_model(
             executed_layers: sparse_mask.executed_count(),
             layer_count,
             kl_vs_dense: kl,
-            decode_tok_s: sparse_metrics.0,
-            ttft_seconds: sparse_metrics.1,
+            decode_tok_s: sparse_metrics.decode_tok_s,
+            model_decode_tok_s: sparse_metrics.model_decode_tok_s,
+            ttft_seconds: sparse_metrics.ttft_seconds,
             lrc_hit,
             fallback,
-            generated_tokens: sparse_metrics.2,
+            generated_tokens: sparse_metrics.generated_tokens,
         });
 
         if config.compare_ollama {
-            match probe_ollama(&config, prompt, config.generated_tokens) {
+            match probe_ollama_median(&config, prompt, config.generated_tokens, config.repetitions)
+            {
                 Ok(sample) => rows.push(RouteSpeedRow {
                     backend: "ollama".into(),
                     prompt_id,
@@ -417,6 +434,8 @@ pub fn run_route_speed_benchmark_with_model(
                     layer_count,
                     kl_vs_dense: 0.0,
                     decode_tok_s: sample.decode_tok_s,
+                    // eval tok/s de Ollama ya es decode del modelo; la columna queda numerica.
+                    model_decode_tok_s: sample.decode_tok_s,
                     ttft_seconds: sample.ttft_seconds,
                     lrc_hit: false,
                     fallback: false,
@@ -429,26 +448,114 @@ pub fn run_route_speed_benchmark_with_model(
     Ok(aggregate_rows(&rows))
 }
 
+struct TimedSample {
+    decode_tok_s: f64,
+    model_decode_tok_s: f64,
+    ttft_seconds: f64,
+    generated_tokens: usize,
+}
+
+fn median_f64(values: &[f64]) -> f64 {
+    let mut sorted = values.to_vec();
+    sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    match sorted.len() {
+        0 => 0.0,
+        1 => sorted[0],
+        n if n % 2 == 1 => sorted[n / 2],
+        n => (sorted[n / 2 - 1] + sorted[n / 2]) / 2.0,
+    }
+}
+
 fn timed_generate(
     model: &mut QuantizedGemma2,
     tokenizer: &Gemma2Tokenizer,
     tokens: &[u32],
     mask: Option<&LayerExecutionMask>,
     config: &Gemma2GenerationConfig,
-) -> Result<(f64, f64, usize), Box<dyn std::error::Error>> {
+) -> Result<TimedSample, Box<dyn std::error::Error>> {
     let mut session = Gemma2Session::new();
     session.reset(model);
     let generation = session.generate(model, tokenizer, tokens, mask, *config, |_| {})?;
-    Ok((
-        generation.metrics.decode_tokens_per_second(),
-        generation.metrics.time_to_first_token_seconds,
-        generation.metrics.generated_tokens,
-    ))
+    let generated = generation.metrics.generated_tokens;
+    Ok(TimedSample {
+        decode_tok_s: generation.metrics.decode_tokens_per_second(),
+        model_decode_tok_s: generated as f64
+            / generation.metrics.model_decode_seconds.max(f64::EPSILON),
+        ttft_seconds: generation.metrics.time_to_first_token_seconds,
+        generated_tokens: generated,
+    })
+}
+
+fn timed_generate_median(
+    model: &mut QuantizedGemma2,
+    tokenizer: &Gemma2Tokenizer,
+    tokens: &[u32],
+    mask: Option<&LayerExecutionMask>,
+    config: &Gemma2GenerationConfig,
+    repetitions: usize,
+) -> Result<TimedSample, Box<dyn std::error::Error>> {
+    let reps = repetitions.max(1);
+    let mut decode = Vec::with_capacity(reps);
+    let mut model_decode = Vec::with_capacity(reps);
+    let mut ttft = Vec::with_capacity(reps);
+    let mut generated = 0usize;
+    for _ in 0..reps {
+        let sample = timed_generate(model, tokenizer, tokens, mask, config)?;
+        decode.push(sample.decode_tok_s);
+        model_decode.push(sample.model_decode_tok_s);
+        ttft.push(sample.ttft_seconds);
+        generated = sample.generated_tokens;
+    }
+    Ok(TimedSample {
+        decode_tok_s: median_f64(&decode),
+        model_decode_tok_s: median_f64(&model_decode),
+        ttft_seconds: median_f64(&ttft),
+        generated_tokens: generated,
+    })
+}
+
+fn probe_ollama_median(
+    config: &RouteSpeedConfig,
+    prompt: &str,
+    generated_tokens: usize,
+    repetitions: usize,
+) -> Result<OllamaSpeedSample, String> {
+    let reps = repetitions.max(1);
+    let mut samples = Vec::with_capacity(reps);
+    for _ in 0..reps {
+        samples.push(probe_ollama(config, prompt, generated_tokens)?);
+    }
+    let decode: Vec<f64> = samples.iter().map(|s| s.decode_tok_s).collect();
+    let ttft: Vec<f64> = samples.iter().map(|s| s.ttft_seconds).collect();
+    let last = samples.last().cloned().expect("repetitions >= 1");
+    Ok(OllamaSpeedSample {
+        decode_tok_s: median_f64(&decode),
+        ttft_seconds: median_f64(&ttft),
+        generated_tokens: last.generated_tokens,
+        prompt_tokens: last.prompt_tokens,
+        text_len: last.text_len,
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn default_generated_tokens_is_64() {
+        assert_eq!(RouteSpeedConfig::default().generated_tokens, 64);
+        assert_eq!(RouteSpeedConfig::default().repetitions, 2);
+        assert_eq!(
+            RouteSpeedConfig::default().prompt_count,
+            BENCH_PROMPTS.len()
+        );
+    }
+
+    #[test]
+    fn median_of_two_runs_is_midpoint() {
+        assert!((median_f64(&[10.0, 12.0]) - 11.0).abs() < 1.0e-9);
+        assert!((median_f64(&[7.0]) - 7.0).abs() < 1.0e-9);
+    }
 
     #[test]
     fn csv_header_lists_required_columns() {
@@ -458,8 +565,10 @@ mod tests {
             "executed_layers",
             "kl_vs_dense",
             "decode_tok_s",
+            "model_decode_tok_s",
             "lrc_hit",
             "fallback",
+            "generated_tokens",
         ] {
             assert!(header.contains(column), "{header}");
         }
@@ -475,6 +584,7 @@ mod tests {
                 layer_count: 26,
                 kl_vs_dense: 0.0,
                 decode_tok_s: 10.0,
+                model_decode_tok_s: 10.0,
                 ttft_seconds: 1.0,
                 lrc_hit: false,
                 fallback: false,
@@ -487,6 +597,7 @@ mod tests {
                 layer_count: 26,
                 kl_vs_dense: 0.04,
                 decode_tok_s: 12.0,
+                model_decode_tok_s: 12.0,
                 ttft_seconds: 0.9,
                 lrc_hit: false,
                 fallback: false,
@@ -499,6 +610,7 @@ mod tests {
                 layer_count: 26,
                 kl_vs_dense: 0.05,
                 decode_tok_s: 13.0,
+                model_decode_tok_s: 13.0,
                 ttft_seconds: 0.8,
                 lrc_hit: true,
                 fallback: true,
@@ -511,6 +623,7 @@ mod tests {
                 layer_count: 26,
                 kl_vs_dense: 0.0,
                 decode_tok_s: 8.0,
+                model_decode_tok_s: 8.0,
                 ttft_seconds: 1.2,
                 lrc_hit: false,
                 fallback: false,
@@ -551,8 +664,8 @@ mod tests {
         let report = run_route_speed_benchmark_with_model(
             &path,
             RouteSpeedConfig {
-                generated_tokens: 8,
-                prompt_count: 2,
+                generated_tokens: 32,
+                prompt_count: 3,
                 compare_ollama,
                 ..RouteSpeedConfig::default()
             },
@@ -570,7 +683,24 @@ mod tests {
             .iter()
             .filter(|row| row.backend.starts_with("native_"))
             .count();
-        assert_eq!(native_rows, 4, "{}", report.to_csv());
+        assert_eq!(native_rows, 6, "{}", report.to_csv());
+        assert!(
+            report
+                .rows
+                .iter()
+                .all(|row| row.model_decode_tok_s.is_finite() && row.model_decode_tok_s > 0.0),
+            "{}",
+            report.to_csv()
+        );
+        assert!(
+            report
+                .rows
+                .iter()
+                .filter(|row| row.backend.starts_with("native_"))
+                .all(|row| row.generated_tokens > 0),
+            "{}",
+            report.to_csv()
+        );
         if compare_ollama {
             assert!(report.ollama_mean_tok_s.is_some(), "{}", report.summary());
             assert!(
