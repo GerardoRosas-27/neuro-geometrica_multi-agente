@@ -371,3 +371,95 @@ ni UTF-8.
 del bench, sin CTP. No se «arregla» CTP para ganar a Ollama.
 
 Este PR no cambia máscaras, skip, early-exit, cuenca, MKL ni llama.cpp.
+
+### T1.3 — Hilos Rayon / MKL (31 ago 2026 ~21:33 CT)
+
+Camino K, bloqueado por T1.1 H1 verdadera. Solo runtime: no máscaras, skip,
+early-exit, cuenca, llama.cpp ni quinto binario. T1.2 se saltó (H2 falsa).
+
+Máquina: Windows CPU, 12th Gen Intel Core i5-1235U (10 núcleos, 12 lógicos).
+Gemma 2 2B GGUF, release, `target-cpu=native`. Un prompt
+(`BENCH_PROMPTS[0]`, «Explica en una frase qué es un residual.»),
+`GEMMA2_BENCH_REPS=1`, `--max-tokens 64`. EOS cortó el denso a 24 tokens
+(igual que T0/T1.1). El implícito de Rayon sin `RAYON_NUM_THREADS` es 12.
+
+Comando (un valor de `RAYON_NUM_THREADS` por corrida):
+
+```powershell
+$env:GEMMA2_BENCH_PROMPT_COUNT="1"
+$env:GEMMA2_BENCH_REPS="1"
+$env:RAYON_NUM_THREADS="1"   # luego 2, 4, 8; implícito = variable ausente
+.\target\release\native_gemma2_circadian_chat.exe --bench-routes --max-tokens 64
+```
+
+Gate: model_decode_tok_s denso seq=1. CSV de cada corrida:
+
+```
+# RAYON_NUM_THREADS=1
+native_dense,0,26,26,0.000000,6.6476,7.3001,1.7787,0,0,24
+native_sparse,0,23,26,0.591629,6.9404,7.6405,1.5356,0,1,64
+ollama,0,26,26,0.000000,12.7863,12.7863,0.5684,0,0,28
+
+# RAYON_NUM_THREADS=2
+native_dense,0,26,26,0.000000,6.1603,6.7216,1.7630,0,0,24
+native_sparse,0,23,26,0.591629,7.1012,7.8212,1.5313,0,1,64
+ollama,0,26,26,0.000000,13.3716,13.3716,0.1954,0,0,28
+
+# RAYON_NUM_THREADS=4
+native_dense,0,26,26,0.000000,6.8979,7.6109,1.7135,0,0,24
+native_sparse,0,23,26,0.591629,7.3619,8.1873,1.4975,0,1,64
+ollama,0,26,26,0.000000,13.1243,13.1243,0.1925,0,0,28
+
+# RAYON_NUM_THREADS=8
+native_dense,0,26,26,0.000000,6.8359,7.4932,1.7306,0,0,24
+native_sparse,0,23,26,0.591629,7.1110,7.8673,1.6672,0,1,64
+ollama,0,26,26,0.000000,12.9023,12.9023,0.1790,0,0,28
+
+# implícito (sin RAYON_NUM_THREADS → 12 lógicos)
+native_dense,0,26,26,0.000000,6.7624,7.3636,1.7521,0,0,24
+native_sparse,0,23,26,0.591629,7.1684,7.9014,1.5198,0,1,64
+ollama,0,26,26,0.000000,13.1026,13.1026,0.1943,0,0,28
+```
+
+| hilos | dense model_decode tok/s | dense decode tok/s | sparse model_decode tok/s | ollama eval tok/s |
+|---|---:|---:|---:|---:|
+| 1 | 7,3001 | 6,6476 | 7,6405 | 12,7863 |
+| 2 | 6,7216 | 6,1603 | 7,8212 | 13,3716 |
+| **4** | **7,6109** | **6,8979** | **8,1873** | 13,1243 |
+| 8 | 7,4932 | 6,8359 | 7,8673 | 12,9023 |
+| implícito (12) | 7,3636 | 6,7624 | 7,9014 | 13,1026 |
+
+**Default elegido: 4 hilos.** Gana en decode seq=1 denso (7,6109 vs 7,3636
+implícito, +3,4 %). 1 hilo no ganó (7,3001, por debajo del implícito). 2 hilos
+es el peor (6,7216). 8 queda entre 4 y el implícito. Sparse también maximiza
+en 4. No se asume «más hilos = más rápido»; se deja el medido.
+
+Default versionado:
+
+- `DEFAULT_GEMMA2_RAYON_THREADS = 4` en `src/native_gemma2.rs`
+- `.cargo/config.toml` `[env] RAYON_NUM_THREADS = "4"` (Cargo no pisa un
+  valor ya exportado)
+- override: `GEMMA2_RAYON_THREADS` (gana) o `RAYON_NUM_THREADS`
+
+`init_gemma2_rayon_threads()` corre al arrancar el chat y al cargar GGUF, así
+el exe directo (sin Cargo) también usa 4. tok/s denso no baja vs el implícito.
+
+#### MKL
+
+**wontfix.** Compiló y el DLL no carga. Comando (31 ago 2026 ~21:34 CT):
+
+```powershell
+cargo run --release --features mkl --bin native_gemma2_circadian_chat -- --help
+```
+
+`Finished release` en 6 min 34 s, luego:
+
+```
+error: process didn't exit successfully: `target\release\native_gemma2_circadian_chat.exe --help` (exit code: 0xc0000135, STATUS_DLL_NOT_FOUND)
+```
+
+No se insiste. CPU Candle sigue siendo el backend validado. No se documenta
+ese comando como camino de producto.
+
+No se introduce `llama-cpp-sys`. Native denso 7,61 / Ollama 13,12 ≈ 0,58×;
+sigue ≥ 0,5× Ollama, T1.5 no entra en este commit.

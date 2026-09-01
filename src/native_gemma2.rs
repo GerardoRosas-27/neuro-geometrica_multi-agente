@@ -13,7 +13,8 @@ use std::env;
 use std::fs;
 use std::io::{Read, Seek};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+use std::sync::Once;
 use tokenizers::models::unigram::Unigram;
 use tokenizers::pre_tokenizers::metaspace::{Metaspace, PrependScheme};
 use tokenizers::{AddedToken, Tokenizer};
@@ -62,6 +63,51 @@ pub fn init_gemma2_profile_from_env() {
         })
         .unwrap_or(false);
     set_gemma2_profile(enabled);
+}
+
+/// Default intra-op T1.3. 4 hilos ganó en decode seq=1 denso frente a 1/2/8
+/// y al implícito de Rayon (12 lógicos, i5-1235U, Windows CPU, Gemma 2 2B).
+pub const DEFAULT_GEMMA2_RAYON_THREADS: usize = 4;
+
+static RAYON_INIT: Once = Once::new();
+static RAYON_THREADS: AtomicUsize = AtomicUsize::new(0);
+
+pub fn parse_gemma2_rayon_threads(gemma2: Option<&str>, rayon: Option<&str>) -> usize {
+    let parse_positive = |value: &str| value.trim().parse::<usize>().ok().filter(|n| *n > 0);
+    gemma2
+        .and_then(parse_positive)
+        .or_else(|| rayon.and_then(parse_positive))
+        .unwrap_or(DEFAULT_GEMMA2_RAYON_THREADS)
+}
+
+pub fn resolve_gemma2_rayon_threads() -> usize {
+    let gemma2 = env::var("GEMMA2_RAYON_THREADS").ok();
+    let rayon = env::var("RAYON_NUM_THREADS").ok();
+    parse_gemma2_rayon_threads(gemma2.as_deref(), rayon.as_deref())
+}
+
+/// Fija el pool global de Rayon una vez. Debe llamarse antes del primer matmul.
+pub fn init_gemma2_rayon_threads() -> usize {
+    RAYON_INIT.call_once(|| {
+        let requested = resolve_gemma2_rayon_threads();
+        match rayon::ThreadPoolBuilder::new()
+            .num_threads(requested)
+            .build_global()
+        {
+            Ok(()) => RAYON_THREADS.store(requested, Ordering::Relaxed),
+            Err(_) => RAYON_THREADS.store(rayon::current_num_threads(), Ordering::Relaxed),
+        }
+    });
+    gemma2_rayon_threads()
+}
+
+pub fn gemma2_rayon_threads() -> usize {
+    let stored = RAYON_THREADS.load(Ordering::Relaxed);
+    if stored == 0 {
+        resolve_gemma2_rayon_threads()
+    } else {
+        stored
+    }
 }
 
 pub fn reset_gemma2_profile() {
@@ -403,6 +449,7 @@ impl QuantizedGemma2 {
         reader: &mut R,
         device: &Device,
     ) -> Result<Self> {
+        let _ = init_gemma2_rayon_threads();
         let architecture = metadata_string(&content, "general.architecture")?;
         if architecture != "gemma2" {
             candle_core::bail!("se esperaba arquitectura gemma2, se recibió {architecture}");
@@ -1260,5 +1307,21 @@ mod tests {
         record_tensor_new();
         assert_eq!(snapshot_gemma2_profile().tensor_new, 0);
         assert!(!gemma2_profile_enabled());
+    }
+
+    #[test]
+    fn gemma2_rayon_threads_prefers_explicit_then_rayon_then_default() {
+        assert_eq!(
+            parse_gemma2_rayon_threads(None, None),
+            DEFAULT_GEMMA2_RAYON_THREADS
+        );
+        assert_eq!(parse_gemma2_rayon_threads(Some("1"), Some("8")), 1);
+        assert_eq!(parse_gemma2_rayon_threads(None, Some("8")), 8);
+        assert_eq!(parse_gemma2_rayon_threads(Some("0"), Some("2")), 2);
+        assert_eq!(
+            parse_gemma2_rayon_threads(Some("no"), None),
+            DEFAULT_GEMMA2_RAYON_THREADS
+        );
+        assert_eq!(DEFAULT_GEMMA2_RAYON_THREADS, 4);
     }
 }

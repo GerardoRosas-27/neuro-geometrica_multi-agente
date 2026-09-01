@@ -22,8 +22,8 @@ use cdt_rqm_epr::gemma2_thermo_hybrid_session::sanitize_chat_name;
 use cdt_rqm_epr::gemma_phasor_coupling::{GemmaPhasorCouplingConfig, GemmaPhasorWorker};
 use cdt_rqm_epr::layer_route_cache::fingerprint_wake;
 use cdt_rqm_epr::native_gemma2::{
-    resolve_gemma2_device, resolve_gemma2_model_path, Gemma2Tokenizer, LayerExecutionMask,
-    QuantizedGemma2,
+    init_gemma2_rayon_threads, resolve_gemma2_device, resolve_gemma2_model_path, Gemma2Tokenizer,
+    LayerExecutionMask, QuantizedGemma2,
 };
 use cdt_rqm_epr::native_gemma2_runtime::{
     chat_tokens_with_cache, Gemma2Generation, Gemma2GenerationConfig, Gemma2Session,
@@ -73,8 +73,10 @@ struct CircadianSession {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let rayon_threads = init_gemma2_rayon_threads();
     let config = parse_args()?;
     if config.bench_routes {
+        eprintln!("T1.3 rayon_threads={rayon_threads}");
         // T0: sin min(32). El default del chat es 256; el protocolo V8 pide 64 tokens.
         let generated_tokens = if config.max_tokens == DEFAULT_MAX_TOKENS {
             64

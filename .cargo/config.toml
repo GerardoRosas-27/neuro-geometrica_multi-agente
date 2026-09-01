@@ -5,3 +5,10 @@
 # distribuir artefactos a otras máquinas.
 [build]
 rustflags = ["-C", "target-cpu=native"]
+
+# T1.3: decode seq=1. 4 hilos ganó a 1/2/8 y al implícito (12 lógicos) en
+# Windows i5-1235U, Gemma 2 2B, --bench-routes, 64 tokens (EOS 24 denso).
+# Cargo no pisa el valor si el proceso ya exporta RAYON_NUM_THREADS.
+# El binario aplica el mismo default si se lanza el exe sin cargo.
+[env]
+RAYON_NUM_THREADS = "4"

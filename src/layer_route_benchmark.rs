@@ -9,8 +9,9 @@ use crate::layer_route_cache::{
     fingerprint_wake, is_sparse_mask, logits_kl, top1_agree, LayerRouteCache, LayerRouteCacheConfig,
 };
 use crate::native_gemma2::{
-    gemma2_profile_enabled, init_gemma2_profile_from_env, resolve_gemma2_device,
-    resolve_gemma2_model_path, Gemma2Tokenizer, LayerExecutionMask, QuantizedGemma2,
+    gemma2_profile_enabled, gemma2_rayon_threads, init_gemma2_profile_from_env,
+    init_gemma2_rayon_threads, resolve_gemma2_device, resolve_gemma2_model_path, Gemma2Tokenizer,
+    LayerExecutionMask, QuantizedGemma2, DEFAULT_GEMMA2_RAYON_THREADS,
 };
 use crate::native_gemma2_runtime::{Gemma2GenerationConfig, Gemma2Session};
 use candle_core::quantized::gguf_file;
@@ -155,9 +156,10 @@ impl RouteSpeedReport {
 
     pub fn summary(&self) -> String {
         format!(
-            "layers={:.1}/{} kl={:.4} tok/s dense={:.2} sparse={:.2} ollama={} lrc_hit={:.2} fallback={:.2} sparse>dense={} native>ollama={}",
+            "layers={:.1}/{} rayon={} kl={:.4} tok/s dense={:.2} sparse={:.2} ollama={} lrc_hit={:.2} fallback={:.2} sparse>dense={} native>ollama={}",
             self.mean_executed_layers,
             self.layer_count,
+            gemma2_rayon_threads(),
             self.mean_kl,
             self.native_dense_mean_tok_s,
             self.native_sparse_mean_tok_s,
@@ -361,6 +363,10 @@ pub fn run_route_speed_benchmark_with_model(
     model_path: &Path,
     config: RouteSpeedConfig,
 ) -> Result<RouteSpeedReport, Box<dyn std::error::Error>> {
+    let rayon_threads = init_gemma2_rayon_threads();
+    eprintln!(
+        "T1.3 rayon_threads={rayon_threads} (GEMMA2_RAYON_THREADS / RAYON_NUM_THREADS / default {DEFAULT_GEMMA2_RAYON_THREADS})"
+    );
     let device = resolve_gemma2_device(&config.device)?;
     let mut file = std::fs::File::open(model_path)?;
     let content = gguf_file::Content::read(&mut file)?;
