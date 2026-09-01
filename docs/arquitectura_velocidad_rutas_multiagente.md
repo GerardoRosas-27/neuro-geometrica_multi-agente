@@ -4,7 +4,7 @@
 
 **Fecha:** 31 de agosto de 2026
 **Rama:** `feature/optimizacion-velocidad-rutas`
-**Estado:** V1–V6 implementados (sin GGUF en CI). V7 aparcado (`exit_after` / early exit). V8 pendiente (benchmark CSV, sin cifras inventadas).
+**Estado:** V1–V6 + V8. V7 aparcado (`exit_after` / early exit).
 
 ### Qué hay en código (para el bot que continúe)
 
@@ -16,8 +16,12 @@
 | V4 KL sueño | `replay_prompt_for_mask` promociona por KL ≤ 0,15, sin umbral 0,92 | `kl_promotion_*`, `lrc_promoted_route_*` |
 | V5 local/global | `conservative_candidate_mask` prefiere ventana; prohibe dos globales consecutivos; `max_skip_fraction` = 0,15 | `candidate_mask_never_skips_two_consecutive_globals`, `candidate_mask_prefers_local_layers_over_globals` |
 | V6 grafo 6 nodos | `src/agent_graph.rs`, chat Router→hablante→Verifier, `agent-graph.json` | router sintético + verifier de strings; GGUF `#[ignore]` |
+| V8 benchmark | `src/layer_route_benchmark.rs`, `--bench-routes` | CSV + nativo vs Ollama (GGUF si está) |
 
-Pendiente: V7 early exit aparcado (no `exit_after` hasta medir tok/s de V3–V5). V8 benchmark CSV sin cifras inventadas. Los tests GGUF siguen `#[ignore]`.
+V8: `src/layer_route_benchmark.rs` + `--bench-routes` en el chat. Tests: CSV, agregación, parser Ollama, sparse vs 26/26 (GGUF si está), nativo vs Ollama (si el daemon responde). Los tests GGUF de sueño adaptativo siguen `#[ignore]`.
+
+Siguiente ciclo (nativo vs Ollama, kernels vs skip con KL bajo), tareas para el bot:
+[`plan_nativo_gana_ollama.md`](plan_nativo_gana_ollama.md).
 **Alcance:** Gemma 2 nativo (Candle/GGUF) + grafo de agentes sobre *un* runtime.
 **Fuera de alcance:** tesis de cuenca / CL-MPM (otra línea de trabajo), entrenar pesos del LLM, chip físico, consciencia.
 
