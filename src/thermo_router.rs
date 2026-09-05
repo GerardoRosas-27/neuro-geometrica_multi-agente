@@ -11,7 +11,7 @@ use std::path::Path;
 
 pub const ROUTER_OBSERVER: ObserverId = ObserverId(778_003);
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ActivationFingerprint {
     pub entries: Vec<(u32, f32)>,
     pub confidence: f32,

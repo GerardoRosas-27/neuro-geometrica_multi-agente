@@ -5,7 +5,12 @@
 //! ```
 
 use candle_core::quantized::gguf_file;
-use cdt_rqm_epr::adaptive_gemma2::{AdaptiveGemma2Config, AdaptiveThermoMemory};
+use cdt_rqm_epr::adaptive_gemma2::{
+    AdaptiveGemma2Config, AdaptiveThermoMemory, PreparedAdaptiveForward,
+};
+use cdt_rqm_epr::agent_graph::{
+    AgentGraph, AgentGraphConfig, AgentRole, ABSTAIN_REPLY, AGENT_GRAPH_FILE, DENSE_TALKER_ID,
+};
 use cdt_rqm_epr::gemma2_circadian_bridge::{
     load_or_create_hybrid, new_wake_record, persist_hybrid_session, run_sleep_phase, wake_history,
     CircadianPaths, CircadianSleepConfig, WakeJournal, DEFAULT_CIRCADIAN_ROOT,
@@ -15,11 +20,13 @@ use cdt_rqm_epr::gemma2_thermo_hybrid_llm::{
 };
 use cdt_rqm_epr::gemma2_thermo_hybrid_session::sanitize_chat_name;
 use cdt_rqm_epr::gemma_phasor_coupling::{GemmaPhasorCouplingConfig, GemmaPhasorWorker};
+use cdt_rqm_epr::layer_route_cache::fingerprint_wake;
 use cdt_rqm_epr::native_gemma2::{
-    resolve_gemma2_device, resolve_gemma2_model_path, Gemma2Tokenizer, QuantizedGemma2,
+    init_gemma2_rayon_threads, resolve_gemma2_device, resolve_gemma2_model_path, Gemma2Tokenizer,
+    LayerExecutionMask, QuantizedGemma2,
 };
 use cdt_rqm_epr::native_gemma2_runtime::{
-    chat_tokens_with_cache, Gemma2GenerationConfig, Gemma2Session,
+    chat_tokens_with_cache, Gemma2Generation, Gemma2GenerationConfig, Gemma2Session,
 };
 use std::cell::Cell;
 use std::env;
@@ -42,12 +49,15 @@ struct Config {
     top_p: f64,
     prompt: Option<String>,
     sleep_only: bool,
+    bench_routes: bool,
     device: String,
     thermo: bool,
 }
 
 struct CircadianSession {
     adaptive: AdaptiveThermoMemory,
+    graph: AgentGraph,
+    graph_path: PathBuf,
     gemma_session: Gemma2Session,
     hybrid: Gemma2ThermoHybridLlm,
     journal: WakeJournal,
@@ -56,12 +66,34 @@ struct CircadianSession {
     turns: u64,
     last_recalled_memory_tokens: usize,
     last_ctp: Gemma2WakeBiasReport,
+    last_speaker: AgentRole,
+    last_verify_passed: bool,
     thermo_created_at: u64,
     phasor: Option<GemmaPhasorWorker>,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let rayon_threads = init_gemma2_rayon_threads();
     let config = parse_args()?;
+    if config.bench_routes {
+        eprintln!("T1.3 rayon_threads={rayon_threads}");
+        // T0: sin min(32). El default del chat es 256; el protocolo V8 pide 64 tokens.
+        let generated_tokens = if config.max_tokens == DEFAULT_MAX_TOKENS {
+            64
+        } else {
+            config.max_tokens.max(8)
+        };
+        let report = cdt_rqm_epr::layer_route_benchmark::run_route_speed_benchmark(
+            cdt_rqm_epr::layer_route_benchmark::RouteSpeedConfig {
+                generated_tokens,
+                device: config.device.clone(),
+                ..cdt_rqm_epr::layer_route_benchmark::RouteSpeedConfig::default()
+            },
+        )?;
+        print!("{}", report.to_csv());
+        eprintln!("{}", report.summary());
+        return Ok(());
+    }
     let model_path = resolve_gemma2_model_path(config.model.as_deref())?;
     let model_id = format!("gemma2:{}", model_path.display());
 
@@ -80,7 +112,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         model_id,
         AdaptiveGemma2Config::default(),
     )?;
-
     if config.sleep_only {
         if let Some(paths) = paths.as_ref() {
             let device = resolve_gemma2_device(&config.device)?;
@@ -182,8 +213,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .then(|| GemmaPhasorWorker::start(GemmaPhasorCouplingConfig::default()))
         .transpose()?;
 
+    let graph_path = paths
+        .as_ref()
+        .map(|paths| paths.root.join(AGENT_GRAPH_FILE))
+        .unwrap_or_else(|| {
+            PathBuf::from("data/native_gemma2_circadian/_ephemeral").join(AGENT_GRAPH_FILE)
+        });
+    let graph = AgentGraph::load_or_new(&graph_path, AgentGraphConfig::default());
+
     let mut session = CircadianSession {
         adaptive,
+        graph,
+        graph_path,
         gemma_session: Gemma2Session::new(),
         hybrid,
         journal,
@@ -192,6 +233,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         turns,
         last_recalled_memory_tokens: 0,
         last_ctp: Gemma2WakeBiasReport::default(),
+        last_speaker: AgentRole::DenseTalker,
+        last_verify_passed: true,
         thermo_created_at,
         phasor,
     };
@@ -216,7 +259,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             session.adaptive.router.registry.routes().len(),
         );
     }
-    println!("Vigilia: Gemma adaptativo responde. Sueño (/sueño): entrena núcleo CTP.");
+    println!(
+        "Vigilia: Router→hablante→Verifier (sin LLM en el router). Sueño (/sueño): núcleo CTP."
+    );
 
     if let Some(prompt) = config.prompt.as_deref() {
         wake_turn(
@@ -311,27 +356,51 @@ fn wake_turn(
     let cached_tokens = session.gemma_session.cached_tokens().to_vec();
     let cached_mask = session.gemma_session.active_mask().cloned();
     let cached_logits = session.gemma_session.last_logits().cloned();
+    let wake_fingerprint = fingerprint_wake(&prompt_tokens);
+    let decision = session.graph.plan_turn(
+        &wake_fingerprint,
+        input,
+        &session.adaptive.lrc,
+        model.layer_count(),
+    );
+    session.last_speaker = decision.speaker;
     let prefill_started = Instant::now();
-    let prepared = session.adaptive.prepare_forward(
+    let mut prepared = session.adaptive.prepare_forward_with_forced_mask(
         model,
         &prompt_tokens,
         &cached_tokens,
         cached_mask.as_ref(),
         cached_logits.as_ref(),
+        Some(&decision.mask),
     )?;
     session.last_recalled_memory_tokens = prepared.recalled_memory_tokens;
-    eprintln!(
-        "[vigilia route={} layers={}/{} quality={:.3} fallback={} memory_tokens={} prefill={} cache={} {:.3}s]",
+    let mut speaker_label = match decision.speaker {
+        AgentRole::FastTalker => "FastTalker",
+        AgentRole::DenseTalker => "DenseTalker",
+        AgentRole::Compiler => "Compiler",
+        AgentRole::Router => "Router",
+        AgentRole::Verifier => "Verifier",
+        AgentRole::Memory => "Memory",
+    };
+    let route_label = if decision.lrc_hit {
+        decision
+            .layer_route_id
+            .map(|id| format!("lrc:{id}"))
+            .unwrap_or_else(|| "lrc".to_string())
+    } else if prepared.route_id.is_some() {
         prepared
             .route_id
             .map(|route| route.0.to_string())
-            .unwrap_or_else(|| {
-                if prepared.recalled_memory_tokens > 0 {
-                    "working".to_string()
-                } else {
-                    "new".to_string()
-                }
-            }),
+            .unwrap_or_default()
+    } else if prepared.recalled_memory_tokens > 0 {
+        "working".to_string()
+    } else {
+        "miss".to_string()
+    };
+    eprintln!(
+        "[vigilia speaker={} route={} layers={}/{} quality={:.3} fallback={} memory_tokens={} prefill={} cache={} {:.3}s]",
+        speaker_label,
+        route_label,
         prepared.mask.executed_count(),
         prepared.mask.layer_count(),
         prepared.quality,
@@ -342,16 +411,148 @@ fn wake_turn(
         prefill_started.elapsed().as_secs_f64(),
     );
 
-    session.gemma_session.adopt_prefill(
+    print!("\nGemma> ");
+    io::stdout().flush()?;
+    let turn_started = Instant::now();
+    let (mut generation, mut ctp_seconds) = stream_generation(
+        model,
+        tokenizer,
+        session,
         &prompt_tokens,
-        Some(&prepared.mask),
-        prepared.output.logits,
+        &cached_tokens,
+        &prepared,
+        config,
+        context_limit,
     )?;
+    println!();
 
+    let mut verify =
+        session
+            .graph
+            .verify_reply(decision.speaker_id, &generation.text, decision.compiler);
+    let mut dense_fallback = false;
+    let mut speaker_id = decision.speaker_id;
+    if !verify.passed() && decision.speaker != AgentRole::DenseTalker {
+        eprintln!("[verificador: fail; un reintento DenseTalker]");
+        session.gemma_session.reset(model);
+        let dense = LayerExecutionMask::all(model.layer_count());
+        prepared = session.adaptive.prepare_forward_with_forced_mask(
+            model,
+            &prompt_tokens,
+            &[],
+            None,
+            None,
+            Some(&dense),
+        )?;
+        print!("Gemma> ");
+        io::stdout().flush()?;
+        let retried = stream_generation(
+            model,
+            tokenizer,
+            session,
+            &prompt_tokens,
+            &[],
+            &prepared,
+            config,
+            context_limit,
+        )?;
+        println!();
+        generation = retried.0;
+        ctp_seconds = retried.1;
+        speaker_id = DENSE_TALKER_ID;
+        session.last_speaker = AgentRole::DenseTalker;
+        speaker_label = "DenseTalker";
+        dense_fallback = true;
+        verify = session
+            .graph
+            .verify_reply(speaker_id, &generation.text, decision.compiler);
+    }
+
+    let mut reply_text = generation.text.clone();
+    let mut reply_tokens = generation.token_ids.clone();
+    if !verify.passed() {
+        eprintln!("[verificador: segundo fail; abstencion]");
+        reply_text = ABSTAIN_REPLY.to_string();
+        reply_tokens.clear();
+        println!("{ABSTAIN_REPLY}");
+    }
+    session.last_verify_passed = verify.passed();
+    let latency_ms = turn_started.elapsed().as_secs_f64() * 1_000.0;
+    session.graph.observe_turn(
+        speaker_id,
+        verify.passed(),
+        latency_ms as f32,
+        dense_fallback,
+    );
+    let _ = session.graph.save(&session.graph_path);
+
+    eprintln!(
+        "[decode {:.2} tok/s layers={}/{} route={} speaker={} verify={} cache={}]",
+        generation.metrics.decode_tokens_per_second(),
+        prepared.mask.executed_count(),
+        prepared.mask.layer_count(),
+        if decision.lrc_hit { "hit" } else { "miss" },
+        speaker_label,
+        if verify.passed() { "pass" } else { "fail" },
+        generation.metrics.cache_reused,
+    );
+    if ctp_seconds > 0.0 && session.last_ctp.mixed > 0 {
+        eprintln!(
+            "[ctp blend={:.2} phi={:.3} mixed={} {:.3}s]",
+            session.last_ctp.blend, session.last_ctp.phi_norm, session.last_ctp.mixed, ctp_seconds
+        );
+    }
+
+    session.adaptive.observe(
+        prepared.context_fingerprint.clone(),
+        prepared.activation_fingerprint.clone(),
+        prepared.mask.clone(),
+        &prompt_tokens,
+        prepared.quality,
+        prepared.route_id,
+        prepared.fallback || dense_fallback,
+    )?;
+    session.adaptive.observe_layer_route_turn(
+        &prompt_tokens,
+        &prepared.mask,
+        prepared.fallback || dense_fallback,
+    );
+
+    session.turns = session.turns.saturating_add(1);
+    let record = new_wake_record(
+        session.turns,
+        input,
+        &reply_text,
+        &prompt_tokens,
+        &reply_tokens,
+        prepared.quality,
+        prepared.mask.executed_count(),
+    );
+    session.journal.append(&record)?;
+    session.history.push((input.to_string(), reply_text));
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn stream_generation(
+    model: &mut QuantizedGemma2,
+    tokenizer: &Gemma2Tokenizer,
+    session: &mut CircadianSession,
+    prompt_tokens: &[u32],
+    cached_tokens: &[u32],
+    prepared: &PreparedAdaptiveForward,
+    config: &Config,
+    context_limit: usize,
+) -> Result<(Gemma2Generation, f64), Box<dyn std::error::Error>> {
+    session.gemma_session.adopt_prefill(
+        prompt_tokens,
+        Some(&prepared.mask),
+        prepared.output.logits.clone(),
+    )?;
     let suffix = if prepared.cache_reused {
         &prompt_tokens[cached_tokens.len().min(prompt_tokens.len())..]
     } else {
-        prompt_tokens.as_slice()
+        prompt_tokens
     };
     let ctp_started = Instant::now();
     let observed = session
@@ -368,14 +569,10 @@ fn wake_turn(
     ctp_report.blend = blend;
     let ctp_seconds = ctp_started.elapsed().as_secs_f64();
     let mixed = Cell::new(0usize);
-
-    print!("\nGemma> ");
-    io::stdout().flush()?;
-
     let generation = session.gemma_session.generate_observed_with_logits(
         model,
         tokenizer,
-        &prompt_tokens,
+        prompt_tokens,
         Some(&prepared.mask),
         Gemma2GenerationConfig {
             max_tokens: config.max_tokens,
@@ -406,58 +603,12 @@ fn wake_turn(
         },
         |_| false,
     )?;
-    println!();
     session
         .hybrid
         .observe_generated_tokens(model, &generation.token_ids)?;
     ctp_report.mixed = mixed.get();
     session.last_ctp = ctp_report;
-    if session.last_ctp.mixed > 0 {
-        eprintln!(
-            "[ctp blend={:.2} phi={:.3} bias={:.3} mixed={} ctx={} {:.3}s]",
-            session.last_ctp.blend,
-            session.last_ctp.phi_norm,
-            session.last_ctp.ctp_bias_norm,
-            session.last_ctp.mixed,
-            session.last_ctp.context_length,
-            ctp_seconds,
-        );
-    }
-    eprintln!(
-        "[decode {:.2} tok/s model={:.3}s logits={:.3}s text={:.3}s cache={}]",
-        generation.metrics.decode_tokens_per_second(),
-        generation.metrics.model_decode_seconds,
-        generation.metrics.logits_processing_seconds,
-        generation.metrics.text_decode_seconds,
-        generation.metrics.cache_reused,
-    );
-
-    session.adaptive.observe(
-        prepared.context_fingerprint,
-        prepared.activation_fingerprint,
-        prepared.mask.clone(),
-        &prompt_tokens,
-        prepared.quality,
-        prepared.route_id,
-        prepared.fallback,
-    )?;
-
-    session.turns = session.turns.saturating_add(1);
-    let record = new_wake_record(
-        session.turns,
-        input,
-        &generation.text,
-        &prompt_tokens,
-        &generation.token_ids,
-        prepared.quality,
-        prepared.mask.executed_count(),
-    );
-    session.journal.append(&record)?;
-
-    session
-        .history
-        .push((input.to_string(), generation.text.clone()));
-    Ok(())
+    Ok((generation, ctp_seconds))
 }
 
 fn sleep_and_persist(
@@ -482,17 +633,22 @@ fn sleep_and_persist(
             &mut session.hybrid,
         )?;
         session.adaptive.save()?;
+        session.graph.save(&session.graph_path)?;
         print_sleep_report(report);
-        println!("Persistido: adaptive + thermo.cdt + dataset de sueño");
+        println!("Persistido: adaptive + thermo.cdt + dataset de sueño + grafo");
     } else {
+        session.graph.save(&session.graph_path)?;
         let report = session.adaptive.consolidate_sleep_with_model(model, &[])?;
         println!(
-            "Sueño adaptativo: replay={} máscaras={} flushed={} working={} routes={}",
+            "Sueño adaptativo: replay={} máscaras={} flushed={} working={} routes={} lrc={} kl={:.3} top1={:.2}",
             report.replayed,
             report.discovered_masks,
             report.flushed,
             report.retained_working,
-            report.remaining_routes
+            report.remaining_routes,
+            report.lrc_promoted,
+            report.sleep_mean_kl,
+            report.sleep_top1_agree
         );
     }
     Ok(())
@@ -501,12 +657,15 @@ fn sleep_and_persist(
 fn print_sleep_report(report: cdt_rqm_epr::gemma2_circadian_bridge::CircadianSleepReport) {
     println!("── Sueño ──");
     println!(
-        "  Adaptativo: replay={} máscaras={} flushed={} working={} routes={} relaciones_podadas={}",
+        "  Adaptativo: replay={} máscaras={} flushed={} working={} routes={} lrc={} kl={:.3} top1={:.2} relaciones_podadas={}",
         report.adaptive.replayed,
         report.adaptive.discovered_masks,
         report.adaptive.flushed,
         report.adaptive.retained_working,
         report.adaptive.remaining_routes,
+        report.adaptive.lrc_promoted,
+        report.adaptive.sleep_mean_kl,
+        report.adaptive.sleep_top1_agree,
         report.adaptive.pruned_relations
     );
     println!(
@@ -545,6 +704,20 @@ fn print_status(session: &CircadianSession) {
         "  Rutas adaptativas:  {}",
         session.adaptive.router.registry.routes().len()
     );
+    println!(
+        "  Rutas LRC:          {}",
+        session.adaptive.layer_route_count()
+    );
+    println!(
+        "  Grafo agentes:      gen={} speaker={:?} verifier={}",
+        session.graph.generation(),
+        session.last_speaker,
+        if session.last_verify_passed {
+            "pass"
+        } else {
+            "fail"
+        }
+    );
 }
 
 fn print_banner() {
@@ -558,10 +731,14 @@ fn print_help() {
     println!(
         r"
 Comandos:
+  --bench-routes   CSV V8: capas, KL, tok/s sparse vs 26/26, LRC, fallback, Ollama
   /sueño, /sleep   Consolida adaptativo + exporta dataset + entrena CTP + guarda
   /limpiar         Borra historial visible (conserva memorias)
-  /estado          Métricas de vigilia
+  /estado          Metricas de vigilia (LRC + grafo de 6 agentes)
   /salir           Sueño + guardado + salir
+
+Turno: Router (sin LLM) elige FastTalker, DenseTalker o Compiler; Verifier
+aplica reglas. Un fallback denso por turno; segundo fail se abstiene.
 
 Persistencia (--chat NOMBRE):
   data/native_gemma2_circadian/NOMBRE/adaptive/   memoria adaptativa
@@ -593,6 +770,7 @@ fn parse_args() -> Result<Config, Box<dyn std::error::Error>> {
         top_p: 0.95,
         prompt: None,
         sleep_only: false,
+        bench_routes: false,
         device: env::var("GEMMA2_DEVICE").unwrap_or_else(|_| "cpu".to_string()),
         thermo: true,
     };
@@ -616,6 +794,7 @@ fn parse_args() -> Result<Config, Box<dyn std::error::Error>> {
             "--device" => config.device = required(&mut args, "--device")?,
             "--prompt" => config.prompt = Some(required(&mut args, "--prompt")?),
             "--sleep-only" => config.sleep_only = true,
+            "--bench-routes" => config.bench_routes = true,
             "--no-thermo" => config.thermo = false,
             "--help" | "-h" => {
                 print_help();

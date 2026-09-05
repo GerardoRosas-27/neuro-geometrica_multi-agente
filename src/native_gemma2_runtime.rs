@@ -4,9 +4,14 @@
 //! el prefijo ya procesado y usa el decoder incremental de `tokenizers`, evitando
 //! reconstruir toda la salida después de cada token.
 
-use crate::native_gemma2::{Gemma2Tokenizer, LayerExecutionMask, QuantizedGemma2};
+use crate::native_gemma2::{
+    gemma2_profile_enabled, init_gemma2_profile_from_env, record_tensor_new, reset_gemma2_profile,
+    snapshot_gemma2_profile, Gemma2ProfileCounters, Gemma2Tokenizer, LayerExecutionMask,
+    QuantizedGemma2,
+};
 use candle_core::{Result, Tensor};
 use candle_transformers::generation::LogitsProcessor;
+use std::env;
 use std::time::Instant;
 
 #[derive(Clone, Copy, Debug)]
@@ -29,6 +34,10 @@ pub struct Gemma2GenerationMetrics {
     pub model_decode_seconds: f64,
     pub logits_processing_seconds: f64,
     pub text_decode_seconds: f64,
+    /// `Tensor::new(&[token])` + `unsqueeze` por paso de decode. Siempre medido.
+    pub input_alloc_seconds: f64,
+    /// Contadores T1.1 (0 si `GEMMA2_PROFILE` no está activo).
+    pub profile: Gemma2ProfileCounters,
 }
 
 impl Gemma2GenerationMetrics {
@@ -38,6 +47,22 @@ impl Gemma2GenerationMetrics {
 
     pub fn decode_tokens_per_second(&self) -> f64 {
         self.generated_tokens as f64 / self.decode_seconds.max(f64::EPSILON)
+    }
+
+    pub fn model_decode_fraction(&self) -> f64 {
+        self.model_decode_seconds / self.decode_seconds.max(f64::EPSILON)
+    }
+
+    pub fn logits_processing_fraction(&self) -> f64 {
+        self.logits_processing_seconds / self.decode_seconds.max(f64::EPSILON)
+    }
+
+    pub fn text_decode_fraction(&self) -> f64 {
+        self.text_decode_seconds / self.decode_seconds.max(f64::EPSILON)
+    }
+
+    pub fn input_alloc_fraction(&self) -> f64 {
+        self.input_alloc_seconds / self.decode_seconds.max(f64::EPSILON)
     }
 }
 
@@ -53,6 +78,10 @@ pub struct Gemma2Session {
     cached_tokens: Vec<u32>,
     last_logits: Option<Tensor>,
     active_mask: Option<LayerExecutionMask>,
+    /// Ruta pedida. None = denso completo. No se mezcla con middle-skip.
+    exit_after: Option<usize>,
+    /// Ruta fijada en la KV actual.
+    active_exit_after: Option<usize>,
 }
 
 impl Gemma2Session {
@@ -77,6 +106,15 @@ impl Gemma2Session {
         self.cached_tokens.clear();
         self.last_logits = None;
         self.active_mask = None;
+        self.active_exit_after = None;
+    }
+
+    pub fn set_exit_after(&mut self, exit_after: Option<usize>) {
+        self.exit_after = exit_after;
+    }
+
+    pub fn exit_after(&self) -> Option<usize> {
+        self.exit_after
     }
 
     /// Adopta una KV cache que otro pipeline acaba de rellenar con el mismo
@@ -90,6 +128,7 @@ impl Gemma2Session {
         self.cached_tokens.clear();
         self.cached_tokens.extend_from_slice(prompt_tokens);
         self.active_mask = mask.cloned();
+        self.active_exit_after = self.exit_after;
         self.last_logits = Some(logits.squeeze(0)?);
         Ok(())
     }
@@ -181,14 +220,22 @@ impl Gemma2Session {
         if config.max_tokens == 0 || config.context_limit == 0 {
             candle_core::bail!("max_tokens y context_limit deben ser mayores que cero");
         }
+        if env::var("GEMMA2_PROFILE").is_ok() {
+            init_gemma2_profile_from_env();
+        }
+        if gemma2_profile_enabled() {
+            reset_gemma2_profile();
+        }
         let started = Instant::now();
-        let same_mask = self.active_mask.as_ref() == mask;
-        let extends_cache = same_mask
+        let same_route =
+            self.active_mask.as_ref() == mask && self.active_exit_after == self.exit_after;
+        let extends_cache = same_route
             && !self.cached_tokens.is_empty()
             && prompt_tokens.starts_with(&self.cached_tokens);
         if !extends_cache {
             self.reset(model);
             self.active_mask = mask.cloned();
+            self.active_exit_after = self.exit_after;
         }
         let prefix = if extends_cache {
             self.cached_tokens.len()
@@ -204,13 +251,16 @@ impl Gemma2Session {
         } else {
             let input = Tensor::new(suffix, model.device())?.unsqueeze(0)?;
             let logits = model
-                .forward_with_mask(&input, prefix, mask, false, false)?
+                .forward_with_mask(&input, prefix, mask, self.exit_after, false, false)?
                 .logits
                 .squeeze(0)?;
             self.cached_tokens.extend_from_slice(suffix);
             logits
         };
         let prefill_seconds = prefill_started.elapsed().as_secs_f64();
+        if gemma2_profile_enabled() {
+            reset_gemma2_profile();
+        }
 
         let mut sampler =
             LogitsProcessor::new(config.seed, Some(config.temperature), Some(config.top_p));
@@ -222,6 +272,7 @@ impl Gemma2Session {
         let mut model_decode_seconds = 0.0;
         let mut logits_processing_seconds = 0.0;
         let mut text_decode_seconds = 0.0;
+        let mut input_alloc_seconds = 0.0;
         for _ in 0..config.max_tokens {
             let logits_started = Instant::now();
             on_logits(&mut logits, generated.len())?;
@@ -248,10 +299,20 @@ impl Gemma2Session {
             if self.cached_tokens.len() >= config.context_limit {
                 break;
             }
+            let alloc_started = Instant::now();
+            record_tensor_new();
             let next = Tensor::new(&[token], model.device())?.unsqueeze(0)?;
+            input_alloc_seconds += alloc_started.elapsed().as_secs_f64();
             let model_started = Instant::now();
             logits = model
-                .forward_with_mask(&next, self.cached_tokens.len(), mask, false, false)?
+                .forward_with_mask(
+                    &next,
+                    self.cached_tokens.len(),
+                    mask,
+                    self.exit_after,
+                    false,
+                    false,
+                )?
                 .logits
                 .squeeze(0)?;
             model_decode_seconds += model_started.elapsed().as_secs_f64();
@@ -274,6 +335,8 @@ impl Gemma2Session {
                 model_decode_seconds,
                 logits_processing_seconds,
                 text_decode_seconds,
+                input_alloc_seconds,
+                profile: snapshot_gemma2_profile(),
             },
         })
     }
@@ -401,5 +464,27 @@ mod tests {
         };
         assert!(metrics.prefill_tokens_per_second().is_finite());
         assert!(metrics.decode_tokens_per_second().is_finite());
+        assert!(metrics.model_decode_fraction().is_finite());
+        assert!(metrics.logits_processing_fraction().is_finite());
+        assert!(metrics.text_decode_fraction().is_finite());
+        assert!(metrics.input_alloc_fraction().is_finite());
+        assert_eq!(metrics.profile, Gemma2ProfileCounters::default());
+    }
+
+    #[test]
+    fn decode_fractions_sum_components_from_seconds() {
+        let metrics = Gemma2GenerationMetrics {
+            decode_seconds: 10.0,
+            model_decode_seconds: 9.1,
+            logits_processing_seconds: 0.6,
+            text_decode_seconds: 0.2,
+            input_alloc_seconds: 0.1,
+            generated_tokens: 64,
+            ..Gemma2GenerationMetrics::default()
+        };
+        assert!((metrics.model_decode_fraction() - 0.91).abs() < 1.0e-12);
+        assert!((metrics.logits_processing_fraction() - 0.06).abs() < 1.0e-12);
+        assert!((metrics.text_decode_fraction() - 0.02).abs() < 1.0e-12);
+        assert!((metrics.input_alloc_fraction() - 0.01).abs() < 1.0e-12);
     }
 }

@@ -13,6 +13,8 @@ use std::env;
 use std::fs;
 use std::io::{Read, Seek};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+use std::sync::Once;
 use tokenizers::models::unigram::Unigram;
 use tokenizers::pre_tokenizers::metaspace::{Metaspace, PrependScheme};
 use tokenizers::{AddedToken, Tokenizer};
@@ -21,6 +23,178 @@ const DEFAULT_MAX_CONTEXT: usize = 8_192;
 const DEFAULT_ROPE_FREQUENCY: f32 = 10_000.0;
 const DEFAULT_ATTENTION_SOFTCAP: f64 = 50.0;
 const DEFAULT_FINAL_SOFTCAP: f64 = 30.0;
+
+/// Contadores T1.1. Apagados por defecto: el chat release no paga el hot path.
+/// Actívalos con `GEMMA2_PROFILE=1` o `set_gemma2_profile(true)` (solo el bench).
+static PROFILE_ENABLED: AtomicBool = AtomicBool::new(false);
+static TENSOR_NEW: AtomicU64 = AtomicU64::new(0);
+static HIDDEN_CLONE: AtomicU64 = AtomicU64::new(0);
+static QMATMUL_FORWARD: AtomicU64 = AtomicU64::new(0);
+static SEQ1_FORWARDS: AtomicU64 = AtomicU64::new(0);
+static LAST_SEQ1_TENSOR_NEW: AtomicU64 = AtomicU64::new(0);
+static LAST_SEQ1_HIDDEN_CLONE: AtomicU64 = AtomicU64::new(0);
+static LAST_SEQ1_QMATMUL_FORWARD: AtomicU64 = AtomicU64::new(0);
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Gemma2ProfileCounters {
+    pub tensor_new: u64,
+    pub hidden_clone: u64,
+    pub qmatmul_forward: u64,
+    pub seq1_forwards: u64,
+    pub last_seq1_tensor_new: u64,
+    pub last_seq1_hidden_clone: u64,
+    pub last_seq1_qmatmul_forward: u64,
+}
+
+pub fn gemma2_profile_enabled() -> bool {
+    PROFILE_ENABLED.load(Ordering::Relaxed)
+}
+
+pub fn set_gemma2_profile(enabled: bool) {
+    PROFILE_ENABLED.store(enabled, Ordering::Relaxed);
+    reset_gemma2_profile();
+}
+
+pub fn init_gemma2_profile_from_env() {
+    let enabled = env::var("GEMMA2_PROFILE")
+        .map(|value| {
+            let value = value.trim();
+            value == "1" || value.eq_ignore_ascii_case("true") || value.eq_ignore_ascii_case("yes")
+        })
+        .unwrap_or(false);
+    set_gemma2_profile(enabled);
+}
+
+/// Default intra-op T1.3. 4 hilos ganó en decode seq=1 denso frente a 1/2/8
+/// y al implícito de Rayon (12 lógicos, i5-1235U, Windows CPU, Gemma 2 2B).
+pub const DEFAULT_GEMMA2_RAYON_THREADS: usize = 4;
+
+static RAYON_INIT: Once = Once::new();
+static RAYON_THREADS: AtomicUsize = AtomicUsize::new(0);
+
+pub fn parse_gemma2_rayon_threads(gemma2: Option<&str>, rayon: Option<&str>) -> usize {
+    let parse_positive = |value: &str| value.trim().parse::<usize>().ok().filter(|n| *n > 0);
+    gemma2
+        .and_then(parse_positive)
+        .or_else(|| rayon.and_then(parse_positive))
+        .unwrap_or(DEFAULT_GEMMA2_RAYON_THREADS)
+}
+
+pub fn resolve_gemma2_rayon_threads() -> usize {
+    let gemma2 = env::var("GEMMA2_RAYON_THREADS").ok();
+    let rayon = env::var("RAYON_NUM_THREADS").ok();
+    parse_gemma2_rayon_threads(gemma2.as_deref(), rayon.as_deref())
+}
+
+/// Fija el pool global de Rayon una vez. Debe llamarse antes del primer matmul.
+pub fn init_gemma2_rayon_threads() -> usize {
+    RAYON_INIT.call_once(|| {
+        let requested = resolve_gemma2_rayon_threads();
+        match rayon::ThreadPoolBuilder::new()
+            .num_threads(requested)
+            .build_global()
+        {
+            Ok(()) => RAYON_THREADS.store(requested, Ordering::Relaxed),
+            Err(_) => RAYON_THREADS.store(rayon::current_num_threads(), Ordering::Relaxed),
+        }
+    });
+    gemma2_rayon_threads()
+}
+
+pub fn gemma2_rayon_threads() -> usize {
+    let stored = RAYON_THREADS.load(Ordering::Relaxed);
+    if stored == 0 {
+        resolve_gemma2_rayon_threads()
+    } else {
+        stored
+    }
+}
+
+pub fn reset_gemma2_profile() {
+    TENSOR_NEW.store(0, Ordering::Relaxed);
+    HIDDEN_CLONE.store(0, Ordering::Relaxed);
+    QMATMUL_FORWARD.store(0, Ordering::Relaxed);
+    SEQ1_FORWARDS.store(0, Ordering::Relaxed);
+    LAST_SEQ1_TENSOR_NEW.store(0, Ordering::Relaxed);
+    LAST_SEQ1_HIDDEN_CLONE.store(0, Ordering::Relaxed);
+    LAST_SEQ1_QMATMUL_FORWARD.store(0, Ordering::Relaxed);
+}
+
+pub fn snapshot_gemma2_profile() -> Gemma2ProfileCounters {
+    Gemma2ProfileCounters {
+        tensor_new: TENSOR_NEW.load(Ordering::Relaxed),
+        hidden_clone: HIDDEN_CLONE.load(Ordering::Relaxed),
+        qmatmul_forward: QMATMUL_FORWARD.load(Ordering::Relaxed),
+        seq1_forwards: SEQ1_FORWARDS.load(Ordering::Relaxed),
+        last_seq1_tensor_new: LAST_SEQ1_TENSOR_NEW.load(Ordering::Relaxed),
+        last_seq1_hidden_clone: LAST_SEQ1_HIDDEN_CLONE.load(Ordering::Relaxed),
+        last_seq1_qmatmul_forward: LAST_SEQ1_QMATMUL_FORWARD.load(Ordering::Relaxed),
+    }
+}
+
+#[inline(always)]
+pub fn record_tensor_new() {
+    if PROFILE_ENABLED.load(Ordering::Relaxed) {
+        TENSOR_NEW.fetch_add(1, Ordering::Relaxed);
+    }
+}
+
+#[inline(always)]
+fn record_hidden_clone() {
+    if PROFILE_ENABLED.load(Ordering::Relaxed) {
+        HIDDEN_CLONE.fetch_add(1, Ordering::Relaxed);
+    }
+}
+
+#[inline(always)]
+fn qmatmul_forward(module: &QMatMul, xs: &Tensor) -> Result<Tensor> {
+    if PROFILE_ENABLED.load(Ordering::Relaxed) {
+        QMATMUL_FORWARD.fetch_add(1, Ordering::Relaxed);
+    }
+    module.forward(xs)
+}
+
+struct Seq1ProfileGuard {
+    tensor_new: u64,
+    hidden_clone: u64,
+    qmatmul_forward: u64,
+}
+
+fn begin_seq1_profile(sequence_length: usize) -> Option<Seq1ProfileGuard> {
+    if sequence_length != 1 || !PROFILE_ENABLED.load(Ordering::Relaxed) {
+        return None;
+    }
+    Some(Seq1ProfileGuard {
+        tensor_new: TENSOR_NEW.load(Ordering::Relaxed),
+        hidden_clone: HIDDEN_CLONE.load(Ordering::Relaxed),
+        qmatmul_forward: QMATMUL_FORWARD.load(Ordering::Relaxed),
+    })
+}
+
+fn finish_seq1_profile(guard: Option<Seq1ProfileGuard>) {
+    let Some(guard) = guard else {
+        return;
+    };
+    LAST_SEQ1_TENSOR_NEW.store(
+        TENSOR_NEW
+            .load(Ordering::Relaxed)
+            .saturating_sub(guard.tensor_new),
+        Ordering::Relaxed,
+    );
+    LAST_SEQ1_HIDDEN_CLONE.store(
+        HIDDEN_CLONE
+            .load(Ordering::Relaxed)
+            .saturating_sub(guard.hidden_clone),
+        Ordering::Relaxed,
+    );
+    LAST_SEQ1_QMATMUL_FORWARD.store(
+        QMATMUL_FORWARD
+            .load(Ordering::Relaxed)
+            .saturating_sub(guard.qmatmul_forward),
+        Ordering::Relaxed,
+    );
+    SEQ1_FORWARDS.fetch_add(1, Ordering::Relaxed);
+}
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct LayerExecutionMask {
@@ -89,6 +263,66 @@ impl LayerExecutionMask {
             .collect();
         Some(Self { enabled })
     }
+
+    pub fn is_fully_enabled(&self) -> bool {
+        !self.enabled.is_empty() && self.enabled.iter().all(|enabled| *enabled)
+    }
+}
+
+/// `exit_after = Some(k)` corre las capas `0..=k` y aplica `norm + lm_head`
+/// al hidden actual. `k == layer_count-1` es equivalente a denso.
+/// `k >= layer_count` es error. No se mezcla con middle-skip en el mismo turno.
+pub fn validate_exit_after(
+    layer_count: usize,
+    mask: &LayerExecutionMask,
+    exit_after: Option<usize>,
+) -> Result<Option<usize>> {
+    let Some(k) = exit_after else {
+        return Ok(None);
+    };
+    if layer_count == 0 {
+        candle_core::bail!("exit_after requiere al menos una capa");
+    }
+    if k >= layer_count {
+        candle_core::bail!("exit_after {k} fuera de rango para modelo de {layer_count} capas");
+    }
+    if mask.layer_count() != layer_count {
+        candle_core::bail!(
+            "máscara Gemma 2 incompatible: {} capas para modelo de {}",
+            mask.layer_count(),
+            layer_count
+        );
+    }
+    if !mask.is_fully_enabled() {
+        candle_core::bail!("no se mezcla middle-skip y early-exit en el mismo turno");
+    }
+    Ok(Some(k))
+}
+
+pub fn early_exit_is_dense(exit_after: Option<usize>, layer_count: usize) -> bool {
+    match exit_after {
+        None => true,
+        Some(k) => layer_count > 0 && k + 1 == layer_count,
+    }
+}
+
+pub fn early_exit_executed_layers(exit_after: Option<usize>, layer_count: usize) -> usize {
+    match exit_after {
+        None => layer_count,
+        Some(k) => k.saturating_add(1).min(layer_count),
+    }
+}
+
+/// Prefijo `0..=k` encendido; cola apagada. k=last produce la máscara densa.
+pub fn early_exit_mask(layer_count: usize, k: usize) -> LayerExecutionMask {
+    let mut enabled = vec![false; layer_count];
+    if layer_count > 0 {
+        let last = k.min(layer_count - 1);
+        for slot in enabled.iter_mut().take(last + 1) {
+            *slot = true;
+        }
+    }
+    LayerExecutionMask::from_enabled(enabled)
 }
 
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
@@ -98,6 +332,9 @@ pub struct LayerActivationSummary {
     pub input_rms: f32,
     pub output_rms: f32,
     pub delta_rms: f32,
+    /// Atencion de ventana deslizante (local). `false` = global.
+    #[serde(default)]
+    pub sliding_window: bool,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -123,9 +360,9 @@ struct Mlp {
 
 impl Mlp {
     fn forward(&self, xs: &Tensor) -> Result<Tensor> {
-        let gate = self.gate.forward(xs)?.gelu()?;
-        let up = self.up.forward(xs)?;
-        self.down.forward(&(gate * up)?)
+        let gate = qmatmul_forward(&self.gate, xs)?.gelu()?;
+        let up = qmatmul_forward(&self.up, xs)?;
+        qmatmul_forward(&self.down, &(gate * up)?)
     }
 }
 
@@ -224,19 +461,13 @@ impl Layer {
         attention_mask: Option<&Tensor>,
     ) -> Result<Tensor> {
         let (batch, sequence_length, _) = xs.dims3()?;
-        let query = self
-            .query
-            .forward(xs)?
+        let query = qmatmul_forward(&self.query, xs)?
             .reshape((batch, sequence_length, self.heads, self.head_dim))?
             .transpose(1, 2)?;
-        let key = self
-            .key
-            .forward(xs)?
+        let key = qmatmul_forward(&self.key, xs)?
             .reshape((batch, sequence_length, self.kv_heads, self.head_dim))?
             .transpose(1, 2)?;
-        let value = self
-            .value
-            .forward(xs)?
+        let value = qmatmul_forward(&self.value, xs)?
             .reshape((batch, sequence_length, self.kv_heads, self.head_dim))?
             .transpose(1, 2)?;
         let (query, key) = self.rotary.apply(&query, &key, position)?;
@@ -254,7 +485,7 @@ impl Layer {
         )?
         .transpose(1, 2)?
         .reshape((batch, sequence_length, self.heads * self.head_dim))?;
-        self.output.forward(&attended)
+        qmatmul_forward(&self.output, &attended)
     }
 }
 
@@ -269,6 +500,7 @@ pub struct QuantizedGemma2 {
     final_softcap: f64,
     max_context: usize,
     active_mask: Option<LayerExecutionMask>,
+    active_exit_after: Option<usize>,
     device: Device,
 }
 
@@ -278,6 +510,7 @@ impl QuantizedGemma2 {
         reader: &mut R,
         device: &Device,
     ) -> Result<Self> {
+        let _ = init_gemma2_rayon_threads();
         let architecture = metadata_string(&content, "general.architecture")?;
         if architecture != "gemma2" {
             candle_core::bail!("se esperaba arquitectura gemma2, se recibió {architecture}");
@@ -370,13 +603,14 @@ impl QuantizedGemma2 {
             final_softcap,
             max_context,
             active_mask: None,
+            active_exit_after: None,
             device: device.clone(),
         })
     }
 
     pub fn forward(&mut self, token_ids: &Tensor, position: usize) -> Result<Tensor> {
         Ok(self
-            .forward_with_mask(token_ids, position, None, false, false)?
+            .forward_with_mask(token_ids, position, None, None, false, false)?
             .logits)
     }
 
@@ -385,10 +619,12 @@ impl QuantizedGemma2 {
         token_ids: &Tensor,
         position: usize,
         mask: Option<&LayerExecutionMask>,
+        exit_after: Option<usize>,
         capture_trace: bool,
         capture_sequence_hidden: bool,
     ) -> Result<Gemma2ForwardOutput> {
         let (_, sequence_length) = token_ids.dims2()?;
+        let seq1_profile = begin_seq1_profile(sequence_length);
         if position + sequence_length > self.max_context {
             candle_core::bail!(
                 "contexto Gemma 2 excedido: {} > {}",
@@ -406,11 +642,15 @@ impl QuantizedGemma2 {
                 self.layers.len()
             );
         }
+        let resolved_exit = validate_exit_after(self.layers.len(), &requested_mask, exit_after)?;
         if position == 0 {
             self.active_mask = Some(requested_mask.clone());
-        } else if self.active_mask.as_ref() != Some(&requested_mask) {
+            self.active_exit_after = resolved_exit;
+        } else if self.active_mask.as_ref() != Some(&requested_mask)
+            || self.active_exit_after != resolved_exit
+        {
             candle_core::bail!(
-                "la máscara de capas debe permanecer fija durante una generación; limpia KV cache para cambiarla"
+                "la máscara y exit_after deben permanecer fijos durante una generación; limpia KV cache para cambiarlos"
             );
         }
         let mut hidden =
@@ -459,17 +699,21 @@ impl QuantizedGemma2 {
             skipped_layers: 0,
         };
         for (layer_index, layer) in self.layers.iter_mut().enumerate() {
-            if !requested_mask.executes(layer_index) {
+            let skip_tail = resolved_exit.is_some_and(|k| layer_index > k);
+            if skip_tail || !requested_mask.executes(layer_index) {
+                // Middle-skip o cola de early-exit: KV de esta capa no se toca.
                 trace.skipped_layers += 1;
                 if capture_trace {
                     trace.layers.push(LayerActivationSummary {
                         layer: layer_index,
                         executed: false,
+                        sliding_window: layer.sliding_window.is_some(),
                         ..LayerActivationSummary::default()
                     });
                 }
                 continue;
             }
+            record_hidden_clone();
             let layer_input = hidden.clone();
             let input_rms = capture_trace.then(|| tensor_rms(&hidden)).transpose()?;
             let residual = &hidden;
@@ -497,17 +741,20 @@ impl QuantizedGemma2 {
                     input_rms: input_rms.unwrap_or_default(),
                     output_rms,
                     delta_rms,
+                    sliding_window: layer.sliding_window.is_some(),
                 });
             }
         }
         let sequence_hidden = if capture_sequence_hidden {
+            record_hidden_clone();
             Some(hidden.clone())
         } else {
             None
         };
         let last = hidden.i((.., sequence_length - 1, ..))?;
-        let logits = self.output.forward(&self.norm.forward(&last)?)?;
+        let logits = qmatmul_forward(&self.output, &self.norm.forward(&last)?)?;
         let logits = (&logits / self.final_softcap)?.tanh()? * self.final_softcap;
+        finish_seq1_profile(seq1_profile);
         Ok(Gemma2ForwardOutput {
             logits: logits?,
             trace,
@@ -522,7 +769,7 @@ impl QuantizedGemma2 {
         }
         self.clear_kv_cache();
         let ids = Tensor::new(token_ids, self.device())?.unsqueeze(0)?;
-        let output = self.forward_with_mask(&ids, 0, None, false, true)?;
+        let output = self.forward_with_mask(&ids, 0, None, None, false, true)?;
         let hidden = output
             .sequence_hidden
             .ok_or_else(|| candle_core::Error::Msg("prefill sin hidden".to_string()))?;
@@ -539,6 +786,7 @@ impl QuantizedGemma2 {
             layer.kv_cache.reset();
         }
         self.active_mask = None;
+        self.active_exit_after = None;
     }
 
     pub fn max_context(&self) -> usize {
@@ -547,6 +795,13 @@ impl QuantizedGemma2 {
 
     pub fn layer_count(&self) -> usize {
         self.layers.len()
+    }
+
+    /// Gemma 2 alterna local (ventana) y global. Las pares son locales.
+    pub fn layer_uses_sliding_window(&self, layer: usize) -> bool {
+        self.layers
+            .get(layer)
+            .is_some_and(|layer| layer.sliding_window.is_some())
     }
 
     pub fn device(&self) -> &Device {
@@ -599,7 +854,7 @@ impl QuantizedGemma2 {
         } else {
             hidden.clone()
         };
-        let logits = self.output.forward(&self.norm.forward(&hidden)?)?;
+        let logits = qmatmul_forward(&self.output, &self.norm.forward(&hidden)?)?;
         (&logits / self.final_softcap)?.tanh()? * self.final_softcap
     }
 }
@@ -1100,5 +1355,72 @@ mod tests {
             (0..67).map(|index| index % 3 != 0).collect::<Vec<_>>(),
         );
         assert_eq!(LayerExecutionMask::decode(&mask.encode()), Some(mask));
+    }
+
+    #[test]
+    fn gemma2_profile_is_off_by_default_and_counts_when_enabled() {
+        set_gemma2_profile(false);
+        assert!(!gemma2_profile_enabled());
+        let before = snapshot_gemma2_profile();
+        record_tensor_new();
+        record_hidden_clone();
+        assert_eq!(snapshot_gemma2_profile(), before, "apagado no incrementa");
+        set_gemma2_profile(true);
+        assert!(gemma2_profile_enabled());
+        record_tensor_new();
+        record_hidden_clone();
+        let snap = snapshot_gemma2_profile();
+        assert_eq!(snap.tensor_new, 1);
+        assert_eq!(snap.hidden_clone, 1);
+        assert_eq!(snap.qmatmul_forward, 0);
+        set_gemma2_profile(false);
+        record_tensor_new();
+        assert_eq!(snapshot_gemma2_profile().tensor_new, 0);
+        assert!(!gemma2_profile_enabled());
+    }
+
+    #[test]
+    fn exit_after_out_of_range_is_rejected_and_last_layer_is_dense() {
+        let dense = LayerExecutionMask::all(26);
+        assert!(validate_exit_after(26, &dense, None).unwrap().is_none());
+        assert_eq!(validate_exit_after(26, &dense, Some(25)).unwrap(), Some(25));
+        assert!(early_exit_is_dense(None, 26));
+        assert!(early_exit_is_dense(Some(25), 26));
+        assert!(!early_exit_is_dense(Some(23), 26));
+        assert_eq!(early_exit_executed_layers(None, 26), 26);
+        assert_eq!(early_exit_executed_layers(Some(25), 26), 26);
+        assert_eq!(early_exit_executed_layers(Some(12), 26), 13);
+        assert_eq!(early_exit_executed_layers(Some(23), 26), 24);
+        assert_eq!(early_exit_mask(26, 25), dense);
+        let k20 = early_exit_mask(26, 20);
+        assert_eq!(k20.executed_count(), 21);
+        assert!(k20.executes(20));
+        assert!(!k20.executes(21));
+        assert!(validate_exit_after(26, &dense, Some(26)).is_err());
+        assert!(validate_exit_after(26, &dense, Some(99)).is_err());
+        let mut hole = vec![true; 26];
+        hole[7] = false;
+        let middle = LayerExecutionMask::from_enabled(hole);
+        assert!(
+            validate_exit_after(26, &middle, Some(20)).is_err(),
+            "no mezclar middle-skip y early-exit"
+        );
+        assert!(validate_exit_after(26, &middle, None).unwrap().is_none());
+    }
+
+    #[test]
+    fn gemma2_rayon_threads_prefers_explicit_then_rayon_then_default() {
+        assert_eq!(
+            parse_gemma2_rayon_threads(None, None),
+            DEFAULT_GEMMA2_RAYON_THREADS
+        );
+        assert_eq!(parse_gemma2_rayon_threads(Some("1"), Some("8")), 1);
+        assert_eq!(parse_gemma2_rayon_threads(None, Some("8")), 8);
+        assert_eq!(parse_gemma2_rayon_threads(Some("0"), Some("2")), 2);
+        assert_eq!(
+            parse_gemma2_rayon_threads(Some("no"), None),
+            DEFAULT_GEMMA2_RAYON_THREADS
+        );
+        assert_eq!(DEFAULT_GEMMA2_RAYON_THREADS, 4);
     }
 }

@@ -2,6 +2,7 @@ pub mod adaptive_gemma2;
 /// Protocolo cognitivo al 100 %. Feature `research`, fuera de smoke.
 #[cfg(feature = "research")]
 pub mod advanced_cognitive_validation;
+pub mod agent_graph;
 pub mod basin_external_baselines;
 /// Protocolo cognitivo al 100 %. Feature `research`, fuera de smoke.
 #[cfg(feature = "research")]
@@ -30,6 +31,8 @@ pub mod gemma_operator_bridge;
 pub mod gemma_phasor_coupling;
 pub mod hybrid_thermo_attention;
 pub mod hybrid_thermo_attention_comparison;
+pub mod layer_route_benchmark;
+pub mod layer_route_cache;
 pub mod matrix_free_cognitive_substrate;
 pub mod native_checkpoint;
 pub mod native_cognitive_closed_loop;

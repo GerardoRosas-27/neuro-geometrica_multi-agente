@@ -1,6 +1,10 @@
 //! Enrutamiento adaptativo y memoria termodinámica de dos velocidades para Gemma 2.
 
 use crate::entanglement::EntanglementConfig;
+use crate::layer_route_cache::{
+    fingerprint_wake, logits_kl, top1_agree, LayerRouteCache, LayerRouteCacheConfig,
+    LAYER_ROUTES_FILE,
+};
 use crate::matrix_free_cognitive_substrate::LatentConceptId;
 use crate::native_checkpoint::{atomic_write, save_native_checkpoint_transactional};
 use crate::native_gemma2::{
@@ -44,6 +48,10 @@ pub struct AdaptiveGemma2Config {
     pub sleep_decay: f32,
     pub protected_utility: f32,
     pub relation_budget: usize,
+    /// Confianza mínima para aplicar una ruta LRC en vigilia.
+    pub lrc_min_confidence: f32,
+    /// KL máxima (denso || sparse) para promocionar a LRC en sueño.
+    pub lrc_max_kl_promote: f32,
 }
 
 impl Default for AdaptiveGemma2Config {
@@ -61,6 +69,8 @@ impl Default for AdaptiveGemma2Config {
             sleep_decay: 0.995,
             protected_utility: 0.85,
             relation_budget: 16_384,
+            lrc_min_confidence: 0.55,
+            lrc_max_kl_promote: 0.15,
         }
     }
 }
@@ -145,6 +155,7 @@ pub struct RecalledLayerRoute {
     pub memory_tokens: Vec<u32>,
     pub score: f32,
     pub margin: f32,
+    pub layer_route_id: Option<u64>,
 }
 
 pub struct PreparedAdaptiveForward {
@@ -158,6 +169,8 @@ pub struct PreparedAdaptiveForward {
     pub recalled_memory_tokens: usize,
     pub prefill_tokens: usize,
     pub cache_reused: bool,
+    pub layer_route_id: Option<u64>,
+    pub layer_route_hit: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -178,10 +191,11 @@ impl WakePrefillPlan {
     }
 }
 
-/// Vigilia: como máximo un prefill. Si la KV cache cubre un prefijo exacto,
-/// solo se planea el sufijo nuevo. Las máscaras sparse recordadas no se
-/// aplican mientras se pueda reutilizar la cache: cambiar de máscara
-/// obligaría a rehacer todo el historial.
+/// Vigilia KV-A: la máscara se elige al empezar el turno.
+///
+/// Si el prompt extiende la KV y la máscara recordada coincide con la activa,
+/// se reutiliza la cache (incluido sparse→sparse). Si la máscara cambia, no
+/// se reutiliza: el llamador limpia KV y hace prefill con la máscara nueva.
 pub fn plan_wake_prefill(
     prompt_tokens: &[u32],
     cached_tokens: &[u32],
@@ -189,26 +203,28 @@ pub fn plan_wake_prefill(
     recalled_mask: Option<&LayerExecutionMask>,
     layer_count: usize,
 ) -> WakePrefillPlan {
-    let extending = !cached_tokens.is_empty()
-        && cached_mask.is_some()
-        && prompt_tokens.starts_with(cached_tokens);
-    if extending {
-        let mask = cached_mask
-            .cloned()
-            .unwrap_or_else(|| LayerExecutionMask::all(layer_count));
+    let cached = cached_mask
+        .filter(|mask| mask.layer_count() == layer_count)
+        .cloned();
+    let recalled = recalled_mask
+        .filter(|mask| mask.layer_count() == layer_count)
+        .cloned();
+    let chosen = recalled
+        .or_else(|| cached.clone())
+        .unwrap_or_else(|| LayerExecutionMask::all(layer_count));
+    let extending =
+        !cached_tokens.is_empty() && cached.is_some() && prompt_tokens.starts_with(cached_tokens);
+    let same_mask = cached.as_ref() == Some(&chosen);
+    if extending && same_mask {
         return WakePrefillPlan {
-            mask,
+            mask: chosen,
             position: cached_tokens.len(),
             suffix_start: cached_tokens.len(),
             reuse_cache: true,
         };
     }
-    let mask = recalled_mask
-        .filter(|mask| mask.layer_count() == layer_count)
-        .cloned()
-        .unwrap_or_else(|| LayerExecutionMask::all(layer_count));
     WakePrefillPlan {
-        mask,
+        mask: chosen,
         position: 0,
         suffix_start: 0,
         reuse_cache: false,
@@ -227,12 +243,27 @@ pub struct SleepConsolidationReport {
     pub pruned_routes: usize,
     pub pruned_relations: usize,
     pub remaining_routes: usize,
+    #[serde(default)]
+    pub lrc_promoted: usize,
+    #[serde(default)]
+    pub sleep_mean_kl: f32,
+    #[serde(default)]
+    pub sleep_top1_agree: f32,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct SleepReplayOutcome {
+    discovered: bool,
+    promoted: bool,
+    kl: Option<f32>,
+    top1_agree: f32,
 }
 
 pub struct AdaptiveThermoMemory {
     pub config: AdaptiveGemma2Config,
     pub substrate: NativeThermoRqmEprSubstrate,
     pub router: ThermoAssociativeRouter,
+    pub lrc: LayerRouteCache,
     root: PathBuf,
     state: AdaptivePersistentState,
 }
@@ -273,10 +304,20 @@ impl AdaptiveThermoMemory {
                 ..AdaptivePersistentState::default()
             });
         state.buffer.capacity = config.buffer_capacity.max(1);
+        let lrc = LayerRouteCache::load_or_new(
+            root.join(LAYER_ROUTES_FILE),
+            LayerRouteCacheConfig {
+                min_confidence: config.lrc_min_confidence,
+                max_kl_promote: config.lrc_max_kl_promote,
+                min_overlap: 0.35,
+                max_routes: config.max_routes,
+            },
+        );
         Ok(Self {
             config,
             substrate,
             router,
+            lrc,
             root,
             state,
         })
@@ -327,6 +368,7 @@ impl AdaptiveThermoMemory {
             memory_tokens,
             score: self.router.last_recall_score,
             margin: self.router.last_recall_margin,
+            layer_route_id: None,
         })
     }
 
@@ -347,6 +389,7 @@ impl AdaptiveThermoMemory {
             memory_tokens: entry.memory_tokens.clone(),
             score: fingerprint_overlap(fingerprint, &entry.context),
             margin: 1.0,
+            layer_route_id: None,
         })
     }
 
@@ -358,8 +401,42 @@ impl AdaptiveThermoMemory {
         cached_mask: Option<&LayerExecutionMask>,
         cached_logits: Option<&Tensor>,
     ) -> Result<PreparedAdaptiveForward, String> {
+        self.prepare_forward_with_forced_mask(
+            model,
+            prompt_tokens,
+            cached_tokens,
+            cached_mask,
+            cached_logits,
+            None,
+        )
+    }
+
+    /// Prefill con una mascara impuesta por el grafo (DenseTalker / Compiler).
+    #[allow(clippy::too_many_arguments)]
+    pub fn prepare_forward_with_forced_mask(
+        &mut self,
+        model: &mut QuantizedGemma2,
+        prompt_tokens: &[u32],
+        cached_tokens: &[u32],
+        cached_mask: Option<&LayerExecutionMask>,
+        cached_logits: Option<&Tensor>,
+        forced_mask: Option<&LayerExecutionMask>,
+    ) -> Result<PreparedAdaptiveForward, String> {
         let context_fingerprint = self.context_fingerprint(prompt_tokens);
-        let recalled = self.recall(&context_fingerprint, model.layer_count());
+        let wake_fingerprint = fingerprint_wake(prompt_tokens);
+        let recalled = if let Some(mask) = forced_mask {
+            Some(RecalledLayerRoute {
+                route_id: None,
+                mask: mask.clone(),
+                memory_tokens: Vec::new(),
+                score: 1.0,
+                margin: 1.0,
+                layer_route_id: None,
+            })
+        } else {
+            self.recall_layer_route(&wake_fingerprint, model.layer_count())
+                .or_else(|| self.recall(&context_fingerprint, model.layer_count()))
+        };
         let plan = plan_wake_prefill(
             prompt_tokens,
             cached_tokens,
@@ -392,7 +469,7 @@ impl AdaptiveThermoMemory {
             model
                 // Vigilia no aprende máscaras: las trazas RMS por capa se
                 // capturan durante replay de sueño, fuera de la ruta crítica.
-                .forward_with_mask(&prompt, plan.position, Some(&plan.mask), false, false)
+                .forward_with_mask(&prompt, plan.position, Some(&plan.mask), None, false, false)
                 .map_err(|error| error.to_string())?
         };
         let logits = output
@@ -420,7 +497,51 @@ impl AdaptiveThermoMemory {
                 .unwrap_or(0),
             prefill_tokens: suffix.len(),
             cache_reused: plan.reuse_cache,
+            layer_route_id: recalled.as_ref().and_then(|route| route.layer_route_id),
+            layer_route_hit: recalled
+                .as_ref()
+                .and_then(|route| route.layer_route_id)
+                .is_some(),
         })
+    }
+
+    fn recall_layer_route(
+        &self,
+        fingerprint: &ActivationFingerprint,
+        layer_count: usize,
+    ) -> Option<RecalledLayerRoute> {
+        let route = self.lrc.lookup_confident(fingerprint)?;
+        if route.mask.layer_count() != layer_count
+            || route.mask.executed_count() < self.config.minimum_executed_layers.min(layer_count)
+        {
+            return None;
+        }
+        Some(RecalledLayerRoute {
+            route_id: None,
+            mask: route.mask.clone(),
+            memory_tokens: Vec::new(),
+            score: route.confidence,
+            margin: route.confidence,
+            layer_route_id: Some(route.id),
+        })
+    }
+
+    pub fn observe_layer_route_turn(
+        &mut self,
+        prompt_tokens: &[u32],
+        mask: &LayerExecutionMask,
+        fallback: bool,
+    ) {
+        self.lrc.observe_turn(
+            &fingerprint_wake(prompt_tokens),
+            mask,
+            fallback,
+            self.state.generation,
+        );
+    }
+
+    pub fn layer_route_count(&self) -> usize {
+        self.lrc.len()
     }
 
     pub fn working_memory_len(&self) -> usize {
@@ -432,7 +553,7 @@ impl AdaptiveThermoMemory {
     }
 
     pub fn candidate_mask(&self, trace: &Gemma2ForwardTrace) -> LayerExecutionMask {
-        conservative_candidate_mask(trace, &self.config)
+        kl_budget_mask_from_trace(trace, &self.config)
     }
 
     pub fn progressive_candidate_masks(
@@ -531,7 +652,7 @@ impl AdaptiveThermoMemory {
     }
 
     pub fn consolidate_sleep(&mut self) -> Result<SleepConsolidationReport, String> {
-        self.finish_sleep(0, 0)
+        self.finish_sleep(0, 0, 0, 0.0, 0.0)
     }
 
     pub fn consolidate_sleep_with_model(
@@ -539,14 +660,24 @@ impl AdaptiveThermoMemory {
         model: &mut QuantizedGemma2,
         extra_prompts: &[Vec<u32>],
     ) -> Result<SleepConsolidationReport, String> {
-        let (replayed, discovered) = self.discover_sleep_masks(model, extra_prompts)?;
-        self.finish_sleep(replayed, discovered)
+        let (replayed, discovered, lrc_promoted, sleep_mean_kl, sleep_top1_agree) =
+            self.discover_sleep_masks(model, extra_prompts)?;
+        self.finish_sleep(
+            replayed,
+            discovered,
+            lrc_promoted,
+            sleep_mean_kl,
+            sleep_top1_agree,
+        )
     }
 
     fn finish_sleep(
         &mut self,
         replayed: usize,
         discovered: usize,
+        lrc_promoted: usize,
+        sleep_mean_kl: f32,
+        sleep_top1_agree: f32,
     ) -> Result<SleepConsolidationReport, String> {
         let flushed = self.flush_fast_memory()?;
         let retained_working = self.state.buffer.len();
@@ -567,6 +698,9 @@ impl AdaptiveThermoMemory {
             pruned_routes,
             pruned_relations,
             remaining_routes: self.router.registry.routes().len(),
+            lrc_promoted,
+            sleep_mean_kl,
+            sleep_top1_agree,
         })
     }
 
@@ -574,7 +708,7 @@ impl AdaptiveThermoMemory {
         &mut self,
         model: &mut QuantizedGemma2,
         extra_prompts: &[Vec<u32>],
-    ) -> Result<(usize, usize), String> {
+    ) -> Result<(usize, usize, usize, f32, f32), String> {
         let buffer_tokens = self
             .state
             .buffer
@@ -590,22 +724,36 @@ impl AdaptiveThermoMemory {
         );
         let mut replayed = 0usize;
         let mut discovered = 0usize;
+        let mut lrc_promoted = 0usize;
+        let mut kl_sum = 0.0f32;
+        let mut top1_sum = 0.0f32;
+        let mut probed = 0usize;
         for prompt in prompts {
             replayed += 1;
-            if self.replay_prompt_for_mask(model, &prompt)? {
+            let outcome = self.replay_prompt_for_mask(model, &prompt)?;
+            if outcome.discovered {
                 discovered += 1;
             }
+            if outcome.promoted {
+                lrc_promoted += 1;
+            }
+            if let Some(kl) = outcome.kl {
+                kl_sum += kl;
+                top1_sum += outcome.top1_agree;
+                probed += 1;
+            }
         }
-        Ok((replayed, discovered))
+        let n = probed.max(1) as f32;
+        Ok((replayed, discovered, lrc_promoted, kl_sum / n, top1_sum / n))
     }
 
     fn replay_prompt_for_mask(
         &mut self,
         model: &mut QuantizedGemma2,
         prompt_tokens: &[u32],
-    ) -> Result<bool, String> {
+    ) -> Result<SleepReplayOutcome, String> {
         if prompt_tokens.len() < 2 {
-            return Ok(false);
+            return Ok(SleepReplayOutcome::default());
         }
         model.clear_kv_cache();
         let full_mask = LayerExecutionMask::all(model.layer_count());
@@ -613,7 +761,7 @@ impl AdaptiveThermoMemory {
             .and_then(|tensor| tensor.unsqueeze(0))
             .map_err(|error| error.to_string())?;
         let full = model
-            .forward_with_mask(&prompt, 0, Some(&full_mask), true, false)
+            .forward_with_mask(&prompt, 0, Some(&full_mask), None, true, false)
             .map_err(|error| error.to_string())?;
         let full_logits = full
             .logits
@@ -622,15 +770,28 @@ impl AdaptiveThermoMemory {
             .map_err(|error| error.to_string())?;
         let context = self.context_fingerprint(prompt_tokens);
         let activations = self.activation_fingerprint(&context, &full.trace);
-        let mut best = None::<(LayerExecutionMask, f32)>;
-        for candidate in self
-            .progressive_candidate_masks(&full.trace)
-            .into_iter()
-            .take(self.config.max_candidate_prefills.max(1))
-        {
+        let mut best = None::<(LayerExecutionMask, f32, f32, f32)>;
+        let mut candidates = Vec::new();
+        let primary = self.candidate_mask(&full.trace);
+        if is_sparse_mask(&primary) {
+            candidates.push(primary);
+        }
+        let limit = self.config.max_candidate_prefills.max(1);
+        if candidates.len() < limit {
+            for mask in self.progressive_candidate_masks(&full.trace) {
+                if candidates.len() >= limit {
+                    break;
+                }
+                if candidates.iter().any(|existing| existing == &mask) {
+                    continue;
+                }
+                candidates.push(mask);
+            }
+        }
+        for candidate in candidates {
             model.clear_kv_cache();
             let sparse = model
-                .forward_with_mask(&prompt, 0, Some(&candidate), false, false)
+                .forward_with_mask(&prompt, 0, Some(&candidate), None, false, false)
                 .map_err(|error| error.to_string())?;
             let sparse_logits = sparse
                 .logits
@@ -638,25 +799,41 @@ impl AdaptiveThermoMemory {
                 .and_then(|tensor| tensor.to_vec1::<f32>())
                 .map_err(|error| error.to_string())?;
             let quality = logit_agreement(&full_logits, &sparse_logits);
+            let kl = logits_kl(&full_logits, &sparse_logits);
+            let agree = top1_agree(&full_logits, &sparse_logits);
             if best
                 .as_ref()
-                .map(|(_, current)| quality > *current)
+                .map(|(_, current, _, _)| quality > *current)
                 .unwrap_or(true)
             {
-                best = Some((candidate, quality));
+                best = Some((candidate, quality, kl, agree));
             }
+        }
+        let mut outcome = SleepReplayOutcome {
+            kl: best.as_ref().map(|(_, _, kl, _)| *kl),
+            top1_agree: best.as_ref().map(|(_, _, _, agree)| *agree).unwrap_or(0.0),
+            ..SleepReplayOutcome::default()
+        };
+        if let Some((mask, _, kl, agree)) = best.as_ref() {
+            outcome.promoted = self.lrc.promote(
+                fingerprint_wake(prompt_tokens),
+                mask.clone(),
+                *kl,
+                *agree,
+                self.state.generation,
+            );
         }
         let (mask, quality, usable) = choose_sleep_mask(
             &full_mask,
-            best,
+            best.map(|(mask, quality, _, _)| (mask, quality)),
             self.config.min_runtime_quality,
             self.config.min_verified_quality,
         );
-        if !usable {
-            return Ok(false);
+        if usable {
+            self.upsert_sleep_experience(prompt_tokens, mask, context, activations, quality);
+            outcome.discovered = true;
         }
-        self.upsert_sleep_experience(prompt_tokens, mask, context, activations, quality);
-        Ok(true)
+        Ok(outcome)
     }
 
     fn upsert_sleep_experience(
@@ -701,6 +878,7 @@ impl AdaptiveThermoMemory {
             self.root.join("thermo-memory.cdt_native"),
         )?;
         self.router.save(self.root.join("routes.json"))?;
+        self.lrc.save(self.root.join(LAYER_ROUTES_FILE))?;
         let body = serde_json::to_vec_pretty(&self.state).map_err(|error| error.to_string())?;
         atomic_write(&self.root.join("adaptive-state.json"), &body)
     }
@@ -888,6 +1066,106 @@ pub fn choose_sleep_mask(
     }
 }
 
+/// Ranking T2.1: KL al apagar esa capa sola, orden ascendente.
+/// Fuente: `docs/v8_layer_kl_ablation.csv`. No usar `delta_rms`.
+pub const GEMMA2_T21_LAYER_KL: &[(usize, f32)] = &[
+    (7, 0.018273),
+    (21, 0.021460),
+    (8, 0.023733),
+    (12, 0.031118),
+    (20, 0.035451),
+    (15, 0.036453),
+    (9, 0.043925),
+    (11, 0.044089),
+    (6, 0.045520),
+    (23, 0.049675),
+    (14, 0.051977),
+    (19, 0.063634),
+    (10, 0.064504),
+    (18, 0.070332),
+    (16, 0.079036),
+    (1, 0.082673),
+    (13, 0.087647),
+    (22, 0.091118),
+    (24, 0.145864),
+    (17, 0.161124),
+    (3, 0.228592),
+    (5, 0.241503),
+    (4, 0.261560),
+    (2, 0.479236),
+];
+
+fn sliding_windows_from_trace(trace: &Gemma2ForwardTrace) -> Vec<bool> {
+    let layer_count = trace.layers.len();
+    let mut sliding = vec![false; layer_count];
+    for layer in &trace.layers {
+        if layer.layer < layer_count {
+            sliding[layer.layer] = layer.sliding_window;
+        }
+    }
+    sliding
+}
+
+/// Apaga capas en orden de KL incremental mientras la KL acumulada cabe
+/// en el presupuesto (`lrc_max_kl_promote`, 0,15), quedan >= 8 capas
+/// ejecutadas y no hay dos globales consecutivos apagados (invariante V5).
+/// El presupuesto de KL es el limitador, no `max_skip_fraction`.
+pub fn kl_budget_mask(
+    layer_count: usize,
+    sliding: &[bool],
+    ranked_kl: &[(usize, f32)],
+    config: &AdaptiveGemma2Config,
+) -> LayerExecutionMask {
+    if layer_count < 3 || ranked_kl.is_empty() {
+        return LayerExecutionMask::all(layer_count);
+    }
+    let minimum = config.minimum_executed_layers.min(layer_count);
+    let budget = config.lrc_max_kl_promote;
+    let mut enabled = vec![true; layer_count];
+    let mut acc_kl = 0.0f32;
+    let mut executed = layer_count;
+    for &(layer, kl) in ranked_kl {
+        if executed <= minimum {
+            break;
+        }
+        if layer == 0 || layer + 1 >= layer_count || layer >= layer_count {
+            continue;
+        }
+        if !enabled[layer] {
+            continue;
+        }
+        if !kl.is_finite() || kl < 0.0 || kl > budget {
+            continue;
+        }
+        if acc_kl + kl > budget {
+            continue;
+        }
+        if would_skip_consecutive_globals(&enabled, sliding, layer) {
+            continue;
+        }
+        enabled[layer] = false;
+        acc_kl += kl;
+        executed -= 1;
+    }
+    LayerExecutionMask::from_enabled(enabled)
+}
+
+/// Mascara de producto para V8 / LRC.
+///
+/// `kl_budget_mask` sigue apagando en orden de KL con ranking sintetico.
+/// El ranking T2.1 es KL de **una** capa en el prompt 0. V8 T2.2 midio:
+/// - 5 capas baratas (7,8,12,20,21), 1 prompt: KL 0,234 > 0,15
+/// - solo capa 7, 3 prompts: KL 0,018 / 0,200 / 0,424 (media 0,214)
+/// Ningun skip estatico cabe en el presupuesto del set. Camino S se niega
+/// a saltar: 26/26. El limitador es KL, no `max_skip_fraction`.
+pub fn kl_budget_mask_from_trace(
+    trace: &Gemma2ForwardTrace,
+    config: &AdaptiveGemma2Config,
+) -> LayerExecutionMask {
+    let _ = config;
+    LayerExecutionMask::all(trace.layers.len())
+}
+
 pub fn conservative_candidate_mask(
     trace: &Gemma2ForwardTrace,
     config: &AdaptiveGemma2Config,
@@ -900,26 +1178,66 @@ pub fn conservative_candidate_mask(
     let skip_budget = ((layer_count as f32 * config.max_skip_fraction.clamp(0.0, 0.5)).floor()
         as usize)
         .min(layer_count.saturating_sub(minimum));
+    let mut sliding = vec![false; layer_count];
+    for layer in &trace.layers {
+        if layer.layer < layer_count {
+            sliding[layer.layer] = layer.sliding_window;
+        }
+    }
     let mut ranked = trace
         .layers
         .iter()
         .filter(|layer| layer.executed && layer.layer > 0 && layer.layer + 1 < layer_count)
-        .map(|layer| (layer.layer, layer.delta_rms))
+        .map(|layer| {
+            let local_rank = u8::from(!layer.sliding_window);
+            (layer.layer, local_rank, layer.delta_rms)
+        })
         .collect::<Vec<_>>();
-    ranked.sort_by(|left, right| left.1.total_cmp(&right.1));
+    ranked.sort_by(|left, right| left.1.cmp(&right.1).then(left.2.total_cmp(&right.2)));
     let mut enabled = vec![true; layer_count];
     let mut skipped = 0;
-    for (layer, _) in ranked {
+    for (layer, _, _) in ranked {
         if skipped >= skip_budget {
             break;
         }
         if !enabled[layer - 1] || !enabled[layer + 1] {
             continue;
         }
+        if would_skip_consecutive_globals(&enabled, &sliding, layer) {
+            continue;
+        }
         enabled[layer] = false;
         skipped += 1;
     }
     LayerExecutionMask::from_enabled(enabled)
+}
+
+fn would_skip_consecutive_globals(enabled: &[bool], sliding: &[bool], layer: usize) -> bool {
+    if sliding.get(layer).copied().unwrap_or(false) {
+        return false;
+    }
+    let previous = (0..layer)
+        .rev()
+        .find(|&index| !sliding.get(index).copied().unwrap_or(false));
+    let next =
+        ((layer + 1)..enabled.len()).find(|&index| !sliding.get(index).copied().unwrap_or(false));
+    previous.is_some_and(|index| !enabled[index]) || next.is_some_and(|index| !enabled[index])
+}
+
+/// Hay dos capas globales consecutivas (en la subsecuencia global) apagadas.
+pub fn mask_has_consecutive_global_skips(mask: &LayerExecutionMask, sliding: &[bool]) -> bool {
+    let mut last_global_skipped = false;
+    for layer in 0..mask.layer_count() {
+        if sliding.get(layer).copied().unwrap_or(false) {
+            continue;
+        }
+        let skipped = !mask.executes(layer);
+        if skipped && last_global_skipped {
+            return true;
+        }
+        last_global_skipped = skipped;
+    }
+    false
 }
 
 pub fn progressive_candidate_masks(
@@ -930,7 +1248,8 @@ pub fn progressive_candidate_masks(
     if layer_count < 3 {
         return Vec::new();
     }
-    let target = conservative_candidate_mask(trace, config);
+    let sliding = sliding_windows_from_trace(trace);
+    let target = kl_budget_mask(layer_count, &sliding, GEMMA2_T21_LAYER_KL, config);
     let skipped = (1..layer_count.saturating_sub(1))
         .filter(|layer| !target.executes(*layer))
         .collect::<Vec<_>>();
@@ -1051,6 +1370,175 @@ mod tests {
         for layer in 1..11 {
             assert!(mask.executes(layer) || (mask.executes(layer - 1) && mask.executes(layer + 1)));
         }
+    }
+
+    fn gemma_like_trace(layers: usize, delta: impl Fn(usize) -> f32) -> Gemma2ForwardTrace {
+        Gemma2ForwardTrace {
+            layers: (0..layers)
+                .map(|layer| LayerActivationSummary {
+                    layer,
+                    executed: true,
+                    delta_rms: delta(layer),
+                    sliding_window: layer % 2 == 0,
+                    ..LayerActivationSummary::default()
+                })
+                .collect(),
+            executed_layers: layers,
+            skipped_layers: 0,
+        }
+    }
+
+    #[test]
+    fn default_skip_fraction_stays_conservative() {
+        assert!((AdaptiveGemma2Config::default().max_skip_fraction - 0.15).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn candidate_mask_never_skips_two_consecutive_globals() {
+        let trace = gemma_like_trace(26, |layer| if layer % 2 == 0 { 1.0 } else { 0.01 });
+        let mask = conservative_candidate_mask(
+            &trace,
+            &AdaptiveGemma2Config {
+                max_skip_fraction: 0.15,
+                minimum_executed_layers: 8,
+                ..AdaptiveGemma2Config::default()
+            },
+        );
+        let sliding = (0..26).map(|layer| layer % 2 == 0).collect::<Vec<_>>();
+        assert!(!mask_has_consecutive_global_skips(&mask, &sliding));
+        assert!(mask.executes(0));
+        assert!(mask.executes(25));
+        for layer in 1..25 {
+            assert!(mask.executes(layer) || (mask.executes(layer - 1) && mask.executes(layer + 1)));
+        }
+    }
+
+    #[test]
+    fn candidate_mask_prefers_local_layers_over_globals() {
+        let trace = gemma_like_trace(12, |layer| if layer % 2 == 0 { 5.0 } else { 0.01 });
+        let mask = conservative_candidate_mask(
+            &trace,
+            &AdaptiveGemma2Config {
+                max_skip_fraction: 0.15,
+                minimum_executed_layers: 8,
+                ..AdaptiveGemma2Config::default()
+            },
+        );
+        let skipped = (0..12)
+            .filter(|layer| !mask.executes(*layer))
+            .collect::<Vec<_>>();
+        assert!(
+            !skipped.is_empty(),
+            "el presupuesto de 0.15 debe saltar alguna capa local"
+        );
+        assert!(
+            skipped.iter().all(|layer| layer % 2 == 0),
+            "el ranking debe preferir locales aunque el delta_rms global sea menor: {skipped:?}"
+        );
+        let sliding = (0..12).map(|layer| layer % 2 == 0).collect::<Vec<_>>();
+        assert!(!mask_has_consecutive_global_skips(&mask, &sliding));
+    }
+
+    fn skipped_layers(mask: &LayerExecutionMask, layer_count: usize) -> Vec<usize> {
+        (0..layer_count)
+            .filter(|layer| !mask.executes(*layer))
+            .collect()
+    }
+
+    #[test]
+    fn kl_budget_mask_turns_off_cheap_layers_first_and_stops_before_budget() {
+        let layer_count = 26;
+        let sliding = (0..layer_count)
+            .map(|layer| layer % 2 == 0)
+            .collect::<Vec<_>>();
+        let ranked = [
+            (4, 0.04),
+            (8, 0.04),
+            (12, 0.04),
+            (16, 0.04),
+            (20, 0.04),
+            (7, 0.20),
+        ];
+        let mask = kl_budget_mask(
+            layer_count,
+            &sliding,
+            &ranked,
+            &AdaptiveGemma2Config::default(),
+        );
+        assert_eq!(skipped_layers(&mask, layer_count), vec![4, 8, 12]);
+        assert!(mask.executed_count() >= 8);
+        assert!(mask.executes(0) && mask.executes(25));
+        assert!(mask.executes(16) && mask.executes(20));
+        assert!(mask.executes(7), "KL individual 0.20 > presupuesto");
+        assert!(!mask_has_consecutive_global_skips(&mask, &sliding));
+    }
+
+    #[test]
+    fn kl_budget_mask_never_skips_two_consecutive_globals() {
+        let layer_count = 26;
+        let sliding = (0..layer_count)
+            .map(|layer| layer % 2 == 0)
+            .collect::<Vec<_>>();
+        let ranked = [(1, 0.05), (3, 0.05), (5, 0.05), (7, 0.05), (9, 0.05)];
+        let mask = kl_budget_mask(
+            layer_count,
+            &sliding,
+            &ranked,
+            &AdaptiveGemma2Config::default(),
+        );
+        let skipped = skipped_layers(&mask, layer_count);
+        assert_eq!(skipped, vec![1, 5, 9]);
+        assert!(mask.executed_count() >= 8);
+        assert!(!mask_has_consecutive_global_skips(&mask, &sliding));
+    }
+
+    #[test]
+    fn kl_budget_mask_all_on_if_ranking_empty_or_all_high_kl() {
+        let layer_count = 12;
+        let sliding = vec![false; layer_count];
+        let empty = kl_budget_mask(layer_count, &sliding, &[], &AdaptiveGemma2Config::default());
+        assert_eq!(empty.executed_count(), layer_count);
+        assert_eq!(skipped_layers(&empty, layer_count), Vec::<usize>::new());
+        let expensive = kl_budget_mask(
+            layer_count,
+            &sliding,
+            &[(1, 0.20), (2, 0.30), (5, 0.40)],
+            &AdaptiveGemma2Config::default(),
+        );
+        assert_eq!(expensive.executed_count(), layer_count);
+        assert_eq!(skipped_layers(&expensive, layer_count), Vec::<usize>::new());
+    }
+
+    #[test]
+    fn kl_budget_mask_t21_ranking_does_not_follow_delta_rms() {
+        let layer_count = 26;
+        let sliding = (0..layer_count)
+            .map(|layer| layer % 2 == 0)
+            .collect::<Vec<_>>();
+        let mask = kl_budget_mask(
+            layer_count,
+            &sliding,
+            GEMMA2_T21_LAYER_KL,
+            &AdaptiveGemma2Config::default(),
+        );
+        let skipped = skipped_layers(&mask, layer_count);
+        assert_eq!(skipped, vec![7, 8, 12, 20, 21]);
+        assert!(
+            mask.executes(2),
+            "capa 2 es la mas cara por KL; no se apaga por delta_rms"
+        );
+        assert!(mask.executed_count() >= 8);
+        assert!(!mask_has_consecutive_global_skips(&mask, &sliding));
+    }
+
+    #[test]
+    fn kl_budget_mask_from_trace_refuses_uncalibrated_combined_skip() {
+        let trace = gemma_like_trace(26, |layer| if layer == 2 { 0.01 } else { 9.0 });
+        let mask = kl_budget_mask_from_trace(&trace, &AdaptiveGemma2Config::default());
+        assert_eq!(mask.executed_count(), 26);
+        assert_eq!(skipped_layers(&mask, 26), Vec::<usize>::new());
+        assert!(mask.executes(2));
+        assert!(mask.executes(7));
     }
 
     #[test]
@@ -1196,9 +1684,7 @@ mod tests {
         let mut prompt = cached.clone();
         prompt.extend_from_slice(&[20, 21, 22, 23]);
         let mask = LayerExecutionMask::all(8);
-        let sparse =
-            LayerExecutionMask::from_enabled(vec![true, false, true, true, true, true, true, true]);
-        let plan = plan_wake_prefill(&prompt, &cached, Some(&mask), Some(&sparse), 8);
+        let plan = plan_wake_prefill(&prompt, &cached, Some(&mask), Some(&mask), 8);
         assert!(plan.reuse_cache);
         assert_eq!(plan.position, cached.len());
         assert_eq!(plan.prefill_tokens(prompt.len()), 4);
@@ -1208,6 +1694,34 @@ mod tests {
             plan.prefill_tokens(prompt.len()) as f32 / prompt.len() as f32 <= 0.25,
             "el segundo turno no debe rehacer el historial"
         );
+    }
+
+    #[test]
+    fn kv_a_reuses_kv_when_the_recalled_sparse_mask_stays() {
+        let cached = vec![1u32, 2, 3, 4, 5, 6, 7, 8];
+        let mut prompt = cached.clone();
+        prompt.extend_from_slice(&[9, 10]);
+        let sparse =
+            LayerExecutionMask::from_enabled(vec![true, false, true, true, true, true, true, true]);
+        let plan = plan_wake_prefill(&prompt, &cached, Some(&sparse), Some(&sparse), 8);
+        assert!(plan.reuse_cache);
+        assert_eq!(plan.mask, sparse);
+        assert_eq!(plan.prefill_tokens(prompt.len()), 2);
+    }
+
+    #[test]
+    fn kv_a_prefills_when_the_recalled_mask_changes() {
+        let cached = vec![1u32, 2, 3, 4, 5, 6, 7, 8];
+        let mut prompt = cached.clone();
+        prompt.extend_from_slice(&[9, 10]);
+        let dense = LayerExecutionMask::all(8);
+        let sparse =
+            LayerExecutionMask::from_enabled(vec![true, false, true, true, true, true, true, true]);
+        let plan = plan_wake_prefill(&prompt, &cached, Some(&dense), Some(&sparse), 8);
+        assert!(!plan.reuse_cache);
+        assert_eq!(plan.mask, sparse);
+        assert_eq!(plan.position, 0);
+        assert_eq!(plan.prefill_tokens(prompt.len()), prompt.len());
     }
 
     #[test]
@@ -1491,6 +2005,54 @@ mod tests {
                 || report.replayed == 1,
             "el sueño debe rejugar el prompt de vigilia"
         );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn lrc_promoted_route_wins_the_wake_plan_over_dense_cache() {
+        let (mut memory, root) = temp_memory("lrc-wake", 4);
+        memory.config.minimum_executed_layers = 6;
+        let tokens = vec![1u32, 2, 3, 4, 5, 6, 7, 8];
+        let mask = sparse_mask(8);
+        assert!(memory.lrc.promote(
+            crate::layer_route_cache::fingerprint_wake(&tokens),
+            mask.clone(),
+            0.04,
+            1.0,
+            1
+        ));
+        let recalled = memory
+            .recall_layer_route(&crate::layer_route_cache::fingerprint_wake(&tokens), 8)
+            .expect("LRC debe devolver la máscara promocionada");
+        let cached = tokens.clone();
+        let mut prompt = cached.clone();
+        prompt.extend_from_slice(&[9, 10]);
+        let plan = plan_wake_prefill(
+            &prompt,
+            &cached,
+            Some(&LayerExecutionMask::all(8)),
+            Some(&recalled.mask),
+            8,
+        );
+        assert!(!plan.reuse_cache);
+        assert_eq!(plan.mask.executed_count(), 7);
+        assert!(!plan.mask.executes(4));
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn kl_promotion_does_not_require_the_legacy_verified_threshold() {
+        let full = LayerExecutionMask::all(8);
+        let sparse = sparse_mask(8);
+        let (_, _, usable) = choose_sleep_mask(&full, Some((sparse.clone(), 0.40)), 0.50, 0.92);
+        assert!(!usable);
+        let (mut memory, root) = temp_memory("lrc-kl", 2);
+        let fp = crate::layer_route_cache::fingerprint_wake(&[11, 12, 13, 14]);
+        assert!(
+            memory.lrc.promote(fp.clone(), sparse, 0.08, 1.0, 1),
+            "KL 0.08 debe promocionar aunque logit_agreement sea bajo"
+        );
+        assert!(memory.lrc.lookup_confident(&fp).is_some());
         let _ = fs::remove_dir_all(&root);
     }
 }
