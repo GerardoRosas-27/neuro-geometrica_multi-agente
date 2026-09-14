@@ -22,6 +22,8 @@ pub mod engine_comparison;
 pub mod entanglement;
 pub mod field_substrate;
 pub mod field_encoder;
+pub mod field_linguistic_layer;
+pub mod field_gemma_probe;
 /// Entrenamiento donde un prior generativo propone futuros y F postselecciona
 /// qué trayectoria puede pasar al gate de consolidación CDT.
 pub mod future_guided_training;
