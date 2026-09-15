@@ -8,7 +8,7 @@
 
 use crate::field_encoder::{LayerSkipMask, EXPENSIVE_LAYERS, GEMMA2_LAYER_COUNT};
 use crate::field_linguistic_layer::{
-    linguistic_feature_dim, FrozenLinguisticProbe, LinguisticPacket, HIDDEN_DIM, STEM_DIM,
+    FrozenLinguisticProbe, LinguisticPacket, HIDDEN_DIM, STEM_DIM,
 };
 use crate::native_gemma2::{
     resolve_gemma2_device, resolve_gemma2_model_path, Gemma2Tokenizer, LayerExecutionMask,
@@ -16,7 +16,6 @@ use crate::native_gemma2::{
 };
 use candle_core::{Device, Tensor};
 use std::fs::File;
-use std::io::BufReader;
 use std::path::Path;
 
 const STEM_HASH_SALT: u64 = 0x57E4_CAFE;
@@ -163,7 +162,7 @@ impl FrozenLinguisticProbe for FrozenGemma2Probe {
 }
 
 /// Elige Gemma real si hay GGUF; si no, la sonda con forma de Gemma.
-pub fn open_best_probe(seed: u64) -> Result<Box<dyn FrozenLinguisticProbe>, String> {
+pub fn open_best_probe(_seed: u64) -> Result<Box<dyn FrozenLinguisticProbe>, String> {
     match FrozenGemma2Probe::try_open(None) {
         Ok(p) => Ok(Box::new(p)),
         Err(e) => Err(format!(
