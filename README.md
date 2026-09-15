@@ -68,6 +68,7 @@ Un binario por rol. El resto está en `src/bin/archive/`.
 | Chat (demo) | `cargo run --release --bin native_gemma2_circadian_chat -- --chat dyamon` |
 | Trainer (gated) | `GEMMA_SPIN_MAX_CYCLES=9 cargo run --release --bin native_gemma2_spin_infinite_trainer` |
 | Visualizador | `cargo run --release --bin native_cognitive_sleep_visualizer` |
+| Campo sin tokens (paralelo) | `cargo run --release --bin native_field_substrate_experiment` |
 
 ## Infraestructura (no es el resultado)
 
@@ -89,3 +90,42 @@ unificado de test, red plástica) viven detrás del feature `research` o en
 ```powershell
 cargo test --release --lib --features research
 ```
+
+## Experimento paralelo: campo sin tokens
+
+No es el preprint de cuenca ni un claim frente a un transformer. Sustrato
+`Ψ = (T, z, m, C)` sin vocabulario: el 2-complejo puede crecer y podarse,
+la región oculta no se deja en `z_past`, y la reconstrucción se publica
+junto a Hopfield, Hebb de aristas y promedio de vecinos.
+
+```powershell
+cargo test --release --lib field_substrate -- --nocapture
+cargo run --release --bin native_field_substrate_experiment
+```
+
+Dataset grande (progreso atómico por `dataset_id`, resume desde `latest.json`):
+
+```powershell
+cargo run --release --bin native_field_substrate_experiment -- --dataset-size 4096 --dataset-id synthetic-4k
+```
+
+Entrenador de consola (dataset general enorme, sustrato ancho, guarda cada hora, 8 h):
+
+```powershell
+cargo run --release --bin native_field_console_trainer -- --hours 8 --checkpoint-hours 1 --dataset-size 100000 --scale 2 --clusters 16
+```
+
+`--scale 2` = icosaedro subdividido (90 aristas). `--scale 3` = 270 aristas. Resume desde `data/field_console_training/general`. Ctrl+C guarda.
+
+Encoder-sonda: Gemma 2 congelada (GGUF si está) escribe `z`; el campo no ve tokens. Decoder rígido al banco de 3 clusters:
+
+```powershell
+cargo test --release --lib field_encoder -- --nocapture
+cargo run --release --bin native_field_substrate_experiment -- --encoder-steps 120
+```
+
+Detalle: [`docs/encoder_campo_sin_tokens.md`](docs/encoder_campo_sin_tokens.md).
+
+Detalle y cifras: [`docs/experimento_campo_sin_tokens.md`](docs/experimento_campo_sin_tokens.md).
+El merge a `main` de este experimento son el módulo, el binario y estos docs;
+no arrastra LRC, skip de capas ni el grafo de 6 agentes.
