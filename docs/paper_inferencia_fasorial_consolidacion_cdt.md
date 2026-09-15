@@ -23,6 +23,10 @@ este preprint: no se presenta como motor de razonamiento ni como resultado.
 El chat circadiano es una demo de ingeniería. Las secciones 3.4, 3.5, 7.2 y
 7.10 describen esa infraestructura; no alimentan la tesis de cuenca.
 
+**Campo sin tokens (fuera del claim).** `field_substrate` es un experimento
+paralelo en el crate: 2-complejo sin vocabulario, no una cifra de este
+manuscrito. Protocolo y tabla en `docs/experimento_campo_sin_tokens.md`.
+
 ---
 
 ## Resumen

@@ -57,6 +57,14 @@ El JSON canónico incluye `basin`, `baselines`, `bounded_forgetting` y
 `capacity`. El resto se documenta en el README histórico y, a partir de la
 higiene P5, pasa a `src/bin/archive/` o `examples/`.
 
+## Experimento paralelo (no archivado, no es la tesis)
+
+`field_substrate` y `native_field_substrate_experiment` son un prototipo
+sin vocabulario. Conviven con `simplicial_thermodynamic_engine` (Hodge 3D,
+tetraedros) sin fusionarse: 2-esqueleto vs 3-complejo, distinto claim.
+No alimentan la tabla 7.4 ni la tesis v2. Ver
+[`docs/experimento_campo_sin_tokens.md`](experimento_campo_sin_tokens.md).
+
 ## Qué no reactivar sin protocolo nuevo
 
 - Entrenamiento infinito sin `symbolic_accuracy` y gate funcional en una

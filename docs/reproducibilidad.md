@@ -74,3 +74,30 @@ no entra en cada push:
 ```powershell
 cargo test --release --lib --features research
 ```
+
+## Campo sin tokens (paralelo al preprint)
+
+No regenera cifras de cuenca. El comando imprime la tabla contra Hopfield,
+Hebb y vecinos, y guarda checkpoints por dataset en
+`data/field_substrate_training/<id>/` (`latest.json`, `checkpoints/`,
+`metrics.jsonl`).
+
+```powershell
+cargo test --release --lib field_substrate -- --nocapture
+cargo run --release --bin native_field_substrate_experiment
+```
+
+Semillas `0..7`. Dataset por defecto: 32 patrones sintéticos, resume
+activado. Ctrl+C persiste `latest.json` y sale. Un `dataset_id` distinto
+no mezcla checkpoints.
+
+```powershell
+cargo run --release --bin native_field_substrate_experiment -- --dataset-size 4096 --dataset-id synthetic-4k
+```
+
+Encoder-sonda: Gemma congelada → `z`, decoder al banco. Semilla `0xE4C0`, 120 pasos:
+
+```powershell
+cargo test --release --lib field_encoder -- --nocapture
+cargo run --release --bin native_field_substrate_experiment -- --no-train --no-resume
+```

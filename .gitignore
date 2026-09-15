@@ -16,6 +16,8 @@
 /data/native_gemma2_thermo_chats/
 /data/native_gemma2_future_infinite_training/
 /data/native_phasor_infinite_training/
+/data/field_substrate_training/
+/data/field_console_training/
 /data/*.cdt
 /data/**/*.cdt
 /data/*.cdt_rqm
