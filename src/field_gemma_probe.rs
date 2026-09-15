@@ -106,10 +106,7 @@ impl FrozenGemma2Probe {
 
 impl FrozenLinguisticProbe for FrozenGemma2Probe {
     fn analyze(&mut self, text: &str) -> LinguisticPacket {
-        let tokens = self
-            .tokenizer
-            .encode(text)
-            .unwrap_or_default();
+        let tokens = self.tokenizer.encode(text).unwrap_or_default();
         let stem_bag = Self::stem_bag(text);
         if tokens.is_empty() {
             return LinguisticPacket::from_parts(
@@ -119,8 +116,7 @@ impl FrozenLinguisticProbe for FrozenGemma2Probe {
                 stem_bag,
             );
         }
-        let ids = Tensor::new(tokens.as_slice(), &self.device)
-            .and_then(|t| t.unsqueeze(0));
+        let ids = Tensor::new(tokens.as_slice(), &self.device).and_then(|t| t.unsqueeze(0));
         let Ok(ids) = ids else {
             return LinguisticPacket::from_parts(
                 tokens,
@@ -130,14 +126,9 @@ impl FrozenLinguisticProbe for FrozenGemma2Probe {
             );
         };
         self.model.clear_kv_cache();
-        let out = self.model.forward_with_mask(
-            &ids,
-            0,
-            Some(&self.mask),
-            None,
-            true,
-            true,
-        );
+        let out = self
+            .model
+            .forward_with_mask(&ids, 0, Some(&self.mask), None, true, true);
         let Ok(out) = out else {
             return LinguisticPacket::from_parts(
                 tokens,
@@ -172,9 +163,7 @@ impl FrozenLinguisticProbe for FrozenGemma2Probe {
 }
 
 /// Elige Gemma real si hay GGUF; si no, la sonda con forma de Gemma.
-pub fn open_best_probe(
-    seed: u64,
-) -> Result<Box<dyn FrozenLinguisticProbe>, String> {
+pub fn open_best_probe(seed: u64) -> Result<Box<dyn FrozenLinguisticProbe>, String> {
     match FrozenGemma2Probe::try_open(None) {
         Ok(p) => Ok(Box::new(p)),
         Err(e) => Err(format!(
@@ -203,7 +192,10 @@ mod tests {
                 assert_eq!(psi.n(), 12);
                 // Tokens no sobrevivieron al write.
                 assert!(n >= 1);
-                assert_eq!(linguistic_feature_dim(), GEMMA2_LAYER_COUNT + HIDDEN_DIM + STEM_DIM);
+                assert_eq!(
+                    linguistic_feature_dim(),
+                    GEMMA2_LAYER_COUNT + HIDDEN_DIM + STEM_DIM
+                );
             }
             Err(reason) => {
                 eprintln!("skip GGUF: {reason}");
