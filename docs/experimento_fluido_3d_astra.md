@@ -43,3 +43,7 @@ cargo test --release --lib fluid3d_astra -- --nocapture
 - No demuestra singularidad finita ni resuelve Millennium.
 - Rejilla \(16^3\) es un laboratorio mínimo; no es resolución científica de blow-up.
 - Independiente del sustrato de campo sin tokens.
+
+## Extensión: fluido de spin
+
+Sobre la misma rejilla vive `src/spin_fluid3d.rs` (NLS enfocante): colapso, propagación e interferencia de ondas de spin, con advección opcional por el NS. Ver `docs/experimento_fluido_spin_3d.md`.

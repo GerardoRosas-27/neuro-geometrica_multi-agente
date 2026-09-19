@@ -22,6 +22,8 @@ pub mod engine_comparison;
 pub mod entanglement;
 /// Experimento aislado: NS 3D (Stable Fluids) + MLP residual (forma Astra).
 pub mod fluid3d_astra;
+/// Fluido de spin (NLS enfocante) sobre la rejilla NS 3D: colapso / interferencia.
+pub mod spin_fluid3d;
 /// Entrenamiento donde un prior generativo propone futuros y F postselecciona
 /// qué trayectoria puede pasar al gate de consolidación CDT.
 pub mod future_guided_training;
