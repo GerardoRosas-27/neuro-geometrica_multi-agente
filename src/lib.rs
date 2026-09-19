@@ -20,6 +20,8 @@ pub mod emergent_cognition_training;
 #[cfg(feature = "research")]
 pub mod engine_comparison;
 pub mod entanglement;
+/// Experimento aislado: NS 3D (Stable Fluids) + MLP residual (forma Astra).
+pub mod fluid3d_astra;
 /// Entrenamiento donde un prior generativo propone futuros y F postselecciona
 /// qué trayectoria puede pasar al gate de consolidación CDT.
 pub mod future_guided_training;
