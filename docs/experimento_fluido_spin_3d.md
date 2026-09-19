@@ -44,3 +44,7 @@ cargo test --release --lib spin_fluid3d -- --nocapture
 - No es el líquido XXZ / VMC del motor unificado.
 - No modifica la capa RQM de `main`.
 - Rejilla \(16^3\): laboratorio de dinámica de ondas, no resolución continua de blow-up físico.
+
+## Extensión: inferencia RQM nativa
+
+`src/spin_fluid_rqm_infer.rs` usa el colapso de \(\psi\) como código de entrada a `NativeThermoRqmEprSubstrate`. Ver `docs/inferencia_spin_rqm_nativo.md`.
