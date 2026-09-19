@@ -26,6 +26,8 @@ pub mod fluid3d_astra;
 pub mod spin_fluid3d;
 /// Inferencia: colapso de spin → RQM nativo (solo rama experimento fluido).
 pub mod spin_fluid_rqm_infer;
+/// Bench: colapso→RQM vs RQM directo estilo main.
+pub mod spin_fluid_rqm_bench;
 /// Entrenamiento donde un prior generativo propone futuros y F postselecciona
 /// qué trayectoria puede pasar al gate de consolidación CDT.
 pub mod future_guided_training;

@@ -34,3 +34,7 @@ let mut eng = SpinFluidRqmInfer::new();
 eng.train_identity_epoch(6);
 let report = eng.infer(2); // predicted / confidence / feature_nodes
 ```
+
+## Rendimiento vs RQM directo (estilo main)
+
+Ver `docs/bench_spin_rqm_vs_main.md` — accuracy empatada; spin ∼120× train / ∼1300× infer más lento (NLS 16³).
