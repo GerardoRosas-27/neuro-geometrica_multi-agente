@@ -22,12 +22,16 @@ pub mod engine_comparison;
 pub mod entanglement;
 /// Experimento aislado: NS 3D (Stable Fluids) + MLP residual (forma Astra).
 pub mod fluid3d_astra;
+/// Inferencia nativa solo NS 3D (sin RQM ni spin).
+pub mod fluid3d_native_infer;
 /// Fluido de spin (NLS enfocante) sobre la rejilla NS 3D: colapso / interferencia.
 pub mod spin_fluid3d;
 /// Inferencia: colapso de spin → RQM nativo (solo rama experimento fluido).
 pub mod spin_fluid_rqm_infer;
 /// Bench: colapso→RQM vs RQM directo estilo main.
 pub mod spin_fluid_rqm_bench;
+/// Surrogate del colapso de spin (sin integrar NLS en infer).
+pub mod spin_collapse_surrogate;
 /// Entrenamiento donde un prior generativo propone futuros y F postselecciona
 /// qué trayectoria puede pasar al gate de consolidación CDT.
 pub mod future_guided_training;

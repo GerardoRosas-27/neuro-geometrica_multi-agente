@@ -179,14 +179,26 @@ impl SpinFluid3D {
     }
 
     /// ∂t ψ = i α ∇²ψ + i β |ψ|² ψ − (u·∇)ψ − γ ψ
-    /// (forma que hace i∂tψ = −α∇²ψ − β|ψ|²ψ en el límite sin advección).
-    fn rhs(&self, fluid: Option<&Fluid3D>, out: &mut [Complex64]) {
-        let mut lap = vec![Complex64::new(0.0, 0.0); CELLS];
-        self.laplacian(&mut lap);
+    fn rhs_into(
+        &self,
+        fluid: Option<&Fluid3D>,
+        lap: &mut [Complex64],
+        out: &mut [Complex64],
+        window: Option<SpinWindow>,
+    ) {
+        if let Some(w) = window {
+            self.laplacian_windowed(lap, w);
+        } else {
+            self.laplacian(lap);
+        }
         let i_unit = Complex64::new(0.0, 1.0);
-        for k in 0..N {
-            for j in 0..N {
-                for ii in 0..N {
+        let (i0, i1, j0, j1, k0, k1) = match window {
+            Some(w) => w.bounds(),
+            None => (0, N, 0, N, 0, N),
+        };
+        for k in k0..k1 {
+            for j in j0..j1 {
+                for ii in i0..i1 {
                     let idx = ix(ii, j, k);
                     let psi = self.psi[idx];
                     let a2 = psi.norm_sqr();
@@ -205,29 +217,182 @@ impl SpinFluid3D {
         }
     }
 
-    /// Un paso RK2.
-    pub fn step(&mut self, fluid: Option<&Fluid3D>) {
-        let mut k1 = vec![Complex64::new(0.0, 0.0); CELLS];
-        let mut k2 = vec![Complex64::new(0.0, 0.0); CELLS];
-        self.rhs(fluid, &mut k1);
-
-        let backup = self.psi.clone();
-        for i in 0..CELLS {
-            self.psi[i] = backup[i] + k1[i] * self.dt;
+    fn laplacian_windowed(&self, out: &mut [Complex64], w: SpinWindow) {
+        let (i0, i1, j0, j1, k0, k1) = w.bounds();
+        for k in k0..k1 {
+            for j in j0..j1 {
+                for i in i0..i1 {
+                    let c = self.psi[ix(i, j, k)];
+                    let xp = self.psi[ix(wrap(i as isize + 1), j, k)];
+                    let xm = self.psi[ix(wrap(i as isize - 1), j, k)];
+                    let yp = self.psi[ix(i, wrap(j as isize + 1), k)];
+                    let ym = self.psi[ix(i, wrap(j as isize - 1), k)];
+                    let zp = self.psi[ix(i, j, wrap(k as isize + 1))];
+                    let zm = self.psi[ix(i, j, wrap(k as isize - 1))];
+                    out[ix(i, j, k)] = xp + xm + yp + ym + zp + zm - c * 6.0;
+                }
+            }
         }
-        self.rhs(fluid, &mut k2);
-        for i in 0..CELLS {
-            self.psi[i] = backup[i] + (k1[i] + k2[i]) * (0.5 * self.dt);
-            let a2 = self.psi[i].norm_sqr();
-            self.mz[i] = (1.0 - a2).max(0.0).sqrt();
+    }
+
+    /// Un paso RK2 (reserva buffers; API compatible).
+    pub fn step(&mut self, fluid: Option<&Fluid3D>) {
+        let mut scratch = SpinScratch::new();
+        self.step_reuse(fluid, &mut scratch, None);
+    }
+
+    /// Paso RK2 sin alloc: reutiliza `scratch`.
+    pub fn step_reuse(
+        &mut self,
+        fluid: Option<&Fluid3D>,
+        scratch: &mut SpinScratch,
+        window: Option<SpinWindow>,
+    ) {
+        self.rhs_into(fluid, &mut scratch.lap, &mut scratch.k1, window);
+        scratch.backup.copy_from_slice(&self.psi);
+        let (i0, i1, j0, j1, k0, k1) = match window {
+            Some(w) => w.bounds(),
+            None => (0, N, 0, N, 0, N),
+        };
+        for k in k0..k1 {
+            for j in j0..j1 {
+                for i in i0..i1 {
+                    let idx = ix(i, j, k);
+                    self.psi[idx] = scratch.backup[idx] + scratch.k1[idx] * self.dt;
+                }
+            }
+        }
+        self.rhs_into(fluid, &mut scratch.lap, &mut scratch.k2, window);
+        for k in k0..k1 {
+            for j in j0..j1 {
+                for i in i0..i1 {
+                    let idx = ix(i, j, k);
+                    self.psi[idx] =
+                        scratch.backup[idx] + (scratch.k1[idx] + scratch.k2[idx]) * (0.5 * self.dt);
+                    let a2 = self.psi[idx].norm_sqr();
+                    self.mz[idx] = (1.0 - a2).max(0.0).sqrt();
+                }
+            }
         }
     }
 
     pub fn step_n(&mut self, n: usize, fluid: Option<&Fluid3D>) {
+        let mut scratch = SpinScratch::new();
         for _ in 0..n {
-            self.step(fluid);
+            self.step_reuse(fluid, &mut scratch, None);
         }
     }
+
+    /// Colapso con early-exit: para si |Δamp| < tol durante `patience` pasos.
+    pub fn collapse_early(
+        &mut self,
+        max_steps: usize,
+        tol: f64,
+        patience: usize,
+        fluid: Option<&Fluid3D>,
+        use_window: bool,
+        window_radius: usize,
+    ) -> EarlyCollapseReport {
+        let mut scratch = SpinScratch::new();
+        let amp0 = self.max_amplitude();
+        let mut prev = amp0;
+        let mut prev_peak = self.peak_index();
+        let mut stable = 0usize;
+        let mut steps = 0usize;
+        for s in 0..max_steps {
+            let win = if use_window {
+                let p = self.peak_coords();
+                Some(SpinWindow {
+                    cx: p[0].round() as isize,
+                    cy: p[1].round() as isize,
+                    cz: p[2].round() as isize,
+                    radius: window_radius,
+                })
+            } else {
+                None
+            };
+            self.step_reuse(fluid, &mut scratch, win);
+            steps = s + 1;
+            let amp = self.max_amplitude();
+            let peak = self.peak_index();
+            let rel = (amp - prev).abs() / amp.max(1e-9);
+            // Pico estable o Δamp relativa pequeña (en colapso fuerte el amp sigue creciendo).
+            if peak == prev_peak || rel < tol {
+                stable += 1;
+                if stable >= patience {
+                    break;
+                }
+            } else {
+                stable = 0;
+            }
+            prev = amp;
+            prev_peak = peak;
+        }
+        EarlyCollapseReport {
+            steps_run: steps,
+            amp_start: amp0,
+            amp_end: self.max_amplitude(),
+            early_exit: steps < max_steps,
+        }
+    }
+}
+
+/// Ventana cúbica (no periódica en índices; vecinos sí usan wrap).
+#[derive(Clone, Copy, Debug)]
+pub struct SpinWindow {
+    pub cx: isize,
+    pub cy: isize,
+    pub cz: isize,
+    pub radius: usize,
+}
+
+impl SpinWindow {
+    pub fn bounds(self) -> (usize, usize, usize, usize, usize, usize) {
+        let r = self.radius as isize;
+        let clip = |c: isize| -> (usize, usize) {
+            let a = (c - r).max(0) as usize;
+            let b = ((c + r + 1) as usize).min(N);
+            (a, b.max(a + 1).min(N))
+        };
+        let (i0, i1) = clip(self.cx);
+        let (j0, j1) = clip(self.cy);
+        let (k0, k1) = clip(self.cz);
+        (i0, i1, j0, j1, k0, k1)
+    }
+}
+
+/// Buffers reutilizables para RK2 (evita alloc por paso).
+#[derive(Clone, Debug)]
+pub struct SpinScratch {
+    pub lap: Vec<Complex64>,
+    pub k1: Vec<Complex64>,
+    pub k2: Vec<Complex64>,
+    pub backup: Vec<Complex64>,
+}
+
+impl SpinScratch {
+    pub fn new() -> Self {
+        Self {
+            lap: vec![Complex64::new(0.0, 0.0); CELLS],
+            k1: vec![Complex64::new(0.0, 0.0); CELLS],
+            k2: vec![Complex64::new(0.0, 0.0); CELLS],
+            backup: vec![Complex64::new(0.0, 0.0); CELLS],
+        }
+    }
+}
+
+impl Default for SpinScratch {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct EarlyCollapseReport {
+    pub steps_run: usize,
+    pub amp_start: f64,
+    pub amp_end: f64,
+    pub early_exit: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -404,6 +569,38 @@ mod tests {
             rs > rw,
             "stronger packet should focus more (rs={rs:.3} rw={rw:.3})"
         );
+    }
+
+    #[test]
+    fn collapse_early_exits_when_stable() {
+        let mut s = SpinFluid3D::new(0.35, 2.5, 0.02);
+        let mid = (N / 2) as f64;
+        s.add_gaussian_packet([mid, mid, mid], 1.6, 0.85, [0.0, 0.0, 0.0]);
+        let r = s.collapse_early(80, 5e-3, 4, None, true, 5);
+        println!(
+            "early steps={} amp {:.3}->{:.3} exit={}",
+            r.steps_run, r.amp_start, r.amp_end, r.early_exit
+        );
+        assert!(r.steps_run >= 1);
+        assert!(r.amp_end.is_finite());
+    }
+
+    #[test]
+    fn step_reuse_matches_step() {
+        let mid = (N / 2) as f64;
+        let mut a = SpinFluid3D::new(0.35, 2.5, 0.02);
+        let mut b = SpinFluid3D::new(0.35, 2.5, 0.02);
+        a.add_gaussian_packet([mid, mid, mid], 1.5, 0.5, [0.1, 0.0, 0.0]);
+        b.psi = a.psi.clone();
+        b.mz = a.mz.clone();
+        a.step(None);
+        let mut scratch = SpinScratch::new();
+        b.step_reuse(None, &mut scratch, None);
+        let mut max_d = 0.0f64;
+        for i in 0..CELLS {
+            max_d = max_d.max((a.psi[i] - b.psi[i]).norm());
+        }
+        assert!(max_d < 1e-12, "reuse diverged: {max_d}");
     }
 
     #[test]
