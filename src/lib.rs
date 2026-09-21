@@ -20,6 +20,26 @@ pub mod emergent_cognition_training;
 #[cfg(feature = "research")]
 pub mod engine_comparison;
 pub mod entanglement;
+pub mod field_encoder;
+pub mod field_gemma_probe;
+pub mod field_linguistic_layer;
+pub mod field_substrate;
+/// Predicción por interferencia pasado×futuro (líquido de ondas).
+pub mod wave_predict_core;
+/// Híbrido: ondas (cue nuevo) + RQM (cue entrenado).
+pub mod hybrid_wave_rqm_infer;
+/// Campo sin tokens + híbrido onda/RQM; LLM solo decode periférico.
+pub mod field_hybrid_infer;
+/// Eval completa train+infer+CDT vs main RQM.
+pub mod field_hybrid_full_eval;
+/// POC: WavePredictCore vs NativeThermoCdt — latencia/acc núcleo inferencia.
+pub mod poc_liquid_vs_thermo;
+/// Dos secciones: líquido (inferencia) + Thermo CDT (memoria tras sueño); RQM solo en sueño.
+pub mod liquid_cdt_memory;
+/// Bench detallado: LiquidCdt (NEW) vs NativeThermoRqm estilo MAIN.
+pub mod liquid_cdt_vs_main_bench;
+/// Híbrido fusionado: líquido (infer) + CDT (sueño) + RQM índice relacional (fallback).
+pub mod liquid_cdt_rqm_fuse;
 /// Entrenamiento donde un prior generativo propone futuros y F postselecciona
 /// qué trayectoria puede pasar al gate de consolidación CDT.
 pub mod future_guided_training;
