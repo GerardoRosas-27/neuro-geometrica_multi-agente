@@ -24,6 +24,12 @@ pub mod field_encoder;
 pub mod field_gemma_probe;
 pub mod field_linguistic_layer;
 pub mod field_substrate;
+/// Predicción por interferencia pasado×futuro (líquido de ondas).
+pub mod wave_predict_core;
+/// Híbrido: ondas (cue nuevo) + RQM (cue entrenado).
+pub mod hybrid_wave_rqm_infer;
+/// Campo sin tokens + híbrido onda/RQM; LLM solo decode periférico.
+pub mod field_hybrid_infer;
 /// Entrenamiento donde un prior generativo propone futuros y F postselecciona
 /// qué trayectoria puede pasar al gate de consolidación CDT.
 pub mod future_guided_training;
