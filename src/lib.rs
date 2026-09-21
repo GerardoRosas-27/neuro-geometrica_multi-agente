@@ -30,6 +30,8 @@ pub mod wave_predict_core;
 pub mod hybrid_wave_rqm_infer;
 /// Campo sin tokens + híbrido onda/RQM; LLM solo decode periférico.
 pub mod field_hybrid_infer;
+/// Eval completa train+infer+CDT vs main RQM.
+pub mod field_hybrid_full_eval;
 /// Entrenamiento donde un prior generativo propone futuros y F postselecciona
 /// qué trayectoria puede pasar al gate de consolidación CDT.
 pub mod future_guided_training;
