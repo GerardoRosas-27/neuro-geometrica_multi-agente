@@ -22,24 +22,12 @@ pub mod engine_comparison;
 pub mod entanglement;
 pub mod field_encoder;
 pub mod field_gemma_probe;
-pub mod field_linguistic_layer;
-pub mod field_substrate;
-/// Predicción por interferencia pasado×futuro (líquido de ondas).
-pub mod wave_predict_core;
-/// Híbrido: ondas (cue nuevo) + RQM (cue entrenado).
-pub mod hybrid_wave_rqm_infer;
-/// Campo sin tokens + híbrido onda/RQM; LLM solo decode periférico.
-pub mod field_hybrid_infer;
 /// Eval completa train+infer+CDT vs main RQM.
 pub mod field_hybrid_full_eval;
-/// POC: WavePredictCore vs NativeThermoCdt — latencia/acc núcleo inferencia.
-pub mod poc_liquid_vs_thermo;
-/// Dos secciones: líquido (inferencia) + Thermo CDT (memoria tras sueño); RQM solo en sueño.
-pub mod liquid_cdt_memory;
-/// Bench detallado: LiquidCdt (NEW) vs NativeThermoRqm estilo MAIN.
-pub mod liquid_cdt_vs_main_bench;
-/// Híbrido fusionado: líquido (infer) + CDT (sueño) + RQM índice relacional (fallback).
-pub mod liquid_cdt_rqm_fuse;
+/// Campo sin tokens + híbrido onda/RQM; LLM solo decode periférico.
+pub mod field_hybrid_infer;
+pub mod field_linguistic_layer;
+pub mod field_substrate;
 /// Entrenamiento donde un prior generativo propone futuros y F postselecciona
 /// qué trayectoria puede pasar al gate de consolidación CDT.
 pub mod future_guided_training;
@@ -51,8 +39,16 @@ pub mod gemma_operator_bridge;
 pub mod gemma_phasor_coupling;
 pub mod hybrid_thermo_attention;
 pub mod hybrid_thermo_attention_comparison;
+/// Híbrido: ondas (cue nuevo) + RQM (cue entrenado).
+pub mod hybrid_wave_rqm_infer;
 pub mod layer_route_benchmark;
 pub mod layer_route_cache;
+/// Dos secciones: líquido (inferencia) + Thermo CDT (memoria tras sueño); RQM solo en sueño.
+pub mod liquid_cdt_memory;
+/// Híbrido fusionado: líquido (infer) + CDT (sueño) + RQM índice relacional (fallback).
+pub mod liquid_cdt_rqm_fuse;
+/// Bench detallado: LiquidCdt (NEW) vs NativeThermoRqm estilo MAIN.
+pub mod liquid_cdt_vs_main_bench;
 pub mod matrix_free_cognitive_substrate;
 pub mod native_checkpoint;
 pub mod native_cognitive_closed_loop;
@@ -72,6 +68,8 @@ pub mod native_thermodynamic_engine;
 pub mod oxicuda_peps3d_backend;
 pub mod oxicuda_pyrochlore_backend;
 pub mod plasticity_controller;
+/// POC: WavePredictCore vs NativeThermoCdt — latencia/acc núcleo inferencia.
+pub mod poc_liquid_vs_thermo;
 pub mod pyrochlore_graph_tensor_network;
 pub mod quantum_spin_thermodynamic_engine;
 pub mod relational_field;
@@ -95,3 +93,5 @@ pub mod unified_spin_cognitive_engine;
 /// VMC Jastrow complejo. Compila porque el unificado lo invoca; no justifica
 /// el módulo en el crate público. Tests detrás de `research`. Ver docs/archive.md.
 pub mod variational_spin_liquid_vmc;
+/// Predicción por interferencia pasado×futuro (líquido de ondas).
+pub mod wave_predict_core;

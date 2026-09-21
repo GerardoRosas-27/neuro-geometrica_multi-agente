@@ -7,8 +7,8 @@
 //! Pesos GGUF congelados. Solo se entrena el projector a `z`.
 
 use crate::field_encoder::{LayerSkipMask, EXPENSIVE_LAYERS, GEMMA2_LAYER_COUNT};
-use crate::field_linguistic_layer::{linguistic_feature_dim, 
-    FrozenLinguisticProbe, LinguisticPacket, HIDDEN_DIM, STEM_DIM,
+use crate::field_linguistic_layer::{
+    linguistic_feature_dim, FrozenLinguisticProbe, LinguisticPacket, HIDDEN_DIM, STEM_DIM,
 };
 use crate::native_gemma2::{
     resolve_gemma2_device, resolve_gemma2_model_path, Gemma2Tokenizer, LayerExecutionMask,

@@ -259,8 +259,12 @@ fn run_new_arm() -> ArmInferMetrics {
 
     // Shifted map: liquid is identity-biased; still report numbers.
     let mut sys_shift = LiquidCdtSystem::new(N);
-    let (sh_lat, sh_acc, _, _) =
-        bench_liquid_queries(&mut sys_shift, |i| (i + 1) % N, WARMUP_QUERIES / 2, BENCH_QUERIES);
+    let (sh_lat, sh_acc, _, _) = bench_liquid_queries(
+        &mut sys_shift,
+        |i| (i + 1) % N,
+        WARMUP_QUERIES / 2,
+        BENCH_QUERIES,
+    );
 
     ArmInferMetrics {
         name: "NEW LiquidCdtSystem (liquid infer + CDT sleep)",
@@ -321,8 +325,12 @@ fn run_main_arm() -> ArmInferMetrics {
     // Shifted map (arbitrary relation) on dedicated substrate
     let mut rqm_sh = make_main_rqm();
     let _train_sh = train_main_map(&mut rqm_sh, |i| (i + 1) % N);
-    let (sh_lat, sh_acc) =
-        bench_main_queries(&mut rqm_sh, |i| (i + 1) % N, WARMUP_QUERIES / 2, BENCH_QUERIES);
+    let (sh_lat, sh_acc) = bench_main_queries(
+        &mut rqm_sh,
+        |i| (i + 1) % N,
+        WARMUP_QUERIES / 2,
+        BENCH_QUERIES,
+    );
 
     ArmInferMetrics {
         name: "MAIN NativeThermoRqmEprSubstrate (direct RQM)",
@@ -346,7 +354,10 @@ fn run_main_arm() -> ArmInferMetrics {
     }
 }
 
-fn build_verdicts(new: &ArmInferMetrics, main: &ArmInferMetrics) -> (String, String, String, String) {
+fn build_verdicts(
+    new: &ArmInferMetrics,
+    main: &ArmInferMetrics,
+) -> (String, String, String, String) {
     let mejoras = format!(
         "NEW gana latencia de inferencia identidad ({:.4} vs {:.4} µs/q, ≈{:.0}×), \
          hot-path sin RQM (rqm_api_calls_infer={}) ni ticks CDT (Δtick={}), \
