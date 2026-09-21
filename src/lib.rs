@@ -75,3 +75,7 @@ pub mod unified_spin_cognitive_engine;
 /// VMC Jastrow complejo. Compila porque el unificado lo invoca; no justifica
 /// el módulo en el crate público. Tests detrás de `research`. Ver docs/archive.md.
 pub mod variational_spin_liquid_vmc;
+/// Predicción por interferencia pasado×futuro (líquido de ondas).
+pub mod wave_predict_core;
+/// Híbrido: ondas para cue nuevo, RQM para cue ya entrenado.
+pub mod hybrid_wave_rqm_infer;
