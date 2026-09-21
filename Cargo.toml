@@ -15,6 +15,21 @@ cuda = ["candle-core/cuda", "candle-nn/cuda", "candle-transformers/cuda"]
 mkl = ["candle-core/mkl", "candle-nn/mkl", "candle-transformers/mkl"]
 # Motores huérfanos que no alimentan la tesis de cuenca. Ver docs/archive.md.
 research = []
+# App web agentica (Axum) + telemetría. Activar con --features web.
+web = [
+    "dep:axum",
+    "dep:tokio",
+    "dep:tower-http",
+    "dep:tracing",
+    "dep:tracing-subscriber",
+    "dep:uuid",
+    "dep:tower",
+]
+
+[[bin]]
+name = "agentic_web"
+path = "src/bin/agentic_web.rs"
+required-features = ["web"]
 
 [dependencies]
 candle-core = "0.11.0"
@@ -31,3 +46,12 @@ serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.150"
 sysinfo = { version = "0.39.6", default-features = false, features = ["system"] }
 tokenizers = { version = "0.22.2", default-features = false, features = ["onig"] }
+
+# Feature `web` (opcionales; no afectan `cargo test --lib` por defecto)
+axum = { version = "0.8", optional = true, features = ["json"] }
+tokio = { version = "1", optional = true, features = ["full"] }
+tower-http = { version = "0.6", optional = true, features = ["fs", "cors", "trace"] }
+tracing = { version = "0.1", optional = true }
+tracing-subscriber = { version = "0.3", optional = true, features = ["env-filter"] }
+uuid = { version = "1", optional = true, features = ["v4", "serde"] }
+tower = { version = "0.5", optional = true, features = ["util"] }

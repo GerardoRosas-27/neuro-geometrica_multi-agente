@@ -1,0 +1,13 @@
+# Local: docker compose up --build
+# GGUF opcional: monta el archivo y exporta GEMMA2_GGUF.
+services:
+  agentic_web:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      PORT: "8080"
+      RUST_LOG: info
+      # GEMMA2_GGUF: /models/gemma.gguf
+    # volumes:
+    #   - ./models:/models:ro

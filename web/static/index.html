@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Neuro-Geométrica · Chat agentico</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="top">
+    <div>
+      <h1>Chat agentico · Líquido / CDT / RQM</h1>
+      <p class="sub">LLM solo periferia · tokens nunca entran al FieldState</p>
+    </div>
+    <div class="badges">
+      <span id="badge-mode" class="badge">modo…</span>
+      <span id="badge-health" class="badge">salud…</span>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="chat-panel">
+      <div id="messages" class="messages" aria-live="polite"></div>
+      <form id="chat-form" class="composer">
+        <input id="chat-input" type="text" placeholder="Escribe… (entrena / sueño / estado)" autocomplete="off" />
+        <button type="submit">Enviar</button>
+      </form>
+      <div class="actions">
+        <button type="button" id="btn-train">Iniciar entrenamiento</button>
+        <button type="button" id="btn-sleep">Sueño / consolidar</button>
+        <button type="button" id="btn-refresh">Refrescar telemetría</button>
+      </div>
+    </section>
+
+    <aside class="detail-panel">
+      <nav class="tabs" role="tablist">
+        <button type="button" class="tab active" data-tab="train">Entrenamiento</button>
+        <button type="button" class="tab" data-tab="liquid">Líquido</button>
+        <button type="button" class="tab" data-tab="cdt">CDT</button>
+        <button type="button" class="tab" data-tab="rqm">RQM</button>
+      </nav>
+
+      <div id="panel-train" class="tab-panel active">
+        <h2>Entrenamiento</h2>
+        <dl class="kv">
+          <dt>Estado</dt><dd id="tr-status">—</dd>
+          <dt>Épocas</dt><dd id="tr-epochs">—</dd>
+          <dt>Precisión</dt><dd id="tr-acc">—</dd>
+        </dl>
+        <h3>Eventos</h3>
+        <pre id="tr-log" class="log"></pre>
+      </div>
+
+      <div id="panel-liquid" class="tab-panel">
+        <h2>Líquido (inferencia rápida)</h2>
+        <dl class="kv">
+          <dt>Queries</dt><dd id="li-q">—</dd>
+          <dt>Score último</dt><dd id="li-score">—</dd>
+          <dt>Score medio</dt><dd id="li-avg">—</dd>
+          <dt>Latencia µs</dt><dd id="li-lat">—</dd>
+          <dt>Ruta Liquid %</dt><dd id="li-pct">—</dd>
+          <dt>Última ruta</dt><dd id="li-route">—</dd>
+        </dl>
+      </div>
+
+      <div id="panel-cdt" class="tab-panel">
+        <h2>CDT termo (memoria post-sueño)</h2>
+        <dl class="kv">
+          <dt>Engramas</dt><dd id="cd-eng">—</dd>
+          <dt>Wake buffer</dt><dd id="cd-wake">—</dd>
+          <dt>Sueños</dt><dd id="cd-sleeps">—</dd>
+        </dl>
+        <h3>Último sueño</h3>
+        <pre id="cd-last" class="log"></pre>
+      </div>
+
+      <div id="panel-rqm" class="tab-panel">
+        <h2>RQM (índice / fallback)</h2>
+        <dl class="kv">
+          <dt>Infer calls</dt><dd id="rq-inf">—</dd>
+          <dt>Train calls</dt><dd id="rq-tr">—</dd>
+          <dt>Ruta RQM %</dt><dd id="rq-pct">—</dd>
+          <dt>Cues relacionales</dt><dd id="rq-cues">—</dd>
+        </dl>
+      </div>
+    </aside>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>
