@@ -375,6 +375,31 @@ impl LiquidCdtSystem {
             sleep_ms: t0.elapsed().as_secs_f64() * 1e3,
         }
     }
+
+    /// Contador de llamadas a la API RQM (solo debe crecer en sueño).
+    pub fn rqm_api_calls(&self) -> u64 {
+        self.rqm_api_calls
+    }
+
+    /// Número de engramas consolidados en Thermo CDT.
+    pub fn engram_count(&self) -> usize {
+        self.memory.engram_count()
+    }
+
+    /// Tick del sustrato CDT (inferencia no debe avanzarlo).
+    pub fn cdt_tick(&self) -> u64 {
+        self.memory.substrate_tick()
+    }
+
+    /// Contador de `step()` en memoria CDT (encode/recall).
+    pub fn cdt_step_count(&self) -> u64 {
+        self.memory.step_count
+    }
+
+    /// Episodios pendientes de consolidación.
+    pub fn wake_buffer_len(&self) -> usize {
+        self.wake_buffer.len()
+    }
 }
 
 #[cfg(test)]

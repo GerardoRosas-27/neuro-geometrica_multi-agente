@@ -36,6 +36,8 @@ pub mod field_hybrid_full_eval;
 pub mod poc_liquid_vs_thermo;
 /// Dos secciones: líquido (inferencia) + Thermo CDT (memoria tras sueño); RQM solo en sueño.
 pub mod liquid_cdt_memory;
+/// Bench detallado: LiquidCdt (NEW) vs NativeThermoRqm estilo MAIN.
+pub mod liquid_cdt_vs_main_bench;
 /// Entrenamiento donde un prior generativo propone futuros y F postselecciona
 /// qué trayectoria puede pasar al gate de consolidación CDT.
 pub mod future_guided_training;
