@@ -37,3 +37,15 @@ texto ──► LinguisticPacket.into_field_features() ──► concept_id
 | decode periférico | OK |
 
 5/5 tests.
+
+## Nota (2026-09-21): routing supersedido
+
+El **camino caliente de query ya no enruta warm → RQM**.
+
+Fuente de verdad actual: **`src/liquid_cdt_memory.rs`** + `docs/arquitectura_liquido_cdt_memoria.md`.
+
+- Inferencia (frío y caliente) = **solo líquido** (`WavePredictCore`).
+- Memoria consolidada = **Thermo CDT** tras `sleep_consolidate`.
+- **RQM** = pegamento relacional cue→label **únicamente durante el sueño**, no como router de inferencia.
+
+Este documento describe el híbrido onda/RQM en query como diseño de la pila campo; ese routing warm-RQM queda **supersedido** para el núcleo de inferencia del POC.

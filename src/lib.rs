@@ -34,6 +34,8 @@ pub mod field_hybrid_infer;
 pub mod field_hybrid_full_eval;
 /// POC: WavePredictCore vs NativeThermoCdt — latencia/acc núcleo inferencia.
 pub mod poc_liquid_vs_thermo;
+/// Dos secciones: líquido (inferencia) + Thermo CDT (memoria tras sueño); RQM solo en sueño.
+pub mod liquid_cdt_memory;
 /// Entrenamiento donde un prior generativo propone futuros y F postselecciona
 /// qué trayectoria puede pasar al gate de consolidación CDT.
 pub mod future_guided_training;
