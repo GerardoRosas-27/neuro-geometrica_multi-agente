@@ -129,9 +129,7 @@ impl AppState {
             let r = self.train_start(Some(2), None);
             let reply = format!(
                 "Entrenamiento tokenless iniciado ({} épocas). Engramas: {}. Acc: {:?}.",
-                r.epochs,
-                r.engrams,
-                r.accuracy
+                r.epochs, r.engrams, r.accuracy
             );
             self.chat_log.push(ChatTurn {
                 role: "user".into(),
@@ -447,27 +445,22 @@ mod tests {
     fn chat_maps_text_to_concept_lexicon() {
         let mut s = AppState::new();
         // Forzar léxico para determinismo sin GGUF.
-        s.probe = PeripheralProbe::Lexicon(crate::field_linguistic_layer::GemmaShapedLexicon::new(
-            99,
-        ));
+        s.probe =
+            PeripheralProbe::Lexicon(crate::field_linguistic_layer::GemmaShapedLexicon::new(99));
         s.decoder = ConceptDecoder::new(LlmMode::Lexicon);
         let r = s.handle_chat("hola campo líquido");
         assert!(r.concept_in < NUM_CONCEPTS);
         assert!(r.concept_out < NUM_CONCEPTS);
         assert!(!r.reply.is_empty());
         assert!(!r.decoded.is_empty());
-        assert!(matches!(
-            r.route.as_str(),
-            "Liquid" | "RqmFallback"
-        ));
+        assert!(matches!(r.route.as_str(), "Liquid" | "RqmFallback"));
     }
 
     #[test]
     fn train_increases_engrams_after_sleep() {
         let mut s = AppState::new();
-        s.probe = PeripheralProbe::Lexicon(crate::field_linguistic_layer::GemmaShapedLexicon::new(
-            1,
-        ));
+        s.probe =
+            PeripheralProbe::Lexicon(crate::field_linguistic_layer::GemmaShapedLexicon::new(1));
         let before = s.fuse.engram_count();
         let r = s.train_start(Some(2), Some(vec![0, 1, 2, 3]));
         assert!(r.ok);
@@ -479,9 +472,8 @@ mod tests {
     #[test]
     fn intent_sleep_and_status() {
         let mut s = AppState::new();
-        s.probe = PeripheralProbe::Lexicon(crate::field_linguistic_layer::GemmaShapedLexicon::new(
-            2,
-        ));
+        s.probe =
+            PeripheralProbe::Lexicon(crate::field_linguistic_layer::GemmaShapedLexicon::new(2));
         let _ = s.handle_chat("hola");
         let sleep = s.handle_chat("sueño por favor");
         assert_eq!(sleep.route, "sleep");

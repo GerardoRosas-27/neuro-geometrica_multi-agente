@@ -36,10 +36,7 @@ impl TelemetrySnapshot {
         match report.route {
             InferRoute::Liquid => {
                 self.route_liquid = self.route_liquid.wrapping_add(1);
-                *self
-                    .route_histogram
-                    .entry("Liquid".into())
-                    .or_insert(0) += 1;
+                *self.route_histogram.entry("Liquid".into()).or_insert(0) += 1;
             }
             InferRoute::RqmFallback => {
                 self.route_rqm = self.route_rqm.wrapping_add(1);
@@ -57,7 +54,13 @@ impl TelemetrySnapshot {
         self.wake_buffer = wake;
     }
 
-    pub fn sync_fuse_counters(&mut self, rqm_infer: u64, rqm_train: u64, engrams: usize, wake: usize) {
+    pub fn sync_fuse_counters(
+        &mut self,
+        rqm_infer: u64,
+        rqm_train: u64,
+        engrams: usize,
+        wake: usize,
+    ) {
         self.rqm_infer_calls = rqm_infer;
         self.rqm_train_calls = rqm_train;
         self.engrams = engrams;

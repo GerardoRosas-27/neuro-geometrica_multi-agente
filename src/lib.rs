@@ -99,4 +99,3 @@ pub mod wave_predict_core;
 /// App web agentica (chat + telemetría). Feature `web`.
 #[cfg(feature = "web")]
 pub mod web;
-

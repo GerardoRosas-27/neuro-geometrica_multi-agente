@@ -111,10 +111,7 @@ async fn health(State(st): State<SharedState>) -> impl IntoResponse {
     })
 }
 
-async fn chat(
-    State(st): State<SharedState>,
-    Json(body): Json<ChatRequest>,
-) -> impl IntoResponse {
+async fn chat(State(st): State<SharedState>, Json(body): Json<ChatRequest>) -> impl IntoResponse {
     let mut g = st.lock().unwrap();
     Json(g.handle_chat(&body.message))
 }
