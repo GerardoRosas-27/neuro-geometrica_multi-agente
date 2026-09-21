@@ -32,6 +32,8 @@ pub mod spin_fluid_rqm_infer;
 pub mod spin_fluid_rqm_bench;
 /// Surrogate del colapso de spin (sin integrar NLS en infer).
 pub mod spin_collapse_surrogate;
+/// Predicción por interferencia pasado×futuro (core líquido eficiente, sin RQM).
+pub mod wave_predict_core;
 /// Entrenamiento donde un prior generativo propone futuros y F postselecciona
 /// qué trayectoria puede pasar al gate de consolidación CDT.
 pub mod future_guided_training;
