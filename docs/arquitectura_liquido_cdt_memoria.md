@@ -83,3 +83,7 @@ cargo test --lib liquid_cdt_memory -- --nocapture
 - `sleep_stores_in_cdt_without_forgetting` — lotes 0..3 luego 4..7; 8 engramas; líquido acc=1.0.
 - `rqm_only_during_sleep` — `rqm_api_calls` solo crece en `sleep_consolidate`.
 - `bench_liquid_infer_vs_sleep_cost` — µs líquido vs ms sueño.
+
+## Híbrido fusionado (siguiente paso)
+
+Para mapas arbitrarios sin perder el núcleo líquido, ver **`docs/hibrido_liquido_cdt_rqm_fuse.md`** (`src/liquid_cdt_rqm_fuse.rs`): líquido primero + CDT en sueño + RQM solo como índice/fallback relacional.

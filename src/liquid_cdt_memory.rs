@@ -244,11 +244,22 @@ impl Default for CdtConsolidatedMemory {
 
 // ─── Orquestador + sueño ────────────────────────────────────────────────────
 
+/// Origen del episodio en el buffer de vigilia.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Default)]
+pub enum EpisodeKind {
+    /// Predicción líquida observada (identidad / score alto).
+    #[default]
+    Liquid,
+    /// Relación arbitraria enseñada (`teach_relation` / índice RQM).
+    Relation,
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct Episode {
     pub obs: usize,
     pub predicted: usize,
     pub score: f64,
+    pub kind: EpisodeKind,
 }
 
 #[derive(Clone, Debug)]
@@ -332,6 +343,7 @@ impl LiquidCdtSystem {
                 obs: report.liquid.observation,
                 predicted: report.liquid.predicted,
                 score: report.liquid.score,
+                kind: EpisodeKind::Liquid,
             });
         }
         report

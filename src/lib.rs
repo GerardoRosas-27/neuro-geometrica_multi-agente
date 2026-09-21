@@ -38,6 +38,8 @@ pub mod poc_liquid_vs_thermo;
 pub mod liquid_cdt_memory;
 /// Bench detallado: LiquidCdt (NEW) vs NativeThermoRqm estilo MAIN.
 pub mod liquid_cdt_vs_main_bench;
+/// Híbrido fusionado: líquido (infer) + CDT (sueño) + RQM índice relacional (fallback).
+pub mod liquid_cdt_rqm_fuse;
 /// Entrenamiento donde un prior generativo propone futuros y F postselecciona
 /// qué trayectoria puede pasar al gate de consolidación CDT.
 pub mod future_guided_training;

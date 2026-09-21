@@ -89,3 +89,7 @@ cargo test --release --lib liquid_cdt_vs_main -- --nocapture
 ```
 
 Tests: `compare_liquid_cdt_vs_main_detailed` (asserts fuertes), `compare_shifted_map_reported` (números + assert suave MAIN shifted ≥ 0.90).
+
+## Fusión recomendada
+
+El bench muestra el trade-off (NEW gana latencia/identidad; MAIN gana shifted). La fusión que toma lo mejor de ambos está en **`docs/hibrido_liquido_cdt_rqm_fuse.md`** / `src/liquid_cdt_rqm_fuse.rs`.
