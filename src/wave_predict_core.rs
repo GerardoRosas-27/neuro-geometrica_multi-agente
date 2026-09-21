@@ -234,8 +234,8 @@ impl WaveField2D {
             }
         }
         let i_unit = Complex64::new(0.0, 1.0);
-        for n in 0..CELLS2 {
-            self.psi[n] += i_unit * self.alpha * lap[n] * self.dt;
+        for (n, &l) in lap.iter().enumerate().take(CELLS2) {
+            self.psi[n] += i_unit * self.alpha * l * self.dt;
         }
     }
 

@@ -8,7 +8,7 @@
 
 use crate::field_encoder::{LayerSkipMask, EXPENSIVE_LAYERS, GEMMA2_LAYER_COUNT};
 use crate::field_linguistic_layer::{
-    linguistic_feature_dim, FrozenLinguisticProbe, LinguisticPacket, HIDDEN_DIM, STEM_DIM,
+    FrozenLinguisticProbe, LinguisticPacket, HIDDEN_DIM, STEM_DIM,
 };
 use crate::native_gemma2::{
     resolve_gemma2_device, resolve_gemma2_model_path, Gemma2Tokenizer, LayerExecutionMask,
@@ -174,7 +174,7 @@ pub fn open_best_probe(_seed: u64) -> Result<Box<dyn FrozenLinguisticProbe>, Str
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::field_linguistic_layer::LinguisticFieldCodec;
+    use crate::field_linguistic_layer::{linguistic_feature_dim, LinguisticFieldCodec};
     use crate::field_substrate::{ComplexT, FieldState};
 
     #[test]

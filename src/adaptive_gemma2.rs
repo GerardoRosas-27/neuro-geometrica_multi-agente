@@ -1156,6 +1156,7 @@ pub fn kl_budget_mask(
 /// El ranking T2.1 es KL de **una** capa en el prompt 0. V8 T2.2 midio:
 /// - 5 capas baratas (7,8,12,20,21), 1 prompt: KL 0,234 > 0,15
 /// - solo capa 7, 3 prompts: KL 0,018 / 0,200 / 0,424 (media 0,214)
+///
 /// Ningun skip estatico cabe en el presupuesto del set. Camino S se niega
 /// a saltar: 26/26. El limitador es KL, no `max_skip_fraction`.
 pub fn kl_budget_mask_from_trace(

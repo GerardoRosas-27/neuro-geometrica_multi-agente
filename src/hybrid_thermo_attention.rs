@@ -276,8 +276,7 @@ impl LangevinReservoir {
             self.z_real[m] += (-gamma * self.z_real[m] + phi_r) * dt;
             self.z_imag[m] += (-gamma * self.z_imag[m] - phi_i) * dt;
 
-            for d in 0..self.d_v {
-                let v = value[d];
+            for (d, &v) in value.iter().enumerate().take(self.d_v) {
                 // dS = (-γ S + φ* ⊗ V) dt + ruido
                 let noise = gaussian_from_counter(seed, (m as u64) * self.d_v as u64 + d as u64)
                     * noise_scale;
@@ -297,8 +296,8 @@ impl LangevinReservoir {
             let qi = phi_imag[m];
             // Re{ϕ† z} = ϕ_r z_r + ϕ_i z_i  (con ϕ = e^{iθ}, ϕ† contribuye conjugado)
             denom += qr * self.z_real[m] + qi * self.z_imag[m];
-            for d in 0..self.d_v {
-                output[d] += qr * self.s_real[m][d] + qi * self.s_imag[m][d];
+            for (d, out) in output.iter_mut().enumerate().take(self.d_v) {
+                *out += qr * self.s_real[m][d] + qi * self.s_imag[m][d];
             }
         }
         let safe_denom = denom.abs().max(EPSILON);
@@ -499,8 +498,8 @@ impl HybridThermoAttention {
 
         // 3. Consulta del reservorio para cada Q (O(N) total).
         let mut reservoir_out = Vec::with_capacity(n);
-        for i in 0..n {
-            let (phi_r, phi_i) = self.rff.project(&queries[i]);
+        for query in queries.iter().take(n) {
+            let (phi_r, phi_i) = self.rff.project(query);
             let (out, denom) = self.reservoir.query(&phi_r, &phi_i);
             last_denom = denom;
             reservoir_out.push(out);
@@ -824,8 +823,8 @@ fn matrix_frobenius_norm(matrix: &[Vec<f32>]) -> f32 {
 
 fn identity_matrix(n: usize) -> Vec<Vec<f32>> {
     let mut m = vec![vec![0.0; n]; n];
-    for i in 0..n {
-        m[i][i] = 1.0;
+    for (i, row) in m.iter_mut().enumerate() {
+        row[i] = 1.0;
     }
     m
 }
@@ -852,8 +851,8 @@ fn attention_to_boundary_cues(
 ) -> Vec<NativePhasorCue> {
     let mut cues = Vec::new();
     let k = top_k.min(n);
-    for i in 0..n {
-        let mut pairs: Vec<(usize, f32)> = attention[i]
+    for (i, attn_row) in attention.iter().enumerate().take(n) {
+        let mut pairs: Vec<(usize, f32)> = attn_row
             .iter()
             .enumerate()
             .filter(|(_, &a)| a >= threshold)
@@ -1148,6 +1147,7 @@ mod tests {
     }
 
     /// Secuencia con pares plantados: Q_i ≈ K_j para recuperación exacta.
+    #[allow(clippy::type_complexity)]
     fn planted_handshake_data(
         n: usize,
         d: usize,

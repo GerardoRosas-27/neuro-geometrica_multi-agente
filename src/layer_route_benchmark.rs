@@ -928,9 +928,7 @@ pub fn choose_product_early_exit_k(
     max_kl: f32,
     min_speedup: f64,
 ) -> Option<usize> {
-    let Some(dense_tok_s) = dense_tok_s else {
-        return None;
-    };
+    let dense_tok_s = dense_tok_s?;
     let mut candidates: Vec<&EarlyExitRow> = rows
         .iter()
         .filter(|row| row.k.is_some() && row.kl_vs_dense.is_finite() && row.kl_vs_dense <= max_kl)

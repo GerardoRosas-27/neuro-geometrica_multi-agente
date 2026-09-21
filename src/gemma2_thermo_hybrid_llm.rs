@@ -544,11 +544,11 @@ pub fn thermo_config_for_gemma(
         rff: PhasorRffConfig {
             features: rff_features,
             sigma: 1.0 / (d_model as f32).sqrt(),
-            seed: seed ^ 0x5246_46,
+            seed: seed ^ 0x0052_4646,
         },
         cdt_nodes,
         cdt_spatial_degree: 4,
-        cdt_seed: seed ^ 0x4354_50,
+        cdt_seed: seed ^ 0x0043_5450,
         thermo_blend: 0.55,
         ctp_coupling_alpha: 0.4,
         hybrid: NativeHybridConfig {

@@ -65,10 +65,12 @@ fn bench_main_rqm() -> (f64, f64, f64, usize) {
         seed: 0xBEE2_0002,
         ..NativeThermoCdtConfig::default()
     };
-    let mut cfg = NativeThermoRqmConfig::default();
-    cfg.max_candidates = N * 2;
-    cfg.thermal_steps_per_train = 1;
-    cfg.thermal_steps_per_query = 2;
+    let cfg = NativeThermoRqmConfig {
+        max_candidates: N * 2,
+        thermal_steps_per_train: 1,
+        thermal_steps_per_query: 2,
+        ..Default::default()
+    };
     let epr = EntanglementConfig {
         create_threshold: 0.4,
         max_syncs_per_step: 64,

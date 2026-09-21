@@ -143,7 +143,7 @@ impl WakeJournal {
     pub fn rewrite(&self, records: &[WakeTurnRecord]) -> Result<(), String> {
         let body = records
             .iter()
-            .map(|record| serde_json::to_string(record))
+            .map(serde_json::to_string)
             .collect::<Result<Vec<_>, _>>()
             .map_err(|error| error.to_string())?
             .join("\n");
@@ -269,7 +269,7 @@ pub fn write_sleep_dataset(path: &Path, entries: &[SleepDatasetEntry]) -> Result
     }
     let body = entries
         .iter()
-        .map(|entry| serde_json::to_string(entry))
+        .map(serde_json::to_string)
         .collect::<Result<Vec<_>, _>>()
         .map_err(|error| error.to_string())?
         .join("\n");
