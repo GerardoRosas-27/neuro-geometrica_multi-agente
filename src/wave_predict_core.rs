@@ -134,11 +134,11 @@ impl WavePredictCore {
 
     /// Máquina de predicción: entre hipótesis de futuro, gana la de mayor
     /// interferencia constructiva con el pasado acumulado.
-    pub fn predict_best_future(
-        &self,
-        future_contents: &[usize],
-    ) -> PredictionReport {
-        assert!(!future_contents.is_empty(), "need at least one future hypothesis");
+    pub fn predict_best_future(&self, future_contents: &[usize]) -> PredictionReport {
+        assert!(
+            !future_contents.is_empty(),
+            "need at least one future hypothesis"
+        );
         let mut best_i = 0usize;
         let mut best_score = f64::NEG_INFINITY;
         let mut best_id = 0u64;
@@ -229,8 +229,8 @@ impl WaveField2D {
                 let im = Self::ix((i + GRID - 1) % GRID, j);
                 let jp = Self::ix(i, (j + 1) % GRID);
                 let jm = Self::ix(i, (j + GRID - 1) % GRID);
-                lap[Self::ix(i, j)] = self.psi[ip] + self.psi[im] + self.psi[jp] + self.psi[jm]
-                    - c * 4.0;
+                lap[Self::ix(i, j)] =
+                    self.psi[ip] + self.psi[im] + self.psi[jp] + self.psi[jm] - c * 4.0;
             }
         }
         let i_unit = Complex64::new(0.0, 1.0);
@@ -342,7 +342,10 @@ mod tests {
         let candidates = [0usize, 1, 2, 3, 4, 5, 6, 7];
         for obs in 0..8 {
             let r = core.predict_from_observation(obs, &candidates);
-            println!("obs={obs} pred={} score={:.4}", r.best_content, r.best_score);
+            println!(
+                "obs={obs} pred={} score={:.4}",
+                r.best_content, r.best_score
+            );
             assert_eq!(r.best_content, obs, "future must match past content");
         }
     }

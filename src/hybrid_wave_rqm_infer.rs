@@ -100,7 +100,11 @@ impl HybridWaveRqm {
         cands
             .iter()
             .filter(|c| c.agent < n)
-            .max_by(|a, b| a.score.total_cmp(&b.score).then_with(|| a.agent.cmp(&b.agent)))
+            .max_by(|a, b| {
+                a.score
+                    .total_cmp(&b.score)
+                    .then_with(|| a.agent.cmp(&b.agent))
+            })
             .map(|c| c.agent)
     }
 
@@ -166,7 +170,8 @@ impl HybridWaveRqm {
     pub fn infer(&mut self, observation: usize) -> HybridReport {
         let obs = observation % self.num_labels;
         if self.is_trained(obs) {
-            self.infer_trained(obs).unwrap_or_else(|| self.infer_new(obs))
+            self.infer_trained(obs)
+                .unwrap_or_else(|| self.infer_new(obs))
         } else {
             self.infer_new(obs)
         }

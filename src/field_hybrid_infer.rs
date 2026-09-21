@@ -8,12 +8,8 @@
 //! 5. Decode periférico: concepto → texto (sonda); **nunca** escribe tokens en Ψ.
 
 use crate::field_encoder::{write_into_field, FieldEncoder};
-use crate::field_linguistic_layer::{
-    FrozenLinguisticProbe, GemmaShapedLexicon, LinguisticPacket,
-};
-use crate::field_substrate::{
-    handshake, hebb_update, ComplexT, FieldConfig, FieldState, Phasor,
-};
+use crate::field_linguistic_layer::{FrozenLinguisticProbe, GemmaShapedLexicon, LinguisticPacket};
+use crate::field_substrate::{handshake, hebb_update, ComplexT, FieldConfig, FieldState, Phasor};
 use crate::hybrid_wave_rqm_infer::{HybridReport, HybridWaveRqm, InferPath};
 use std::f64::consts::PI;
 
@@ -109,11 +105,7 @@ impl FieldHybridInfer {
     }
 
     /// Texto → features (firewall) → concept id. Tokens no llegan al campo.
-    pub fn observe_text<P: FrozenLinguisticProbe>(
-        &mut self,
-        probe: &mut P,
-        text: &str,
-    ) -> usize {
+    pub fn observe_text<P: FrozenLinguisticProbe>(&mut self, probe: &mut P, text: &str) -> usize {
         let packet: LinguisticPacket = probe.analyze(text);
         assert!(
             packet.token_count() > 0 || text.is_empty(),

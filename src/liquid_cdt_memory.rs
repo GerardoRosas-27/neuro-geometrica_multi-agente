@@ -366,13 +366,8 @@ impl LiquidCdtSystem {
             // 2) Pegamento relacional RQM — únicamente durante el sueño.
             let cue = CUE_BASE + (ep.obs % self.num_labels);
             let label = ep.predicted % self.num_labels;
-            self.rqm.train_observed_transition(
-                OBSERVER,
-                0.0,
-                &[cue],
-                &[label],
-                0.95,
-            );
+            self.rqm
+                .train_observed_transition(OBSERVER, 0.0, &[cue], &[label], 0.95);
             self.rqm_api_calls = self.rqm_api_calls.wrapping_add(1);
             rqm_trained += 1;
             consolidated += 1;
@@ -452,10 +447,7 @@ mod tests {
             sys.memory.step_count, steps_before,
             "infer must not call memory.step / encode"
         );
-        assert_eq!(
-            sys.rqm_api_calls, rqm_before,
-            "infer must not call RQM API"
-        );
+        assert_eq!(sys.rqm_api_calls, rqm_before, "infer must not call RQM API");
         let acc = ok as f64 / total as f64;
         println!(
             "liquid_only_for_inference: mean_us={:.4} µs/query acc={:.4} queries={} \
@@ -599,9 +591,17 @@ mod tests {
         println!(
             "bench: liquid_infer={:.4} µs/query (n={}) | sleep_consolidate={:.3} ms \
              (episodes={}, engrams_after={}, used_rqm={})",
-            liquid_us, total, sleep_ms, sleep.episodes_consolidated, sleep.engrams_after, sleep.used_rqm
+            liquid_us,
+            total,
+            sleep_ms,
+            sleep.episodes_consolidated,
+            sleep.engrams_after,
+            sleep.used_rqm
         );
-        assert!(liquid_us < 50.0, "liquid should stay sub-50µs debug; got {liquid_us}");
+        assert!(
+            liquid_us < 50.0,
+            "liquid should stay sub-50µs debug; got {liquid_us}"
+        );
         assert!(sleep.used_rqm);
         assert_eq!(sleep.engrams_after, 8);
         // Sueño es órdenes de magnitud más caro que una query líquida (ms vs µs).

@@ -224,7 +224,8 @@ impl FusedLiquidCdt {
 
         for ep in episodes {
             // 1) Engrama durable en Thermo CDT (incremental).
-            self.memory.encode_engram(ep.predicted % self.memory.capacity);
+            self.memory
+                .encode_engram(ep.predicted % self.memory.capacity);
             // 2) Índice RQM: reafirma cue→label (especialmente Relation).
             self.train_rqm_relation(ep.obs, ep.predicted);
             rqm_trained += 1;
@@ -417,13 +418,7 @@ pub fn run_fuse_compare() -> FuseCompareTable {
     let mut main_sh = make_bare_rqm(n);
     for _ in 0..MAIN_EPOCHS {
         for i in 0..n {
-            main_sh.train_observed_transition(
-                OBSERVER,
-                0.0,
-                &[CUE_BASE + i],
-                &[(i + 1) % n],
-                0.95,
-            );
+            main_sh.train_observed_transition(OBSERVER, 0.0, &[CUE_BASE + i], &[(i + 1) % n], 0.95);
         }
     }
     for _ in 0..(WARMUP / 2) {
@@ -483,8 +478,12 @@ pub fn format_fuse_compare_table(t: &FuseCompareTable) -> String {
     s.push_str(&format!(
         "Protocolo: N={BENCH_N} · warmup={WARMUP} · bench={BENCH_Q} · MAIN epochs={MAIN_EPOCHS}\n\n"
     ));
-    s.push_str("| Brazo | ID mean µs | ID acc | ID Liquid% | SH mean µs | SH acc | SH RQM% | Engrams |\n");
-    s.push_str("|-------|-----------:|-------:|-----------:|-----------:|-------:|--------:|--------:|\n");
+    s.push_str(
+        "| Brazo | ID mean µs | ID acc | ID Liquid% | SH mean µs | SH acc | SH RQM% | Engrams |\n",
+    );
+    s.push_str(
+        "|-------|-----------:|-------:|-----------:|-----------:|-------:|--------:|--------:|\n",
+    );
     for row in [&t.fuse, &t.liquid_only, &t.main_rqm] {
         s.push_str(&format!(
             "| {} | {:.4} | {:.4} | {:.1}% | {:.4} | {:.4} | {:.1}% | {} |\n",
@@ -562,7 +561,10 @@ mod tests {
             fuse.rqm_infer_calls
         );
 
-        assert!((acc - 1.0).abs() < 1e-9, "identity acc must be 1.0, got {acc}");
+        assert!(
+            (acc - 1.0).abs() < 1e-9,
+            "identity acc must be 1.0, got {acc}"
+        );
         assert!(
             liquid_frac >= 0.99,
             "route must be mostly Liquid, frac={liquid_frac}"
@@ -623,10 +625,7 @@ mod tests {
             total,
             fuse.relational_cues.len()
         );
-        assert!(
-            acc >= 0.99,
-            "shifted acc must be >= 0.99, got {acc}"
-        );
+        assert!(acc >= 0.99, "shifted acc must be >= 0.99, got {acc}");
         assert_eq!(rqm_routes, total);
     }
 

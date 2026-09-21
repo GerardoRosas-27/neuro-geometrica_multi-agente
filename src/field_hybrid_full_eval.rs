@@ -47,9 +47,14 @@ pub struct FullEvalReport {
 }
 
 fn pick_label(cands: &[NativeCandidateScore]) -> Option<usize> {
-    cands.iter()
+    cands
+        .iter()
         .filter(|c| c.agent < N)
-        .max_by(|a, b| a.score.total_cmp(&b.score).then_with(|| a.agent.cmp(&b.agent)))
+        .max_by(|a, b| {
+            a.score
+                .total_cmp(&b.score)
+                .then_with(|| a.agent.cmp(&b.agent))
+        })
         .map(|c| c.agent)
 }
 
