@@ -34,6 +34,8 @@ pub mod spin_fluid_rqm_bench;
 pub mod spin_collapse_surrogate;
 /// Predicción por interferencia pasado×futuro (core líquido eficiente, sin RQM).
 pub mod wave_predict_core;
+/// Bench: wave_predict_core vs RQM estilo main.
+pub mod wave_vs_rqm_bench;
 /// Entrenamiento donde un prior generativo propone futuros y F postselecciona
 /// qué trayectoria puede pasar al gate de consolidación CDT.
 pub mod future_guided_training;
