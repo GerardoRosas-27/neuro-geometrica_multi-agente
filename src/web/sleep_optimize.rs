@@ -263,7 +263,19 @@ pub fn run_sleep_optimize(
     cfg: &FieldConfig,
     opts: SleepOptimizeOpts,
 ) -> SleepOptimizeReport {
+    run_sleep_optimize_with_progress(fuse, field, cfg, opts, |_phase, _msg| {})
+}
+
+/// Igual que [`run_sleep_optimize`] pero emite fases para consola en vivo.
+pub fn run_sleep_optimize_with_progress(
+    fuse: &mut FusedLiquidCdt,
+    field: &mut FieldState,
+    cfg: &FieldConfig,
+    opts: SleepOptimizeOpts,
+    mut on_progress: impl FnMut(&str, &str),
+) -> SleepOptimizeReport {
     let mut notes = Vec::new();
+    on_progress("start", "iniciando sueño / optimización");
     let prune_i = opts.prune_intensity.clamp(0.0, 1.0);
     let compact_i = opts.compact_intensity.clamp(0.0, 1.0);
 
@@ -279,6 +291,7 @@ pub fn run_sleep_optimize(
     let mut sleep_ms = 0.0;
 
     if opts.consolidate_first {
+        on_progress("consolidate", "consolidando buffer wake → CDT");
         let sleep = fuse.sleep_consolidate();
         episodes = sleep.episodes_consolidated;
         engrams_before = sleep.engrams_before;
@@ -317,17 +330,30 @@ pub fn run_sleep_optimize(
     #[allow(unused_assignments)]
     let mut best_hs = 0.0_f64;
 
+    on_progress(
+        "prune",
+        &format!("podando rutas RQM (intensidad={prune_i:.2})"),
+    );
     let routes_pruned = prune_weak_routes(fuse, prune_i);
     notes.push(format!(
         "rutas RQM podadas={routes_pruned} (intensidad={prune_i:.2})"
     ));
+    on_progress("prune", &format!("rutas podadas={routes_pruned}"));
 
+    on_progress(
+        "compact",
+        &format!("compactando geometría fasorial (intensidad={compact_i:.2})"),
+    );
     let (phasors_compacted, edges_compacted) = compact_phasorial_geometry(field, compact_i);
     let nodes_compacted = edges_compacted;
     notes.push(format!(
         "compactación fasorial: merges={phasors_compacted} aristas={edges_compacted}"
     ));
 
+    on_progress(
+        "minimize",
+        &format!("F antes={f_before:.4} sym={sym_before:.4}; relajando campo"),
+    );
     let relax_steps = (12.0 + 40.0 * compact_i).round() as usize;
     let mut hs = minimize_free_energy(field, cfg, relax_steps, 0x51EE_0071);
     if compact_i > 0.4 {
@@ -380,6 +406,14 @@ pub fn run_sleep_optimize(
         f_after - f_before,
         sym_after - sym_before
     ));
+    on_progress(
+        "done",
+        &format!(
+            "sueño listo ΔF={:.4} Δsym={:.4} hs={hs:.4}",
+            f_after - f_before,
+            sym_after - sym_before
+        ),
+    );
 
     SleepOptimizeReport {
         free_energy_before: f_before,

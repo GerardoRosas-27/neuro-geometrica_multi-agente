@@ -5,10 +5,17 @@
   const input = $("chat-input");
   const badgeMode = $("badge-mode");
   const badgeHealth = $("badge-health");
+  const badgeProcs = $("badge-procs");
 
   let trainPollTimer = null;
+  let sleepPollTimer = null;
+  let testsPollTimer = null;
   let eventAfter = 0;
   let liveEvents = [];
+  let sleepEventAfter = 0;
+  let sleepEvents = [];
+  let testsEventAfter = 0;
+  let testsEvents = [];
   let useSse = true;
   let eventSource = null;
 
@@ -32,15 +39,61 @@
     return res.json();
   }
 
+  function setPulse(id, on) {
+    const el = $(id);
+    if (!el) return;
+    el.hidden = !on;
+    const tab = el.closest(".main-tab");
+    if (tab) tab.classList.toggle("running", !!on);
+  }
+
+  function updateProcessBadges(flags) {
+    const parts = [];
+    if (flags.train) parts.push("entrenando");
+    if (flags.sleep) parts.push("durmiendo");
+    if (flags.tests) parts.push("pruebas");
+    badgeProcs.textContent = parts.length ? parts.join(" · ") : "procesos idle";
+    badgeProcs.classList.toggle("active", parts.length > 0);
+    setPulse("pulse-train", !!flags.train);
+    setPulse("pulse-sleep", !!flags.sleep);
+    setPulse("pulse-tests", !!flags.tests);
+  }
+
   async function refreshHealth() {
     try {
       const h = await api("/health");
       badgeMode.textContent = `LLM: ${h.llm_mode}`;
-      badgeHealth.textContent =
-        `ok · engramas ${h.engrams}` + (h.training ? " · entrenando" : "");
+      const bits = [`ok · engramas ${h.engrams}`];
+      if (h.training) bits.push("entrenando");
+      if (h.sleeping) bits.push("durmiendo");
+      if (h.testing) bits.push("pruebas");
+      badgeHealth.textContent = bits.join(" · ");
+      updateProcessBadges({
+        train: !!h.training,
+        sleep: !!h.sleeping,
+        tests: !!h.testing,
+      });
     } catch (_) {
       badgeHealth.textContent = "sin conexión";
     }
+  }
+
+  function formatLog(events) {
+    return (events || [])
+      .map((e) => {
+        const b = e.batch != null ? ` b${e.batch}` : "";
+        const eng = e.engrams != null ? ` eng=${e.engrams}` : "";
+        return `[${e.kind}]${b}${eng} ${e.message}`;
+      })
+      .join("\n");
+  }
+
+  function maxSeq(events) {
+    let m = 0;
+    for (const e of events || []) {
+      if (e.seq != null) m = Math.max(m, e.seq);
+    }
+    return m;
   }
 
   function renderLiveJob(job) {
@@ -87,18 +140,44 @@
       "—";
     $("tr-decoded").textContent = job.last_decoded || "—";
 
-    if (Array.isArray(job.events) && job.events.length) {
-      const merged = liveEvents.length ? liveEvents : job.events;
+    const merged =
+      liveEvents.length > 0
+        ? liveEvents
+        : Array.isArray(job.events)
+          ? job.events
+          : [];
+    if (merged.length) {
       const log = $("tr-log");
-      log.textContent = merged
-        .map((e) => {
-          const b = e.batch != null ? ` b${e.batch}` : "";
-          const eng = e.engrams != null ? ` eng=${e.engrams}` : "";
-          return `[${e.kind}]${b}${eng} ${e.message}`;
-        })
-        .join("\n");
+      log.textContent = formatLog(merged);
       log.scrollTop = log.scrollHeight;
     }
+  }
+
+  function renderSleepJob(job) {
+    if (!job) return;
+    $("sl-status").textContent = job.running
+      ? job.cancelled
+        ? "deteniendo…"
+        : "durmiendo…"
+      : job.cancelled
+        ? "cancelado"
+        : job.job_id
+          ? "idle / listo"
+          : "idle";
+    $("sl-job").textContent = job.job_id || "—";
+    $("sl-phase").textContent = job.phase || "—";
+    const merged =
+      sleepEvents.length > 0
+        ? sleepEvents
+        : Array.isArray(job.events)
+          ? job.events
+          : [];
+    if (merged.length) {
+      const log = $("sl-log");
+      log.textContent = formatLog(merged);
+      log.scrollTop = log.scrollHeight;
+    }
+    if (job.last_report) renderSleepReport(job.last_report);
   }
 
   function renderSleepReport(r) {
@@ -113,6 +192,36 @@
     $("sl-edges").textContent = `${r.edges_compacted} / ${r.nodes_compacted}`;
     $("sl-eng").textContent = r.engrams;
     $("sl-report").textContent = JSON.stringify(r, null, 2);
+  }
+
+  function renderTestsJob(job) {
+    if (!job) return;
+    $("te-status").textContent = job.running
+      ? job.cancelled
+        ? "deteniendo…"
+        : "ejecutando…"
+      : job.cancelled
+        ? "cancelado"
+        : job.job_id
+          ? "idle / listo"
+          : "idle";
+    $("te-job").textContent = job.job_id || "—";
+    $("te-progress").textContent =
+      job.total_steps > 0
+        ? `${job.step || 0} / ${job.total_steps} (${job.phase || "—"})`
+        : job.phase || "—";
+    const merged =
+      testsEvents.length > 0
+        ? testsEvents
+        : Array.isArray(job.events)
+          ? job.events
+          : [];
+    if (merged.length) {
+      const log = $("te-log");
+      log.textContent = formatLog(merged);
+      log.scrollTop = log.scrollHeight;
+    }
+    if (job.last_report) renderTests(job.last_report);
   }
 
   function renderTests(r) {
@@ -151,6 +260,8 @@
   function renderTelemetry(t) {
     const job = t.live_job || (t.train && t.train.live) || null;
     if (job) renderLiveJob(job);
+    if (t.sleep_job) renderSleepJob(t.sleep_job);
+    if (t.tests_job) renderTestsJob(t.tests_job);
 
     $("li-q").textContent = t.liquid.queries;
     $("li-score").textContent = Number(t.liquid.score_last).toFixed(4);
@@ -168,9 +279,17 @@
     $("rq-pct").textContent = Number(t.rqm.route_pct).toFixed(1) + "%";
     $("rq-cues").textContent = t.rqm.relational_cues;
 
-    if (t.last_sleep_optimize) renderSleepReport(t.last_sleep_optimize);
-    if (t.last_field_eval) renderTests(t.last_field_eval);
+    if (t.last_sleep_optimize && !t.sleep_job?.running)
+      renderSleepReport(t.last_sleep_optimize);
+    if (t.last_field_eval && !t.tests_job?.running) renderTests(t.last_field_eval);
     badgeMode.textContent = `LLM: ${t.llm_mode}`;
+    if (t.processes) {
+      updateProcessBadges({
+        train: (t.processes.active || []).includes("train"),
+        sleep: (t.processes.active || []).includes("sleep"),
+        tests: (t.processes.active || []).includes("tests"),
+      });
+    }
   }
 
   async function refreshTelemetry() {
@@ -180,24 +299,54 @@
     } catch (_) {}
   }
 
-  function appendEvents(events) {
+  function appendTo(bufName, afterName, events) {
     if (!events || !events.length) return;
+    let buf = bufName === "train" ? liveEvents : bufName === "sleep" ? sleepEvents : testsEvents;
+    let after =
+      afterName === "train"
+        ? eventAfter
+        : afterName === "sleep"
+          ? sleepEventAfter
+          : testsEventAfter;
     for (const e of events) {
-      if (liveEvents.length && liveEvents[liveEvents.length - 1].seq === e.seq)
-        continue;
-      liveEvents.push(e);
-      if (e.seq != null) eventAfter = Math.max(eventAfter, e.seq);
+      if (buf.length && buf[buf.length - 1].seq === e.seq) continue;
+      buf.push(e);
+      if (e.seq != null) after = Math.max(after, e.seq);
     }
-    if (liveEvents.length > 300) liveEvents = liveEvents.slice(-300);
+    if (buf.length > 300) buf = buf.slice(-300);
+    if (bufName === "train") {
+      liveEvents = buf;
+      eventAfter = after;
+    } else if (bufName === "sleep") {
+      sleepEvents = buf;
+      sleepEventAfter = after;
+    } else {
+      testsEvents = buf;
+      testsEventAfter = after;
+    }
+  }
+
+  function appendEvents(events) {
+    appendTo("train", "train", events);
   }
 
   async function pollTrainOnce() {
     try {
       const st = await api("/api/train/status");
+      if (Array.isArray(st.events) && st.events.length && liveEvents.length === 0) {
+        liveEvents = st.events.slice();
+        eventAfter = maxSeq(liveEvents);
+      }
       renderLiveJob(st);
       const ev = await api("/api/train/events?after=" + eventAfter);
       appendEvents(ev.events || []);
       renderLiveJob(st);
+      updateProcessBadges({
+        train: !!st.running,
+        sleep: document.getElementById("pulse-sleep")?.hidden === false,
+        tests: document.getElementById("pulse-tests")?.hidden === false,
+      });
+      setPulse("pulse-train", !!st.running);
       if (!st.running) {
         stopTrainPolling();
         refreshTelemetry();
@@ -248,6 +397,109 @@
     }
   }
 
+  async function pollSleepOnce() {
+    try {
+      const st = await api("/api/sleep/status");
+      if (Array.isArray(st.events) && st.events.length && sleepEvents.length === 0) {
+        sleepEvents = st.events.slice();
+        sleepEventAfter = maxSeq(sleepEvents);
+      }
+      renderSleepJob(st);
+      const ev = await api("/api/sleep/events?after=" + sleepEventAfter);
+      appendTo("sleep", "sleep", ev.events || []);
+      renderSleepJob(st);
+      setPulse("pulse-sleep", !!st.running);
+      if (!st.running) {
+        stopSleepPolling();
+        refreshTelemetry();
+        refreshHealth();
+      }
+    } catch (_) {}
+  }
+
+  function startSleepPolling() {
+    if (sleepPollTimer) return;
+    sleepPollTimer = setInterval(pollSleepOnce, 400);
+    pollSleepOnce();
+  }
+
+  function stopSleepPolling() {
+    if (sleepPollTimer) {
+      clearInterval(sleepPollTimer);
+      sleepPollTimer = null;
+    }
+  }
+
+  async function pollTestsOnce() {
+    try {
+      const st = await api("/api/tests/status");
+      if (Array.isArray(st.events) && st.events.length && testsEvents.length === 0) {
+        testsEvents = st.events.slice();
+        testsEventAfter = maxSeq(testsEvents);
+      }
+      renderTestsJob(st);
+      const ev = await api("/api/tests/events?after=" + testsEventAfter);
+      appendTo("tests", "tests", ev.events || []);
+      renderTestsJob(st);
+      setPulse("pulse-tests", !!st.running);
+      if (!st.running) {
+        stopTestsPolling();
+        refreshTelemetry();
+        refreshHealth();
+      }
+    } catch (_) {}
+  }
+
+  function startTestsPolling() {
+    if (testsPollTimer) return;
+    testsPollTimer = setInterval(pollTestsOnce, 400);
+    pollTestsOnce();
+  }
+
+  function stopTestsPolling() {
+    if (testsPollTimer) {
+      clearInterval(testsPollTimer);
+      testsPollTimer = null;
+    }
+  }
+
+  /** Reconecta a jobs en memoria del servidor sin cancelarlos. */
+  async function reconnectProcesses() {
+    try {
+      const p = await api("/api/processes");
+      updateProcessBadges({
+        train: (p.active || []).includes("train"),
+        sleep: (p.active || []).includes("sleep"),
+        tests: (p.active || []).includes("tests"),
+      });
+
+      if (p.train) {
+        if (Array.isArray(p.train.events) && p.train.events.length) {
+          liveEvents = p.train.events.slice();
+          eventAfter = maxSeq(liveEvents);
+        }
+        renderLiveJob(p.train);
+        if (p.train.running) startTrainPolling();
+      }
+      if (p.sleep) {
+        if (Array.isArray(p.sleep.events) && p.sleep.events.length) {
+          sleepEvents = p.sleep.events.slice();
+          sleepEventAfter = maxSeq(sleepEvents);
+        }
+        renderSleepJob(p.sleep);
+        if (p.sleep.running) startSleepPolling();
+      }
+      if (p.tests) {
+        if (Array.isArray(p.tests.events) && p.tests.events.length) {
+          testsEvents = p.tests.events.slice();
+          testsEventAfter = maxSeq(testsEvents);
+        }
+        renderTestsJob(p.tests);
+        if (p.tests.running) startTestsPolling();
+      }
+    } catch (_) {}
+  }
+
   // Tabs
   document.querySelectorAll(".main-tab").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -262,7 +514,6 @@
     });
   });
 
-  // Chat — solo campo / decoder (sin controles de train)
   form.addEventListener("submit", async (ev) => {
     ev.preventDefault();
     const message = input.value.trim();
@@ -277,6 +528,9 @@
       });
       const meta = `ruta=${r.route} · in=${r.concept_in}→out=${r.concept_out} · líquido=${Number(r.liquid_score).toFixed(3)} · eng=${r.engrams} · decoded=${r.decoded}`;
       addMsg("agent", r.reply, meta);
+      if (r.route === "train") {
+        await reconnectProcesses();
+      }
       refreshTelemetry();
       refreshHealth();
     } catch (e) {
@@ -284,7 +538,6 @@
     }
   });
 
-  // Train
   $("btn-train").addEventListener("click", async () => {
     const infinite = $("chk-infinite")?.checked !== false;
     eventAfter = 0;
@@ -328,7 +581,6 @@
     pollTrainOnce();
   });
 
-  // Sleep sliders
   function bindSlider(id, valId) {
     const sl = $(id);
     const val = $(valId);
@@ -344,8 +596,12 @@
   $("btn-sleep").addEventListener("click", async () => {
     const prune = $("sl-prune").value / 100;
     const compact = $("sl-compact").value / 100;
+    sleepEventAfter = 0;
+    sleepEvents = [];
+    $("sl-log").textContent = "";
+    $("sl-status").textContent = "iniciando…";
     try {
-      const r = await api("/api/sleep", {
+      const r = await api("/api/sleep/start", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -354,35 +610,75 @@
           consolidate_first: true,
         }),
       });
-      renderSleepReport(r);
-      refreshTelemetry();
+      if (r.ok) {
+        $("sl-job").textContent = r.job_id || "—";
+        startSleepPolling();
+      } else {
+        $("sl-status").textContent = r.message || "ocupado";
+      }
       refreshHealth();
     } catch (e) {
       $("sl-report").textContent = "Error: " + e.message;
+      $("sl-status").textContent = "error";
     }
   });
 
-  // Tests
-  $("btn-tests").addEventListener("click", async () => {
-    $("te-report").textContent = "Ejecutando batería…";
+  $("btn-sleep-stop").addEventListener("click", async () => {
     try {
-      const r = await api("/api/tests/run", {
+      await api("/api/sleep/stop", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: "{}",
       });
-      renderTests(r);
-      refreshTelemetry();
+      pollSleepOnce();
+    } catch (_) {}
+  });
+
+  $("btn-tests").addEventListener("click", async () => {
+    testsEventAfter = 0;
+    testsEvents = [];
+    $("te-log").textContent = "";
+    $("te-status").textContent = "iniciando…";
+    $("te-report").textContent = "Ejecutando batería…";
+    try {
+      const r = await api("/api/tests/start", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+      });
+      if (r.ok) {
+        $("te-job").textContent = r.job_id || "—";
+        startTestsPolling();
+      } else {
+        $("te-status").textContent = r.message || "ocupado";
+        $("te-report").textContent = r.message || "ocupado";
+      }
       refreshHealth();
     } catch (e) {
       $("te-report").textContent = "Error: " + e.message;
+      $("te-status").textContent = "error";
     }
+  });
+
+  $("btn-tests-stop").addEventListener("click", async () => {
+    try {
+      await api("/api/tests/stop", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+      });
+      pollTestsOnce();
+    } catch (_) {}
   });
 
   $("btn-tests-refresh").addEventListener("click", async () => {
     try {
-      const st = await api("/api/tests/last");
-      renderTests(st.last || null);
+      const st = await api("/api/tests/status");
+      renderTestsJob(st);
+      if (!st.last_report) {
+        const last = await api("/api/tests/last");
+        renderTests(last.last || null);
+      }
     } catch (e) {
       $("te-report").textContent = "Error: " + e.message;
     }
@@ -390,10 +686,11 @@
 
   addMsg(
     "agent",
-    "Listo. Chat = interpretación del modelo de campo (decoder). Entrenamiento y Sueño están en pestañas aparte. Pruebas evalúa el modelo ya consolidado.",
+    "Listo. Chat = interpretación del modelo de campo (decoder). Entrenamiento, Sueño y Pruebas son jobs en servidor: al refrescar la UI se reconecta sin cancelar.",
   );
   refreshHealth();
   refreshTelemetry();
+  reconnectProcesses();
   setInterval(() => {
     refreshTelemetry();
     refreshHealth();

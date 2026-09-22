@@ -3,11 +3,16 @@
 use crate::field_hybrid_infer::FieldHybridInfer;
 use crate::liquid_cdt_memory::SleepReport;
 use crate::liquid_cdt_rqm_fuse::{FuseReport, FusedLiquidCdt, InferRoute};
-use crate::web::field_eval::{run_field_eval, FieldEvalReport, FieldEvalStatus};
+use crate::web::field_eval::{run_field_eval_with_progress, FieldEvalReport, FieldEvalStatus};
 use crate::web::llm_periphery::{
     generate_train_batch, open_best_probe, ConceptDecoder, LlmMode, PeripheralProbe, NUM_CONCEPTS,
 };
-use crate::web::sleep_optimize::{run_sleep_optimize, SleepOptimizeOpts, SleepOptimizeReport};
+use crate::web::process_job::{
+    ProcessesSnapshot, SleepJob, SleepStartResponse, TestsJob, TestsStartResponse,
+};
+use crate::web::sleep_optimize::{
+    run_sleep_optimize_with_progress, SleepOptimizeOpts, SleepOptimizeReport,
+};
 use crate::web::telemetry::{FuseReportDto, SleepReportDto, TelemetrySnapshot};
 use crate::web::train_job::{
     batch_metrics, relation_target, write_checkpoint, write_dataset_checkpoint, write_latest_index,
@@ -80,6 +85,8 @@ pub struct AppState {
     pub training: bool,
     pub started_ms: u64,
     pub train_job: TrainJob,
+    pub sleep_job: SleepJob,
+    pub tests_job: TestsJob,
     pub last_sleep_optimize: Option<SleepOptimizeReport>,
     pub last_field_eval: Option<FieldEvalReport>,
     pub field_eval_running: bool,
@@ -103,6 +110,8 @@ impl AppState {
             training: false,
             started_ms: now_ms(),
             train_job: TrainJob::default(),
+            sleep_job: SleepJob::default(),
+            tests_job: TestsJob::default(),
             last_sleep_optimize: None,
             last_field_eval: None,
             field_eval_running: false,
@@ -778,20 +787,27 @@ impl AppState {
         })
     }
 
-    /// Sueño + poda/compactación + minimización de energía libre.
+    /// Sueño + poda/compactación + minimización de energía libre (síncrono / tests).
     pub fn sleep_optimize(&mut self, opts: SleepOptimizeOpts) -> SleepOptimizeReport {
+        self.sleep_optimize_with_progress(opts, |_phase, _msg| {})
+    }
+
+    fn sleep_optimize_with_progress(
+        &mut self,
+        opts: SleepOptimizeOpts,
+        mut on_progress: impl FnMut(&str, &str),
+    ) -> SleepOptimizeReport {
         let cfg = self
             .field_hybrid
             .as_ref()
             .map(|h| h.cfg)
             .unwrap_or_default();
-        // FieldState dedicado o el del híbrido.
         if self.field_hybrid.is_none() {
             self.field_hybrid = Some(FieldHybridInfer::new(0x51EE_0001));
         }
         let field = &mut self.field_hybrid.as_mut().unwrap().field;
-        let report = run_sleep_optimize(&mut self.fuse, field, &cfg, opts);
-        // Compat: también actualiza last_sleep CDT.
+        let report =
+            run_sleep_optimize_with_progress(&mut self.fuse, field, &cfg, opts, &mut on_progress);
         let sleep = SleepReport {
             episodes_consolidated: report.episodes_consolidated,
             engrams_before: report.engrams_before,
@@ -816,33 +832,259 @@ impl AppState {
         report
     }
 
-    /// Suite de pruebas del modelo ya entrenado (no lanza train infinito).
+    /// Arranca job async de sueño si no hay otro en curso.
+    pub fn begin_sleep_job(&mut self, opts: SleepOptimizeOpts) -> SleepStartResponse {
+        if self.sleep_job.running {
+            return SleepStartResponse {
+                ok: false,
+                job_id: self.sleep_job.job_id.clone(),
+                message: "ya hay un sueño en curso".into(),
+            };
+        }
+        let job_id = Uuid::new_v4().to_string();
+        let keep_report = self.sleep_job.last_report.clone();
+        self.sleep_job = SleepJob {
+            job_id: job_id.clone(),
+            running: true,
+            cancelled: false,
+            phase: "queued".into(),
+            prune_intensity: opts.prune_intensity,
+            compact_intensity: opts.compact_intensity,
+            consolidate_first: opts.consolidate_first,
+            events: Default::default(),
+            event_seq: 0,
+            started_ms: Some(now_ms()),
+            finished_ms: None,
+            last_report: keep_report,
+        };
+        self.sleep_job.push_event(
+            "start",
+            format!(
+                "sueño job {job_id} (prune={:.2} compact={:.2})",
+                opts.prune_intensity, opts.compact_intensity
+            ),
+            serde_json::json!({}),
+        );
+        SleepStartResponse {
+            ok: true,
+            job_id,
+            message: "sueño iniciado".into(),
+        }
+    }
+
+    pub fn request_sleep_stop(&mut self) -> bool {
+        if !self.sleep_job.running {
+            return false;
+        }
+        self.sleep_job.cancelled = true;
+        self.sleep_job.phase = "cancelling".into();
+        self.sleep_job
+            .push_event("cancel", "cancelación solicitada", serde_json::json!({}));
+        true
+    }
+
+    /// Ejecuta el job de sueño (llamar desde worker spawn_blocking).
+    pub fn execute_sleep_job(&mut self) {
+        if !self.sleep_job.running {
+            return;
+        }
+        if self.sleep_job.cancelled {
+            self.sleep_job.running = false;
+            self.sleep_job.phase = "cancelled".into();
+            self.sleep_job.finished_ms = Some(now_ms());
+            self.sleep_job.push_event(
+                "done",
+                "sueño cancelado antes de empezar",
+                serde_json::json!({}),
+            );
+            return;
+        }
+        let opts = self.sleep_job.opts();
+        self.sleep_job.phase = "running".into();
+        // Emitir progreso vía closure que toca sleep_job (split borrow via raw ptr unsafe
+        // evitado: acumulamos en Vec y luego flusheamos, o usamos índice).
+        let mut progress: Vec<(String, String)> = Vec::new();
+        let report = self.sleep_optimize_with_progress(opts, |phase, msg| {
+            progress.push((phase.to_string(), msg.to_string()));
+        });
+        for (phase, msg) in progress {
+            self.sleep_job.phase = phase.clone();
+            self.sleep_job
+                .push_event(&phase, msg, serde_json::json!({}));
+            if self.sleep_job.cancelled {
+                break;
+            }
+        }
+        self.sleep_job.last_report = Some(report);
+        self.sleep_job.running = false;
+        self.sleep_job.finished_ms = Some(now_ms());
+        if self.sleep_job.cancelled {
+            self.sleep_job.phase = "cancelled".into();
+            self.sleep_job
+                .push_event("done", "sueño cancelado", serde_json::json!({}));
+        } else {
+            self.sleep_job.phase = "done".into();
+            self.sleep_job
+                .push_event("done", "sueño completado", serde_json::json!({}));
+        }
+    }
+
+    /// Suite de pruebas síncrona (compat / unit tests).
     pub fn run_tests(&mut self) -> FieldEvalReport {
         self.field_eval_running = true;
+        let report = self.run_tests_with_progress(|_s, _t, _m| {});
+        self.field_eval_running = false;
+        report
+    }
+
+    fn run_tests_with_progress(
+        &mut self,
+        mut on_progress: impl FnMut(usize, usize, &str),
+    ) -> FieldEvalReport {
         let cfg = self
             .field_hybrid
             .as_ref()
             .map(|h| h.cfg)
             .unwrap_or_default();
-        let field_ref = self.field_hybrid.as_ref().map(|h| &h.field);
-        // Evitar borrow doble: clonar campo si existe.
-        let field_owned = field_ref.cloned();
+        let field_owned = self.field_hybrid.as_ref().map(|h| h.field.clone());
         let last_sleep = self.last_sleep_optimize.clone();
-        let report = run_field_eval(
+        let report = run_field_eval_with_progress(
             &mut self.fuse,
             field_owned.as_ref(),
             &cfg,
             last_sleep.as_ref(),
+            &mut on_progress,
         );
         self.last_field_eval = Some(report.clone());
-        self.field_eval_running = false;
         report
+    }
+
+    pub fn begin_tests_job(&mut self) -> TestsStartResponse {
+        if self.tests_job.running || self.field_eval_running {
+            return TestsStartResponse {
+                ok: false,
+                job_id: self.tests_job.job_id.clone(),
+                message: "ya hay pruebas en curso".into(),
+            };
+        }
+        let job_id = Uuid::new_v4().to_string();
+        let keep = self
+            .tests_job
+            .last_report
+            .clone()
+            .or_else(|| self.last_field_eval.clone());
+        let total = self.fuse.num_labels.max(1);
+        self.tests_job = TestsJob {
+            job_id: job_id.clone(),
+            running: true,
+            cancelled: false,
+            phase: "queued".into(),
+            step: 0,
+            total_steps: total,
+            events: Default::default(),
+            event_seq: 0,
+            started_ms: Some(now_ms()),
+            finished_ms: None,
+            last_report: keep,
+        };
+        self.field_eval_running = true;
+        self.tests_job.push_event(
+            "start",
+            format!("pruebas job {job_id}"),
+            serde_json::json!({ "total": total }),
+        );
+        TestsStartResponse {
+            ok: true,
+            job_id,
+            message: "pruebas iniciadas".into(),
+        }
+    }
+
+    pub fn request_tests_stop(&mut self) -> bool {
+        if !self.tests_job.running && !self.field_eval_running {
+            return false;
+        }
+        self.tests_job.cancelled = true;
+        self.tests_job.phase = "cancelling".into();
+        self.tests_job
+            .push_event("cancel", "cancelación solicitada", serde_json::json!({}));
+        true
+    }
+
+    pub fn execute_tests_job(&mut self) {
+        if !self.tests_job.running {
+            return;
+        }
+        if self.tests_job.cancelled {
+            self.tests_job.running = false;
+            self.field_eval_running = false;
+            self.tests_job.phase = "cancelled".into();
+            self.tests_job.finished_ms = Some(now_ms());
+            self.tests_job
+                .push_event("done", "pruebas canceladas", serde_json::json!({}));
+            return;
+        }
+        self.tests_job.phase = "running".into();
+        let mut progress: Vec<(usize, usize, String)> = Vec::new();
+        let report = self.run_tests_with_progress(|step, total, msg| {
+            progress.push((step, total, msg.to_string()));
+        });
+        for (step, total, msg) in progress {
+            self.tests_job.step = step;
+            self.tests_job.total_steps = total;
+            self.tests_job.phase = "running".into();
+            self.tests_job.push_event(
+                "step",
+                msg,
+                serde_json::json!({ "step": step, "total": total }),
+            );
+            if self.tests_job.cancelled {
+                break;
+            }
+        }
+        self.tests_job.last_report = Some(report.clone());
+        self.last_field_eval = Some(report);
+        self.tests_job.running = false;
+        self.field_eval_running = false;
+        self.tests_job.finished_ms = Some(now_ms());
+        if self.tests_job.cancelled {
+            self.tests_job.phase = "cancelled".into();
+            self.tests_job
+                .push_event("done", "pruebas canceladas", serde_json::json!({}));
+        } else {
+            self.tests_job.phase = "done".into();
+            self.tests_job
+                .push_event("done", "pruebas completadas", serde_json::json!({}));
+        }
     }
 
     pub fn tests_status(&self) -> FieldEvalStatus {
         FieldEvalStatus {
-            running: self.field_eval_running,
-            last: self.last_field_eval.clone(),
+            running: self.tests_job.running || self.field_eval_running,
+            last: self
+                .tests_job
+                .last_report
+                .clone()
+                .or_else(|| self.last_field_eval.clone()),
+        }
+    }
+
+    pub fn processes_snapshot(&self) -> ProcessesSnapshot {
+        let mut active = Vec::new();
+        if self.train_job.running || self.training {
+            active.push("train".into());
+        }
+        if self.sleep_job.running {
+            active.push("sleep".into());
+        }
+        if self.tests_job.running || self.field_eval_running {
+            active.push("tests".into());
+        }
+        ProcessesSnapshot {
+            train: self.train_job.snapshot_for_api(),
+            sleep: self.sleep_job.snapshot_for_api(),
+            tests: self.tests_job.snapshot_for_api(),
+            active,
         }
     }
 
