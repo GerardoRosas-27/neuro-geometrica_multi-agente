@@ -57,6 +57,17 @@ pub fn run_field_eval(
     cfg: &FieldConfig,
     last_sleep: Option<&SleepOptimizeReport>,
 ) -> FieldEvalReport {
+    run_field_eval_with_progress(fuse, field, cfg, last_sleep, |_step, _total, _msg| {})
+}
+
+/// Igual que [`run_field_eval`] con progreso por concepto (consola en vivo).
+pub fn run_field_eval_with_progress(
+    fuse: &mut FusedLiquidCdt,
+    field: Option<&FieldState>,
+    cfg: &FieldConfig,
+    last_sleep: Option<&SleepOptimizeReport>,
+    mut on_progress: impl FnMut(usize, usize, &str),
+) -> FieldEvalReport {
     let t0 = Instant::now();
     let mut notes = Vec::new();
     let n = fuse.num_labels.max(1);
@@ -66,6 +77,11 @@ pub fn run_field_eval(
     if !had {
         notes.push("sin engramas: se evalúa igualmente el estado actual".into());
     }
+    on_progress(
+        0,
+        n,
+        &format!("iniciando batería ({n} conceptos, engramas={engrams})"),
+    );
 
     let mut rows = Vec::new();
     let mut id_ok = 0usize;
@@ -77,6 +93,7 @@ pub fn run_field_eval(
     let mut recall_scores = Vec::new();
 
     for concept in 0..n {
+        on_progress(concept + 1, n, &format!("evaluando concepto {concept}/{n}"));
         let t1 = Instant::now();
         let rep = fuse.infer(concept, &cands);
         let lat = t1.elapsed().as_secs_f64() * 1e6;
@@ -158,6 +175,8 @@ pub fn run_field_eval(
             sleep.routes_pruned
         ));
     }
+
+    on_progress(n, n, "batería completada");
 
     FieldEvalReport {
         engrams,

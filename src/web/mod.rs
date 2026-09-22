@@ -9,6 +9,7 @@
 pub mod api;
 pub mod field_eval;
 pub mod llm_periphery;
+pub mod process_job;
 pub mod sleep_optimize;
 pub mod state;
 pub mod telemetry;

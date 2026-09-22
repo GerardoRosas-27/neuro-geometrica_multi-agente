@@ -117,3 +117,14 @@ h3 { margin: 1rem 0 0.4rem; font-size: 0.88rem; color: var(--muted); }
 .hint { color: var(--muted); font-size: 0.88rem; max-width: 52rem; }
 .log.tall { max-height: 420px; }
 .metrics-sleep { margin-top: 1rem; }
+
+.badge-procs.active { color: #ffd166; border-color: #8a6d1d; }
+.tab-pulse {
+  display: inline-block; margin-left: 0.25rem; color: var(--accent2);
+  animation: tab-blink 1s ease-in-out infinite;
+}
+.main-tab.running { border-color: var(--accent2); color: var(--accent2); }
+@keyframes tab-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
+}

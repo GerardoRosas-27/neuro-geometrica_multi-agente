@@ -15,14 +15,15 @@
     <div class="badges">
       <span id="badge-mode" class="badge">modo…</span>
       <span id="badge-health" class="badge">salud…</span>
+      <span id="badge-procs" class="badge badge-procs">procesos idle</span>
     </div>
   </header>
 
   <nav class="main-tabs" role="tablist">
     <button type="button" class="main-tab active" data-main="chat">Chat</button>
-    <button type="button" class="main-tab" data-main="train">Entrenamiento</button>
-    <button type="button" class="main-tab" data-main="sleep">Sueño</button>
-    <button type="button" class="main-tab" data-main="tests">Pruebas</button>
+    <button type="button" class="main-tab" data-main="train">Entrenamiento <span class="tab-pulse" id="pulse-train" hidden>●</span></button>
+    <button type="button" class="main-tab" data-main="sleep">Sueño <span class="tab-pulse" id="pulse-sleep" hidden>●</span></button>
+    <button type="button" class="main-tab" data-main="tests">Pruebas <span class="tab-pulse" id="pulse-tests" hidden>●</span></button>
   </nav>
 
   <main class="layout-tabs">
@@ -96,9 +97,10 @@
     <!-- SUEÑO -->
     <section id="main-sleep" class="main-panel">
       <h2>Sueño / consolidar + optimizar</h2>
-      <p class="hint">Poda rutas RQM débiles, compacta geometría fasorial y minimiza energía libre hacia más simetría (handshake / octaedro).</p>
+      <p class="hint">Poda rutas RQM débiles, compacta geometría fasorial y minimiza energía libre hacia más simetría (handshake / octaedro). El job sigue en el servidor tras refrescar; solo Detener cancela.</p>
       <div class="actions">
         <button type="button" id="btn-sleep">Dormir / consolidar</button>
+        <button type="button" id="btn-sleep-stop" class="danger">Detener</button>
       </div>
       <div class="sliders">
         <label>Intensidad poda
@@ -111,6 +113,9 @@
         </label>
       </div>
       <dl class="kv metrics-sleep">
+        <dt>Estado</dt><dd id="sl-status">idle</dd>
+        <dt>Job</dt><dd id="sl-job">—</dd>
+        <dt>Fase</dt><dd id="sl-phase">—</dd>
         <dt>F antes</dt><dd id="sl-f-before">—</dd>
         <dt>F después</dt><dd id="sl-f-after">—</dd>
         <dt>Simetría antes</dt><dd id="sl-sym-before">—</dd>
@@ -121,6 +126,8 @@
         <dt>Aristas/nodos</dt><dd id="sl-edges">—</dd>
         <dt>Engramas</dt><dd id="sl-eng">—</dd>
       </dl>
+      <h3>Consola en vivo</h3>
+      <pre id="sl-log" class="log"></pre>
       <h3>Informe JSON</h3>
       <pre id="sl-report" class="log tall">{}</pre>
     </section>
@@ -128,12 +135,16 @@
     <!-- PRUEBAS -->
     <section id="main-tests" class="main-panel">
       <h2>Pruebas del modelo de campo</h2>
-      <p class="hint">Evalúa el fuse/campo/CDT <strong>ya entrenado</strong> (tras train + sueño). No inicia entrenamiento infinito.</p>
+      <p class="hint">Evalúa el fuse/campo/CDT <strong>ya entrenado</strong> (tras train + sueño). No inicia entrenamiento infinito. Refresh reconecta; solo Detener cancela.</p>
       <div class="actions">
         <button type="button" id="btn-tests">Ejecutar batería completa</button>
+        <button type="button" id="btn-tests-stop" class="danger">Detener</button>
         <button type="button" id="btn-tests-refresh">Cargar último</button>
       </div>
       <dl class="kv">
+        <dt>Estado</dt><dd id="te-status">idle</dd>
+        <dt>Job</dt><dd id="te-job">—</dd>
+        <dt>Progreso</dt><dd id="te-progress">—</dd>
         <dt>Engramas</dt><dd id="te-eng">—</dd>
         <dt>Había engramas</dt><dd id="te-had">—</dd>
         <dt>Accuracy identidad</dt><dd id="te-id-acc">—</dd>
@@ -145,6 +156,8 @@
         <dt>Handshake</dt><dd id="te-hs">—</dd>
         <dt>Histograma rutas</dt><dd id="te-routes">—</dd>
       </dl>
+      <h3>Consola en vivo</h3>
+      <pre id="te-log" class="log"></pre>
       <h3>Desglose por concepto</h3>
       <pre id="te-concepts" class="log">—</pre>
       <h3>Informe JSON completo</h3>
