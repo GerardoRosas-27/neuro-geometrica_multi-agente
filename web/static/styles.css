@@ -36,7 +36,8 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
   border-radius: 10px; padding: 0.55rem 1rem; font-weight: 600; cursor: pointer;
 }
 .main-tab.active {
-  background: var(--panel2); color: var(--text); border-color: var(--border);
+  background: var(--panel2); color: var(--text);
+  border-color: var(--accent); box-shadow: 0 0 0 1px rgba(91, 156, 255, 0.35);
 }
 .layout-tabs { height: calc(100% - 130px); min-height: 0; }
 .main-panel { display: none; height: 100%; overflow: auto; padding: 1rem 1.25rem; }
@@ -119,12 +120,53 @@ h3 { margin: 1rem 0 0.4rem; font-size: 0.88rem; color: var(--muted); }
 .metrics-sleep { margin-top: 1rem; }
 
 .badge-procs.active { color: #ffd166; border-color: #8a6d1d; }
-.tab-pulse {
-  display: inline-block; margin-left: 0.25rem; color: var(--accent2);
-  animation: tab-blink 1s ease-in-out infinite;
+
+/* Process status dots on train / sleep / tests tabs (not used for selection) */
+.tab-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 0.4rem;
+  vertical-align: middle;
 }
-.main-tab.running { border-color: var(--accent2); color: var(--accent2); }
-@keyframes tab-blink {
+.tab-status .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  display: inline-block;
+  background: currentColor;
+  opacity: 0;
+}
+.tab-status[data-state="idle"] .dot:nth-child(1) {
+  opacity: 1;
+  background: var(--danger);
+  color: var(--danger);
+}
+.tab-status[data-state="idle"] .dot:nth-child(2),
+.tab-status[data-state="idle"] .dot:nth-child(3) {
+  opacity: 0;
+}
+.tab-status[data-state="running"] .dot {
+  background: #3ecf8e;
+}
+/* Cycle: 1 → 1+2 → 1+2+3 → repeat (1.2s) */
+.tab-status[data-state="running"] .dot:nth-child(1) {
+  animation: tab-dot-1 1.2s linear infinite;
+}
+.tab-status[data-state="running"] .dot:nth-child(2) {
+  animation: tab-dot-2 1.2s linear infinite;
+}
+.tab-status[data-state="running"] .dot:nth-child(3) {
+  animation: tab-dot-3 1.2s linear infinite;
+}
+@keyframes tab-dot-1 {
   0%, 100% { opacity: 1; }
-  50% { opacity: 0.25; }
+}
+@keyframes tab-dot-2 {
+  0%, 32.9% { opacity: 0; }
+  33%, 100% { opacity: 1; }
+}
+@keyframes tab-dot-3 {
+  0%, 65.9% { opacity: 0; }
+  66%, 100% { opacity: 1; }
 }
