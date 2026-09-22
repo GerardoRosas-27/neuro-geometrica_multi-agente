@@ -833,14 +833,27 @@ impl AppState {
     }
 
     /// Arranca job async de sueño si no hay otro en curso.
-    pub fn begin_sleep_job(&mut self, opts: SleepOptimizeOpts) -> SleepStartResponse {
+    /// `infinite` / `total_cycles = None` → ciclos hasta Detener.
+    pub fn begin_sleep_job(
+        &mut self,
+        opts: SleepOptimizeOpts,
+        infinite: bool,
+        total_cycles: Option<usize>,
+    ) -> SleepStartResponse {
         if self.sleep_job.running {
             return SleepStartResponse {
                 ok: false,
                 job_id: self.sleep_job.job_id.clone(),
                 message: "ya hay un sueño en curso".into(),
+                infinite: None,
             };
         }
+        let infinite = infinite || total_cycles.is_none() || total_cycles == Some(0);
+        let total_cycles = if infinite {
+            None
+        } else {
+            Some(total_cycles.unwrap_or(1).max(1))
+        };
         let job_id = Uuid::new_v4().to_string();
         let keep_report = self.sleep_job.last_report.clone();
         self.sleep_job = SleepJob {
@@ -851,24 +864,37 @@ impl AppState {
             prune_intensity: opts.prune_intensity,
             compact_intensity: opts.compact_intensity,
             consolidate_first: opts.consolidate_first,
+            current_cycle: 0,
+            total_cycles,
+            infinite,
             events: Default::default(),
             event_seq: 0,
             started_ms: Some(now_ms()),
             finished_ms: None,
             last_report: keep_report,
         };
+        let mode = if infinite {
+            "∞ infinito".to_string()
+        } else {
+            format!("{} ciclo(s)", total_cycles.unwrap_or(1))
+        };
         self.sleep_job.push_event(
             "start",
             format!(
-                "sueño job {job_id} (prune={:.2} compact={:.2})",
+                "sueño job {job_id} ({mode}; prune={:.2} compact={:.2})",
                 opts.prune_intensity, opts.compact_intensity
             ),
-            serde_json::json!({}),
+            serde_json::json!({ "infinite": infinite, "total_cycles": total_cycles }),
         );
         SleepStartResponse {
             ok: true,
             job_id,
-            message: "sueño iniciado".into(),
+            message: if infinite {
+                "sueño infinito iniciado".into()
+            } else {
+                "sueño iniciado".into()
+            },
+            infinite: Some(infinite),
         }
     }
 
@@ -883,42 +909,96 @@ impl AppState {
         true
     }
 
-    /// Ejecuta el job de sueño (llamar desde worker spawn_blocking).
-    pub fn execute_sleep_job(&mut self) {
+    /// Un ciclo de sueño. Devuelve `true` si el spawn debe continuar.
+    pub fn run_one_sleep_cycle(&mut self) -> bool {
         if !self.sleep_job.running {
-            return;
+            return false;
         }
         if self.sleep_job.cancelled {
-            self.sleep_job.running = false;
-            self.sleep_job.phase = "cancelled".into();
-            self.sleep_job.finished_ms = Some(now_ms());
-            self.sleep_job.push_event(
-                "done",
-                "sueño cancelado antes de empezar",
-                serde_json::json!({}),
-            );
-            return;
+            self.finish_sleep_job(true);
+            return false;
         }
+        if !self.sleep_job.infinite {
+            if let Some(total) = self.sleep_job.total_cycles {
+                if self.sleep_job.current_cycle >= total {
+                    self.finish_sleep_job(false);
+                    return false;
+                }
+            }
+        }
+
+        let cycle = self.sleep_job.current_cycle;
         let opts = self.sleep_job.opts();
+        let label = if self.sleep_job.infinite {
+            format!("ciclo {cycle} (∞)")
+        } else {
+            format!("ciclo {cycle}/{}", self.sleep_job.total_cycles.unwrap_or(1))
+        };
         self.sleep_job.phase = "running".into();
-        // Emitir progreso vía closure que toca sleep_job (split borrow via raw ptr unsafe
-        // evitado: acumulamos en Vec y luego flusheamos, o usamos índice).
+        self.sleep_job.push_event(
+            "cycle",
+            format!("inicio {label}"),
+            serde_json::json!({
+                "cycle": cycle,
+                "infinite": self.sleep_job.infinite,
+            }),
+        );
+
         let mut progress: Vec<(String, String)> = Vec::new();
         let report = self.sleep_optimize_with_progress(opts, |phase, msg| {
             progress.push((phase.to_string(), msg.to_string()));
         });
-        for (phase, msg) in progress {
+        for (phase, msg) in &progress {
             self.sleep_job.phase = phase.clone();
-            self.sleep_job
-                .push_event(&phase, msg, serde_json::json!({}));
+            self.sleep_job.push_event(
+                phase,
+                msg.clone(),
+                serde_json::json!({
+                    "cycle": cycle,
+                    "free_energy_after": report.free_energy_after,
+                    "symmetry_after": report.symmetry_after,
+                }),
+            );
             if self.sleep_job.cancelled {
                 break;
             }
         }
-        self.sleep_job.last_report = Some(report);
+        self.sleep_job.last_report = Some(report.clone());
+        self.sleep_job.push_event(
+            "cycle_done",
+            format!(
+                "{label} listo ΔF={:.4} Δsym={:.4}",
+                report.free_energy_after - report.free_energy_before,
+                report.symmetry_after - report.symmetry_before
+            ),
+            serde_json::json!({
+                "cycle": cycle,
+                "free_energy_after": report.free_energy_after,
+                "symmetry_after": report.symmetry_after,
+                "handshake": report.handshake,
+            }),
+        );
+        self.sleep_job.current_cycle = cycle.saturating_add(1);
+
+        if self.sleep_job.cancelled {
+            self.finish_sleep_job(true);
+            return false;
+        }
+        if !self.sleep_job.infinite {
+            if let Some(total) = self.sleep_job.total_cycles {
+                if self.sleep_job.current_cycle >= total {
+                    self.finish_sleep_job(false);
+                    return false;
+                }
+            }
+        }
+        true
+    }
+
+    fn finish_sleep_job(&mut self, cancelled: bool) {
         self.sleep_job.running = false;
         self.sleep_job.finished_ms = Some(now_ms());
-        if self.sleep_job.cancelled {
+        if cancelled {
             self.sleep_job.phase = "cancelled".into();
             self.sleep_job
                 .push_event("done", "sueño cancelado", serde_json::json!({}));
@@ -927,6 +1007,11 @@ impl AppState {
             self.sleep_job
                 .push_event("done", "sueño completado", serde_json::json!({}));
         }
+    }
+
+    /// Compat: ejecuta todos los ciclos finitos en el hilo actual.
+    pub fn execute_sleep_job(&mut self) {
+        while self.run_one_sleep_cycle() {}
     }
 
     /// Suite de pruebas síncrona (compat / unit tests).
@@ -959,14 +1044,25 @@ impl AppState {
         report
     }
 
-    pub fn begin_tests_job(&mut self) -> TestsStartResponse {
+    pub fn begin_tests_job(
+        &mut self,
+        infinite: bool,
+        total_cycles: Option<usize>,
+    ) -> TestsStartResponse {
         if self.tests_job.running || self.field_eval_running {
             return TestsStartResponse {
                 ok: false,
                 job_id: self.tests_job.job_id.clone(),
                 message: "ya hay pruebas en curso".into(),
+                infinite: None,
             };
         }
+        let infinite = infinite || total_cycles.is_none() || total_cycles == Some(0);
+        let total_cycles = if infinite {
+            None
+        } else {
+            Some(total_cycles.unwrap_or(1).max(1))
+        };
         let job_id = Uuid::new_v4().to_string();
         let keep = self
             .tests_job
@@ -981,6 +1077,9 @@ impl AppState {
             phase: "queued".into(),
             step: 0,
             total_steps: total,
+            current_cycle: 0,
+            total_cycles,
+            infinite,
             events: Default::default(),
             event_seq: 0,
             started_ms: Some(now_ms()),
@@ -988,15 +1087,29 @@ impl AppState {
             last_report: keep,
         };
         self.field_eval_running = true;
+        let mode = if infinite {
+            "∞ infinito".to_string()
+        } else {
+            format!("{} batería(s)", total_cycles.unwrap_or(1))
+        };
         self.tests_job.push_event(
             "start",
-            format!("pruebas job {job_id}"),
-            serde_json::json!({ "total": total }),
+            format!("pruebas job {job_id} ({mode})"),
+            serde_json::json!({
+                "total": total,
+                "infinite": infinite,
+                "total_cycles": total_cycles,
+            }),
         );
         TestsStartResponse {
             ok: true,
             job_id,
-            message: "pruebas iniciadas".into(),
+            message: if infinite {
+                "pruebas infinitas iniciadas".into()
+            } else {
+                "pruebas iniciadas".into()
+            },
+            infinite: Some(infinite),
         }
     }
 
@@ -1011,20 +1124,43 @@ impl AppState {
         true
     }
 
-    pub fn execute_tests_job(&mut self) {
+    /// Una batería de eval. Devuelve `true` para continuar el loop.
+    pub fn run_one_tests_cycle(&mut self) -> bool {
         if !self.tests_job.running {
-            return;
+            return false;
         }
         if self.tests_job.cancelled {
-            self.tests_job.running = false;
-            self.field_eval_running = false;
-            self.tests_job.phase = "cancelled".into();
-            self.tests_job.finished_ms = Some(now_ms());
-            self.tests_job
-                .push_event("done", "pruebas canceladas", serde_json::json!({}));
-            return;
+            self.finish_tests_job(true);
+            return false;
         }
+        if !self.tests_job.infinite {
+            if let Some(total) = self.tests_job.total_cycles {
+                if self.tests_job.current_cycle >= total {
+                    self.finish_tests_job(false);
+                    return false;
+                }
+            }
+        }
+
+        let cycle = self.tests_job.current_cycle;
+        let label = if self.tests_job.infinite {
+            format!("batería {cycle} (∞)")
+        } else {
+            format!(
+                "batería {cycle}/{}",
+                self.tests_job.total_cycles.unwrap_or(1)
+            )
+        };
         self.tests_job.phase = "running".into();
+        self.tests_job.push_event(
+            "cycle",
+            format!("inicio {label}"),
+            serde_json::json!({
+                "cycle": cycle,
+                "infinite": self.tests_job.infinite,
+            }),
+        );
+
         let mut progress: Vec<(usize, usize, String)> = Vec::new();
         let report = self.run_tests_with_progress(|step, total, msg| {
             progress.push((step, total, msg.to_string()));
@@ -1036,7 +1172,11 @@ impl AppState {
             self.tests_job.push_event(
                 "step",
                 msg,
-                serde_json::json!({ "step": step, "total": total }),
+                serde_json::json!({
+                    "step": step,
+                    "total": total,
+                    "cycle": cycle,
+                }),
             );
             if self.tests_job.cancelled {
                 break;
@@ -1044,10 +1184,33 @@ impl AppState {
         }
         self.tests_job.last_report = Some(report.clone());
         self.last_field_eval = Some(report);
+        self.tests_job.push_event(
+            "cycle_done",
+            format!("{label} lista"),
+            serde_json::json!({ "cycle": cycle }),
+        );
+        self.tests_job.current_cycle = cycle.saturating_add(1);
+
+        if self.tests_job.cancelled {
+            self.finish_tests_job(true);
+            return false;
+        }
+        if !self.tests_job.infinite {
+            if let Some(total) = self.tests_job.total_cycles {
+                if self.tests_job.current_cycle >= total {
+                    self.finish_tests_job(false);
+                    return false;
+                }
+            }
+        }
+        true
+    }
+
+    fn finish_tests_job(&mut self, cancelled: bool) {
         self.tests_job.running = false;
         self.field_eval_running = false;
         self.tests_job.finished_ms = Some(now_ms());
-        if self.tests_job.cancelled {
+        if cancelled {
             self.tests_job.phase = "cancelled".into();
             self.tests_job
                 .push_event("done", "pruebas canceladas", serde_json::json!({}));
@@ -1056,6 +1219,11 @@ impl AppState {
             self.tests_job
                 .push_event("done", "pruebas completadas", serde_json::json!({}));
         }
+    }
+
+    /// Compat: ejecuta todas las baterías finitas en el hilo actual.
+    pub fn execute_tests_job(&mut self) {
+        while self.run_one_tests_cycle() {}
     }
 
     pub fn tests_status(&self) -> FieldEvalStatus {

@@ -136,41 +136,71 @@ pub fn spawn_live_train_loop(state: SharedState) {
 
 pub fn spawn_sleep_job(state: SharedState) {
     tokio::spawn(async move {
-        let st = state.clone();
-        let res = tokio::task::spawn_blocking(move || {
-            let mut g = st.lock().unwrap();
-            g.execute_sleep_job();
-        })
-        .await;
-        if let Err(e) = res {
-            if let Ok(mut g) = state.lock() {
-                g.sleep_job
-                    .push_event("error", format!("worker panic: {e}"), json!({}));
-                g.sleep_job.running = false;
-                g.sleep_job.phase = "error".into();
-                g.sleep_job.finished_ms = Some(crate::web::train_job::now_ms());
+        loop {
+            let cont = {
+                let st = state.clone();
+                match tokio::task::spawn_blocking(move || {
+                    let mut g = st.lock().unwrap();
+                    g.run_one_sleep_cycle()
+                })
+                .await
+                {
+                    Ok(v) => v,
+                    Err(e) => {
+                        if let Ok(mut g) = state.lock() {
+                            g.sleep_job.push_event(
+                                "error",
+                                format!("worker panic: {e}"),
+                                json!({}),
+                            );
+                            g.sleep_job.running = false;
+                            g.sleep_job.phase = "error".into();
+                            g.sleep_job.finished_ms = Some(crate::web::train_job::now_ms());
+                        }
+                        false
+                    }
+                }
+            };
+            if !cont {
+                break;
             }
+            tokio::time::sleep(Duration::from_millis(15)).await;
         }
     });
 }
 
 pub fn spawn_tests_job(state: SharedState) {
     tokio::spawn(async move {
-        let st = state.clone();
-        let res = tokio::task::spawn_blocking(move || {
-            let mut g = st.lock().unwrap();
-            g.execute_tests_job();
-        })
-        .await;
-        if let Err(e) = res {
-            if let Ok(mut g) = state.lock() {
-                g.tests_job
-                    .push_event("error", format!("worker panic: {e}"), json!({}));
-                g.tests_job.running = false;
-                g.field_eval_running = false;
-                g.tests_job.phase = "error".into();
-                g.tests_job.finished_ms = Some(crate::web::train_job::now_ms());
+        loop {
+            let cont = {
+                let st = state.clone();
+                match tokio::task::spawn_blocking(move || {
+                    let mut g = st.lock().unwrap();
+                    g.run_one_tests_cycle()
+                })
+                .await
+                {
+                    Ok(v) => v,
+                    Err(e) => {
+                        if let Ok(mut g) = state.lock() {
+                            g.tests_job.push_event(
+                                "error",
+                                format!("worker panic: {e}"),
+                                json!({}),
+                            );
+                            g.tests_job.running = false;
+                            g.field_eval_running = false;
+                            g.tests_job.phase = "error".into();
+                            g.tests_job.finished_ms = Some(crate::web::train_job::now_ms());
+                        }
+                        false
+                    }
+                }
+            };
+            if !cont {
+                break;
             }
+            tokio::time::sleep(Duration::from_millis(15)).await;
         }
     });
 }
@@ -333,6 +363,16 @@ pub struct SleepRequest {
     pub prune_intensity: Option<f64>,
     pub compact_intensity: Option<f64>,
     pub consolidate_first: Option<bool>,
+    /// Si true (o cycles null) → ciclos hasta Detener.
+    pub infinite: Option<bool>,
+    /// Número de ciclos; null/0/"infinite" = infinito.
+    pub cycles: Option<serde_json::Value>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct TestsStartRequest {
+    pub infinite: Option<bool>,
+    pub cycles: Option<serde_json::Value>,
 }
 
 fn sleep_opts_from_req(req: SleepRequest) -> SleepOptimizeOpts {
@@ -355,15 +395,25 @@ async fn sleep_start(
     State(st): State<SharedState>,
     body: Option<Json<SleepRequest>>,
 ) -> impl IntoResponse {
+    use crate::web::process_job::resolve_infinite_cycles;
     let req = body.map(|j| j.0).unwrap_or(SleepRequest {
         prune_intensity: None,
         compact_intensity: None,
         consolidate_first: None,
+        infinite: None,
+        cycles: None,
     });
-    let opts = sleep_opts_from_req(req);
+    let (infinite, total_cycles) = resolve_infinite_cycles(req.infinite, req.cycles.as_ref());
+    let opts = sleep_opts_from_req(SleepRequest {
+        prune_intensity: req.prune_intensity,
+        compact_intensity: req.compact_intensity,
+        consolidate_first: req.consolidate_first,
+        infinite: None,
+        cycles: None,
+    });
     let started = {
         let mut g = st.lock().unwrap();
-        g.begin_sleep_job(opts)
+        g.begin_sleep_job(opts, infinite, total_cycles)
     };
     if started.ok {
         spawn_sleep_job(st);
@@ -398,14 +448,26 @@ async fn sleep_events(
 }
 
 /// Arranca batería async (compat: antes era síncrono).
-async fn tests_run(State(st): State<SharedState>) -> impl IntoResponse {
-    tests_start(State(st)).await
+async fn tests_run(
+    State(st): State<SharedState>,
+    body: Option<Json<TestsStartRequest>>,
+) -> impl IntoResponse {
+    tests_start(State(st), body).await
 }
 
-async fn tests_start(State(st): State<SharedState>) -> impl IntoResponse {
+async fn tests_start(
+    State(st): State<SharedState>,
+    body: Option<Json<TestsStartRequest>>,
+) -> impl IntoResponse {
+    use crate::web::process_job::resolve_infinite_cycles;
+    let req = body.map(|j| j.0).unwrap_or(TestsStartRequest {
+        infinite: None,
+        cycles: None,
+    });
+    let (infinite, total_cycles) = resolve_infinite_cycles(req.infinite, req.cycles.as_ref());
     let started = {
         let mut g = st.lock().unwrap();
-        g.begin_tests_job()
+        g.begin_tests_job(infinite, total_cycles)
     };
     if started.ok {
         spawn_tests_job(st);
@@ -766,7 +828,7 @@ mod tests {
                     .uri("/api/sleep/start")
                     .header("content-type", "application/json")
                     .body(Body::from(
-                        r#"{"prune_intensity":0.5,"compact_intensity":0.5}"#,
+                        r#"{"prune_intensity":0.5,"compact_intensity":0.5,"infinite":false,"cycles":1}"#,
                     ))
                     .unwrap(),
             )
@@ -801,6 +863,9 @@ mod tests {
             .unwrap();
         let s: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(s["running"], false);
+        assert_eq!(s["infinite"], false);
+        assert_eq!(s["current_cycle"], 1);
+        assert_eq!(s["total_cycles"], 1);
         assert!(s["events"].as_array().unwrap().len() > 0);
         assert!(s.get("last_report").is_some());
         assert!(s["last_report"].get("free_energy_before").is_some());
@@ -828,7 +893,7 @@ mod tests {
                     .method("POST")
                     .uri("/api/tests/start")
                     .header("content-type", "application/json")
-                    .body(Body::from("{}"))
+                    .body(Body::from(r#"{"infinite":false,"cycles":1}"#))
                     .unwrap(),
             )
             .await
@@ -879,6 +944,153 @@ mod tests {
         let l: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(l["running"], false);
         assert!(l["last"].get("identity_accuracy").is_some());
+    }
+
+    #[tokio::test]
+    async fn sleep_infinite_runs_until_stop() {
+        let st = lex_state();
+        {
+            let mut g = st.lock().unwrap();
+            let cands = g.candidates();
+            for i in 0..4 {
+                g.fuse.observe(i, &cands);
+                g.fuse.teach_relation(i, (i + 1) % 8);
+            }
+        }
+        let app = test_router(st.clone());
+        let res = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/sleep/start")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"prune_intensity":0.4,"compact_intensity":0.4,"infinite":true}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["ok"], true);
+        assert_eq!(v["infinite"], true);
+
+        for _ in 0..120 {
+            tokio::time::sleep(Duration::from_millis(25)).await;
+            let g = st.lock().unwrap();
+            if g.sleep_job.current_cycle >= 1 || g.sleep_job.event_seq > 2 {
+                break;
+            }
+        }
+        {
+            let g = st.lock().unwrap();
+            assert!(g.sleep_job.infinite);
+            assert!(g.sleep_job.total_cycles.is_none());
+            assert!(g.sleep_job.running || g.sleep_job.current_cycle >= 1);
+        }
+
+        let stop = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/sleep/stop")
+                    .header("content-type", "application/json")
+                    .body(Body::from("{}"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(stop.status(), StatusCode::OK);
+
+        for _ in 0..120 {
+            tokio::time::sleep(Duration::from_millis(25)).await;
+            if !st.lock().unwrap().sleep_job.running {
+                break;
+            }
+        }
+        let g = st.lock().unwrap();
+        assert!(!g.sleep_job.running);
+        assert!(g.sleep_job.cancelled || g.sleep_job.current_cycle >= 1);
+    }
+
+    #[tokio::test]
+    async fn tests_infinite_runs_until_stop() {
+        let st = lex_state();
+        let app = test_router(st.clone());
+        let res = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/tests/start")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"infinite":true,"cycles":null}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["ok"], true);
+        assert_eq!(v["infinite"], true);
+
+        for _ in 0..120 {
+            tokio::time::sleep(Duration::from_millis(25)).await;
+            let g = st.lock().unwrap();
+            if g.tests_job.current_cycle >= 1 || g.tests_job.event_seq > 2 {
+                break;
+            }
+        }
+        {
+            let g = st.lock().unwrap();
+            assert!(g.tests_job.infinite);
+            assert!(g.tests_job.running || g.tests_job.current_cycle >= 1);
+        }
+
+        let _ = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/tests/stop")
+                    .header("content-type", "application/json")
+                    .body(Body::from("{}"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        for _ in 0..120 {
+            tokio::time::sleep(Duration::from_millis(25)).await;
+            if !st.lock().unwrap().tests_job.running {
+                break;
+            }
+        }
+        let status = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/tests/status")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let bytes = axum::body::to_bytes(status.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let s: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(s["running"], false);
+        assert_eq!(s["infinite"], true);
     }
 
     #[tokio::test]
