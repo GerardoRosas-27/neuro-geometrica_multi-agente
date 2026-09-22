@@ -95,3 +95,7 @@ pub mod unified_spin_cognitive_engine;
 pub mod variational_spin_liquid_vmc;
 /// Predicción por interferencia pasado×futuro (líquido de ondas).
 pub mod wave_predict_core;
+
+/// App web agentica (chat + telemetría). Feature `web`.
+#[cfg(feature = "web")]
+pub mod web;

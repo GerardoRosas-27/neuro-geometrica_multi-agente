@@ -8,7 +8,7 @@
 //! 5. Decode periférico: concepto → texto (sonda); **nunca** escribe tokens en Ψ.
 
 use crate::field_encoder::{write_into_field, FieldEncoder};
-use crate::field_linguistic_layer::{FrozenLinguisticProbe, GemmaShapedLexicon, LinguisticPacket};
+use crate::field_linguistic_layer::{FrozenLinguisticProbe, LinguisticPacket};
 use crate::field_substrate::{handshake, hebb_update, ComplexT, FieldConfig, FieldState, Phasor};
 use crate::hybrid_wave_rqm_infer::{HybridReport, HybridWaveRqm, InferPath};
 use std::f64::consts::PI;
@@ -164,6 +164,7 @@ impl FieldHybridInfer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::field_linguistic_layer::GemmaShapedLexicon;
     use crate::hybrid_wave_rqm_infer::InferPath;
 
     #[test]

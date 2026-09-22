@@ -126,9 +126,8 @@ fn train_thermo(sub: &mut NativeThermoCdtSubstrate, n_concepts: usize) -> Thermo
         node_sets.push(concept_nodes(c, nc, n_concepts));
     }
     let mut templates = Vec::with_capacity(n_concepts);
-    for c in 0..n_concepts {
+    for (c, nodes) in node_sets.iter().enumerate().take(n_concepts) {
         soft_reset(sub);
-        let nodes = &node_sets[c];
         sub.inject_pilot_pattern(nodes, PILOT_AMP, concept_phase(c, n_concepts));
         for _ in 0..THERMO_STEPS {
             let _ = sub.step();

@@ -296,7 +296,7 @@ fn run_hybrid_trial(
         d_v: config.d_v,
         rff: PhasorRffConfig {
             features: 64,
-            seed: seed ^ 0x5246_46,
+            seed: seed ^ 0x0052_4646,
             ..Default::default()
         },
         cdt_nodes: config.cdt_nodes,
@@ -499,6 +499,7 @@ fn flatten(matrix: &[Vec<f32>]) -> Vec<f32> {
 
 // ── Datos sintéticos ─────────────────────────────────────────────────────────
 
+#[allow(clippy::type_complexity)]
 pub fn planted_handshake_sequence(
     n: usize,
     d_model: usize,

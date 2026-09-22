@@ -79,11 +79,13 @@ impl FusedLiquidCdt {
             seed: 0xF05E_F100,
             ..NativeThermoCdtConfig::default()
         };
-        let mut rqm_cfg = NativeThermoRqmConfig::default();
-        rqm_cfg.max_candidates = num_labels * 2;
-        rqm_cfg.thermal_steps_per_train = 1;
-        rqm_cfg.thermal_steps_per_query = 2;
-        rqm_cfg.thermal_activation_margin = 0.05;
+        let rqm_cfg = NativeThermoRqmConfig {
+            max_candidates: num_labels * 2,
+            thermal_steps_per_train: 1,
+            thermal_steps_per_query: 2,
+            thermal_activation_margin: 0.05,
+            ..Default::default()
+        };
         let epr = EntanglementConfig {
             create_threshold: 0.4,
             max_syncs_per_step: 64,
@@ -284,11 +286,13 @@ fn make_bare_rqm(n: usize) -> NativeThermoRqmEprSubstrate {
         seed: 0xA11A_F05E,
         ..NativeThermoCdtConfig::default()
     };
-    let mut cfg = NativeThermoRqmConfig::default();
-    cfg.max_candidates = n * 2;
-    cfg.thermal_steps_per_train = 1;
-    cfg.thermal_steps_per_query = 2;
-    cfg.thermal_activation_margin = 0.05;
+    let cfg = NativeThermoRqmConfig {
+        max_candidates: n * 2,
+        thermal_steps_per_train: 1,
+        thermal_steps_per_query: 2,
+        thermal_activation_margin: 0.05,
+        ..Default::default()
+    };
     let epr = EntanglementConfig {
         create_threshold: 0.4,
         max_syncs_per_step: 64,

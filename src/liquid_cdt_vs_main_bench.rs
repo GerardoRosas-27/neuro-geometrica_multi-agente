@@ -110,11 +110,13 @@ fn make_main_rqm() -> NativeThermoRqmEprSubstrate {
         seed: 0xA11A_C0A1,
         ..NativeThermoCdtConfig::default()
     };
-    let mut cfg = NativeThermoRqmConfig::default();
-    cfg.max_candidates = N * 2;
-    cfg.thermal_steps_per_train = 1;
-    cfg.thermal_steps_per_query = 2;
-    cfg.thermal_activation_margin = 0.05;
+    let cfg = NativeThermoRqmConfig {
+        max_candidates: N * 2,
+        thermal_steps_per_train: 1,
+        thermal_steps_per_query: 2,
+        thermal_activation_margin: 0.05,
+        ..Default::default()
+    };
     let epr = EntanglementConfig {
         create_threshold: 0.4,
         max_syncs_per_step: 64,
