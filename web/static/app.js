@@ -39,12 +39,15 @@
     return res.json();
   }
 
-  function setPulse(id, on) {
+  function setTabStatus(id, running) {
     const el = $(id);
     if (!el) return;
-    el.hidden = !on;
-    const tab = el.closest(".main-tab");
-    if (tab) tab.classList.toggle("running", !!on);
+    el.dataset.state = running ? "running" : "idle";
+  }
+
+  function isTabRunning(id) {
+    const el = $(id);
+    return el?.dataset?.state === "running";
   }
 
   function updateProcessBadges(flags) {
@@ -54,9 +57,9 @@
     if (flags.tests) parts.push("pruebas");
     badgeProcs.textContent = parts.length ? parts.join(" · ") : "procesos idle";
     badgeProcs.classList.toggle("active", parts.length > 0);
-    setPulse("pulse-train", !!flags.train);
-    setPulse("pulse-sleep", !!flags.sleep);
-    setPulse("pulse-tests", !!flags.tests);
+    setTabStatus("status-train", !!flags.train);
+    setTabStatus("status-sleep", !!flags.sleep);
+    setTabStatus("status-tests", !!flags.tests);
   }
 
   async function refreshHealth() {
@@ -391,10 +394,10 @@
       renderLiveJob(st);
       updateProcessBadges({
         train: !!st.running,
-        sleep: document.getElementById("pulse-sleep")?.hidden === false,
-        tests: document.getElementById("pulse-tests")?.hidden === false,
+        sleep: isTabRunning("status-sleep"),
+        tests: isTabRunning("status-tests"),
       });
-      setPulse("pulse-train", !!st.running);
+      setTabStatus("status-train", !!st.running);
       if (!st.running) {
         stopTrainPolling();
         refreshTelemetry();
@@ -456,7 +459,7 @@
       const ev = await api("/api/sleep/events?after=" + sleepEventAfter);
       appendTo("sleep", "sleep", ev.events || []);
       renderSleepJob(st);
-      setPulse("pulse-sleep", !!st.running);
+      setTabStatus("status-sleep", !!st.running);
       if (!st.running) {
         stopSleepPolling();
         refreshTelemetry();
@@ -489,7 +492,7 @@
       const ev = await api("/api/tests/events?after=" + testsEventAfter);
       appendTo("tests", "tests", ev.events || []);
       renderTestsJob(st);
-      setPulse("pulse-tests", !!st.running);
+      setTabStatus("status-tests", !!st.running);
       if (!st.running) {
         stopTestsPolling();
         refreshTelemetry();
