@@ -155,10 +155,30 @@
 
   function renderSleepJob(job) {
     if (!job) return;
+    const cur = job.current_cycle || job.current_batch || 0;
+    const infinite = !!(job.infinite || job.total_cycles == null);
+    const bar = $("sl-progress-bar");
+    if (bar) {
+      if (infinite) {
+        bar.style.width = job.running ? "100%" : "0%";
+        bar.classList.toggle("infinite", !!job.running);
+        $("sl-progress-label").textContent =
+          `Ciclo ${cur} (∞ infinito)` + (job.running ? " (en curso)" : "");
+      } else {
+        const total = Math.max(1, job.total_cycles || job.total_batches || 1);
+        bar.style.width = Math.min(100, (100 * cur) / total) + "%";
+        bar.classList.remove("infinite");
+        $("sl-progress-label").textContent =
+          `Ciclo ${cur} / ${job.total_cycles || job.total_batches}` +
+          (job.running ? " (en curso)" : "");
+      }
+    }
     $("sl-status").textContent = job.running
       ? job.cancelled
         ? "deteniendo…"
-        : "durmiendo…"
+        : infinite
+          ? "durmiendo ∞…"
+          : "durmiendo…"
       : job.cancelled
         ? "cancelado"
         : job.job_id
@@ -196,10 +216,37 @@
 
   function renderTestsJob(job) {
     if (!job) return;
+    const cur = job.current_cycle || job.current_batch || 0;
+    const infinite = !!(job.infinite || job.total_cycles == null);
+    const bar = $("te-progress-bar");
+    if (bar) {
+      if (infinite) {
+        bar.style.width = job.running ? "100%" : "0%";
+        bar.classList.toggle("infinite", !!job.running);
+        $("te-progress-label").textContent =
+          `Batería ${cur} (∞)` + (job.running ? " (en curso)" : "");
+      } else {
+        const total = Math.max(1, job.total_cycles || job.total_batches || 1);
+        // Dentro de una batería, combina ciclo + pasos si hay total_steps.
+        let pct;
+        if (job.total_steps > 0 && total === 1) {
+          pct = Math.min(100, (100 * (job.step || 0)) / job.total_steps);
+        } else {
+          pct = Math.min(100, (100 * cur) / total);
+        }
+        bar.style.width = pct + "%";
+        bar.classList.remove("infinite");
+        $("te-progress-label").textContent =
+          `Batería ${cur} / ${job.total_cycles || job.total_batches}` +
+          (job.running ? " (en curso)" : "");
+      }
+    }
     $("te-status").textContent = job.running
       ? job.cancelled
         ? "deteniendo…"
-        : "ejecutando…"
+        : infinite
+          ? "ejecutando ∞…"
+          : "ejecutando…"
       : job.cancelled
         ? "cancelado"
         : job.job_id
@@ -208,7 +255,8 @@
     $("te-job").textContent = job.job_id || "—";
     $("te-progress").textContent =
       job.total_steps > 0
-        ? `${job.step || 0} / ${job.total_steps} (${job.phase || "—"})`
+        ? `${job.step || 0} / ${job.total_steps} (${job.phase || "—"})` +
+          (infinite ? ` · bat ${cur} ∞` : cur ? ` · bat ${cur}` : "")
         : job.phase || "—";
     const merged =
       testsEvents.length > 0
@@ -596,19 +644,23 @@
   $("btn-sleep").addEventListener("click", async () => {
     const prune = $("sl-prune").value / 100;
     const compact = $("sl-compact").value / 100;
+    const infinite = $("chk-infinite-sleep")?.checked !== false;
     sleepEventAfter = 0;
     sleepEvents = [];
     $("sl-log").textContent = "";
     $("sl-status").textContent = "iniciando…";
     try {
+      const body = {
+        prune_intensity: prune,
+        compact_intensity: compact,
+        consolidate_first: true,
+        infinite,
+        cycles: infinite ? null : 1,
+      };
       const r = await api("/api/sleep/start", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          prune_intensity: prune,
-          compact_intensity: compact,
-          consolidate_first: true,
-        }),
+        body: JSON.stringify(body),
       });
       if (r.ok) {
         $("sl-job").textContent = r.job_id || "—";
@@ -634,17 +686,26 @@
     } catch (_) {}
   });
 
+  $("btn-sleep-refresh")?.addEventListener("click", () => {
+    pollSleepOnce();
+    refreshHealth();
+  });
+
   $("btn-tests").addEventListener("click", async () => {
+    const infinite = $("chk-infinite-tests")?.checked !== false;
     testsEventAfter = 0;
     testsEvents = [];
     $("te-log").textContent = "";
     $("te-status").textContent = "iniciando…";
     $("te-report").textContent = "Ejecutando batería…";
     try {
+      const body = infinite
+        ? { infinite: true, cycles: null }
+        : { infinite: false, cycles: 1 };
       const r = await api("/api/tests/start", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: "{}",
+        body: JSON.stringify(body),
       });
       if (r.ok) {
         $("te-job").textContent = r.job_id || "—";

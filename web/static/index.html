@@ -99,9 +99,17 @@
       <h2>Sueño / consolidar + optimizar</h2>
       <p class="hint">Poda rutas RQM débiles, compacta geometría fasorial y minimiza energía libre hacia más simetría (handshake / octaedro). El job sigue en el servidor tras refrescar; solo Detener cancela.</p>
       <div class="actions">
-        <button type="button" id="btn-sleep">Dormir / consolidar</button>
+        <button type="button" id="btn-sleep">Iniciar</button>
+        <label class="chk-infinite" title="Sin tope de ciclos; solo Detener">
+          <input type="checkbox" id="chk-infinite-sleep" checked /> Infinito
+        </label>
         <button type="button" id="btn-sleep-stop" class="danger">Detener</button>
+        <button type="button" id="btn-sleep-refresh">Refrescar</button>
       </div>
+      <div class="progress-wrap">
+        <div id="sl-progress-bar" class="progress-bar" style="width:0%"></div>
+      </div>
+      <p id="sl-progress-label" class="progress-label">Ciclo — / —</p>
       <div class="sliders">
         <label>Intensidad poda
           <input type="range" id="sl-prune" min="0" max="100" value="55" />
@@ -137,10 +145,17 @@
       <h2>Pruebas del modelo de campo</h2>
       <p class="hint">Evalúa el fuse/campo/CDT <strong>ya entrenado</strong> (tras train + sueño). No inicia entrenamiento infinito. Refresh reconecta; solo Detener cancela.</p>
       <div class="actions">
-        <button type="button" id="btn-tests">Ejecutar batería completa</button>
+        <button type="button" id="btn-tests">Iniciar</button>
+        <label class="chk-infinite" title="Repite la batería hasta Detener">
+          <input type="checkbox" id="chk-infinite-tests" checked /> Infinito
+        </label>
         <button type="button" id="btn-tests-stop" class="danger">Detener</button>
         <button type="button" id="btn-tests-refresh">Cargar último</button>
       </div>
+      <div class="progress-wrap">
+        <div id="te-progress-bar" class="progress-bar" style="width:0%"></div>
+      </div>
+      <p id="te-progress-label" class="progress-label">Batería — / —</p>
       <dl class="kv">
         <dt>Estado</dt><dd id="te-status">idle</dd>
         <dt>Job</dt><dd id="te-job">—</dd>
