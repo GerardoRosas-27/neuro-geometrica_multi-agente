@@ -78,3 +78,8 @@ docker compose up --build
 - No se descargan modelos en el build de Docker (binario razonable).
 - `cargo test` por defecto (sin `web`) sigue sin depender de Axum.
 - Admin Repositorio puede ayudar con push/merge si los permisos fallan.
+
+## Requisitos de build (Docker)
+
+El `Dockerfile` usa la imagen `rust:bookworm` (stable reciente).
+No uses `rust:1.85`: `sysinfo` 0.39 pide rustc ≥ 1.95 y `zip` 8.x pide ≥ 1.88.
