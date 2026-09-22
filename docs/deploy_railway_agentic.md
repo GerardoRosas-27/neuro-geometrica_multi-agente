@@ -31,7 +31,7 @@ Usuario (UI web)
 - **Líquido** = toda la inferencia rápida  
 - **CDT termo** = memoria durable **después** del sueño  
 - **RQM** = índice/fallback (desde fuse)  
-- **LLM** = solo periferia encoder/decoder  
+- **LLM** = **decoder only** del campo (+ dataset gen en periferia)  
 
 ## Variables de entorno
 
@@ -55,9 +55,42 @@ Usuario (UI web)
 ## Qué hace la UI
 
 - **Chat** (izquierda): mensajes agenticos; intents `entrena`, `sueño`, `estado`.
-- **Iniciar entrenamiento**: bucles tokenless `observe` / `teach_relation` + sueño.
+- **Iniciar / Detener entrenamiento**: job async por lotes (dataset → líquido → CDT + checkpoint); UI en vivo.
 - **Sueño / consolidar**: `sleep_consolidate` → engramas CDT + reafirma RQM.
-- **Paneles** (derecha): Entrenamiento · Líquido · CDT · RQM (auto-refresh ~4 s).
+- **Paneles** (derecha): Entrenamiento en vivo (barra, eventos, checkpoint, decoder) · Líquido · CDT · RQM.
+
+
+
+## Entrenamiento en vivo (LLM dataset + líquido + CDT)
+
+Pipeline por **lote** (no bloquea el servidor Axum):
+
+1. **Dataset en periferia** — `generate_train_batch` (fuente `gemma` o `lexicon_synth`).
+2. Encode texto → features → `concept_id` (firewall; **sin tokens** en FieldState).
+3. Inferencia **líquida** (`FusedLiquidCdt` / `WavePredictCore`) + `observe` / `teach_relation`.
+4. **`sleep_consolidate`** → engramas CDT; checkpoint JSON en `data/checkpoints/train_{ts}_batch_{i}.json`.
+5. **LLM decoder only** — `decode_field_concept` para preview en UI (concepto → texto).
+
+### API
+
+| Método | Ruta | Notas |
+|--------|------|--------|
+| POST | `/api/train/start` | `{ "batches": 4, "batch_size": 8, "epochs": 1 }` → `{ ok, job_id }` inmediato |
+| POST | `/api/train/stop` | cancela el job |
+| GET | `/api/train/status` | snapshot `TrainJob` |
+| GET | `/api/train/events?after=N` | eventos nuevos (polling ~500 ms) |
+| GET | `/api/train/stream` | SSE `text/event-stream` |
+
+### Checkpoints
+
+- Ruta relativa al CWD: `./data/checkpoints/` (en Docker `/app/data/checkpoints`).
+- Volumen Railway opcional si quieres persistir entre deploys.
+- Contenido mínimo: job_id, batch, engrams, accuracy, sleep report, relational_cues, cola de eventos.
+
+### Rol del LLM
+
+- **Decoder** del modelo de campo (chat: `decoded` viene de `decode_field_concept`).
+- Generación de dataset = función periférica separada (no escribe al campo).
 
 ## Local
 

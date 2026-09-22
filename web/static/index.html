@@ -10,7 +10,7 @@
   <header class="top">
     <div>
       <h1>Chat agentico · Líquido / CDT / RQM</h1>
-      <p class="sub">LLM solo periferia · tokens nunca entran al FieldState</p>
+      <p class="sub">LLM = decoder del campo · dataset en periferia · tokens nunca en FieldState</p>
     </div>
     <div class="badges">
       <span id="badge-mode" class="badge">modo…</span>
@@ -27,6 +27,7 @@
       </form>
       <div class="actions">
         <button type="button" id="btn-train">Iniciar entrenamiento</button>
+        <button type="button" id="btn-stop" class="danger">Detener</button>
         <button type="button" id="btn-sleep">Sueño / consolidar</button>
         <button type="button" id="btn-refresh">Refrescar telemetría</button>
       </div>
@@ -41,13 +42,22 @@
       </nav>
 
       <div id="panel-train" class="tab-panel active">
-        <h2>Entrenamiento</h2>
+        <h2>Entrenamiento en vivo</h2>
+        <div class="progress-wrap">
+          <div id="tr-progress-bar" class="progress-bar" style="width:0%"></div>
+        </div>
+        <p id="tr-progress-label" class="progress-label">Lote — / —</p>
         <dl class="kv">
           <dt>Estado</dt><dd id="tr-status">—</dd>
-          <dt>Épocas</dt><dd id="tr-epochs">—</dd>
+          <dt>Job</dt><dd id="tr-job">—</dd>
+          <dt>Épocas / lote</dt><dd id="tr-epochs">—</dd>
           <dt>Precisión</dt><dd id="tr-acc">—</dd>
+          <dt>Engramas</dt><dd id="tr-eng">—</dd>
+          <dt>Dataset</dt><dd id="tr-dataset">—</dd>
+          <dt>Checkpoint</dt><dd id="tr-ckpt">—</dd>
+          <dt>Decoder (preview)</dt><dd id="tr-decoded">—</dd>
         </dl>
-        <h3>Eventos</h3>
+        <h3>Eventos en vivo</h3>
         <pre id="tr-log" class="log"></pre>
       </div>
 

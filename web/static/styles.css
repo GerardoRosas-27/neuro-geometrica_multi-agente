@@ -108,3 +108,20 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
   .chat-panel { min-height: 55vh; border-right: none; border-bottom: 1px solid var(--border); }
   .detail-panel { min-height: 45vh; }
 }
+
+.progress-wrap {
+  background: #0c1118; border: 1px solid var(--border); border-radius: 8px;
+  height: 12px; overflow: hidden; margin-bottom: 0.35rem;
+}
+.progress-bar {
+  height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2));
+  transition: width 0.25s ease;
+}
+.progress-label { margin: 0 0 0.75rem; color: var(--muted); font-size: 0.82rem; }
+.actions button.danger {
+  border-color: var(--danger); color: var(--danger);
+}
+.actions button.danger:hover { filter: brightness(1.1); }
+#tr-ckpt, #tr-decoded, #tr-job {
+  word-break: break-all; font-size: 0.78rem;
+}
