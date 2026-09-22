@@ -43,14 +43,23 @@
 
   function renderLiveJob(job) {
     if (!job) return;
-    const total = Math.max(1, job.total_batches || 1);
     const cur = job.current_batch || 0;
-    const pct = Math.min(100, (100 * cur) / total);
-    document.getElementById("tr-progress-bar").style.width = pct + "%";
-    document.getElementById("tr-progress-label").textContent =
-      `Lote ${cur} / ${job.total_batches || "—"}` + (job.running ? " (en curso)" : "");
+    const infinite = !!(job.infinite || job.total_batches == null);
+    if (infinite) {
+      document.getElementById("tr-progress-bar").style.width = job.running ? "100%" : "0%";
+      document.getElementById("tr-progress-bar").classList.toggle("infinite", !!job.running);
+      document.getElementById("tr-progress-label").textContent =
+        `Lote ${cur} (∞ infinito)` + (job.running ? " (en curso)" : "");
+    } else {
+      const total = Math.max(1, job.total_batches || 1);
+      const pct = Math.min(100, (100 * cur) / total);
+      document.getElementById("tr-progress-bar").style.width = pct + "%";
+      document.getElementById("tr-progress-bar").classList.remove("infinite");
+      document.getElementById("tr-progress-label").textContent =
+        `Lote ${cur} / ${job.total_batches}` + (job.running ? " (en curso)" : "");
+    }
     document.getElementById("tr-status").textContent = job.running
-      ? (job.cancelled ? "deteniendo…" : "entrenando…")
+      ? (job.cancelled ? "deteniendo…" : (infinite ? "entrenando ∞…" : "entrenando…"))
       : (job.cancelled ? "detenido" : (job.job_id ? "idle / listo" : "idle"));
     document.getElementById("tr-job").textContent = job.job_id || "—";
     document.getElementById("tr-epochs").textContent = job.epochs != null ? job.epochs : "—";
@@ -60,8 +69,12 @@
     document.getElementById("tr-dataset").textContent =
       (job.dataset_size != null ? job.dataset_size : "—") +
       (job.dataset_source ? ` (${job.dataset_source})` : "");
+    const dsSaved = document.getElementById("tr-ds-saved");
+    if (dsSaved) dsSaved.textContent = job.datasets_saved != null ? job.datasets_saved : "—";
     document.getElementById("tr-ckpt").textContent =
-      (job.last_checkpoint && job.last_checkpoint.path) || "—";
+      job.last_dataset_path ||
+      (job.last_checkpoint && job.last_checkpoint.path) ||
+      "—";
     document.getElementById("tr-decoded").textContent = job.last_decoded || "—";
 
     if (Array.isArray(job.events) && job.events.length) {
@@ -212,19 +225,23 @@
   });
 
   document.getElementById("btn-train").addEventListener("click", async () => {
-    addMsg("user", "[UI] Iniciar entrenamiento en vivo");
+    const infinite = document.getElementById("chk-infinite")?.checked !== false;
+    addMsg("user", `[UI] Iniciar entrenamiento en vivo${infinite ? " (∞)" : ""}`);
     eventAfter = 0;
     liveEvents = [];
     try {
+      const body = infinite
+        ? { batches: null, batch_size: 8, epochs: 1 }
+        : { batches: 4, batch_size: 8, epochs: 1 };
       const r = await api("/api/train/start", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ batches: 4, batch_size: 8, epochs: 1 }),
+        body: JSON.stringify(body),
       });
       addMsg(
         "agent",
         r.ok
-          ? `Entrenamiento en vivo OK · job=${r.job_id}`
+          ? `Entrenamiento ${r.infinite ? "∞" : "finito"} OK · job=${r.job_id}`
           : `No iniciado: ${r.message || "ocupado"}`,
       );
       if (r.ok) startTrainPolling();
@@ -273,7 +290,7 @@
     });
   });
 
-  addMsg("agent", "Listo. Entrenamiento en vivo: dataset periferia → líquido → CDT por lotes. LLM = decoder del campo. Di «entrena», «sueño» o «estado».");
+  addMsg("agent", "Listo. Entrenamiento ∞ por defecto: dataset → líquido → CDT + checkpoint por dataset. LLM = decoder. Di «entrena», «sueño» o «estado».");
   refreshHealth();
   refreshTelemetry();
   setInterval(() => { refreshTelemetry(); refreshHealth(); }, 4000);

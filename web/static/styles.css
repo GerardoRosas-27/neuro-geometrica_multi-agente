@@ -125,3 +125,20 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
 #tr-ckpt, #tr-decoded, #tr-job {
   word-break: break-all; font-size: 0.78rem;
 }
+
+.chk-infinite {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+  user-select: none;
+}
+.progress-bar.infinite {
+  background: linear-gradient(90deg, #3b82f6, #8b5cf6, #3b82f6);
+  background-size: 200% 100%;
+  animation: infinite-pulse 1.4s linear infinite;
+}
+@keyframes infinite-pulse {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}

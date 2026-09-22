@@ -8,7 +8,8 @@ use crate::web::llm_periphery::{
 };
 use crate::web::telemetry::{FuseReportDto, SleepReportDto, TelemetrySnapshot};
 use crate::web::train_job::{
-    batch_metrics, relation_target, write_checkpoint, CheckpointFile, CheckpointMeta, TrainJob,
+    batch_metrics, relation_target, write_checkpoint, write_dataset_checkpoint, write_latest_index,
+    CheckpointFile, CheckpointMeta, DatasetCheckpointFile, LiquidDatasetMetrics, TrainJob,
     TrainLiveEvent,
 };
 use serde::{Deserialize, Serialize};
@@ -130,11 +131,11 @@ impl AppState {
         let lower = msg.to_lowercase();
 
         if looks_like_train(&lower) {
-            let started = self.begin_live_train(4, 8, 1);
+            let started = self.begin_live_train(None, 8, 1);
             let reply = if started.ok {
                 format!(
-                    "Entrenamiento en vivo iniciado (job {}). Lotes async + CDT por lote. \
-                     Mira el panel Entrenamiento.",
+                    "Entrenamiento en vivo iniciado (job {}). Modo infinito · CDT por dataset. \
+                     Mira el panel Entrenamiento. Usa Detener para parar.",
                     started.job_id
                 )
             } else {
@@ -305,10 +306,11 @@ impl AppState {
         }
     }
 
-    /// Prepara job async. El caller debe `spawn` `run_live_train_loop`.
+    /// Prepara job async. El caller debe `spawn` el loop de lotes.
+    /// `batches = None` (o 0) → entrenamiento **infinito** hasta cancel/stop.
     pub fn begin_live_train(
         &mut self,
-        batches: usize,
+        batches: Option<usize>,
         batch_size: usize,
         epochs: usize,
     ) -> crate::web::train_job::LiveTrainStartResponse {
@@ -318,9 +320,15 @@ impl AppState {
                 ok: false,
                 job_id: self.train_job.job_id.clone(),
                 message: "ya hay un entrenamiento en curso".into(),
+                infinite: None,
             };
         }
-        let batches = batches.clamp(1, 64);
+        let infinite = batches.is_none() || batches == Some(0);
+        let total_batches = if infinite {
+            None
+        } else {
+            Some(batches.unwrap_or(1).clamp(1, 64))
+        };
         let batch_size = batch_size.clamp(1, 64);
         let epochs = epochs.clamp(1, 16);
         let job_id = Uuid::new_v4().to_string();
@@ -329,7 +337,8 @@ impl AppState {
             running: true,
             cancelled: false,
             current_batch: 0,
-            total_batches: batches,
+            total_batches,
+            infinite,
             epochs,
             batch_size,
             events: std::collections::VecDeque::new(),
@@ -342,24 +351,51 @@ impl AppState {
             event_seq: 0,
             correct: 0,
             total: 0,
+            datasets_saved: 0,
+            last_dataset_path: self.train_job.last_dataset_path.clone(),
         };
         self.training = true;
+        let mode_msg = if infinite {
+            format!("job {job_id}: ∞ infinito × {batch_size}/lote, épocas={epochs}")
+        } else {
+            format!(
+                "job {job_id}: {} lotes × {batch_size}, épocas={epochs}",
+                total_batches.unwrap_or(0)
+            )
+        };
         self.train_job.push_event(
             "dataset",
-            format!("job {job_id}: {batches} lotes × {batch_size}, épocas={epochs}"),
+            mode_msg,
             None,
             Some(self.fuse.engram_count()),
-            json!({ "batches": batches, "batch_size": batch_size, "epochs": epochs }),
+            json!({
+                "batches": total_batches,
+                "infinite": infinite,
+                "batch_size": batch_size,
+                "epochs": epochs
+            }),
         );
         self.push_train(
             "start",
-            format!("live job={job_id} batches={batches}"),
+            format!(
+                "live job={job_id} {}",
+                if infinite {
+                    "infinite".into()
+                } else {
+                    format!("batches={}", total_batches.unwrap_or(0))
+                }
+            ),
             None,
         );
         LiveTrainStartResponse {
             ok: true,
             job_id,
-            message: "entrenamiento en vivo iniciado".into(),
+            message: if infinite {
+                "entrenamiento infinito iniciado".into()
+            } else {
+                "entrenamiento en vivo iniciado".into()
+            },
+            infinite: Some(infinite),
         }
     }
 
@@ -378,30 +414,41 @@ impl AppState {
         true
     }
 
-    /// Un lote: dataset LLM → encode → líquido → CDT consolidate → checkpoint.
-    /// Devuelve `false` si cancelado o terminó.
+    /// Un lote/dataset: LLM → encode → líquido → CDT → checkpoint por dataset.
+    /// Devuelve `false` solo si cancelado o (modo finito) se alcanzó el tope.
+    /// En modo infinito nunca termina por conteo de lotes.
     pub fn run_one_live_batch(&mut self) -> bool {
         if !self.train_job.running || self.train_job.cancelled {
             self.finish_live_train(self.train_job.cancelled);
             return false;
         }
         let batch = self.train_job.current_batch;
-        if batch >= self.train_job.total_batches {
-            self.finish_live_train(false);
-            return false;
+        if !self.train_job.infinite {
+            if let Some(total) = self.train_job.total_batches {
+                if batch >= total {
+                    self.finish_live_train(false);
+                    return false;
+                }
+            }
         }
 
         let batch_size = self.train_job.batch_size;
         let epochs = self.train_job.epochs;
         let gemma = matches!(self.probe.mode(), LlmMode::GemmaGguf);
         let seed = now_ms().wrapping_add(batch as u64 * 17);
+        let engrams_before = self.fuse.engram_count();
 
+        let batch_label = if self.train_job.infinite {
+            format!("lote {batch} (∞)")
+        } else {
+            format!("lote {batch}/{}", self.train_job.total_batches.unwrap_or(0))
+        };
         self.train_job.push_event(
             "batch_start",
-            format!("lote {batch}/{}", self.train_job.total_batches),
+            batch_label,
             Some(batch),
-            Some(self.fuse.engram_count()),
-            json!({}),
+            Some(engrams_before),
+            json!({ "infinite": self.train_job.infinite }),
         );
 
         let (examples, source) = generate_train_batch(batch_size, seed, gemma);
@@ -421,6 +468,8 @@ impl AppState {
         let cands = self.candidates();
         let mut last_pred = 0usize;
         let mut last_score = 0.0f64;
+        let mut scores: Vec<f64> = Vec::with_capacity(examples.len() * epochs);
+        let mut preds: Vec<usize> = Vec::with_capacity(examples.len() * epochs);
 
         for _epoch in 0..epochs {
             for ex in &examples {
@@ -442,6 +491,8 @@ impl AppState {
                 }
                 last_pred = report.predicted;
                 last_score = report.liquid_score;
+                scores.push(report.liquid_score);
+                preds.push(report.predicted);
                 self.last_fuse = Some(report);
             }
         }
@@ -460,7 +511,7 @@ impl AppState {
             ),
         );
 
-        // CDT consolidation por lote.
+        // CDT consolidation por dataset.
         let sleep = self.sleep_now();
         self.train_job.push_event(
             "cdt_consolidate",
@@ -495,10 +546,65 @@ impl AppState {
             json!({ "concept": last_pred, "decoded": decoded }),
         );
 
-        // Checkpoint a disco.
+        let ts = crate::web::train_job::now_ms();
+        let dataset_id = format!("ds_{}_{}", self.train_job.job_id, batch);
+        let ds_file = DatasetCheckpointFile {
+            dataset_id: dataset_id.clone(),
+            job_id: self.train_job.job_id.clone(),
+            batch,
+            source: source.into(),
+            examples: examples.clone(),
+            liquid: LiquidDatasetMetrics {
+                scores,
+                preds,
+                correct: self.train_job.correct,
+                total: self.train_job.total,
+                last_score,
+                last_pred,
+            },
+            sleep: Some(SleepReportDto::from(&sleep)),
+            decoder_preview: Some(decoded.clone()),
+            engrams: self.fuse.engram_count(),
+            accuracy: self.train_job.accuracy,
+            ts_ms: ts,
+        };
+        match write_dataset_checkpoint(&ds_file) {
+            Ok(path) => {
+                let path_s = path.display().to_string();
+                self.train_job.datasets_saved = self.train_job.datasets_saved.saturating_add(1);
+                self.train_job.last_dataset_path = Some(path_s.clone());
+                let _ = write_latest_index(
+                    &path_s,
+                    &self.train_job.job_id,
+                    batch,
+                    self.train_job.datasets_saved,
+                );
+                self.train_job.push_event(
+                    "checkpoint",
+                    format!("dataset guardado {path_s}"),
+                    Some(batch),
+                    Some(ds_file.engrams),
+                    json!({
+                        "path": path_s,
+                        "dataset_id": dataset_id,
+                        "kind": "dataset"
+                    }),
+                );
+            }
+            Err(e) => {
+                self.train_job.push_event(
+                    "error",
+                    format!("dataset checkpoint falló: {e}"),
+                    Some(batch),
+                    Some(self.fuse.engram_count()),
+                    json!({ "error": e.to_string() }),
+                );
+            }
+        }
+
+        // Resumen de lote (compat).
         let mut cues: Vec<usize> = self.fuse.relational_cues.iter().copied().collect();
         cues.sort_unstable();
-        let ts = crate::web::train_job::now_ms();
         let ck = CheckpointFile {
             job_id: self.train_job.job_id.clone(),
             batch,
@@ -533,16 +639,16 @@ impl AppState {
                 });
                 self.train_job.push_event(
                     "checkpoint",
-                    format!("guardado {path_s}"),
+                    format!("resumen lote {path_s}"),
                     Some(batch),
                     Some(ck.engrams),
-                    json!({ "path": path_s }),
+                    json!({ "path": path_s, "kind": "batch_summary" }),
                 );
             }
             Err(e) => {
                 self.train_job.push_event(
                     "error",
-                    format!("checkpoint falló: {e}"),
+                    format!("checkpoint resumen falló: {e}"),
                     Some(batch),
                     Some(self.fuse.engram_count()),
                     json!({ "error": e.to_string() }),
@@ -557,10 +663,18 @@ impl AppState {
         );
 
         self.train_job.current_batch = batch + 1;
-        if self.train_job.current_batch >= self.train_job.total_batches || self.train_job.cancelled
-        {
-            self.finish_live_train(self.train_job.cancelled);
+
+        if self.train_job.cancelled {
+            self.finish_live_train(true);
             return false;
+        }
+        if !self.train_job.infinite {
+            if let Some(total) = self.train_job.total_batches {
+                if self.train_job.current_batch >= total {
+                    self.finish_live_train(false);
+                    return false;
+                }
+            }
         }
         true
     }
@@ -615,7 +729,7 @@ impl AppState {
             };
         }
         let epochs_u = epochs.unwrap_or(2).clamp(1, 8) as usize;
-        let started = self.begin_live_train(epochs_u, 4, 1);
+        let started = self.begin_live_train(Some(epochs_u), 4, 1);
         if !started.ok {
             return TrainStartResponse {
                 ok: false,
@@ -740,7 +854,7 @@ mod tests {
         s.probe =
             PeripheralProbe::Lexicon(crate::field_linguistic_layer::GemmaShapedLexicon::new(3));
         let before = s.fuse.engram_count();
-        let start = s.begin_live_train(1, 4, 1);
+        let start = s.begin_live_train(Some(1), 4, 1);
         assert!(start.ok);
         let cont = s.run_one_live_batch();
         assert!(!cont, "un solo lote debe terminar");
@@ -776,15 +890,70 @@ mod tests {
         let mut s = AppState::new();
         s.probe =
             PeripheralProbe::Lexicon(crate::field_linguistic_layer::GemmaShapedLexicon::new(5));
-        let _ = s.begin_live_train(1, 2, 1);
+        let _ = s.begin_live_train(Some(1), 2, 1);
         let snap = s.train_job.snapshot_for_api();
         let v = serde_json::to_value(&snap).unwrap();
         assert!(v.get("job_id").is_some());
         assert!(v.get("running").is_some());
         assert!(v.get("current_batch").is_some());
         assert!(v.get("total_batches").is_some());
+        assert!(v.get("infinite").is_some());
+        assert!(v.get("datasets_saved").is_some());
         assert!(v.get("events").is_some());
         assert!(v.get("engrams").is_some());
         while s.run_one_live_batch() {}
+    }
+
+    #[test]
+    fn infinite_train_runs_until_cancel_saves_datasets() {
+        let mut s = AppState::new();
+        s.probe =
+            PeripheralProbe::Lexicon(crate::field_linguistic_layer::GemmaShapedLexicon::new(7));
+        let before = s.fuse.engram_count();
+        let start = s.begin_live_train(None, 4, 1);
+        assert!(start.ok);
+        assert_eq!(start.infinite, Some(true));
+        assert!(s.train_job.infinite);
+        assert!(s.train_job.total_batches.is_none());
+
+        assert!(s.run_one_live_batch());
+        assert!(s.run_one_live_batch());
+        assert!(s.run_one_live_batch());
+        assert!(s.train_job.running);
+        assert_eq!(s.train_job.current_batch, 3);
+        assert_eq!(s.train_job.datasets_saved, 3);
+        assert!(s.fuse.engram_count() > before);
+        assert!(s.train_job.last_dataset_path.is_some());
+
+        let ds_dir = crate::web::train_job::datasets_dir();
+        let n_files = std::fs::read_dir(&ds_dir)
+            .map(|rd| {
+                rd.filter_map(|e| e.ok())
+                    .filter(|e| e.path().extension().map(|x| x == "json").unwrap_or(false))
+                    .count()
+            })
+            .unwrap_or(0);
+        assert!(
+            n_files >= 3,
+            "expected ≥3 dataset files in {:?}, got {n_files}",
+            ds_dir
+        );
+
+        assert!(s.request_train_stop());
+        let cont = s.run_one_live_batch();
+        assert!(!cont, "tras cancel el siguiente lote debe devolver false");
+        assert!(!s.train_job.running);
+    }
+
+    #[test]
+    fn batches_zero_means_infinite() {
+        let mut s = AppState::new();
+        s.probe =
+            PeripheralProbe::Lexicon(crate::field_linguistic_layer::GemmaShapedLexicon::new(11));
+        let start = s.begin_live_train(Some(0), 2, 1);
+        assert!(start.ok);
+        assert!(s.train_job.infinite);
+        assert!(s.request_train_stop());
+        assert!(!s.run_one_live_batch());
     }
 }
