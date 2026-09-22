@@ -1,7 +1,8 @@
 # Multi-stage: build Rust → runtime slim. Sin descargar GGUF en el build.
 # GGUF opcional en runtime vía volumen / env GEMMA2_GGUF.
 
-FROM rust:1.85-bookworm AS builder
+# sysinfo 0.39 / zip 8.x requieren rustc >= 1.95 / 1.88 (no usar 1.85).
+FROM rust:bookworm AS builder
 WORKDIR /src
 RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config libssl-dev cmake clang \
