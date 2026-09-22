@@ -54,6 +54,15 @@ Usuario (UI web)
 
 ## Qué hace la UI
 
+## UI · 4 pestañas (Chat / Entrenamiento / Sueño / Pruebas)
+
+- **Chat**: solo historial + input. El LLM **decodifica** lo que el modelo de campo recuerda (concepto / engramas). No comparte conversación como dataset de train.
+- **Entrenamiento**: consola en vivo, infinito por defecto, start/stop. Datasets vía `generate_train_batch` en periferia (`source_tag=llm_dataset_decoupled`).
+- **Sueño**: `POST /api/sleep` con intensidades de poda/compactación. Minimiza energía libre, compacta fasores, poda rutas RQM débiles, reporta F/simetría/handshake.
+- **Pruebas**: `POST /api/tests/run` evalúa el fuse/campo **ya entrenado** (identidad, shifted, latencia líquido, recall de engramas, F/simetría del último sueño, histograma de rutas). No lanza train infinito. `GET /api/tests/last` y `/api/tests/status`.
+
+
+
 - **Chat** (izquierda): mensajes agenticos; intents `entrena`, `sueño`, `estado`.
 - **Iniciar / Detener entrenamiento**: job async **infinito por defecto** (dataset → líquido → CDT + checkpoint **por dataset**); checkbox Infinito; Detener cancela.
 - **Sueño / consolidar**: `sleep_consolidate` → engramas CDT + reafirma RQM.

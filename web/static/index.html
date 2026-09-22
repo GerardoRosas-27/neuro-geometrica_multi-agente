@@ -3,14 +3,14 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Neuro-Geométrica · Chat agentico</title>
+  <title>Neuro-Geométrica · Campo agentico</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
   <header class="top">
     <div>
-      <h1>Chat agentico · Líquido / CDT / RQM</h1>
-      <p class="sub">LLM = decoder del campo · dataset en periferia · tokens nunca en FieldState</p>
+      <h1>Campo agentico · Líquido / CDT / RQM</h1>
+      <p class="sub">Chat = decoder del campo · Train desacoplado · Sueño optimiza F y simetría · Pruebas evalúan el modelo</p>
     </div>
     <div class="badges">
       <span id="badge-mode" class="badge">modo…</span>
@@ -18,86 +18,138 @@
     </div>
   </header>
 
-  <main class="layout">
-    <section class="chat-panel">
+  <nav class="main-tabs" role="tablist">
+    <button type="button" class="main-tab active" data-main="chat">Chat</button>
+    <button type="button" class="main-tab" data-main="train">Entrenamiento</button>
+    <button type="button" class="main-tab" data-main="sleep">Sueño</button>
+    <button type="button" class="main-tab" data-main="tests">Pruebas</button>
+  </nav>
+
+  <main class="layout-tabs">
+    <!-- CHAT -->
+    <section id="main-chat" class="main-panel active">
       <div id="messages" class="messages" aria-live="polite"></div>
       <form id="chat-form" class="composer">
-        <input id="chat-input" type="text" placeholder="Escribe… (entrena / sueño / estado)" autocomplete="off" />
+        <input id="chat-input" type="text" placeholder="Pregunta al campo (decoder de engramas/conceptos)…" autocomplete="off" />
         <button type="submit">Enviar</button>
       </form>
-      <div class="actions">
-        <button type="button" id="btn-train">Iniciar entrenamiento</button>
-        <label class="chk-infinite" title="Sin tope de lotes; solo Detener">
-          <input type="checkbox" id="chk-infinite" checked /> Infinito
-        </label>
-        <button type="button" id="btn-stop" class="danger">Detener</button>
-        <button type="button" id="btn-sleep">Sueño / consolidar</button>
-        <button type="button" id="btn-refresh">Refrescar telemetría</button>
+    </section>
+
+    <!-- ENTRENAMIENTO -->
+    <section id="main-train" class="main-panel">
+      <div class="panel-grid">
+        <div>
+          <h2>Entrenamiento en vivo</h2>
+          <div class="actions">
+            <button type="button" id="btn-train">Iniciar</button>
+            <label class="chk-infinite" title="Sin tope de lotes; solo Detener">
+              <input type="checkbox" id="chk-infinite" checked /> Infinito
+            </label>
+            <button type="button" id="btn-stop" class="danger">Detener</button>
+            <button type="button" id="btn-refresh-train">Refrescar</button>
+          </div>
+          <div class="progress-wrap">
+            <div id="tr-progress-bar" class="progress-bar" style="width:0%"></div>
+          </div>
+          <p id="tr-progress-label" class="progress-label">Lote — / —</p>
+          <dl class="kv">
+            <dt>Estado</dt><dd id="tr-status">—</dd>
+            <dt>Job</dt><dd id="tr-job">—</dd>
+            <dt>Épocas / lote</dt><dd id="tr-epochs">—</dd>
+            <dt>Precisión</dt><dd id="tr-acc">—</dd>
+            <dt>Engramas</dt><dd id="tr-eng">—</dd>
+            <dt>Dataset</dt><dd id="tr-dataset">—</dd>
+            <dt>Datasets guardados</dt><dd id="tr-ds-saved">—</dd>
+            <dt>Último dataset</dt><dd id="tr-ckpt">—</dd>
+            <dt>Decoder (preview)</dt><dd id="tr-decoded">—</dd>
+          </dl>
+          <h3>Consola de eventos</h3>
+          <pre id="tr-log" class="log"></pre>
+        </div>
+        <aside>
+          <h2>Líquido</h2>
+          <dl class="kv">
+            <dt>Queries</dt><dd id="li-q">—</dd>
+            <dt>Score último</dt><dd id="li-score">—</dd>
+            <dt>Score medio</dt><dd id="li-avg">—</dd>
+            <dt>Latencia µs</dt><dd id="li-lat">—</dd>
+            <dt>Ruta Liquid %</dt><dd id="li-pct">—</dd>
+            <dt>Última ruta</dt><dd id="li-route">—</dd>
+          </dl>
+          <h2>CDT</h2>
+          <dl class="kv">
+            <dt>Engramas</dt><dd id="cd-eng">—</dd>
+            <dt>Wake buffer</dt><dd id="cd-wake">—</dd>
+            <dt>Sueños</dt><dd id="cd-sleeps">—</dd>
+          </dl>
+          <h2>RQM</h2>
+          <dl class="kv">
+            <dt>Infer calls</dt><dd id="rq-inf">—</dd>
+            <dt>Train calls</dt><dd id="rq-tr">—</dd>
+            <dt>Ruta RQM %</dt><dd id="rq-pct">—</dd>
+            <dt>Cues relacionales</dt><dd id="rq-cues">—</dd>
+          </dl>
+        </aside>
       </div>
     </section>
 
-    <aside class="detail-panel">
-      <nav class="tabs" role="tablist">
-        <button type="button" class="tab active" data-tab="train">Entrenamiento</button>
-        <button type="button" class="tab" data-tab="liquid">Líquido</button>
-        <button type="button" class="tab" data-tab="cdt">CDT</button>
-        <button type="button" class="tab" data-tab="rqm">RQM</button>
-      </nav>
-
-      <div id="panel-train" class="tab-panel active">
-        <h2>Entrenamiento en vivo</h2>
-        <div class="progress-wrap">
-          <div id="tr-progress-bar" class="progress-bar" style="width:0%"></div>
-        </div>
-        <p id="tr-progress-label" class="progress-label">Lote — / —</p>
-        <dl class="kv">
-          <dt>Estado</dt><dd id="tr-status">—</dd>
-          <dt>Job</dt><dd id="tr-job">—</dd>
-          <dt>Épocas / lote</dt><dd id="tr-epochs">—</dd>
-          <dt>Precisión</dt><dd id="tr-acc">—</dd>
-          <dt>Engramas</dt><dd id="tr-eng">—</dd>
-          <dt>Dataset</dt><dd id="tr-dataset">—</dd>
-          <dt>Datasets guardados</dt><dd id="tr-ds-saved">—</dd>
-          <dt>Último dataset</dt><dd id="tr-ckpt">—</dd>
-          <dt>Decoder (preview)</dt><dd id="tr-decoded">—</dd>
-        </dl>
-        <h3>Eventos en vivo</h3>
-        <pre id="tr-log" class="log"></pre>
+    <!-- SUEÑO -->
+    <section id="main-sleep" class="main-panel">
+      <h2>Sueño / consolidar + optimizar</h2>
+      <p class="hint">Poda rutas RQM débiles, compacta geometría fasorial y minimiza energía libre hacia más simetría (handshake / octaedro).</p>
+      <div class="actions">
+        <button type="button" id="btn-sleep">Dormir / consolidar</button>
       </div>
-
-      <div id="panel-liquid" class="tab-panel">
-        <h2>Líquido (inferencia rápida)</h2>
-        <dl class="kv">
-          <dt>Queries</dt><dd id="li-q">—</dd>
-          <dt>Score último</dt><dd id="li-score">—</dd>
-          <dt>Score medio</dt><dd id="li-avg">—</dd>
-          <dt>Latencia µs</dt><dd id="li-lat">—</dd>
-          <dt>Ruta Liquid %</dt><dd id="li-pct">—</dd>
-          <dt>Última ruta</dt><dd id="li-route">—</dd>
-        </dl>
+      <div class="sliders">
+        <label>Intensidad poda
+          <input type="range" id="sl-prune" min="0" max="100" value="55" />
+          <span id="sl-prune-val">0.55</span>
+        </label>
+        <label>Intensidad compactación
+          <input type="range" id="sl-compact" min="0" max="100" value="55" />
+          <span id="sl-compact-val">0.55</span>
+        </label>
       </div>
+      <dl class="kv metrics-sleep">
+        <dt>F antes</dt><dd id="sl-f-before">—</dd>
+        <dt>F después</dt><dd id="sl-f-after">—</dd>
+        <dt>Simetría antes</dt><dd id="sl-sym-before">—</dd>
+        <dt>Simetría después</dt><dd id="sl-sym-after">—</dd>
+        <dt>Handshake</dt><dd id="sl-hs">—</dd>
+        <dt>Rutas podadas</dt><dd id="sl-pruned">—</dd>
+        <dt>Fasores compactados</dt><dd id="sl-phasors">—</dd>
+        <dt>Aristas/nodos</dt><dd id="sl-edges">—</dd>
+        <dt>Engramas</dt><dd id="sl-eng">—</dd>
+      </dl>
+      <h3>Informe JSON</h3>
+      <pre id="sl-report" class="log tall">{}</pre>
+    </section>
 
-      <div id="panel-cdt" class="tab-panel">
-        <h2>CDT termo (memoria post-sueño)</h2>
-        <dl class="kv">
-          <dt>Engramas</dt><dd id="cd-eng">—</dd>
-          <dt>Wake buffer</dt><dd id="cd-wake">—</dd>
-          <dt>Sueños</dt><dd id="cd-sleeps">—</dd>
-        </dl>
-        <h3>Último sueño</h3>
-        <pre id="cd-last" class="log"></pre>
+    <!-- PRUEBAS -->
+    <section id="main-tests" class="main-panel">
+      <h2>Pruebas del modelo de campo</h2>
+      <p class="hint">Evalúa el fuse/campo/CDT <strong>ya entrenado</strong> (tras train + sueño). No inicia entrenamiento infinito.</p>
+      <div class="actions">
+        <button type="button" id="btn-tests">Ejecutar batería completa</button>
+        <button type="button" id="btn-tests-refresh">Cargar último</button>
       </div>
-
-      <div id="panel-rqm" class="tab-panel">
-        <h2>RQM (índice / fallback)</h2>
-        <dl class="kv">
-          <dt>Infer calls</dt><dd id="rq-inf">—</dd>
-          <dt>Train calls</dt><dd id="rq-tr">—</dd>
-          <dt>Ruta RQM %</dt><dd id="rq-pct">—</dd>
-          <dt>Cues relacionales</dt><dd id="rq-cues">—</dd>
-        </dl>
-      </div>
-    </aside>
+      <dl class="kv">
+        <dt>Engramas</dt><dd id="te-eng">—</dd>
+        <dt>Había engramas</dt><dd id="te-had">—</dd>
+        <dt>Accuracy identidad</dt><dd id="te-id-acc">—</dd>
+        <dt>Accuracy shifted</dt><dd id="te-sh-acc">—</dd>
+        <dt>Latencia líquido µs (media)</dt><dd id="te-lat">—</dd>
+        <dt>Recall engramas</dt><dd id="te-recall">—</dd>
+        <dt>Energía libre</dt><dd id="te-f">—</dd>
+        <dt>Simetría</dt><dd id="te-sym">—</dd>
+        <dt>Handshake</dt><dd id="te-hs">—</dd>
+        <dt>Histograma rutas</dt><dd id="te-routes">—</dd>
+      </dl>
+      <h3>Desglose por concepto</h3>
+      <pre id="te-concepts" class="log">—</pre>
+      <h3>Informe JSON completo</h3>
+      <pre id="te-report" class="log tall">{}</pre>
+    </section>
   </main>
 
   <script src="/app.js"></script>

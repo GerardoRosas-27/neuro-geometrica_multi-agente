@@ -1,5 +1,7 @@
 //! REST API JSON + estáticos + SSE de entrenamiento en vivo.
 
+use crate::web::field_eval::FieldEvalReport;
+use crate::web::sleep_optimize::{SleepOptimizeOpts, SleepOptimizeReport};
 use crate::web::state::{AppState, ChatRequest};
 use crate::web::telemetry::{FuseReportDto, SleepReportDto, TelemetrySnapshot};
 use crate::web::train_job::{LiveTrainStartRequest, TrainJobSnapshot, TrainLiveEvent};
@@ -43,6 +45,8 @@ pub struct FullTelemetry {
     pub train_log_tail: Vec<crate::web::state::TrainEvent>,
     pub llm_mode: String,
     pub live_job: TrainJobSnapshot,
+    pub last_sleep_optimize: Option<SleepOptimizeReport>,
+    pub last_field_eval: Option<FieldEvalReport>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -138,6 +142,9 @@ pub fn router(state: SharedState, static_dir: PathBuf) -> Router {
         .route("/api/train/events", get(train_events))
         .route("/api/train/stream", get(train_stream))
         .route("/api/sleep", post(sleep))
+        .route("/api/tests/run", post(tests_run))
+        .route("/api/tests/last", get(tests_last))
+        .route("/api/tests/status", get(tests_status))
         .route("/api/telemetry", get(telemetry))
         .route("/api/telemetry/liquid", get(telemetry_liquid))
         .route("/api/telemetry/cdt", get(telemetry_cdt))
@@ -261,10 +268,48 @@ async fn train_stream(
     Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(15)))
 }
 
-async fn sleep(State(st): State<SharedState>) -> impl IntoResponse {
+#[derive(Clone, Debug, Deserialize)]
+pub struct SleepRequest {
+    pub prune_intensity: Option<f64>,
+    pub compact_intensity: Option<f64>,
+    pub consolidate_first: Option<bool>,
+}
+
+async fn sleep(
+    State(st): State<SharedState>,
+    body: Option<Json<SleepRequest>>,
+) -> impl IntoResponse {
+    let req = body.map(|j| j.0).unwrap_or(SleepRequest {
+        prune_intensity: None,
+        compact_intensity: None,
+        consolidate_first: None,
+    });
+    let opts = SleepOptimizeOpts {
+        prune_intensity: req.prune_intensity.unwrap_or(0.55),
+        compact_intensity: req.compact_intensity.unwrap_or(0.55),
+        consolidate_first: req.consolidate_first.unwrap_or(true),
+    };
     let mut g = st.lock().unwrap();
-    let s = g.sleep_now();
-    Json(SleepReportDto::from(&s))
+    let report = g.sleep_optimize(opts);
+    Json(report)
+}
+
+async fn tests_run(State(st): State<SharedState>) -> impl IntoResponse {
+    let report = {
+        let mut g = st.lock().unwrap();
+        g.run_tests()
+    };
+    Json(report)
+}
+
+async fn tests_last(State(st): State<SharedState>) -> impl IntoResponse {
+    let g = st.lock().unwrap();
+    Json(g.tests_status())
+}
+
+async fn tests_status(State(st): State<SharedState>) -> impl IntoResponse {
+    let g = st.lock().unwrap();
+    Json(g.tests_status())
 }
 
 fn build_full(g: &AppState) -> FullTelemetry {
@@ -304,6 +349,8 @@ fn build_full(g: &AppState) -> FullTelemetry {
         train_log_tail: g.train_log.iter().rev().take(50).cloned().collect(),
         llm_mode: g.llm_mode().as_str().into(),
         live_job: live,
+        last_sleep_optimize: g.last_sleep_optimize.clone(),
+        last_field_eval: g.last_field_eval.clone(),
     }
 }
 
@@ -557,6 +604,65 @@ mod tests {
         let g = st.lock().unwrap();
         assert!(!g.train_job.running);
         assert!(g.train_job.cancelled || g.train_job.datasets_saved >= 1);
+    }
+
+    #[tokio::test]
+    async fn sleep_optimize_endpoint_returns_report() {
+        let st = lex_state();
+        {
+            let mut g = st.lock().unwrap();
+            let cands = g.candidates();
+            for i in 0..4 {
+                g.fuse.observe(i, &cands);
+                g.fuse.teach_relation(i, (i + 1) % 8);
+            }
+        }
+        let app = test_router(st);
+        let res = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/sleep")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"prune_intensity":0.5,"compact_intensity":0.5}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert!(v.get("free_energy_before").is_some());
+        assert!(v.get("symmetry_after").is_some());
+        assert!(v.get("routes_pruned").is_some());
+    }
+
+    #[tokio::test]
+    async fn tests_run_endpoint_shape() {
+        let app = test_router(lex_state());
+        let res = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/tests/run")
+                    .header("content-type", "application/json")
+                    .body(Body::from("{}"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert!(v.get("identity_accuracy").is_some());
+        assert!(v.get("per_concept").is_some());
+        assert!(v.get("route_histogram").is_some());
     }
 
     #[tokio::test]

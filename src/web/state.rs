@@ -3,9 +3,11 @@
 use crate::field_hybrid_infer::FieldHybridInfer;
 use crate::liquid_cdt_memory::SleepReport;
 use crate::liquid_cdt_rqm_fuse::{FuseReport, FusedLiquidCdt, InferRoute};
+use crate::web::field_eval::{run_field_eval, FieldEvalReport, FieldEvalStatus};
 use crate::web::llm_periphery::{
     generate_train_batch, open_best_probe, ConceptDecoder, LlmMode, PeripheralProbe, NUM_CONCEPTS,
 };
+use crate::web::sleep_optimize::{run_sleep_optimize, SleepOptimizeOpts, SleepOptimizeReport};
 use crate::web::telemetry::{FuseReportDto, SleepReportDto, TelemetrySnapshot};
 use crate::web::train_job::{
     batch_metrics, relation_target, write_checkpoint, write_dataset_checkpoint, write_latest_index,
@@ -78,6 +80,9 @@ pub struct AppState {
     pub training: bool,
     pub started_ms: u64,
     pub train_job: TrainJob,
+    pub last_sleep_optimize: Option<SleepOptimizeReport>,
+    pub last_field_eval: Option<FieldEvalReport>,
+    pub field_eval_running: bool,
 }
 
 impl AppState {
@@ -98,6 +103,9 @@ impl AppState {
             training: false,
             started_ms: now_ms(),
             train_job: TrainJob::default(),
+            last_sleep_optimize: None,
+            last_field_eval: None,
+            field_eval_running: false,
         }
     }
 
@@ -272,6 +280,11 @@ impl AppState {
             report.predicted,
             route,
             report.liquid_score,
+        );
+        let eng = self.fuse.engram_count();
+        let reply = format!(
+            "{reply}\n\n[memoria de campo] engramas={eng} · concepto recordado={} · interpretación decoder-only del modelo de campo (no chat genérico).",
+            decoded
         );
 
         self.last_fuse = Some(report.clone());
@@ -457,12 +470,12 @@ impl AppState {
         self.train_job.push_event(
             "dataset",
             format!(
-                "dataset lote {batch}: {} ejemplos (source={source})",
+                "dataset lote {batch}: {} ejemplos (source={source}, tag=llm_dataset_decoupled)",
                 examples.len()
             ),
             Some(batch),
             Some(self.fuse.engram_count()),
-            json!({ "source": source, "n": examples.len() }),
+            json!({ "source": source, "n": examples.len(), "source_tag": "llm_dataset_decoupled" }),
         );
 
         let cands = self.candidates();
@@ -754,7 +767,39 @@ impl AppState {
     }
 
     pub fn sleep_now(&mut self) -> SleepReport {
-        let sleep = self.fuse.sleep_consolidate();
+        let _ = self.sleep_optimize(SleepOptimizeOpts::default());
+        self.last_sleep.clone().unwrap_or(SleepReport {
+            episodes_consolidated: 0,
+            engrams_before: 0,
+            engrams_after: self.fuse.engram_count(),
+            used_rqm: false,
+            rqm_relations_trained: 0,
+            sleep_ms: 0.0,
+        })
+    }
+
+    /// Sueño + poda/compactación + minimización de energía libre.
+    pub fn sleep_optimize(&mut self, opts: SleepOptimizeOpts) -> SleepOptimizeReport {
+        let cfg = self
+            .field_hybrid
+            .as_ref()
+            .map(|h| h.cfg)
+            .unwrap_or_default();
+        // FieldState dedicado o el del híbrido.
+        if self.field_hybrid.is_none() {
+            self.field_hybrid = Some(FieldHybridInfer::new(0x51EE_0001));
+        }
+        let field = &mut self.field_hybrid.as_mut().unwrap().field;
+        let report = run_sleep_optimize(&mut self.fuse, field, &cfg, opts);
+        // Compat: también actualiza last_sleep CDT.
+        let sleep = SleepReport {
+            episodes_consolidated: report.episodes_consolidated,
+            engrams_before: report.engrams_before,
+            engrams_after: report.engrams_after,
+            used_rqm: report.used_rqm,
+            rqm_relations_trained: report.rqm_relations_trained,
+            sleep_ms: report.sleep_ms,
+        };
         self.metrics.record_sleep(
             &sleep,
             self.fuse.engram_count(),
@@ -766,8 +811,39 @@ impl AppState {
             self.fuse.engram_count(),
             self.fuse.wake_buffer_len(),
         );
-        self.last_sleep = Some(sleep.clone());
-        sleep
+        self.last_sleep = Some(sleep);
+        self.last_sleep_optimize = Some(report.clone());
+        report
+    }
+
+    /// Suite de pruebas del modelo ya entrenado (no lanza train infinito).
+    pub fn run_tests(&mut self) -> FieldEvalReport {
+        self.field_eval_running = true;
+        let cfg = self
+            .field_hybrid
+            .as_ref()
+            .map(|h| h.cfg)
+            .unwrap_or_default();
+        let field_ref = self.field_hybrid.as_ref().map(|h| &h.field);
+        // Evitar borrow doble: clonar campo si existe.
+        let field_owned = field_ref.cloned();
+        let last_sleep = self.last_sleep_optimize.clone();
+        let report = run_field_eval(
+            &mut self.fuse,
+            field_owned.as_ref(),
+            &cfg,
+            last_sleep.as_ref(),
+        );
+        self.last_field_eval = Some(report.clone());
+        self.field_eval_running = false;
+        report
+    }
+
+    pub fn tests_status(&self) -> FieldEvalStatus {
+        FieldEvalStatus {
+            running: self.field_eval_running,
+            last: self.last_field_eval.clone(),
+        }
     }
 
     pub fn last_fuse_dto(&self) -> Option<FuseReportDto> {
@@ -943,6 +1019,52 @@ mod tests {
         let cont = s.run_one_live_batch();
         assert!(!cont, "tras cancel el siguiente lote debe devolver false");
         assert!(!s.train_job.running);
+    }
+
+    #[test]
+    fn chat_does_not_feed_train_dataset() {
+        let mut s = AppState::new();
+        s.probe =
+            PeripheralProbe::Lexicon(crate::field_linguistic_layer::GemmaShapedLexicon::new(3));
+        s.decoder = ConceptDecoder::new(LlmMode::Lexicon);
+        let _ = s.handle_chat("hola campo de prueba único xyz");
+        assert!(
+            s.train_job.events.iter().all(|e| e.kind != "dataset"),
+            "chat must not create train dataset events"
+        );
+        assert!(s.chat_log.len() >= 2);
+    }
+
+    #[test]
+    fn sleep_optimize_report_improves() {
+        let mut s = AppState::new();
+        s.probe =
+            PeripheralProbe::Lexicon(crate::field_linguistic_layer::GemmaShapedLexicon::new(9));
+        let cands = s.candidates();
+        for i in 0..8 {
+            s.fuse.observe(i, &cands);
+            s.fuse.teach_relation(i, (i + 2) % 8);
+        }
+        let report = s.sleep_optimize(SleepOptimizeOpts {
+            prune_intensity: 0.5,
+            compact_intensity: 0.6,
+            consolidate_first: true,
+        });
+        let energy_ok = report.free_energy_after <= report.free_energy_before + 1e-6;
+        let sym_ok = report.symmetry_after + 1e-9 >= report.symmetry_before;
+        assert!(energy_ok || sym_ok);
+        assert!(serde_json::to_value(&report)
+            .unwrap()
+            .get("routes_pruned")
+            .is_some());
+    }
+
+    #[test]
+    fn field_eval_runs_without_engrams() {
+        let mut s = AppState::new();
+        let r = s.run_tests();
+        assert_eq!(r.identity_total, NUM_CONCEPTS);
+        assert!(!r.had_engrams);
     }
 
     #[test]
