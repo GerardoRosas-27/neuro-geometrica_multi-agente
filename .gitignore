@@ -35,4 +35,6 @@ __pycache__/
 
 # Checkpoints de train en vivo (runtime)
 data/checkpoints/*.json
+data/checkpoints/datasets/
 !data/checkpoints/.gitkeep
+!data/checkpoints/datasets/.gitkeep

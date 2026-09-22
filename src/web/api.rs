@@ -183,7 +183,9 @@ async fn train_start(
     State(st): State<SharedState>,
     Json(body): Json<LiveTrainStartRequest>,
 ) -> impl IntoResponse {
-    let batches = body.batches.unwrap_or(4);
+    use crate::web::train_job::parse_batches_field;
+    // missing / null / 0 / "infinite" → infinito (default).
+    let batches = parse_batches_field(body.batches.as_ref());
     let batch_size = body.batch_size.unwrap_or(8);
     let epochs = body.epochs.unwrap_or(1);
     let started = {
@@ -493,11 +495,77 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn train_start_omitted_batches_is_infinite_then_stop() {
+        let st = lex_state();
+        let app = test_router(st.clone());
+        let res = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/train/start")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"batch_size":3,"epochs":1}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["ok"], true);
+        assert_eq!(v["infinite"], true);
+
+        // Dejar correr al menos un lote.
+        for _ in 0..80 {
+            tokio::time::sleep(Duration::from_millis(25)).await;
+            let g = st.lock().unwrap();
+            if g.train_job.current_batch >= 1 || g.train_job.datasets_saved >= 1 {
+                break;
+            }
+        }
+        {
+            let g = st.lock().unwrap();
+            assert!(g.train_job.infinite);
+            assert!(g.train_job.total_batches.is_none());
+            assert!(g.train_job.running || g.train_job.datasets_saved >= 1);
+        }
+
+        let stop = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/train/stop")
+                    .header("content-type", "application/json")
+                    .body(Body::from("{}"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(stop.status(), StatusCode::OK);
+
+        for _ in 0..100 {
+            tokio::time::sleep(Duration::from_millis(25)).await;
+            let g = st.lock().unwrap();
+            if !g.train_job.running {
+                break;
+            }
+        }
+        let g = st.lock().unwrap();
+        assert!(!g.train_job.running);
+        assert!(g.train_job.cancelled || g.train_job.datasets_saved >= 1);
+    }
+
+    #[tokio::test]
     async fn live_train_start_response_shape() {
         let _ = crate::web::train_job::LiveTrainStartResponse {
             ok: true,
             job_id: "x".into(),
             message: "ok".into(),
+            infinite: Some(true),
         };
     }
 }

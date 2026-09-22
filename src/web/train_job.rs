@@ -1,11 +1,14 @@
 //! Job de entrenamiento en vivo: dataset LLM (periferia) → líquido → CDT por lotes.
 //!
-//! Pipeline por lote:
+//! Pipeline por lote/dataset:
 //! 1. Generar dataset (Gemma o curriculum `lexicon_synth`) — solo periferia.
 //! 2. Encode texto → features → concept_id (firewall; sin tokens en FieldState).
 //! 3. `fuse.observe` / `fuse.infer` (ruta líquida / WavePredictCore).
-//! 4. `sleep_consolidate` → engramas CDT + checkpoint en `data/checkpoints/`.
+//! 4. `sleep_consolidate` → engramas CDT + checkpoint **por dataset** en
+//!    `data/checkpoints/datasets/`.
 //! 5. Decode opcional concepto→texto (LLM decoder only).
+//!
+//! Por defecto el entrenamiento es **infinito** (solo para con cancel/stop).
 
 use crate::web::llm_periphery::{generate_train_batch, TrainExample, NUM_CONCEPTS};
 use crate::web::telemetry::SleepReportDto;
@@ -43,8 +46,11 @@ pub struct TrainJob {
     pub job_id: String,
     pub running: bool,
     pub cancelled: bool,
+    /// Contador monotónico de datasets/lotes completados (0, 1, 2…).
     pub current_batch: usize,
-    pub total_batches: usize,
+    /// `None` cuando `infinite == true`.
+    pub total_batches: Option<usize>,
+    pub infinite: bool,
     pub epochs: usize,
     pub batch_size: usize,
     pub events: VecDeque<TrainLiveEvent>,
@@ -57,6 +63,8 @@ pub struct TrainJob {
     pub event_seq: u64,
     pub correct: u64,
     pub total: u64,
+    pub datasets_saved: usize,
+    pub last_dataset_path: Option<String>,
 }
 
 impl Default for TrainJob {
@@ -66,7 +74,8 @@ impl Default for TrainJob {
             running: false,
             cancelled: false,
             current_batch: 0,
-            total_batches: 0,
+            total_batches: None,
+            infinite: true,
             epochs: 1,
             batch_size: 8,
             events: VecDeque::new(),
@@ -79,6 +88,8 @@ impl Default for TrainJob {
             event_seq: 0,
             correct: 0,
             total: 0,
+            datasets_saved: 0,
+            last_dataset_path: None,
         }
     }
 }
@@ -123,6 +134,7 @@ impl TrainJob {
             cancelled: self.cancelled,
             current_batch: self.current_batch,
             total_batches: self.total_batches,
+            infinite: self.infinite,
             epochs: self.epochs,
             batch_size: self.batch_size,
             events: self.events.iter().cloned().collect(),
@@ -133,6 +145,8 @@ impl TrainJob {
             last_decoded: self.last_decoded.clone(),
             dataset_source: self.dataset_source.clone(),
             event_seq: self.event_seq,
+            datasets_saved: self.datasets_saved,
+            last_dataset_path: self.last_dataset_path.clone(),
         }
     }
 }
@@ -143,7 +157,8 @@ pub struct TrainJobSnapshot {
     pub running: bool,
     pub cancelled: bool,
     pub current_batch: usize,
-    pub total_batches: usize,
+    pub total_batches: Option<usize>,
+    pub infinite: bool,
     pub epochs: usize,
     pub batch_size: usize,
     pub events: Vec<TrainLiveEvent>,
@@ -154,15 +169,52 @@ pub struct TrainJobSnapshot {
     pub last_decoded: Option<String>,
     pub dataset_source: Option<String>,
     pub event_seq: u64,
+    pub datasets_saved: usize,
+    pub last_dataset_path: Option<String>,
 }
 
+/// Request de arranque. `batches` acepta número, null, 0 o `"infinite"`.
 #[derive(Clone, Debug, Deserialize)]
 pub struct LiveTrainStartRequest {
-    pub batches: Option<usize>,
+    #[serde(default)]
+    pub batches: Option<Value>,
     pub batch_size: Option<usize>,
     pub epochs: Option<usize>,
     /// Compat con API antigua.
     pub concepts: Option<Vec<usize>>,
+}
+
+/// Interpreta el campo `batches` del body.
+/// `None` = entrenamiento infinito.
+pub fn parse_batches_field(batches: Option<&Value>) -> Option<usize> {
+    match batches {
+        None | Some(Value::Null) => None,
+        Some(Value::Number(n)) => {
+            let u = n.as_u64().unwrap_or(0) as usize;
+            if u == 0 {
+                None
+            } else {
+                Some(u)
+            }
+        }
+        Some(Value::String(s)) => {
+            let t = s.trim();
+            if t.is_empty()
+                || t.eq_ignore_ascii_case("infinite")
+                || t == "∞"
+                || t.eq_ignore_ascii_case("inf")
+            {
+                None
+            } else {
+                match t.parse::<usize>() {
+                    Ok(0) | Err(_) => None,
+                    Ok(n) => Some(n),
+                }
+            }
+        }
+        Some(Value::Bool(false)) => None,
+        Some(_) => None,
+    }
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -170,6 +222,8 @@ pub struct LiveTrainStartResponse {
     pub ok: bool,
     pub job_id: String,
     pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub infinite: Option<bool>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -186,6 +240,32 @@ pub struct CheckpointFile {
     pub ts_ms: u64,
 }
 
+/// Checkpoint rico **por dataset** (ejemplos + métricas líquido + sueño + decoder).
+#[derive(Clone, Debug, Serialize)]
+pub struct DatasetCheckpointFile {
+    pub dataset_id: String,
+    pub job_id: String,
+    pub batch: usize,
+    pub source: String,
+    pub examples: Vec<TrainExample>,
+    pub liquid: LiquidDatasetMetrics,
+    pub sleep: Option<SleepReportDto>,
+    pub decoder_preview: Option<String>,
+    pub engrams: usize,
+    pub accuracy: Option<f64>,
+    pub ts_ms: u64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct LiquidDatasetMetrics {
+    pub scores: Vec<f64>,
+    pub preds: Vec<usize>,
+    pub correct: u64,
+    pub total: u64,
+    pub last_score: f64,
+    pub last_pred: usize,
+}
+
 pub fn checkpoints_dir() -> PathBuf {
     let candidates = [
         PathBuf::from("data/checkpoints"),
@@ -200,8 +280,18 @@ pub fn checkpoints_dir() -> PathBuf {
     PathBuf::from("data/checkpoints")
 }
 
+pub fn datasets_dir() -> PathBuf {
+    checkpoints_dir().join("datasets")
+}
+
 pub fn ensure_checkpoints_dir() -> std::io::Result<PathBuf> {
     let dir = checkpoints_dir();
+    fs::create_dir_all(&dir)?;
+    Ok(dir)
+}
+
+pub fn ensure_datasets_dir() -> std::io::Result<PathBuf> {
+    let dir = datasets_dir();
     fs::create_dir_all(&dir)?;
     Ok(dir)
 }
@@ -213,6 +303,36 @@ pub fn write_checkpoint(file: &CheckpointFile) -> std::io::Result<PathBuf> {
     let json = serde_json::to_vec_pretty(file)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
     fs::write(&path, json)?;
+    Ok(path)
+}
+
+pub fn write_dataset_checkpoint(file: &DatasetCheckpointFile) -> std::io::Result<PathBuf> {
+    let dir = ensure_datasets_dir()?;
+    let name = format!("train_{}_ds_{}.json", file.ts_ms, file.batch);
+    let path = dir.join(name);
+    let json = serde_json::to_vec_pretty(file)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    fs::write(&path, json)?;
+    Ok(path)
+}
+
+/// Índice pequeño apuntando al último checkpoint de dataset.
+pub fn write_latest_index(
+    dataset_path: &str,
+    job_id: &str,
+    batch: usize,
+    datasets_saved: usize,
+) -> std::io::Result<PathBuf> {
+    let dir = ensure_checkpoints_dir()?;
+    let path = dir.join("latest.json");
+    let body = json!({
+        "last_dataset_path": dataset_path,
+        "job_id": job_id,
+        "batch": batch,
+        "datasets_saved": datasets_saved,
+        "ts_ms": now_ms(),
+    });
+    fs::write(&path, serde_json::to_vec_pretty(&body)?)?;
     Ok(path)
 }
 
@@ -287,6 +407,59 @@ mod tests {
         assert_eq!(v["job_id"], "test-job");
         assert_eq!(v["engrams"], 3);
         let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn dataset_checkpoint_and_latest() {
+        let file = DatasetCheckpointFile {
+            dataset_id: "ds_test_0".into(),
+            job_id: "test-job".into(),
+            batch: 0,
+            source: "lexicon_synth".into(),
+            examples: vec![TrainExample {
+                text: "hola".into(),
+                concept: 1,
+            }],
+            liquid: LiquidDatasetMetrics {
+                scores: vec![0.9],
+                preds: vec![1],
+                correct: 1,
+                total: 1,
+                last_score: 0.9,
+                last_pred: 1,
+            },
+            sleep: None,
+            decoder_preview: Some("hola".into()),
+            engrams: 2,
+            accuracy: Some(1.0),
+            ts_ms: 1_700_000_000_001,
+        };
+        let path = write_dataset_checkpoint(&file).expect("write ds");
+        assert!(path.exists());
+        assert!(path.to_string_lossy().contains("datasets"));
+        let latest = write_latest_index(path.to_str().unwrap(), "test-job", 0, 1).expect("latest");
+        assert!(latest.exists());
+        let raw = fs::read_to_string(&latest).unwrap();
+        let v: Value = serde_json::from_str(&raw).unwrap();
+        assert_eq!(v["datasets_saved"], 1);
+        let _ = fs::remove_file(&path);
+        let _ = fs::remove_file(&latest);
+    }
+
+    #[test]
+    fn parse_batches_infinite_cases() {
+        assert_eq!(parse_batches_field(None), None);
+        assert_eq!(parse_batches_field(Some(&Value::Null)), None);
+        assert_eq!(parse_batches_field(Some(&json!(0))), None);
+        assert_eq!(
+            parse_batches_field(Some(&Value::String("infinite".into()))),
+            None
+        );
+        assert_eq!(parse_batches_field(Some(&json!(2))), Some(2));
+        assert_eq!(
+            parse_batches_field(Some(&Value::String("3".into()))),
+            Some(3)
+        );
     }
 
     #[test]

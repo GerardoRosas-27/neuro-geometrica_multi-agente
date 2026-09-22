@@ -55,7 +55,7 @@ Usuario (UI web)
 ## Qué hace la UI
 
 - **Chat** (izquierda): mensajes agenticos; intents `entrena`, `sueño`, `estado`.
-- **Iniciar / Detener entrenamiento**: job async por lotes (dataset → líquido → CDT + checkpoint); UI en vivo.
+- **Iniciar / Detener entrenamiento**: job async **infinito por defecto** (dataset → líquido → CDT + checkpoint **por dataset**); checkbox Infinito; Detener cancela.
 - **Sueño / consolidar**: `sleep_consolidate` → engramas CDT + reafirma RQM.
 - **Paneles** (derecha): Entrenamiento en vivo (barra, eventos, checkpoint, decoder) · Líquido · CDT · RQM.
 
@@ -63,29 +63,31 @@ Usuario (UI web)
 
 ## Entrenamiento en vivo (LLM dataset + líquido + CDT)
 
-Pipeline por **lote** (no bloquea el servidor Axum):
+Pipeline por **dataset/lote** (no bloquea el servidor Axum). Corre **hasta Detener** salvo que pidas un tope finito:
 
 1. **Dataset en periferia** — `generate_train_batch` (fuente `gemma` o `lexicon_synth`).
 2. Encode texto → features → `concept_id` (firewall; **sin tokens** en FieldState).
 3. Inferencia **líquida** (`FusedLiquidCdt` / `WavePredictCore`) + `observe` / `teach_relation`.
-4. **`sleep_consolidate`** → engramas CDT; checkpoint JSON en `data/checkpoints/train_{ts}_batch_{i}.json`.
-5. **LLM decoder only** — `decode_field_concept` para preview en UI (concepto → texto).
+4. **`sleep_consolidate`** → engramas CDT.
+5. **Checkpoint por dataset** en `data/checkpoints/datasets/train_{ts}_ds_{n}.json` (ejemplos, métricas líquido, sueño, decoder) + índice `data/checkpoints/latest.json`. Resumen de lote compat en `train_{ts}_batch_{i}.json`.
+6. **LLM decoder only** — preview en UI (concepto → texto).
 
 ### API
 
 | Método | Ruta | Notas |
 |--------|------|--------|
-| POST | `/api/train/start` | `{ "batches": 4, "batch_size": 8, "epochs": 1 }` → `{ ok, job_id }` inmediato |
+| POST | `/api/train/start` | Sin `batches` / `null` / `0` / `"infinite"` → **∞**. Finito: `{ "batches": 4, ... }`. Respuesta: `{ ok, job_id, infinite }` |
 | POST | `/api/train/stop` | cancela el job |
-| GET | `/api/train/status` | snapshot `TrainJob` |
+| GET | `/api/train/status` | snapshot: `infinite`, `current_batch`, `total_batches` (null si ∞), `datasets_saved`, `last_dataset_path` |
 | GET | `/api/train/events?after=N` | eventos nuevos (polling ~500 ms) |
 | GET | `/api/train/stream` | SSE `text/event-stream` |
 
 ### Checkpoints
 
 - Ruta relativa al CWD: `./data/checkpoints/` (en Docker `/app/data/checkpoints`).
+- **Por dataset:** `./data/checkpoints/datasets/train_{ts}_ds_{n}.json` (id, ejemplos, source, liquid scores/preds, sleep, decoder).
+- Índice: `./data/checkpoints/latest.json` → último dataset.
 - Volumen Railway opcional si quieres persistir entre deploys.
-- Contenido mínimo: job_id, batch, engrams, accuracy, sleep report, relational_cues, cola de eventos.
 
 ### Rol del LLM
 

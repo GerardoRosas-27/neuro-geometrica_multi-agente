@@ -27,6 +27,9 @@
       </form>
       <div class="actions">
         <button type="button" id="btn-train">Iniciar entrenamiento</button>
+        <label class="chk-infinite" title="Sin tope de lotes; solo Detener">
+          <input type="checkbox" id="chk-infinite" checked /> Infinito
+        </label>
         <button type="button" id="btn-stop" class="danger">Detener</button>
         <button type="button" id="btn-sleep">Sueño / consolidar</button>
         <button type="button" id="btn-refresh">Refrescar telemetría</button>
@@ -54,7 +57,8 @@
           <dt>Precisión</dt><dd id="tr-acc">—</dd>
           <dt>Engramas</dt><dd id="tr-eng">—</dd>
           <dt>Dataset</dt><dd id="tr-dataset">—</dd>
-          <dt>Checkpoint</dt><dd id="tr-ckpt">—</dd>
+          <dt>Datasets guardados</dt><dd id="tr-ds-saved">—</dd>
+          <dt>Último dataset</dt><dd id="tr-ckpt">—</dd>
           <dt>Decoder (preview)</dt><dd id="tr-decoded">—</dd>
         </dl>
         <h3>Eventos en vivo</h3>
