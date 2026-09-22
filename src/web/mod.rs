@@ -1,14 +1,16 @@
-//! App web agentica: chat + telemetría líquido / CDT / RQM.
+//! App web agentica: chat + telemetría líquido / CDT / RQM + entrenamiento en vivo.
 //!
 //! Activar con `--features web`. El binario `agentic_web` la consume.
-//! Arquitectura: Líquido = inferencia rápida; CDT = memoria post-sueño;
-//! RQM = índice relacional / fallback; LLM = solo periferia texto↔concepto
-//! (los token_ids **nunca** entran a FieldState).
+//! Arquitectura: Líquido = inferencia rápida (`WavePredictCore`); CDT = memoria
+//! post-sueño por lotes; RQM = índice relacional / fallback;
+//! LLM = **decoder only** del campo (+ generación de dataset en periferia).
+//! Los token_ids **nunca** entran a FieldState.
 
 pub mod api;
 pub mod llm_periphery;
 pub mod state;
 pub mod telemetry;
+pub mod train_job;
 
 pub use api::router;
 pub use state::AppState;

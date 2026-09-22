@@ -32,3 +32,7 @@ __pycache__/
 # Journals y estado de sesion (Dyamon, chats, agent-graph.json). Conservar
 # el fixture de ejemplo en data/examples/.
 /data/native_gemma2_circadian/
+
+# Checkpoints de train en vivo (runtime)
+data/checkpoints/*.json
+!data/checkpoints/.gitkeep
