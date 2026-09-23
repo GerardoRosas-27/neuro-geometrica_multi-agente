@@ -3,6 +3,7 @@
 
 use crate::field_substrate::{free_energy, handshake, FieldConfig, FieldState};
 use crate::liquid_cdt_rqm_fuse::{FusedLiquidCdt, InferRoute};
+use crate::web::experiment_suite::ExperimentSuiteReport;
 use crate::web::sleep_optimize::{symmetry_score, SleepOptimizeReport};
 use serde::Serialize;
 use std::collections::HashMap;
@@ -42,6 +43,9 @@ pub struct FieldEvalReport {
     pub per_concept: Vec<ConceptEvalRow>,
     pub notes: Vec<String>,
     pub elapsed_ms: f64,
+    /// Suite de experimentos UI (E8–E30 smokes); None si solo field_eval síncrono.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub experiment_suite: Option<ExperimentSuiteReport>,
 }
 
 #[derive(Clone, Debug, Default, Serialize)]
@@ -211,6 +215,7 @@ pub fn run_field_eval_with_progress(
         per_concept: rows,
         notes,
         elapsed_ms: t0.elapsed().as_secs_f64() * 1e3,
+        experiment_suite: None,
     }
 }
 

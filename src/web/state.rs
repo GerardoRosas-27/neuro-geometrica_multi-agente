@@ -3,6 +3,7 @@
 use crate::field_hybrid_infer::FieldHybridInfer;
 use crate::liquid_cdt_memory::SleepReport;
 use crate::liquid_cdt_rqm_fuse::{FuseReport, FusedLiquidCdt, InferRoute};
+use crate::web::experiment_suite::{run_ui_experiment_suite, ExperimentSuiteReport};
 use crate::web::field_eval::{run_field_eval_with_progress, FieldEvalReport, FieldEvalStatus};
 use crate::web::llm_periphery::{
     generate_train_batch, open_best_probe, ConceptDecoder, LlmMode, PeripheralProbe, NUM_CONCEPTS,
@@ -90,6 +91,10 @@ pub struct AppState {
     pub last_sleep_optimize: Option<SleepOptimizeReport>,
     pub last_field_eval: Option<FieldEvalReport>,
     pub field_eval_running: bool,
+    /// True tras completar ≥1 lote de train (o si hay engramas/datasets).
+    pub ever_trained: bool,
+    /// Última suite de experimentos (pestaña Pruebas).
+    pub last_experiment_suite: Option<ExperimentSuiteReport>,
 }
 
 impl AppState {
@@ -115,7 +120,14 @@ impl AppState {
             last_sleep_optimize: None,
             last_field_eval: None,
             field_eval_running: false,
+            ever_trained: false,
+            last_experiment_suite: None,
         }
+    }
+
+    /// Evidencia de entrenamiento previo para gate de sueño.
+    pub fn has_training_evidence(&self) -> bool {
+        self.ever_trained || self.train_job.datasets_saved > 0 || self.fuse.engram_count() > 0
     }
 
     pub fn llm_mode(&self) -> LlmMode {
@@ -185,6 +197,33 @@ impl AppState {
         }
 
         if looks_like_sleep(&lower) {
+            if !self.has_training_evidence() {
+                let reply = "Necesitas entrenar antes de dormir (al menos 1 lote o engramas/datasets_saved > 0). Usa la pestaña Entrenamiento.".to_string();
+                self.chat_log.push(ChatTurn {
+                    role: "user".into(),
+                    text: msg.into(),
+                    route: None,
+                    concept_in: None,
+                    concept_out: None,
+                });
+                self.chat_log.push(ChatTurn {
+                    role: "agent".into(),
+                    text: reply.clone(),
+                    route: Some("sleep".into()),
+                    concept_in: None,
+                    concept_out: None,
+                });
+                return ChatResponse {
+                    reply,
+                    route: "sleep".into(),
+                    concept_in: 0,
+                    concept_out: 0,
+                    liquid_score: 0.0,
+                    rqm_score: None,
+                    engrams: self.fuse.engram_count(),
+                    decoded: self.decoder.decode_field_concept(1),
+                };
+            }
             let sleep = self.sleep_now();
             let reply = format!(
                 "Sueño consolidado: {} episodios → engramas {}→{} ({} ms).",
@@ -375,6 +414,8 @@ impl AppState {
             total: 0,
             datasets_saved: 0,
             last_dataset_path: self.train_job.last_dataset_path.clone(),
+            last_dataset_family: None,
+            last_experiment_ids: Vec::new(),
         };
         self.training = true;
         let mode_msg = if infinite {
@@ -473,18 +514,34 @@ impl AppState {
             json!({ "infinite": self.train_job.infinite }),
         );
 
-        let (examples, source) = generate_train_batch(batch_size, seed, gemma);
+        let (examples, meta) = generate_train_batch(batch_size, seed, gemma);
+        let source = meta.source;
+        let family = meta.dataset_family;
+        let exp_ids: Vec<String> = meta
+            .experiment_ids
+            .iter()
+            .map(|s| (*s).to_string())
+            .collect();
         self.train_job.dataset_source = Some(source.into());
+        self.train_job.last_dataset_family = Some(family.into());
+        self.train_job.last_experiment_ids = exp_ids.clone();
         self.train_job.dataset_size = self.train_job.dataset_size.saturating_add(examples.len());
         self.train_job.push_event(
             "dataset",
             format!(
-                "dataset lote {batch}: {} ejemplos (source={source}, tag=llm_dataset_decoupled)",
-                examples.len()
+                "dataset lote {batch}: {} ejemplos (source={source}, familia={family}, exps={:?})",
+                examples.len(),
+                meta.experiment_ids
             ),
             Some(batch),
             Some(self.fuse.engram_count()),
-            json!({ "source": source, "n": examples.len(), "source_tag": "llm_dataset_decoupled" }),
+            json!({
+                "source": source,
+                "n": examples.len(),
+                "source_tag": "llm_dataset_decoupled",
+                "dataset_family": family,
+                "experiment_ids": meta.experiment_ids,
+            }),
         );
 
         let cands = self.candidates();
@@ -575,6 +632,8 @@ impl AppState {
             job_id: self.train_job.job_id.clone(),
             batch,
             source: source.into(),
+            dataset_family: Some(family.into()),
+            experiment_ids: exp_ids.clone(),
             examples: examples.clone(),
             liquid: LiquidDatasetMetrics {
                 scores,
@@ -594,6 +653,7 @@ impl AppState {
             Ok(path) => {
                 let path_s = path.display().to_string();
                 self.train_job.datasets_saved = self.train_job.datasets_saved.saturating_add(1);
+                self.ever_trained = true;
                 self.train_job.last_dataset_path = Some(path_s.clone());
                 let _ = write_latest_index(
                     &path_s,
@@ -685,6 +745,8 @@ impl AppState {
         );
 
         self.train_job.current_batch = batch + 1;
+        // Lote completado (aunque falle checkpoint): evidencia de train para sueño.
+        self.ever_trained = true;
 
         if self.train_job.cancelled {
             self.finish_live_train(true);
@@ -845,6 +907,14 @@ impl AppState {
                 ok: false,
                 job_id: self.sleep_job.job_id.clone(),
                 message: "ya hay un sueño en curso".into(),
+                infinite: None,
+            };
+        }
+        if !self.has_training_evidence() {
+            return SleepStartResponse {
+                ok: false,
+                job_id: self.sleep_job.job_id.clone(),
+                message: "necesitas entrenar antes de dormir (al menos 1 lote o engramas/datasets_saved > 0)".into(),
                 infinite: None,
             };
         }
@@ -1161,10 +1231,53 @@ impl AppState {
             }),
         );
 
+        // 1) Suite de experimentos (siempre; harness independientes).
+        self.tests_job.phase = "experiment_suite".into();
+        self.tests_job.push_event(
+            "suite_start",
+            "suite experimentos E8–E10 / E13·E15 / Clean-Room v2 smoke",
+            serde_json::json!({ "cycle": cycle }),
+        );
+        let suite = run_ui_experiment_suite();
+        let suite_summary = suite.summarize_counts();
+        self.last_experiment_suite = Some(suite.clone());
+        self.tests_job.push_event(
+            "suite_done",
+            format!(
+                "suite: {} filas · {} · {:.0} ms",
+                suite.rows.len(),
+                suite_summary,
+                suite.elapsed_ms
+            ),
+            serde_json::json!({
+                "cycle": cycle,
+                "verdict_counts": suite.verdict_counts,
+                "elapsed_ms": suite.elapsed_ms,
+                "rows": suite.rows,
+                "notes": suite.notes,
+            }),
+        );
+        if self.tests_job.cancelled {
+            self.finish_tests_job(true);
+            return false;
+        }
+
+        // 2) field_eval del modelo (condicionado a engramas/sueño → notas honestas).
         let mut progress: Vec<(usize, usize, String)> = Vec::new();
-        let report = self.run_tests_with_progress(|step, total, msg| {
+        let mut report = self.run_tests_with_progress(|step, total, msg| {
             progress.push((step, total, msg.to_string()));
         });
+        if !report.had_engrams {
+            report.notes.push(
+                "field_eval sin engramas/sin sueño consolidado: se reporta estado actual; suite de experimentos sí corrió"
+                    .into(),
+            );
+        } else if self.last_sleep_optimize.is_none() && self.last_sleep.is_none() {
+            report
+                .notes
+                .push("había engramas pero no hay informe de sueño optimizado reciente".into());
+        }
+        report.experiment_suite = Some(suite);
         for (step, total, msg) in progress {
             self.tests_job.step = step;
             self.tests_job.total_steps = total;
@@ -1186,8 +1299,8 @@ impl AppState {
         self.last_field_eval = Some(report);
         self.tests_job.push_event(
             "cycle_done",
-            format!("{label} lista"),
-            serde_json::json!({ "cycle": cycle }),
+            format!("{label} lista · suite {suite_summary}"),
+            serde_json::json!({ "cycle": cycle, "suite_summary": suite_summary }),
         );
         self.tests_job.current_cycle = cycle.saturating_add(1);
 
@@ -1365,10 +1478,50 @@ mod tests {
         s.probe =
             PeripheralProbe::Lexicon(crate::field_linguistic_layer::GemmaShapedLexicon::new(2));
         let _ = s.handle_chat("hola");
+        let blocked = s.handle_chat("sueño por favor");
+        assert_eq!(blocked.route, "sleep");
+        assert!(
+            blocked.reply.to_lowercase().contains("entrenar"),
+            "sin train debe pedir entrenar: {}",
+            blocked.reply
+        );
+        // Tras un lote, el sueño de chat sí consolida.
+        let start = s.begin_live_train(Some(1), 2, 1);
+        assert!(start.ok);
+        while s.run_one_live_batch() {}
         let sleep = s.handle_chat("sueño por favor");
         assert_eq!(sleep.route, "sleep");
+        assert!(sleep.reply.to_lowercase().contains("consolid"));
         let st = s.handle_chat("estado");
         assert_eq!(st.route, "status");
+    }
+
+    #[test]
+    fn sleep_job_rejects_without_training() {
+        let mut s = AppState::new();
+        assert!(!s.has_training_evidence());
+        let r = s.begin_sleep_job(SleepOptimizeOpts::default(), false, Some(1));
+        assert!(!r.ok);
+        assert!(
+            r.message.to_lowercase().contains("entrenar"),
+            "msg={}",
+            r.message
+        );
+    }
+
+    #[test]
+    fn sleep_job_allows_after_one_batch() {
+        let mut s = AppState::new();
+        s.probe =
+            PeripheralProbe::Lexicon(crate::field_linguistic_layer::GemmaShapedLexicon::new(11));
+        let start = s.begin_live_train(Some(1), 2, 1);
+        assert!(start.ok);
+        while s.run_one_live_batch() {}
+        assert!(s.has_training_evidence());
+        assert!(s.ever_trained);
+        let r = s.begin_sleep_job(SleepOptimizeOpts::default(), false, Some(1));
+        assert!(r.ok, "msg={}", r.message);
+        assert!(s.run_one_sleep_cycle() || !s.sleep_job.running);
     }
 
     #[test]

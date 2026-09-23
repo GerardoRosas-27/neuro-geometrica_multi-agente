@@ -380,7 +380,13 @@ fn make_pairs(starts: &[(f64, f64)], rule: RuleKind) -> Vec<Pair> {
 }
 
 /// Noisy copies of train pairs under the SAME rule (never invents new rules / test leakage).
-fn augment_pairs(rule: RuleKind, pairs: &[Pair], n_copies: usize, noise: f64, seed: u64) -> Vec<Pair> {
+fn augment_pairs(
+    rule: RuleKind,
+    pairs: &[Pair],
+    n_copies: usize,
+    noise: f64,
+    seed: u64,
+) -> Vec<Pair> {
     let mut out = pairs.to_vec();
     if n_copies == 0 || noise <= 0.0 {
         return out;
@@ -933,11 +939,24 @@ pub fn run_e18a(seed: u64) -> RegistryRowStage2 {
     // Two-phase: light enc warm + dynamics-heavy.
     let mut steps = train_encoder_consistency(&mut enc, &train_aug, 100, 0.05, seed ^ 0xC0A1);
     steps += train_encoder_dynamics_ex(
-        &mut enc, &mut dynm, &train_aug, 400, None, 3, true, seed ^ 0xD1A1,
+        &mut enc,
+        &mut dynm,
+        &train_aug,
+        400,
+        None,
+        3,
+        true,
+        seed ^ 0xD1A1,
     );
 
-    let train_src: Vec<Vec<f64>> = train.iter().map(|p| encode_from_pair(&enc, p, false)).collect();
-    let train_tgt: Vec<Vec<f64>> = train.iter().map(|p| encode_from_pair(&enc, p, true)).collect();
+    let train_src: Vec<Vec<f64>> = train
+        .iter()
+        .map(|p| encode_from_pair(&enc, p, false))
+        .collect();
+    let train_tgt: Vec<Vec<f64>> = train
+        .iter()
+        .map(|p| encode_from_pair(&enc, p, true))
+        .collect();
     let linear = LinearDynamics::fit(&train_src, &train_tgt);
 
     let (c_dyn, c_stat, c_lin, c_nn, c_tab, _) =
@@ -989,7 +1008,12 @@ pub fn run_e18a(seed: u64) -> RegistryRowStage2 {
     row.notes = format!(
         "hardening: 16+4 starts, aug×4, enc_warm100+dyn400×3; FIELD_ONLY; \
          static={:.3} linear={:.3} nn={:.3} table={:.3} coord_err={:.3} elapsed_ms={:.1}",
-        c_stat, c_lin, c_nn, c_tab, coord_err, t0.elapsed().as_secs_f64() * 1e3
+        c_stat,
+        c_lin,
+        c_nn,
+        c_tab,
+        coord_err,
+        t0.elapsed().as_secs_f64() * 1e3
     );
     row
 }
@@ -1041,7 +1065,14 @@ pub fn run_e18b(seed: u64) -> RegistryRowStage2 {
     let reg = mem.regularity_context().map(|d| d.to_vec());
     steps += train_encoder_consistency(&mut enc, &episodes_aug, 80, 0.05, seed ^ 0xC0B1);
     steps += train_encoder_dynamics_ex(
-        &mut enc, &mut dynm, &episodes_aug, 400, reg.as_deref(), 3, true, seed ^ 0xD1B1,
+        &mut enc,
+        &mut dynm,
+        &episodes_aug,
+        400,
+        reg.as_deref(),
+        3,
+        true,
+        seed ^ 0xD1B1,
     );
 
     let test_b_hash = {
@@ -1056,8 +1087,14 @@ pub fn run_e18b(seed: u64) -> RegistryRowStage2 {
     audit.cdt_query_count = mem.eval_query_count;
     audit.rqm_query_count = mem.rqm_query_count;
 
-    let train_src: Vec<Vec<f64>> = episodes.iter().map(|p| encode_from_pair(&enc, p, false)).collect();
-    let train_tgt: Vec<Vec<f64>> = episodes.iter().map(|p| encode_from_pair(&enc, p, true)).collect();
+    let train_src: Vec<Vec<f64>> = episodes
+        .iter()
+        .map(|p| encode_from_pair(&enc, p, false))
+        .collect();
+    let train_tgt: Vec<Vec<f64>> = episodes
+        .iter()
+        .map(|p| encode_from_pair(&enc, p, true))
+        .collect();
     let linear = LinearDynamics::fit(&train_src, &train_tgt);
     let (c_dyn, c_stat, c_lin, c_nn, c_tab, _) =
         eval_cosines(&enc, &dynm, &linear, &train_src, &train_tgt, test);
@@ -1088,7 +1125,11 @@ pub fn run_e18b(seed: u64) -> RegistryRowStage2 {
     } else {
         c_dyn
     };
-    row.leakage_score = if verdict == "LEAKED" { leakage.max(1) } else { leakage };
+    row.leakage_score = if verdict == "LEAKED" {
+        leakage.max(1)
+    } else {
+        leakage
+    };
     row.cdt_query_count = audit.cdt_query_count;
     row.rqm_query_count = audit.rqm_query_count;
     row.energy = 1.0 - c_dyn;
@@ -1135,7 +1176,14 @@ fn train_condition(
         "C0" => {}
         "C1" => {
             steps = train_encoder_dynamics_ex(
-                &mut enc, &mut dynm, pairs, epochs_c1, None, 3, true, seed ^ 0xC1,
+                &mut enc,
+                &mut dynm,
+                pairs,
+                epochs_c1,
+                None,
+                3,
+                true,
+                seed ^ 0xC1,
             );
             for (i, p) in pairs.iter().enumerate() {
                 let psi_a = encode_from_pair(&enc, p, false);
@@ -1183,7 +1231,14 @@ fn train_condition(
             }
             let reg = mem.regularity_context().map(|d| d.to_vec());
             steps += train_encoder_dynamics_ex(
-                &mut enc, &mut dynm, pairs, epochs_c2, reg.as_deref(), 3, true, seed ^ 0xC2FF,
+                &mut enc,
+                &mut dynm,
+                pairs,
+                epochs_c2,
+                reg.as_deref(),
+                3,
+                true,
+                seed ^ 0xC2FF,
             );
         }
         "C3" => {
@@ -1211,7 +1266,14 @@ fn train_condition(
             }
             let reg = mem.regularity_context().map(|d| d.to_vec());
             steps = train_encoder_dynamics_ex(
-                &mut enc, &mut dynm, pairs, epochs_c3, reg.as_deref(), 3, true, seed ^ 0xC3,
+                &mut enc,
+                &mut dynm,
+                pairs,
+                epochs_c3,
+                reg.as_deref(),
+                3,
+                true,
+                seed ^ 0xC3,
             );
         }
         _ => {}
@@ -1280,7 +1342,12 @@ pub fn run_e18c(seed: u64) -> RegistryRowStage2 {
     row.verdict = verdict.into();
     row.notes = format!(
         "hardening trainers; C0={:.3} C1={:.3} C2={:.3} C3={:.3} gain={:.3} elapsed_ms={:.1}",
-        c0, c1, c2, c3, gain, t0.elapsed().as_secs_f64() * 1e3
+        c0,
+        c1,
+        c2,
+        c3,
+        gain,
+        t0.elapsed().as_secs_f64() * 1e3
     );
     row.cosine_table = 0.0;
     row
@@ -1354,7 +1421,14 @@ pub fn run_e20(seed: u64) -> RegistryRowStage2 {
     let mut enc_t = TrainableFieldEncoder::new(FEAT_DIM, FIELD_DIM, seed ^ 0xE20A);
     let mut dyn_t = FieldDynamics::new(FIELD_DIM, seed ^ 0xD20A);
     let _ = train_encoder_dynamics_ex(
-        &mut enc_t, &mut dyn_t, &traj_aug, 300, None, 3, true, seed ^ 0x7120,
+        &mut enc_t,
+        &mut dyn_t,
+        &traj_aug,
+        300,
+        None,
+        3,
+        true,
+        seed ^ 0x7120,
     );
     let cos_traj = {
         let pred = dyn_t.step(&encode_from_pair(&enc_t, &test[0], false));
@@ -1365,7 +1439,14 @@ pub fn run_e20(seed: u64) -> RegistryRowStage2 {
     let mut enc_r = TrainableFieldEncoder::new(FEAT_DIM, FIELD_DIM, seed ^ 0xE20B);
     let mut dyn_r = FieldDynamics::new(FIELD_DIM, seed ^ 0xD20B);
     let steps = train_encoder_dynamics_ex(
-        &mut enc_r, &mut dyn_r, &rule_aug, 300, None, 3, true, seed ^ 0x8220,
+        &mut enc_r,
+        &mut dyn_r,
+        &rule_aug,
+        300,
+        None,
+        3,
+        true,
+        seed ^ 0x8220,
     );
     let cos_rule = {
         let pred = dyn_r.step(&encode_from_pair(&enc_r, &test[0], false));
@@ -1423,7 +1504,14 @@ pub fn run_e21(seed: u64) -> RegistryRowStage2 {
     let mut enc = TrainableFieldEncoder::new(FEAT_DIM, FIELD_DIM, seed ^ 0xE21A);
     let mut dynm = FieldDynamics::new(FIELD_DIM, seed ^ 0xD21A);
     let steps = train_encoder_dynamics_ex(
-        &mut enc, &mut dynm, &train_aug, 300, None, 3, true, seed ^ 0xE21D,
+        &mut enc,
+        &mut dynm,
+        &train_aug,
+        300,
+        None,
+        3,
+        true,
+        seed ^ 0xE21D,
     );
 
     let cos_same = mean(
@@ -1449,7 +1537,14 @@ pub fn run_e21(seed: u64) -> RegistryRowStage2 {
     let mut enc2 = TrainableFieldEncoder::new(FEAT_DIM, FIELD_DIM, seed ^ 0xE21B);
     let mut dyn2 = FieldDynamics::new(FIELD_DIM, seed ^ 0xD21B);
     let _ = train_encoder_dynamics_ex(
-        &mut enc2, &mut dyn2, &multi, 300, None, 3, true, seed ^ 0xE21C1,
+        &mut enc2,
+        &mut dyn2,
+        &multi,
+        300,
+        None,
+        3,
+        true,
+        seed ^ 0xE21C1,
     );
 
     let hard_rule = RuleKind::Translation { dx: 3.0, dy: 1.0 };
@@ -1512,7 +1607,9 @@ pub fn run_e21(seed: u64) -> RegistryRowStage2 {
     row.notes = format!(
         "hardening: ≥24 same-param, multi-dx action feats, epochs=300; never dx=3 train; \
          same={:.3} extrap={:.3} elapsed_ms={:.1}",
-        cos_same, cos_extrap, t0.elapsed().as_secs_f64() * 1e3
+        cos_same,
+        cos_extrap,
+        t0.elapsed().as_secs_f64() * 1e3
     );
     let _ = cos_hard_ctx;
     row
@@ -1566,7 +1663,14 @@ pub fn run_e22(seed: u64) -> RegistryRowStage2 {
     let mut enc = TrainableFieldEncoder::new(FEAT_DIM, FIELD_DIM, seed ^ 0xE22A);
     let mut dynm = FieldDynamics::new(FIELD_DIM, seed ^ 0xD22A);
     let steps = train_encoder_dynamics_ex(
-        &mut enc, &mut dynm, &train, 280, None, 3, true, seed ^ 0xE22D,
+        &mut enc,
+        &mut dynm,
+        &train,
+        280,
+        None,
+        3,
+        true,
+        seed ^ 0xE22D,
     );
 
     let mut cos_compose = Vec::new();
@@ -1582,8 +1686,14 @@ pub fn run_e22(seed: u64) -> RegistryRowStage2 {
     let c2 = mean(&cos_compose);
     let c1 = mean(&cos_one);
 
-    let train_src: Vec<_> = train.iter().map(|p| encode_from_pair(&enc, p, false)).collect();
-    let train_tgt: Vec<_> = train.iter().map(|p| encode_from_pair(&enc, p, true)).collect();
+    let train_src: Vec<_> = train
+        .iter()
+        .map(|p| encode_from_pair(&enc, p, false))
+        .collect();
+    let train_tgt: Vec<_> = train
+        .iter()
+        .map(|p| encode_from_pair(&enc, p, true))
+        .collect();
     let mut c_nn = Vec::new();
     for p in &test {
         let np = nn_predict(&encode_from_pair(&enc, p, false), &train_src, &train_tgt);
@@ -1619,7 +1729,10 @@ pub fn run_e22(seed: u64) -> RegistryRowStage2 {
     row.verdict = verdict.into();
     row.notes = format!(
         "hardening: more pairs+epochs; compose2={:.3} one_step={:.3} nn={:.3} elapsed_ms={:.1}",
-        c2, c1, cos_nn, t0.elapsed().as_secs_f64() * 1e3
+        c2,
+        c1,
+        cos_nn,
+        t0.elapsed().as_secs_f64() * 1e3
     );
     row
 }
@@ -1636,7 +1749,14 @@ pub fn run_e23(seed: u64) -> RegistryRowStage2 {
     let mut enc = TrainableFieldEncoder::new(FEAT_DIM, FIELD_DIM, seed ^ 0xE23A);
     let mut dynm = FieldDynamics::new(FIELD_DIM, seed ^ 0xD23A);
     let mut steps = train_encoder_dynamics_ex(
-        &mut enc, &mut dynm, &train_aug, 300, None, 3, true, seed ^ 0xE23D,
+        &mut enc,
+        &mut dynm,
+        &train_aug,
+        300,
+        None,
+        3,
+        true,
+        seed ^ 0xE23D,
     );
     // Light multi-step unroll consistency (2–4 steps).
     let unroll_starts: Vec<(f64, f64)> = train.iter().take(12).map(|p| p.a).collect();
@@ -1705,8 +1825,14 @@ pub fn run_e23(seed: u64) -> RegistryRowStage2 {
     row.verdict = verdict.into();
     row.notes = format!(
         "hardening: more pairs+epochs+unroll3; horizons_cos={:?} pert_h8={:?} elapsed_ms={:.1}",
-        horizon_cos.iter().map(|c| format!("{c:.3}")).collect::<Vec<_>>(),
-        pert_scores.iter().map(|c| format!("{c:.3}")).collect::<Vec<_>>(),
+        horizon_cos
+            .iter()
+            .map(|c| format!("{c:.3}"))
+            .collect::<Vec<_>>(),
+        pert_scores
+            .iter()
+            .map(|c| format!("{c:.3}"))
+            .collect::<Vec<_>>(),
         t0.elapsed().as_secs_f64() * 1e3
     );
     row
@@ -1734,7 +1860,14 @@ pub fn run_e24(seed: u64) -> RegistryRowStage2 {
 
     let mut steps = train_encoder_consistency(&mut enc_dyn, &train_aug, 100, 0.05, seed ^ 0xE24C);
     steps += train_encoder_dynamics_ex(
-        &mut enc_dyn, &mut dynm, &train_aug, 400, None, 3, true, seed ^ 0xE24D,
+        &mut enc_dyn,
+        &mut dynm,
+        &train_aug,
+        400,
+        None,
+        3,
+        true,
+        seed ^ 0xE24D,
     );
 
     let mut cos_static = Vec::new();
@@ -1788,7 +1921,11 @@ pub fn run_e24(seed: u64) -> RegistryRowStage2 {
     row.notes = format!(
         "hardening: ≥24/6, epochs=400 dyn-heavy; static=cos(enc a,b) frozen-init; \
          dynamic={:.3} static={:.3} random_dyn={:.3} delta={:.3} elapsed_ms={:.1}",
-        cd, cs, cr, cd - cs, t0.elapsed().as_secs_f64() * 1e3
+        cd,
+        cs,
+        cr,
+        cd - cs,
+        t0.elapsed().as_secs_f64() * 1e3
     );
     row
 }

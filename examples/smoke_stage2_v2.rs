@@ -1,7 +1,5 @@
 fn main() {
-    use cdt_rqm_epr::field_autonomy_stage2_v2::{
-        confirmation_deferred_note, run_smoke, DEV_SEEDS,
-    };
+    use cdt_rqm_epr::field_autonomy_stage2_v2::{confirmation_deferred_note, run_smoke, DEV_SEEDS};
     let seed = DEV_SEEDS[0];
     println!("Clean-Room v2 smoke seed=0x{seed:X}");
     for row in run_smoke(seed) {

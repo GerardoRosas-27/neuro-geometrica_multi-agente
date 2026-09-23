@@ -41,6 +41,7 @@
       <div class="panel-grid">
         <div>
           <h2>Entrenamiento en vivo</h2>
+      <p class="hint">Gemma (o curriculum) genera datasets por familia: core / líquido E8–E10 / campo E11–E17 / autonomía E18–E30. Con <strong>Infinito</strong> rota familias indefinidamente; cada lote se guarda en checkpoints/datasets.</p>
           <div class="actions">
             <button type="button" id="btn-train">Iniciar</button>
             <label class="chk-infinite" title="Sin tope de lotes; solo Detener">
@@ -60,6 +61,7 @@
             <dt>Precisión</dt><dd id="tr-acc">—</dd>
             <dt>Engramas</dt><dd id="tr-eng">—</dd>
             <dt>Dataset</dt><dd id="tr-dataset">—</dd>
+            <dt>Familia dataset</dt><dd id="tr-family">—</dd>
             <dt>Datasets guardados</dt><dd id="tr-ds-saved">—</dd>
             <dt>Último dataset</dt><dd id="tr-ckpt">—</dd>
             <dt>Decoder (preview)</dt><dd id="tr-decoded">—</dd>
@@ -97,7 +99,7 @@
     <!-- SUEÑO -->
     <section id="main-sleep" class="main-panel">
       <h2>Sueño / consolidar + optimizar</h2>
-      <p class="hint">Poda rutas RQM débiles, compacta geometría fasorial y minimiza energía libre hacia más simetría (handshake / octaedro). El job sigue en el servidor tras refrescar; solo Detener cancela.</p>
+      <p class="hint"><strong>Requiere entrenamiento previo</strong> (al menos 1 lote completado o engramas/datasets_saved &gt; 0). Poda rutas RQM débiles, compacta geometría fasorial y minimiza energía libre hacia más simetría. El job sigue en el servidor tras refrescar; solo Detener cancela.</p>
       <div class="actions">
         <button type="button" id="btn-sleep">Iniciar</button>
         <label class="chk-infinite" title="Sin tope de ciclos; solo Detener">
@@ -143,7 +145,7 @@
     <!-- PRUEBAS -->
     <section id="main-tests" class="main-panel">
       <h2>Pruebas del modelo de campo</h2>
-      <p class="hint">Evalúa el fuse/campo/CDT <strong>ya entrenado</strong> (tras train + sueño). No inicia entrenamiento infinito. Refresh reconecta; solo Detener cancela.</p>
+      <p class="hint">Siempre corre la <strong>suite de experimentos</strong> (smokes E8–E10, E13/E15, Clean-Room v2). Además evalúa fuse/campo/CDT; si no hay train+sueño, field_eval lo anota con honestidad. Infinito repite la batería hasta Detener.</p>
       <div class="actions">
         <button type="button" id="btn-tests">Iniciar</button>
         <label class="chk-infinite" title="Repite la batería hasta Detener">
@@ -170,6 +172,7 @@
         <dt>Simetría</dt><dd id="te-sym">—</dd>
         <dt>Handshake</dt><dd id="te-hs">—</dd>
         <dt>Histograma rutas</dt><dd id="te-routes">—</dd>
+        <dt>Suite experimentos</dt><dd id="te-suite">—</dd>
       </dl>
       <h3>Consola en vivo</h3>
       <pre id="te-log" class="log"></pre>

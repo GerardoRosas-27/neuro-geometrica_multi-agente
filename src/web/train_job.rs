@@ -11,6 +11,7 @@
 //! Por defecto el entrenamiento es **infinito** (solo para con cancel/stop).
 
 use crate::web::llm_periphery::{generate_train_batch, TrainExample, NUM_CONCEPTS};
+
 use crate::web::telemetry::SleepReportDto;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -65,6 +66,10 @@ pub struct TrainJob {
     pub total: u64,
     pub datasets_saved: usize,
     pub last_dataset_path: Option<String>,
+    /// Última familia de dataset generada (E8–E30 / core).
+    pub last_dataset_family: Option<String>,
+    /// IDs de experimento del último lote.
+    pub last_experiment_ids: Vec<String>,
 }
 
 impl Default for TrainJob {
@@ -90,6 +95,8 @@ impl Default for TrainJob {
             total: 0,
             datasets_saved: 0,
             last_dataset_path: None,
+            last_dataset_family: None,
+            last_experiment_ids: Vec::new(),
         }
     }
 }
@@ -147,6 +154,8 @@ impl TrainJob {
             event_seq: self.event_seq,
             datasets_saved: self.datasets_saved,
             last_dataset_path: self.last_dataset_path.clone(),
+            last_dataset_family: self.last_dataset_family.clone(),
+            last_experiment_ids: self.last_experiment_ids.clone(),
         }
     }
 }
@@ -171,6 +180,8 @@ pub struct TrainJobSnapshot {
     pub event_seq: u64,
     pub datasets_saved: usize,
     pub last_dataset_path: Option<String>,
+    pub last_dataset_family: Option<String>,
+    pub last_experiment_ids: Vec<String>,
 }
 
 /// Request de arranque. `batches` acepta número, null, 0 o `"infinite"`.
@@ -247,6 +258,10 @@ pub struct DatasetCheckpointFile {
     pub job_id: String,
     pub batch: usize,
     pub source: String,
+    #[serde(default)]
+    pub dataset_family: Option<String>,
+    #[serde(default)]
+    pub experiment_ids: Vec<String>,
     pub examples: Vec<TrainExample>,
     pub liquid: LiquidDatasetMetrics,
     pub sleep: Option<SleepReportDto>,
@@ -339,6 +354,7 @@ pub fn write_latest_index(
 /// Curriculum sintético público para tests (mismo que `generate_train_batch` léxico).
 pub fn synth_dataset(batch_size: usize, seed: u64) -> Vec<TrainExample> {
     let (items, _) = generate_train_batch(batch_size, seed, false);
+    // meta descartada: solo ejemplos para tests unitarios
     items
 }
 
@@ -416,6 +432,8 @@ mod tests {
             job_id: "test-job".into(),
             batch: 0,
             source: "lexicon_synth".into(),
+            dataset_family: Some("core_agentic".into()),
+            experiment_ids: vec!["core".into()],
             examples: vec![TrainExample {
                 text: "hola".into(),
                 concept: 1,

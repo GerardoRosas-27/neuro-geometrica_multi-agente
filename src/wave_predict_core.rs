@@ -186,7 +186,10 @@ pub struct RankedPrediction {
 impl WavePredictCore {
     /// Puntúa todos los futuros y devuelve ranking estable.
     pub fn predict_ranked(&self, future_contents: &[usize]) -> RankedPrediction {
-        assert!(!future_contents.is_empty(), "need at least one future hypothesis");
+        assert!(
+            !future_contents.is_empty(),
+            "need at least one future hypothesis"
+        );
         let mut scored: Vec<(usize, f64)> = future_contents
             .iter()
             .enumerate()

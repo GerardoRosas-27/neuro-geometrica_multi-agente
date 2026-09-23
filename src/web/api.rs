@@ -818,6 +818,8 @@ mod tests {
                 g.fuse.observe(i, &cands);
                 g.fuse.teach_relation(i, (i + 1) % 8);
             }
+            let _ = g.fuse.sleep_consolidate();
+            g.ever_trained = true;
         }
         let app = test_router(st.clone());
         let res = app
@@ -956,6 +958,8 @@ mod tests {
                 g.fuse.observe(i, &cands);
                 g.fuse.teach_relation(i, (i + 1) % 8);
             }
+            let _ = g.fuse.sleep_consolidate();
+            g.ever_trained = true;
         }
         let app = test_router(st.clone());
         let res = app

@@ -27,8 +27,8 @@ pub const DEV_SEEDS: [u64; 8] = [
     0xA300, 0xA301, 0xA302, 0xA303, 0xA304, 0xA305, 0xA306, 0xA307,
 ];
 pub const CONFIRMATION_SEEDS: [u64; 16] = [
-    0xB300, 0xB301, 0xB302, 0xB303, 0xB304, 0xB305, 0xB306, 0xB307,
-    0xB308, 0xB309, 0xB30A, 0xB30B, 0xB30C, 0xB30D, 0xB30E, 0xB30F,
+    0xB300, 0xB301, 0xB302, 0xB303, 0xB304, 0xB305, 0xB306, 0xB307, 0xB308, 0xB309, 0xB30A, 0xB30B,
+    0xB30C, 0xB30D, 0xB30E, 0xB30F,
 ];
 
 const EPS: f64 = 1e-12;
@@ -123,10 +123,24 @@ impl HyperparamLock {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ContRule {
-    Translation { dx: f64, dy: f64 },
-    Rotation { theta: f64 },
-    Scaling { s: f64 },
-    Affine { a00: f64, a01: f64, a10: f64, a11: f64, bx: f64, by: f64 },
+    Translation {
+        dx: f64,
+        dy: f64,
+    },
+    Rotation {
+        theta: f64,
+    },
+    Scaling {
+        s: f64,
+    },
+    Affine {
+        a00: f64,
+        a01: f64,
+        a10: f64,
+        a11: f64,
+        bx: f64,
+        by: f64,
+    },
     Compose(ContRuleRef, ContRuleRef),
 }
 
@@ -167,9 +181,14 @@ impl ContRule {
                 (c * p.0 - s * p.1, s * p.0 + c * p.1)
             }
             Self::Scaling { s } => (p.0 * s, p.1 * s),
-            Self::Affine { a00, a01, a10, a11, bx, by } => {
-                (a00 * p.0 + a01 * p.1 + bx, a10 * p.0 + a11 * p.1 + by)
-            }
+            Self::Affine {
+                a00,
+                a01,
+                a10,
+                a11,
+                bx,
+                by,
+            } => (a00 * p.0 + a01 * p.1 + bx, a10 * p.0 + a11 * p.1 + by),
             Self::Compose(t1, t2) => t2.apply(t1.apply(p)),
         }
     }
@@ -189,7 +208,14 @@ impl ContRule {
             Self::Translation { dx, dy } => format!("T(dx={dx:.4},dy={dy:.4})"),
             Self::Rotation { theta } => format!("R(theta={theta:.4})"),
             Self::Scaling { s } => format!("S(s={s:.4})"),
-            Self::Affine { a00, a01, a10, a11, bx, by } => {
+            Self::Affine {
+                a00,
+                a01,
+                a10,
+                a11,
+                bx,
+                by,
+            } => {
                 format!("A([{a00:.2},{a01:.2};{a10:.2},{a11:.2}]+[{bx:.2},{by:.2}])")
             }
             Self::Compose(a, b) => format!("Compose({}+{})", a.family(), b.family()),
@@ -586,9 +612,22 @@ fn git_commit() -> String {
 fn point_features(p: (f64, f64), action: Option<(f64, f64)>) -> Vec<f64> {
     let (x, y) = p;
     let mut f = vec![
-        x, y, x * x, y * y, x * y, x.sin(), y.cos(), (0.5 * x).sin(), (0.5 * y).cos(),
-        (x + y) * 0.1, (x - y) * 0.1, 1.0, x.abs() * 0.1, y.abs() * 0.1,
-        (x * 0.3).tanh(), (y * 0.3).tanh(),
+        x,
+        y,
+        x * x,
+        y * y,
+        x * y,
+        x.sin(),
+        y.cos(),
+        (0.5 * x).sin(),
+        (0.5 * y).cos(),
+        (x + y) * 0.1,
+        (x - y) * 0.1,
+        1.0,
+        x.abs() * 0.1,
+        y.abs() * 0.1,
+        (x * 0.3).tanh(),
+        (y * 0.3).tanh(),
     ];
     f.truncate(FEAT_DIM);
     while f.len() < FEAT_DIM {
@@ -609,7 +648,10 @@ fn encode_xy(enc: &TrainableFieldEncoder, p: (f64, f64), action: Option<(f64, f6
 }
 
 fn sample_point(rng: &mut Xoshiro256StarStar, lo: f64, hi: f64) -> (f64, f64) {
-    (lo + rng.gen::<f64>() * (hi - lo), lo + rng.gen::<f64>() * (hi - lo))
+    (
+        lo + rng.gen::<f64>() * (hi - lo),
+        lo + rng.gen::<f64>() * (hi - lo),
+    )
 }
 
 fn almost_eq_pt(a: (f64, f64), b: (f64, f64), tol: f64) -> bool {
@@ -617,7 +659,10 @@ fn almost_eq_pt(a: (f64, f64), b: (f64, f64), tol: f64) -> bool {
 }
 
 pub fn default_translation_rule() -> ContRule {
-    ContRule::Translation { dx: 1.25, dy: -0.75 }
+    ContRule::Translation {
+        dx: 1.25,
+        dy: -0.75,
+    }
 }
 
 fn make_samples(
@@ -748,7 +793,12 @@ pub fn audit_contamination_full(ds: &SplitDataset) -> ContaminationReport {
     report
 }
 
-fn manifest_for(split: &str, samples: &[Sample], ds: &SplitDataset, sealed: bool) -> DatasetManifest {
+fn manifest_for(
+    split: &str,
+    samples: &[Sample],
+    ds: &SplitDataset,
+    sealed: bool,
+) -> DatasetManifest {
     let bytes = serialize_samples(samples);
     DatasetManifest {
         dataset_version: DATASET_VERSION.into(),
@@ -873,7 +923,9 @@ fn nn_predict(q: &[f64], srcs: &[Vec<f64>], tgts: &[Vec<f64>]) -> Vec<f64> {
             best = i;
         }
     }
-    tgts.get(best).cloned().unwrap_or_else(|| vec![0.0; q.len()])
+    tgts.get(best)
+        .cloned()
+        .unwrap_or_else(|| vec![0.0; q.len()])
 }
 
 fn train_consistency(
@@ -893,14 +945,22 @@ fn train_consistency(
                 s.x.0 + (rng.gen::<f64>() - 0.5) * 0.08,
                 s.x.1 + (rng.gen::<f64>() - 0.5) * 0.08,
             );
-            let _ = enc.train_step(&point_features(near, s.action), std::slice::from_ref(&psi), &empty);
+            let _ = enc.train_step(
+                &point_features(near, s.action),
+                std::slice::from_ref(&psi),
+                &empty,
+            );
             let fb = point_features(s.y, s.action);
             let psi_b = enc.encode(&fb);
             let near_b = (
                 s.y.0 + (rng.gen::<f64>() - 0.5) * 0.08,
                 s.y.1 + (rng.gen::<f64>() - 0.5) * 0.08,
             );
-            let _ = enc.train_step(&point_features(near_b, s.action), std::slice::from_ref(&psi_b), &empty);
+            let _ = enc.train_step(
+                &point_features(near_b, s.action),
+                std::slice::from_ref(&psi_b),
+                &empty,
+            );
             steps += 1;
         }
     }
@@ -928,7 +988,11 @@ fn train_dynamics(
                 s.x.0 + (rng.gen::<f64>() - 0.5) * 0.06,
                 s.x.1 + (rng.gen::<f64>() - 0.5) * 0.06,
             );
-            let _ = enc.train_step(&point_features(near, s.action), std::slice::from_ref(&psi_a), &empty);
+            let _ = enc.train_step(
+                &point_features(near, s.action),
+                std::slice::from_ref(&psi_a),
+                &empty,
+            );
             let src = enc.encode(&fa);
             let mut tgt = encode_xy(enc, s.y, s.action);
             if let Some(delta) = regularity {
@@ -1110,18 +1174,53 @@ fn train_and_eval_field_only(
     bundle: &SealedBundle,
     hp: &HyperparamLock,
     regularity: Option<&[f64]>,
-) -> (ResultRowV2, EvalPack, ProvenanceRecord, TrainableFieldEncoder, FieldDynamics) {
+) -> (
+    ResultRowV2,
+    EvalPack,
+    ProvenanceRecord,
+    TrainableFieldEncoder,
+    FieldDynamics,
+) {
     let _ = assert_test_immutable(bundle);
     let (mut enc, mut dynm) = fresh_models(seed, hp);
     let mut steps = train_consistency(&mut enc, &bundle.dataset.train, hp.enc_epochs, seed ^ 0xC0);
     steps += train_dynamics(
-        &mut enc, &mut dynm, &bundle.dataset.train, hp.dyn_epochs, hp.dyn_updates, regularity, seed ^ 0xD0,
+        &mut enc,
+        &mut dynm,
+        &bundle.dataset.train,
+        hp.dyn_epochs,
+        hp.dyn_updates,
+        regularity,
+        seed ^ 0xD0,
     );
-    let train_src: Vec<Vec<f64>> = bundle.dataset.train.iter().map(|s| encode_xy(&enc, s.x, s.action)).collect();
-    let train_tgt: Vec<Vec<f64>> = bundle.dataset.train.iter().map(|s| encode_xy(&enc, s.y, s.action)).collect();
+    let train_src: Vec<Vec<f64>> = bundle
+        .dataset
+        .train
+        .iter()
+        .map(|s| encode_xy(&enc, s.x, s.action))
+        .collect();
+    let train_tgt: Vec<Vec<f64>> = bundle
+        .dataset
+        .train
+        .iter()
+        .map(|s| encode_xy(&enc, s.y, s.action))
+        .collect();
     let linear = LinearDyn::fit(&train_src, &train_tgt);
-    let ev = eval_on(&enc, &dynm, &linear, &train_src, &train_tgt, &bundle.dataset.test);
-    let prov = provenance_for_test(&enc, &bundle.dataset.train, &bundle.dataset.dev, None, &bundle.dataset.test);
+    let ev = eval_on(
+        &enc,
+        &dynm,
+        &linear,
+        &train_src,
+        &train_tgt,
+        &bundle.dataset.test,
+    );
+    let prov = provenance_for_test(
+        &enc,
+        &bundle.dataset.train,
+        &bundle.dataset.dev,
+        None,
+        &bundle.dataset.test,
+    );
     let mut row = base_row("", seed);
     row.train_n = bundle.dataset.train.len();
     row.dev_n = bundle.dataset.dev.len();
@@ -1157,7 +1256,9 @@ pub fn run_e18(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
 }
 
 pub fn run_e18c(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
-    let rule = ContRule::Rotation { theta: std::f64::consts::FRAC_PI_6 };
+    let rule = ContRule::Rotation {
+        theta: std::f64::consts::FRAC_PI_6,
+    };
     let bundle = match generate_and_seal(seed ^ 0xE18C, rule, hp) {
         Ok(b) => b,
         Err(e) => {
@@ -1202,7 +1303,9 @@ pub fn run_e18c(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
     cdt_c6.consolidate();
 
     let eval_reg = |tag_seed: u64, reg: Option<&[f64]>| {
-        train_and_eval_field_only(seed ^ tag_seed, &bundle, hp, reg).1.cos_dyn
+        train_and_eval_field_only(seed ^ tag_seed, &bundle, hp, reg)
+            .1
+            .cos_dyn
     };
     let c2 = eval_reg(0xC2, cdt_c2.regularity());
     let c3 = eval_reg(0xC3, cdt_c3.regularity());
@@ -1223,7 +1326,12 @@ pub fn run_e18c(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
     if row.leakage_score > 0 {
         row.verdict = "LEAKED".into();
     } else if c2 > c0 + 0.03 && c2 >= c4 - 0.02 && c2 >= c5 - 0.02 {
-        row.verdict = if c2 >= COS_PASS { "POSITIVE" } else { "PARTIAL" }.into();
+        row.verdict = if c2 >= COS_PASS {
+            "POSITIVE"
+        } else {
+            "PARTIAL"
+        }
+        .into();
     } else if (c2 - c0).abs() < 0.03 {
         row.verdict = "NULL".into();
     } else {
@@ -1289,7 +1397,10 @@ pub fn run_e20(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
         });
         cur = nxt;
     }
-    let anti_rule = ContRule::Translation { dx: 0.9 * 1.5, dy: 0.4 * 1.5 };
+    let anti_rule = ContRule::Translation {
+        dx: 0.9 * 1.5,
+        dy: 0.4 * 1.5,
+    };
     let mut anti = make_samples(&mut rng, anti_rule, 8, -3.0, 3.0, "anti");
     for s in &mut anti {
         let th: f64 = 0.35;
@@ -1299,17 +1410,31 @@ pub fn run_e20(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
         s.action = Some((0.9 * 1.5, 0.4 * 1.5));
     }
     let (mut row, ev_rule, _, enc, dynm) = train_and_eval_field_only(seed, &bundle, hp, None);
-    let train_src: Vec<Vec<f64>> = bundle.dataset.train.iter().map(|s| encode_xy(&enc, s.x, s.action)).collect();
-    let train_tgt: Vec<Vec<f64>> = bundle.dataset.train.iter().map(|s| encode_xy(&enc, s.y, s.action)).collect();
+    let train_src: Vec<Vec<f64>> = bundle
+        .dataset
+        .train
+        .iter()
+        .map(|s| encode_xy(&enc, s.x, s.action))
+        .collect();
+    let train_tgt: Vec<Vec<f64>> = bundle
+        .dataset
+        .train
+        .iter()
+        .map(|s| encode_xy(&enc, s.y, s.action))
+        .collect();
     let linear = LinearDyn::fit(&train_src, &train_tgt);
     let ev_anti = eval_on(&enc, &dynm, &linear, &train_src, &train_tgt, &anti);
     let ev_traj = eval_on(&enc, &dynm, &linear, &train_src, &train_tgt, &traj);
     row.experiment = "E20_rule_vs_trajectory_antimem".into();
     row.notes = format!(
         "rule_cos={:.3} traj_cos={:.3} anti_cos={:.3}; antimem_drop={:.3}",
-        ev_rule.cos_dyn, ev_traj.cos_dyn, ev_anti.cos_dyn, ev_rule.cos_dyn - ev_anti.cos_dyn
+        ev_rule.cos_dyn,
+        ev_traj.cos_dyn,
+        ev_anti.cos_dyn,
+        ev_rule.cos_dyn - ev_anti.cos_dyn
     );
-    if row.leakage_score == 0 && ev_anti.cos_dyn > 0.55
+    if row.leakage_score == 0
+        && ev_anti.cos_dyn > 0.55
         && (row.verdict == "NULL" || row.verdict == "NEGATIVE")
     {
         row.verdict = "PARTIAL".into();
@@ -1323,7 +1448,14 @@ pub fn run_e21(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
     let mut train = Vec::new();
     for &dx in &train_dxs {
         let rule = ContRule::Translation { dx, dy: 0.5 };
-        train.extend(make_samples(&mut rng, rule, 4, -2.0, 2.0, &format!("dx{dx}")));
+        train.extend(make_samples(
+            &mut rng,
+            rule,
+            4,
+            -2.0,
+            2.0,
+            &format!("dx{dx}"),
+        ));
     }
     let inter_rule = ContRule::Translation { dx: 0.5, dy: 0.5 };
     let extra_rule = ContRule::Translation { dx: 3.0, dy: 0.5 };
@@ -1356,9 +1488,27 @@ pub fn run_e21(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
     };
     let (mut enc, mut dynm) = fresh_models(seed, hp);
     let mut steps = train_consistency(&mut enc, &bundle.dataset.train, hp.enc_epochs, seed);
-    steps += train_dynamics(&mut enc, &mut dynm, &bundle.dataset.train, hp.dyn_epochs, hp.dyn_updates, None, seed ^ 1);
-    let train_src: Vec<_> = bundle.dataset.train.iter().map(|s| encode_xy(&enc, s.x, s.action)).collect();
-    let train_tgt: Vec<_> = bundle.dataset.train.iter().map(|s| encode_xy(&enc, s.y, s.action)).collect();
+    steps += train_dynamics(
+        &mut enc,
+        &mut dynm,
+        &bundle.dataset.train,
+        hp.dyn_epochs,
+        hp.dyn_updates,
+        None,
+        seed ^ 1,
+    );
+    let train_src: Vec<_> = bundle
+        .dataset
+        .train
+        .iter()
+        .map(|s| encode_xy(&enc, s.x, s.action))
+        .collect();
+    let train_tgt: Vec<_> = bundle
+        .dataset
+        .train
+        .iter()
+        .map(|s| encode_xy(&enc, s.y, s.action))
+        .collect();
     let linear = LinearDyn::fit(&train_src, &train_tgt);
     let ev_i = eval_on(&enc, &dynm, &linear, &train_src, &train_tgt, &inter);
     let ev_e = eval_on(&enc, &dynm, &linear, &train_src, &train_tgt, &extra);
@@ -1384,13 +1534,24 @@ pub fn run_e21(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
 
 pub fn run_e22(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
     let t1 = ContRuleRef::Translation { dx: 1.0, dy: 0.0 };
-    let t2 = ContRuleRef::Rotation { theta: std::f64::consts::FRAC_PI_8 };
+    let t2 = ContRuleRef::Rotation {
+        theta: std::f64::consts::FRAC_PI_8,
+    };
     let compose = ContRule::Compose(t1, t2);
     let mut rng = Xoshiro256StarStar::seed_from_u64(seed ^ 0xE22);
-    let mut train = make_samples(&mut rng, ContRule::Translation { dx: 1.0, dy: 0.0 }, hp.train_n / 2, -2.0, 2.0, "t1");
+    let mut train = make_samples(
+        &mut rng,
+        ContRule::Translation { dx: 1.0, dy: 0.0 },
+        hp.train_n / 2,
+        -2.0,
+        2.0,
+        "t1",
+    );
     train.extend(make_samples(
         &mut rng,
-        ContRule::Rotation { theta: std::f64::consts::FRAC_PI_8 },
+        ContRule::Rotation {
+            theta: std::f64::consts::FRAC_PI_8,
+        },
         hp.train_n / 2,
         -2.0,
         2.0,
@@ -1438,7 +1599,15 @@ pub fn run_e23(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
     };
     let (mut enc, mut dynm) = fresh_models(seed, hp);
     let mut steps = train_consistency(&mut enc, &bundle.dataset.train, hp.enc_epochs, seed);
-    steps += train_dynamics(&mut enc, &mut dynm, &bundle.dataset.train, hp.dyn_epochs, hp.dyn_updates, None, seed ^ 2);
+    steps += train_dynamics(
+        &mut enc,
+        &mut dynm,
+        &bundle.dataset.train,
+        hp.dyn_epochs,
+        hp.dyn_updates,
+        None,
+        seed ^ 2,
+    );
     let horizons = [1usize, 2, 4, 8, 16, 32, 64];
     let mut cos_h = Vec::new();
     let mut energy_h = Vec::new();
@@ -1474,9 +1643,16 @@ pub fn run_e23(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
     row.energy = *energy_h.last().unwrap_or(&0.0);
     row.stability = cos_h.get(3).copied().unwrap_or(0.0);
     row.leakage_score = 0;
-    row.notes = format!("horizons {:?} cos {:?} energy {:?} (no teacher forcing)", horizons, cos_h, energy_h);
+    row.notes = format!(
+        "horizons {:?} cos {:?} energy {:?} (no teacher forcing)",
+        horizons, cos_h, energy_h
+    );
     row.verdict = if row.cosine_dynamic < COS_PARTIAL {
-        if cos_h.first().copied().unwrap_or(0.0) >= COS_PARTIAL { "PARTIAL" } else { "NULL" }
+        if cos_h.first().copied().unwrap_or(0.0) >= COS_PARTIAL {
+            "PARTIAL"
+        } else {
+            "NULL"
+        }
     } else {
         verdict_of(row.cosine_dynamic, 0.0, 0, true)
     }
@@ -1496,9 +1672,27 @@ pub fn run_e24(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
         }
     };
     let (mut enc, mut dynm) = fresh_models(seed ^ 0xA12, hp);
-    let steps = train_dynamics(&mut enc, &mut dynm, &bundle.dataset.train, hp.dyn_epochs, hp.dyn_updates, None, seed ^ 0xA12);
-    let train_src: Vec<_> = bundle.dataset.train.iter().map(|s| encode_xy(&enc, s.x, s.action)).collect();
-    let train_tgt: Vec<_> = bundle.dataset.train.iter().map(|s| encode_xy(&enc, s.y, s.action)).collect();
+    let steps = train_dynamics(
+        &mut enc,
+        &mut dynm,
+        &bundle.dataset.train,
+        hp.dyn_epochs,
+        hp.dyn_updates,
+        None,
+        seed ^ 0xA12,
+    );
+    let train_src: Vec<_> = bundle
+        .dataset
+        .train
+        .iter()
+        .map(|s| encode_xy(&enc, s.x, s.action))
+        .collect();
+    let train_tgt: Vec<_> = bundle
+        .dataset
+        .train
+        .iter()
+        .map(|s| encode_xy(&enc, s.y, s.action))
+        .collect();
     let linear = LinearDyn::fit(&train_src, &train_tgt);
     let mut deltas = Vec::new();
     for s in &bundle.dataset.test {
@@ -1506,7 +1700,14 @@ pub fn run_e24(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
         let tgt = encode_xy(&enc, s.y, s.action);
         deltas.push(cosine(&dynm.step(&src), &tgt) - cosine(&src, &tgt));
     }
-    let ev = eval_on(&enc, &dynm, &linear, &train_src, &train_tgt, &bundle.dataset.test);
+    let ev = eval_on(
+        &enc,
+        &dynm,
+        &linear,
+        &train_src,
+        &train_tgt,
+        &bundle.dataset.test,
+    );
     let d_mean = mean(&deltas);
     let d_med = median(deltas.clone());
     let d_std = stddev(&deltas);
@@ -1533,7 +1734,11 @@ pub fn run_e24(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
         d_mean / d_std.max(EPS)
     );
     row.verdict = if d_mean > 0.05 && lo > 0.0 {
-        if ev.cos_dyn >= COS_PASS { "POSITIVE" } else { "PARTIAL" }
+        if ev.cos_dyn >= COS_PASS {
+            "POSITIVE"
+        } else {
+            "PARTIAL"
+        }
     } else if d_mean.abs() < 0.03 {
         "NULL"
     } else if d_mean < 0.0 {
@@ -1592,7 +1797,12 @@ pub fn run_e25(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
     if !y_ok || row.leakage_score > 0 {
         row.verdict = "LEAKED".into();
     } else if row.experience_gain > 0.03 {
-        row.verdict = if ev_exp.cos_dyn >= COS_PASS { "POSITIVE" } else { "PARTIAL" }.into();
+        row.verdict = if ev_exp.cos_dyn >= COS_PASS {
+            "POSITIVE"
+        } else {
+            "PARTIAL"
+        }
+        .into();
     } else if row.experience_gain.abs() < 0.02 {
         row.verdict = "NULL".into();
     } else {
@@ -1624,18 +1834,55 @@ pub fn run_e27(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
     };
     let (mut enc, mut dynm) = fresh_models(seed, hp);
     let steps = train_dynamics(
-        &mut enc, &mut dynm, &bundle_a.dataset.train, hp.dyn_epochs, hp.dyn_updates, None, seed,
+        &mut enc,
+        &mut dynm,
+        &bundle_a.dataset.train,
+        hp.dyn_epochs,
+        hp.dyn_updates,
+        None,
+        seed,
     );
     let mut rng = Xoshiro256StarStar::seed_from_u64(seed ^ 0xE27B);
-    let b1 = make_samples(&mut rng, ContRule::Translation { dx: 1.1, dy: -0.3 }, 8, 4.0, 7.0, "b1");
-    let b2 = make_samples(&mut rng, ContRule::Translation { dx: 1.1, dy: -0.3 }, 8, -7.0, -4.0, "b2");
-    let mut b3 = make_samples(&mut rng, ContRule::Translation { dx: 1.1, dy: -0.3 }, 8, 3.0, 5.0, "b3");
+    let b1 = make_samples(
+        &mut rng,
+        ContRule::Translation { dx: 1.1, dy: -0.3 },
+        8,
+        4.0,
+        7.0,
+        "b1",
+    );
+    let b2 = make_samples(
+        &mut rng,
+        ContRule::Translation { dx: 1.1, dy: -0.3 },
+        8,
+        -7.0,
+        -4.0,
+        "b2",
+    );
+    let mut b3 = make_samples(
+        &mut rng,
+        ContRule::Translation { dx: 1.1, dy: -0.3 },
+        8,
+        3.0,
+        5.0,
+        "b3",
+    );
     for s in &mut b3 {
         s.x = (s.x.0 * 1.8, s.x.1 * 0.6);
         s.y = rule_a.apply(s.x);
     }
-    let train_src: Vec<_> = bundle_a.dataset.train.iter().map(|s| encode_xy(&enc, s.x, s.action)).collect();
-    let train_tgt: Vec<_> = bundle_a.dataset.train.iter().map(|s| encode_xy(&enc, s.y, s.action)).collect();
+    let train_src: Vec<_> = bundle_a
+        .dataset
+        .train
+        .iter()
+        .map(|s| encode_xy(&enc, s.x, s.action))
+        .collect();
+    let train_tgt: Vec<_> = bundle_a
+        .dataset
+        .train
+        .iter()
+        .map(|s| encode_xy(&enc, s.y, s.action))
+        .collect();
     let linear = LinearDyn::fit(&train_src, &train_tgt);
     let e1 = eval_on(&enc, &dynm, &linear, &train_src, &train_tgt, &b1);
     let e2 = eval_on(&enc, &dynm, &linear, &train_src, &train_tgt, &b2);
@@ -1648,8 +1895,17 @@ pub fn run_e27(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
     row.cosine_dynamic = e1.cos_dyn;
     row.cosine_static = e1.cos_static;
     row.test_sha256 = bundle_a.test_immutable_sha;
-    row.notes = format!("B1={:.3} B2={:.3} B3={:.3}; targets never in consolidation", e1.cos_dyn, e2.cos_dyn, e3.cos_dyn);
-    row.verdict = verdict_of((e1.cos_dyn + e2.cos_dyn + e3.cos_dyn) / 3.0, e1.cos_static, 0, true).into();
+    row.notes = format!(
+        "B1={:.3} B2={:.3} B3={:.3}; targets never in consolidation",
+        e1.cos_dyn, e2.cos_dyn, e3.cos_dyn
+    );
+    row.verdict = verdict_of(
+        (e1.cos_dyn + e2.cos_dyn + e3.cos_dyn) / 3.0,
+        e1.cos_static,
+        0,
+        true,
+    )
+    .into();
     row.encoder_hash = enc.weights_hash();
     row.dynamics_hash = dynm.weights_hash();
     row
@@ -1677,7 +1933,13 @@ pub fn run_e28(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
             }
         };
         steps += train_dynamics(
-            &mut enc, &mut dynm, &bundle.dataset.train, hp.dyn_epochs / 2, hp.dyn_updates, cdt.regularity(), seed ^ i as u64,
+            &mut enc,
+            &mut dynm,
+            &bundle.dataset.train,
+            hp.dyn_epochs / 2,
+            hp.dyn_updates,
+            cdt.regularity(),
+            seed ^ i as u64,
         );
         for s in bundle.dataset.train.iter().take(3) {
             cdt.store(
@@ -1687,19 +1949,40 @@ pub fn run_e28(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
             );
         }
         cdt.consolidate();
-        let train_src: Vec<_> = bundle.dataset.train.iter().map(|s| encode_xy(&enc, s.x, s.action)).collect();
-        let train_tgt: Vec<_> = bundle.dataset.train.iter().map(|s| encode_xy(&enc, s.y, s.action)).collect();
+        let train_src: Vec<_> = bundle
+            .dataset
+            .train
+            .iter()
+            .map(|s| encode_xy(&enc, s.x, s.action))
+            .collect();
+        let train_tgt: Vec<_> = bundle
+            .dataset
+            .train
+            .iter()
+            .map(|s| encode_xy(&enc, s.y, s.action))
+            .collect();
         let linear = LinearDyn::fit(&train_src, &train_tgt);
-        let ev = eval_on(&enc, &dynm, &linear, &train_src, &train_tgt, &bundle.dataset.test);
+        let ev = eval_on(
+            &enc,
+            &dynm,
+            &linear,
+            &train_src,
+            &train_tgt,
+            &bundle.dataset.test,
+        );
         retention.push(ev.cos_dyn);
     }
-    let forgetting = retention.first().copied().unwrap_or(0.0) - retention.last().copied().unwrap_or(0.0);
+    let forgetting =
+        retention.first().copied().unwrap_or(0.0) - retention.last().copied().unwrap_or(0.0);
     let mut row = base_row("E28_continual_forgetting", seed);
     row.mode = "MODE_3_DYNAMIC_PLUS_CDT_TRAINING".into();
     row.steps_trained = steps;
     row.leakage_score = 0;
     row.cosine_dynamic = mean(&retention);
-    row.notes = format!("R1..R4 retention {:?} forgetting={:.3}; CDT regularity replay", retention, forgetting);
+    row.notes = format!(
+        "R1..R4 retention {:?} forgetting={:.3}; CDT regularity replay",
+        retention, forgetting
+    );
     row.verdict = if forgetting < 0.15 && mean(&retention) > COS_PARTIAL {
         "PARTIAL"
     } else if mean(&retention) < 0.4 {
@@ -1725,17 +2008,49 @@ pub fn run_e29(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
         }
     };
     let (mut enc, mut dynm) = fresh_models(seed, hp);
-    let _ = train_dynamics(&mut enc, &mut dynm, &bundle.dataset.train, hp.dyn_epochs, hp.dyn_updates, None, seed);
+    let _ = train_dynamics(
+        &mut enc,
+        &mut dynm,
+        &bundle.dataset.train,
+        hp.dyn_epochs,
+        hp.dyn_updates,
+        None,
+        seed,
+    );
     let baseline = dynm.clone();
-    let train_src: Vec<_> = bundle.dataset.train.iter().map(|s| encode_xy(&enc, s.x, s.action)).collect();
-    let train_tgt: Vec<_> = bundle.dataset.train.iter().map(|s| encode_xy(&enc, s.y, s.action)).collect();
+    let train_src: Vec<_> = bundle
+        .dataset
+        .train
+        .iter()
+        .map(|s| encode_xy(&enc, s.x, s.action))
+        .collect();
+    let train_tgt: Vec<_> = bundle
+        .dataset
+        .train
+        .iter()
+        .map(|s| encode_xy(&enc, s.y, s.action))
+        .collect();
     let linear = LinearDyn::fit(&train_src, &train_tgt);
-    let ev_base = eval_on(&enc, &dynm, &linear, &train_src, &train_tgt, &bundle.dataset.test);
+    let ev_base = eval_on(
+        &enc,
+        &dynm,
+        &linear,
+        &train_src,
+        &train_tgt,
+        &bundle.dataset.test,
+    );
     let mut targeted = dynm.clone();
     for i in 0..targeted.dim.min(4) {
         targeted.w[i * targeted.dim + i] = 0.0;
     }
-    let ev_tgt = eval_on(&enc, &targeted, &linear, &train_src, &train_tgt, &bundle.dataset.test);
+    let ev_tgt = eval_on(
+        &enc,
+        &targeted,
+        &linear,
+        &train_src,
+        &train_tgt,
+        &bundle.dataset.test,
+    );
     let mut rng = Xoshiro256StarStar::seed_from_u64(seed ^ 0xA11D);
     let mut random = dynm.clone();
     let mut flipped = 0;
@@ -1744,9 +2059,23 @@ pub fn run_e29(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
         random.w[idx] = 0.0;
         flipped += 1;
     }
-    let ev_rnd = eval_on(&enc, &random, &linear, &train_src, &train_tgt, &bundle.dataset.test);
+    let ev_rnd = eval_on(
+        &enc,
+        &random,
+        &linear,
+        &train_src,
+        &train_tgt,
+        &bundle.dataset.test,
+    );
     dynm = baseline.clone();
-    let ev_rb = eval_on(&enc, &dynm, &linear, &train_src, &train_tgt, &bundle.dataset.test);
+    let ev_rb = eval_on(
+        &enc,
+        &dynm,
+        &linear,
+        &train_src,
+        &train_tgt,
+        &bundle.dataset.test,
+    );
     let mut row = base_row("E29_causal_intervention", seed);
     row.cosine_dynamic = ev_base.cos_dyn;
     row.cosine_static = ev_base.cos_static;
@@ -1785,7 +2114,15 @@ pub fn run_e30(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
     };
     let (mut enc, mut dynm) = fresh_models(seed, hp);
     let mut cdt = ExperienceCdt::default();
-    let _ = train_dynamics(&mut enc, &mut dynm, &bundle.dataset.train, hp.dyn_epochs, hp.dyn_updates, None, seed);
+    let _ = train_dynamics(
+        &mut enc,
+        &mut dynm,
+        &bundle.dataset.train,
+        hp.dyn_epochs,
+        hp.dyn_updates,
+        None,
+        seed,
+    );
     for s in bundle.dataset.train.iter().take(4) {
         cdt.store(
             encode_xy(&enc, s.x, s.action),
@@ -1804,13 +2141,38 @@ pub fn run_e30(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
         ..Default::default()
     };
     episodic_cleared.episodes.clear();
-    let train_src: Vec<_> = bundle.dataset.train.iter().map(|s| encode_xy(&enc_p0, s.x, s.action)).collect();
-    let train_tgt: Vec<_> = bundle.dataset.train.iter().map(|s| encode_xy(&enc_p0, s.y, s.action)).collect();
+    let train_src: Vec<_> = bundle
+        .dataset
+        .train
+        .iter()
+        .map(|s| encode_xy(&enc_p0, s.x, s.action))
+        .collect();
+    let train_tgt: Vec<_> = bundle
+        .dataset
+        .train
+        .iter()
+        .map(|s| encode_xy(&enc_p0, s.y, s.action))
+        .collect();
     let linear = LinearDyn::fit(&train_src, &train_tgt);
-    let p0 = eval_on(&enc_p0, &dyn_p0, &linear, &train_src, &train_tgt, &bundle.dataset.test);
+    let p0 = eval_on(
+        &enc_p0,
+        &dyn_p0,
+        &linear,
+        &train_src,
+        &train_tgt,
+        &bundle.dataset.test,
+    );
     let p1 = p0.cos_dyn;
     let (enc_fresh, _) = fresh_models(seed ^ 0xF4E5, hp);
-    let p2 = eval_on(&enc_fresh, &dyn_p0, &linear, &train_src, &train_tgt, &bundle.dataset.test).cos_dyn;
+    let p2 = eval_on(
+        &enc_fresh,
+        &dyn_p0,
+        &linear,
+        &train_src,
+        &train_tgt,
+        &bundle.dataset.test,
+    )
+    .cos_dyn;
     let p3 = p0.cos_static;
     let mut row = base_row("E30_serialize_reload_persistence", seed);
     row.cosine_dynamic = p0.cos_dyn;
@@ -1839,7 +2201,12 @@ pub fn run_fase_a(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
     row.leakage_score = prov.leakage_score();
     row.mode = "MODE_2_DYNAMIC_FIELD".into();
     row.hyperparam_lock = hp.status().into();
-    row.verdict = if prov.leakage_score() == 0 { "POSITIVE" } else { "LEAKED" }.into();
+    row.verdict = if prov.leakage_score() == 0 {
+        "POSITIVE"
+    } else {
+        "LEAKED"
+    }
+    .into();
     row.notes = format!(
         "clean-room defaults: random init, CDT empty, RQM/NN/table/attractor OFF; leakage={}",
         row.leakage_score
@@ -1951,7 +2318,9 @@ mod tests {
         let report = audit_contamination_hard(&ds);
         assert!(report.is_invalid());
         assert!(report.hits.iter().any(|h| {
-            h.kind == "exact_duplicate" || h.kind == "equivalent_target" || h.kind == "equivalent_state"
+            h.kind == "exact_duplicate"
+                || h.kind == "equivalent_target"
+                || h.kind == "equivalent_state"
         }));
     }
 
@@ -1989,8 +2358,14 @@ mod tests {
     fn auditor_hooks_same_orbit_and_transform() {
         let report = ContaminationReport {
             hits: vec![
-                ContaminationHit { kind: "same_orbit".into(), detail: "synthetic".into() },
-                ContaminationHit { kind: "equivalent_transformation".into(), detail: "synthetic".into() },
+                ContaminationHit {
+                    kind: "same_orbit".into(),
+                    detail: "synthetic".into(),
+                },
+                ContaminationHit {
+                    kind: "equivalent_transformation".into(),
+                    detail: "synthetic".into(),
+                },
             ],
         };
         assert_eq!(report.status(), "DATASET_INVALID");

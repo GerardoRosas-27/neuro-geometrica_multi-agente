@@ -40,18 +40,27 @@ fn main() {
 
     let mut md = String::new();
     md.push_str("# Resultados — Etapa 2 Clean-Room v2\n\n");
-    md.push_str("Protocolo: `docs/etapa_2_autonomia_campo_experimentos.md` **§29+** (prevalece).\n");
+    md.push_str(
+        "Protocolo: `docs/etapa_2_autonomia_campo_experimentos.md` **§29+** (prevalece).\n",
+    );
     md.push_str("Módulo: `src/field_autonomy_stage2_v2.rs` (legacy `field_autonomy_stage2.rs` = histórico / pre-cleanroom).\n");
     md.push_str("Rama: `exp/field-autonomy-stage-2`\n");
     md.push_str(&format!(
         "Seeds desarrollo: 8 × `0xA300..0xA307` ({})\n",
-        if smoke_only { "smoke subset" } else { "full suite" }
+        if smoke_only {
+            "smoke subset"
+        } else {
+            "full suite"
+        }
     ));
     md.push_str("Seeds confirmación `0xB300–0xB30F`: **reservadas / diferidas** (no corridas; lock solo sobre DEV).\n");
     md.push_str("Periferia: numeric FIELD_ONLY; RQM/NN/table/attractor OFF en eval.\n\n");
     md.push_str("## Nota sobre resultados previos\n\n");
     md.push_str("`docs/resultados_etapa_2_autonomia.md` / `.csv` son **pre-cleanroom / históricos** (seeds `0xE1800..`). No mezclar con este informe.\n\n");
-    md.push_str(&format!("Wall time: **{elapsed:.1}s**. Filas: {}.\n\n", rows.len()));
+    md.push_str(&format!(
+        "Wall time: **{elapsed:.1}s**. Filas: {}.\n\n",
+        rows.len()
+    ));
     md.push_str("## Hyperparam lock\n\n");
     let mut hp = HyperparamLock::default();
     if smoke_only {
@@ -86,7 +95,9 @@ fn main() {
     md.push_str("| Estado | Ítems |\n|---|---|\n");
     md.push_str("| Landed | Generator+auditor+sealed manifests; E18; E18C C0–C6; E19 provenance; E20 antimem; E21 interp/extrap; E22 compose RQM-OFF; E23 rollout h≤64 no TF; E24 paired+bootstrap; E25 cycle; E26 ablation; E27 transfer; E28 continual; E29 intervene; E30 serialize/reload (in-process) |\n");
     md.push_str("| Deferred | Confirmation seeds 0xB300–0xB30F; true OS process restart in E30; Gemma linguistic periphery benchmark |\n\n");
-    md.push_str("CSV: [`resultados_etapa_2_cleanroom_v2.csv`](resultados_etapa_2_cleanroom_v2.csv)\n");
+    md.push_str(
+        "CSV: [`resultados_etapa_2_cleanroom_v2.csv`](resultados_etapa_2_cleanroom_v2.csv)\n",
+    );
     fs::write("docs/resultados_etapa_2_cleanroom_v2.md", &md).expect("write md");
     println!("wrote docs/resultados_etapa_2_cleanroom_v2.{{md,csv}} ({elapsed:.1}s)");
     for (exp, vh) in &hist {

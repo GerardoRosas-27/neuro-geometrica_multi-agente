@@ -93,8 +93,7 @@ impl FrozenGemma2Probe {
             let start = i * mean.len() / HIDDEN_DIM;
             let end = ((i + 1) * mean.len() / HIDDEN_DIM).max(start + 1);
             let slice = &mean[start..end.min(mean.len())];
-            *slot = slice.iter().map(|&v| f64::from(v)).sum::<f64>()
-                / slice.len().max(1) as f64;
+            *slot = slice.iter().map(|&v| f64::from(v)).sum::<f64>() / slice.len().max(1) as f64;
         }
         let n = out.iter().map(|x| x * x).sum::<f64>().sqrt().max(1e-12);
         for v in out.iter_mut() {
