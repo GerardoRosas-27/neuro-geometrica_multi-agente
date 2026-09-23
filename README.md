@@ -64,7 +64,10 @@ Protocolo reproducible para invariancia de representación, composición de rela
 
 ## Etapa 2 — autonomía del campo (E18–E30)
 
-Protocolo de aprendizaje de reglas desde experiencia consolidada (FIELD_ONLY, anti-leakage, CDT como experiencia no como lookup): [`docs/etapa_2_autonomia_campo_experimentos.md`](docs/etapa_2_autonomia_campo_experimentos.md). Resultados: [`docs/resultados_etapa_2_autonomia.md`](docs/resultados_etapa_2_autonomia.md).
+Protocolo de aprendizaje de reglas desde experiencia consolidada (FIELD_ONLY, anti-leakage, CDT como experiencia no como lookup): [`docs/etapa_2_autonomia_campo_experimentos.md`](docs/etapa_2_autonomia_campo_experimentos.md) — **§29+ Clean-Room v2 prevalece**.
+
+- **Clean-Room v2 (vigente):** módulo `src/field_autonomy_stage2_v2.rs`, seeds `0xA300–0xA307`, resultados [`docs/resultados_etapa_2_cleanroom_v2.md`](docs/resultados_etapa_2_cleanroom_v2.md). Smoke: `cargo run --example smoke_stage2_v2`. Suite DEV: `cargo run --release --example run_stage2_v2_dev`.
+- **Histórico / pre-cleanroom:** `src/field_autonomy_stage2.rs` + [`docs/resultados_etapa_2_autonomia.md`](docs/resultados_etapa_2_autonomia.md) (seeds `0xE1800..`) — no mezclar con v2.
 
 ## Experimentos 11–17 (campo entrenable)
 

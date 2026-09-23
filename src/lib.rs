@@ -22,6 +22,8 @@ pub mod engine_comparison;
 pub mod entanglement;
 /// Etapa 2: autonomía del campo / aprendizaje de reglas (E18–E30).
 pub mod field_autonomy_stage2;
+/// Clean-Room v2 (§29+): independent generator, sealed TEST, anti-contamination.
+pub mod field_autonomy_stage2_v2;
 pub mod field_encoder;
 pub mod field_gemma_probe;
 /// Eval completa train+infer+CDT vs main RQM.
