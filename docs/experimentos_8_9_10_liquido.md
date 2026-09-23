@@ -10,7 +10,7 @@ Este documento fija el protocolo antes de ejecutar los experimentos. La finalida
 
 Desde la raíz:
 
-cargo checkout exp/liquid-inference-experiments-8-9-10
+git checkout exp/liquid-inference-experiments-8-9-10
 
 cargo fmt --all -- --check
 cargo test --release --lib liquid_cdt_memory -- --nocapture
