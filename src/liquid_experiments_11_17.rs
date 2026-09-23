@@ -13,6 +13,8 @@
 
 #![allow(clippy::needless_range_loop)]
 #![allow(clippy::too_many_arguments)]
+#![allow(clippy::unnecessary_cast)]
+#![allow(clippy::cloned_ref_to_slice_refs)]
 
 use crate::field_gemma_probe::FrozenGemma2Probe;
 use crate::field_linguistic_layer::{
@@ -562,10 +564,8 @@ fn silhouette_approx(fps: &[Vec<f64>], labels: &[usize]) -> f64 {
 }
 
 fn nearest_label(query: &[f64], bank: &[(usize, Vec<f64>)]) -> (usize, f64, f64) {
-    let mut scored: Vec<(usize, f64)> = bank
-        .iter()
-        .map(|(l, fp)| (*l, cosine(query, fp)))
-        .collect();
+    let mut scored: Vec<(usize, f64)> =
+        bank.iter().map(|(l, fp)| (*l, cosine(query, fp))).collect();
     scored.sort_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
     let top1 = scored.first().copied().unwrap_or((usize::MAX, 0.0));
     let top2 = scored.get(1).map(|x| x.1).unwrap_or(0.0);
@@ -1485,7 +1485,10 @@ pub fn run_experiment_14(seed: u64) -> RegistryRow11 {
         // Entrena sesgo local del concepto actual (+ ligero encoder).
         for _ in 0..120 {
             let mut fp = enc.encode(&feat);
-            let b = biases.get(&id).cloned().unwrap_or_else(|| vec![0.0; FIELD_FP_DIM]);
+            let b = biases
+                .get(&id)
+                .cloned()
+                .unwrap_or_else(|| vec![0.0; FIELD_FP_DIM]);
             for i in 0..FIELD_FP_DIM {
                 fp[i] += b[i];
             }
@@ -1511,7 +1514,10 @@ pub fn run_experiment_14(seed: u64) -> RegistryRow11 {
             let tgt = attractors.get(&prev_id).unwrap().clone();
             for _ in 0..30 {
                 let mut fp = enc.encode(&pf);
-                let b = biases.get(&prev_id).cloned().unwrap_or_else(|| vec![0.0; FIELD_FP_DIM]);
+                let b = biases
+                    .get(&prev_id)
+                    .cloned()
+                    .unwrap_or_else(|| vec![0.0; FIELD_FP_DIM]);
                 for i in 0..FIELD_FP_DIM {
                     fp[i] += b[i];
                 }
@@ -1524,7 +1530,12 @@ pub fn run_experiment_14(seed: u64) -> RegistryRow11 {
             }
         }
         for &(prev_name, prev_id) in phases.iter().take(phase_i + 1) {
-            let fp = encode_local(&enc, &biases, &probe_features(&mut probe, prev_name), prev_id);
+            let fp = encode_local(
+                &enc,
+                &biases,
+                &probe_features(&mut probe, prev_name),
+                prev_id,
+            );
             let bank: Vec<(usize, Vec<f64>)> = phases
                 .iter()
                 .take(phase_i + 1)
@@ -1539,12 +1550,36 @@ pub fn run_experiment_14(seed: u64) -> RegistryRow11 {
         }
     }
 
-    let r_a = recall.get(&0).and_then(|v| v.last()).copied().unwrap_or(0.0);
-    let r_b = recall.get(&1).and_then(|v| v.last()).copied().unwrap_or(0.0);
-    let r_c = recall.get(&2).and_then(|v| v.last()).copied().unwrap_or(0.0);
-    let r_a0 = recall.get(&0).and_then(|v| v.first()).copied().unwrap_or(0.0);
-    let r_b0 = recall.get(&1).and_then(|v| v.first()).copied().unwrap_or(0.0);
-    let r_c0 = recall.get(&2).and_then(|v| v.first()).copied().unwrap_or(0.0);
+    let r_a = recall
+        .get(&0)
+        .and_then(|v| v.last())
+        .copied()
+        .unwrap_or(0.0);
+    let r_b = recall
+        .get(&1)
+        .and_then(|v| v.last())
+        .copied()
+        .unwrap_or(0.0);
+    let r_c = recall
+        .get(&2)
+        .and_then(|v| v.last())
+        .copied()
+        .unwrap_or(0.0);
+    let r_a0 = recall
+        .get(&0)
+        .and_then(|v| v.first())
+        .copied()
+        .unwrap_or(0.0);
+    let r_b0 = recall
+        .get(&1)
+        .and_then(|v| v.first())
+        .copied()
+        .unwrap_or(0.0);
+    let r_c0 = recall
+        .get(&2)
+        .and_then(|v| v.first())
+        .copied()
+        .unwrap_or(0.0);
     let delta_a = r_a - r_a0;
     let delta_b = r_b - r_b0;
     let delta_c = r_c - r_c0;
@@ -1555,7 +1590,10 @@ pub fn run_experiment_14(seed: u64) -> RegistryRow11 {
     let flipped = attractors.get(&0).unwrap().clone();
     for _ in 0..80 {
         let mut fp = enc.encode(&feat_d);
-        let b = biases_adv.get(&3).cloned().unwrap_or_else(|| vec![0.0; FIELD_FP_DIM]);
+        let b = biases_adv
+            .get(&3)
+            .cloned()
+            .unwrap_or_else(|| vec![0.0; FIELD_FP_DIM]);
         for i in 0..FIELD_FP_DIM {
             fp[i] += b[i];
         }

@@ -8,6 +8,8 @@
 //! Periferia: Gemma GGUF si existe; si no, `GemmaShapedLexicon` (etiqueta honesta).
 //! `FieldState` nunca recibe tokens.
 
+#![allow(dead_code)]
+
 use crate::field_encoder::{cluster_field_target, write_into_field};
 use crate::field_linguistic_layer::{
     FrozenLinguisticProbe, GemmaShapedLexicon, LinguisticFieldCodec,
@@ -714,7 +716,10 @@ pub fn run_experiment_10(seed: u64) -> (RegistryRow, Vec<E10Failure>) {
         } else {
             fails.push(E10Failure {
                 variant: tag,
-                detail: format!("cue={cue} exp={exp} got={} abs={}", r.predicted, r.abstained),
+                detail: format!(
+                    "cue={cue} exp={exp} got={} abs={}",
+                    r.predicted, r.abstained
+                ),
             });
         }
     }
@@ -950,11 +955,7 @@ mod tests {
             .collect();
         assert!(!e9.is_empty());
         for r in &e9 {
-            assert!(
-                r.accuracy_seen >= 0.99,
-                "E9 seen edges must work: {:?}",
-                r
-            );
+            assert!(r.accuracy_seen >= 0.99, "E9 seen edges must work: {:?}", r);
             assert!(
                 r.accuracy_unseen >= 0.99,
                 "E9 compose should pass with multi-hop: {:?}",

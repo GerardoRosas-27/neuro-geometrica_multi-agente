@@ -15,6 +15,9 @@
 //!
 //! Ver `docs/hibrido_liquido_cdt_rqm_fuse.md`.
 
+#![allow(dead_code)]
+#![allow(clippy::too_many_arguments)]
+
 use crate::entanglement::EntanglementConfig;
 use crate::liquid_cdt_memory::{
     CdtConsolidatedMemory, Episode, EpisodeKind, LiquidInfer, SleepReport,
@@ -210,7 +213,6 @@ impl FusedLiquidCdt {
         }
     }
 
-
     /// Hot path: líquido primero; RQM solo como fallback/router cuando hace falta.
     ///
     /// `force_rqm`: fuerza intento RQM si el cue está marcado o hay relación (tests).
@@ -272,12 +274,7 @@ impl FusedLiquidCdt {
     ///
     /// Entrena solo aristas directas (`teach_relation`); en inferencia camina
     /// el índice RQM hasta `hops` para A→C / A→D. Margen bajo → abstención.
-    pub fn infer_compose(
-        &mut self,
-        obs: usize,
-        candidates: &[usize],
-        hops: usize,
-    ) -> FuseReport {
+    pub fn infer_compose(&mut self, obs: usize, candidates: &[usize], hops: usize) -> FuseReport {
         let hops = hops.clamp(1, self.compose_max_hops.max(1));
         let obs0 = obs % self.num_labels;
         if hops == 1 {

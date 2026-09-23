@@ -20,6 +20,8 @@ pub mod emergent_cognition_training;
 #[cfg(feature = "research")]
 pub mod engine_comparison;
 pub mod entanglement;
+/// Etapa 2: autonomía del campo / aprendizaje de reglas (E18–E30).
+pub mod field_autonomy_stage2;
 pub mod field_encoder;
 pub mod field_gemma_probe;
 /// Eval completa train+infer+CDT vs main RQM.
@@ -49,10 +51,10 @@ pub mod liquid_cdt_memory;
 pub mod liquid_cdt_rqm_fuse;
 /// Bench detallado: LiquidCdt (NEW) vs NativeThermoRqm estilo MAIN.
 pub mod liquid_cdt_vs_main_bench;
-/// Experimentos 8/9/10: invariancia, composición, predicción futura (rama exp).
-pub mod liquid_experiments_8_9_10;
 /// Experimentos 11–17: campo entrenable (encoder θ + dinámica φ).
 pub mod liquid_experiments_11_17;
+/// Experimentos 8/9/10: invariancia, composición, predicción futura (rama exp).
+pub mod liquid_experiments_8_9_10;
 pub mod matrix_free_cognitive_substrate;
 pub mod native_checkpoint;
 pub mod native_cognitive_closed_loop;
