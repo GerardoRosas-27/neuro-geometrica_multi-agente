@@ -49,6 +49,8 @@ pub mod liquid_cdt_memory;
 pub mod liquid_cdt_rqm_fuse;
 /// Bench detallado: LiquidCdt (NEW) vs NativeThermoRqm estilo MAIN.
 pub mod liquid_cdt_vs_main_bench;
+/// Experimentos 8/9/10: invariancia, composición, predicción futura (rama exp).
+pub mod liquid_experiments_8_9_10;
 pub mod matrix_free_cognitive_substrate;
 pub mod native_checkpoint;
 pub mod native_cognitive_closed_loop;
