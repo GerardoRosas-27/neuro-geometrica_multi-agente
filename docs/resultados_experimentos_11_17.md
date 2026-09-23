@@ -197,6 +197,17 @@ export GEMMA2_GGUF=/workspace/neuro-geometrica_multi-agente/models/gemma-2-2b-it
 3. Encoder contrastivo ES: atractor perro vs gato/otros; holdouts cross-lingual nunca en train.
 4. Compose/docs: volumen `./models:/models:ro` + `GEMMA2_GGUF` alineado con la intención de main.
 
+## Endurecimiento E13/E15 (WIP, 2026-09-23)
+
+Smoke 1 semilla `0xE1100` + GGUF (no reemplaza la tabla de 8 semillas arriba).
+
+| Exp | verdict smoke | seen / unseen (dyn o rank) | Notas |
+|-----|---------------|----------------------------|-------|
+| E13 | PARTIAL | dyn seen **1.00** / unseen **0.33** | Holdout: lobo→mamífero✓, lobo→animal✗, águila→ser-vivo✗. Lift vs baseline en seen; umbral PASS (unseen≥0.66) no. |
+| E15 | **PASS** | rank_acc **0.80** | structure 3/3, margin_E≈1.37, arch=factor_compose+Dphi_manifold |
+
+Detalle, fallos y backlog: `docs/hallazgos_e13_e15_endurecimiento.md`.
+
 ## Confirmación git
 
 - Resultados en `docs/resultados_experimentos_11_17.md` y `.csv`.

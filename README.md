@@ -64,7 +64,7 @@ Protocolo reproducible para invariancia de representación, composición de rela
 
 ## Experimentos 11–17 (campo entrenable)
 
-Protocolo para entrenar el sustrato de campo con el LLM congelado como periferia, incluyendo invariancia lingüística real, relaciones, aprendizaje incremental, dinámica predictiva, estados no observados y controles anti-leakage: [`docs/experimentos_11_17_campo_entrenable.md`](docs/experimentos_11_17_campo_entrenable.md).
+Protocolo para entrenar el sustrato de campo con el LLM congelado como periferia, incluyendo invariancia lingüística real, relaciones, aprendizaje incremental, dinámica predictiva, estados no observados y controles anti-leakage: [`docs/experimentos_11_17_campo_entrenable.md`](docs/experimentos_11_17_campo_entrenable.md). Resultados: [`docs/resultados_experimentos_11_17.md`](docs/resultados_experimentos_11_17.md). Hallazgos E13/E15 (WIP): [`docs/hallazgos_e13_e15_endurecimiento.md`](docs/hallazgos_e13_e15_endurecimiento.md).
 
 ## Puntos de entrada
 
