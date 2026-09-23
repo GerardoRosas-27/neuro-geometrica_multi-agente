@@ -58,6 +58,10 @@ tesis v2 es ΔR y *K_max(N, ρ)* frente a Hopfield/Hebb.
 `.cargo/config.toml` fija `target-cpu=native` en local. Los binarios y los
 tiempos de pared no son comparables entre máquinas.
 
+## Experimentos 8–10 (líquido)
+
+Protocolo reproducible para invariancia de representación, composición de relaciones y predicción dinámica: [`docs/experimentos_8_9_10_liquido.md`](docs/experimentos_8_9_10_liquido.md).
+
 ## Puntos de entrada
 
 Un binario por rol. El resto está en `src/bin/archive/`.
