@@ -1,388 +1,841 @@
-# Etapa 2 — Autonomía del campo: dinámica, reglas y generación de estados no almacenados
+# Etapa 2 — Campo autónomo con aprendizaje por experiencia consolidada
 
-## Objetivo científico
+## 1. Pregunta central de toda la etapa
 
-E11/E12 ya dan evidencia de que un FieldEncoder entrenable puede modificar la geometría y reducir variación lingüística usando estados reales de Gemma GGUF. E13/E15 muestran el cuello de botella: representar conceptos no implica aprender relaciones ni composición. E16/E17 muestran una señal prometedora de dinámica, pero E17 aún tiene contaminación por RQM composition.
+Los experimentos E11–E17 no deben tratarse como pruebas independientes. En conjunto forman una hipótesis arquitectónica:
 
-La pregunta central de esta etapa es:
+Gemma / periferia lingüística → FieldEncoder → campo dinámico D_phi → estados y transiciones
 
-> ¿Puede el campo aprender una regla o dinámica relacional que produzca estados correctos que nunca fueron almacenados, sin depender de RQM, CDT, tablas, attractor banks ni memoria directa?
+y, después de múltiples experiencias:
 
-Separar estrictamente:
-1. representación: FieldEncoder;
-2. dinámica: D_phi;
-3. memoria: CDT/RQM/engramas.
+experiencias → consolidación CDT → conocimiento/regularidades consolidadas → nueva experiencia → adaptación del campo
 
----
+La pregunta que debe responder esta etapa es:
 
-## Diagnóstico E11–E17
+> ¿Puede el campo aprender una regla a partir de experiencias anteriores, consolidarlas en CDT y posteriormente aplicar esa regla a un estado completamente nuevo que nunca vio, sin que una tabla, RQM, CDT, attractor bank o nearest-neighbor le entregue directamente la respuesta?
 
-### E11 — FieldEncoder
-Resultado positivo pero variable. Hay semillas fuertes y una débil. La mejora causal indica que el encoder modifica la geometría, pero no demuestra semántica general.
+Esta formulación es más fuerte que preguntar simplemente si el campo puede recuperar un estado.
 
-Mejorar con 8–16 semillas, baseline Gemma raw, proyector aleatorio, embeddings sin entrenamiento, bootstrap/CI y hashes de dataset/checkpoint.
+El objetivo es distinguir:
+1. memoria: recordar una experiencia concreta;
+2. representación: codificar un estado en una geometría útil;
+3. regla: aprender una transformación general;
+4. dinámica: aplicar esa transformación a un estado nuevo;
+5. consolidación: extraer regularidades de experiencias anteriores y hacerlas disponibles para aprendizaje posterior.
 
-### E12 — Invariancia lingüística
-Es el resultado más limpio: con Gemma GGUF real y entrenamiento español, 8/8 obtienen seen=1, unseen=1 y OOD=1, con margins aproximados 0.69–0.75.
-
-Interpretación correcta: evidencia de invariancia lingüística en este benchmark; no prueba una semántica independiente del lenguaje en general.
-
-Ampliar a sinónimos, plural/género, diminutivos, paráfrasis, frases completas, ruido ortográfico, conceptos cercanos y más idiomas.
-
-### E13 — Relaciones
-Es el cuello de botella. Tabla funciona, RQM funciona parcialmente y static/dynamic siguen bajos.
-
-Conclusión: no seguir priorizando el encoder. Hay que enseñar y medir reglas relacionales.
-
-### E14 — Continual learning
-8/8 PASS, pero usa fixed prototypes + micro-rehearsal + local biases. Aún no demuestra plasticidad natural del campo.
-
-Hacer ablaciones de cada estabilizador y una variante sin todos.
-
-### E15 — Estructura sin etiquetas
-PARTIAL/FAIL. Las distancias OK/BAD son demasiado parecidas y structure suele 0/3.
-
-Es un resultado negativo útil: geometría no equivale a composicionalidad. Sustituir el benchmark pequeño por reglas generativas.
-
-### E16 — Dynamic Field
-Varias semillas muestran cos_B=1, rollB=1, rollC=1 y rollD=1, pero existen semillas débiles y a veces static es comparable.
-
-Necesita un control pareado static vs dynamic.
-
-### E17 — Estado nunca almacenado
-Es una señal importante: targets ausentes de train/CDT/attractor/direct RQM, con distancias pequeñas. Pero audit_rqm_compose sigue activo.
-
-No llamarlo todavía field-only.
+La CDT puede participar como memoria de experiencias consolidadas, pero no debe funcionar como una tabla de respuestas.
 
 ---
 
-# Arquitectura experimental obligatoria
+# 2. Interpretación conjunta de E11–E17
 
-Implementar modos explícitos:
+## E11 — Representación entrenable
 
-### MODE_A_STATIC
-Gemma -> FieldEncoder -> estado -> decoder/probe.
+El FieldEncoder modifica la geometría y muestra delta causal positivo en varias semillas.
 
-### MODE_B_DYNAMIC
-Gemma -> FieldEncoder -> D_phi rollout -> decoder/probe.
+Esto apoya:
 
-### MODE_C_DYNAMIC_RQM
-Dynamic field + RQM.
+El campo puede aprender una representación.
 
-### MODE_D_DYNAMIC_CDT
-Dynamic field + CDT.
+Todavía no demuestra que pueda aprender reglas.
 
-### MODE_E_FULL
-Arquitectura completa.
+## E12 — Invariancia lingüística
 
-### MODE_F_FIELD_ONLY
-Una vez codificado el input:
-FieldEncoder -> D_phi -> rollout -> decoder.
+Con Gemma GGUF real, entrenamiento en español y holdouts lingüísticos, los 8 seeds alcanzan seen/unseen/OOD = 1.0.
 
-En FIELD_ONLY:
-- RQM OFF
-- CDT OFF
-- attractor bank OFF
-- direct memory OFF
-- lookup tables OFF
-- nearest-neighbor retrieval OFF
-- no target vectors hard-coded
+Esto apoya:
 
-Cada JSON debe registrar:
-mode, seed, dataset_hash, model_hash, field_checkpoint_hash, rqm_enabled, cdt_enabled, attractor_bank_enabled, direct_memory_enabled, lookup_enabled, nn_retrieval_enabled, train_targets, test_targets, target_seen_in_training, target_seen_in_memory, target_seen_in_rqm, target_seen_in_cdt, target_seen_in_attractor_bank, steps, accuracy, cosine_to_target, energy, stability, abstention y runtime.
+El campo puede aprender una geometría relativamente independiente de la superficie lingüística en el benchmark.
 
-Crear un leakage audit que marque LEAKED/INVALID y haga fallar la ejecución si aparece una condición prohibida.
+No demuestra todavía independencia general del LLM.
+
+## E13 — Relaciones
+
+Los controles de tabla/RQM superan claramente a static/dynamic.
+
+Esto revela el cuello de botella:
+
+El campo sabe representar conceptos, pero todavía no demuestra que pueda descubrir y reutilizar reglas relacionales.
+
+## E14 — Consolidación/retención
+
+La retención es positiva, pero fixed prototypes, micro-rehearsal y local biases pueden estar aportando parte del resultado.
+
+Por eso hay que separar memoria consolidada de mecanismos auxiliares de estabilidad.
+
+## E15 — Composición
+
+El resultado PARTIAL/FAIL es importante:
+
+Una geometría útil no genera automáticamente composicionalidad.
+
+## E16 — Dinámica
+
+Varias semillas muestran rollouts correctos, pero todavía hay semillas débiles y casos donde static es comparable.
+
+Esto sugiere que existe una señal de dinámica aprendida, pero no está suficientemente aislada.
+
+## E17 — Estados no almacenados
+
+El target no aparece directamente en train/CDT/attractor bank/direct RQM, pero RQM composition todavía participa.
+
+Por tanto:
+
+E17 es una señal de generación de estado no almacenado, pero todavía no es una demostración limpia de autonomía del campo.
 
 ---
 
-# E18 — Rule Learning / Transformation Generalization
+# 3. Cambio conceptual de esta etapa
+
+No hacer únicamente:
+
+entrenar campo → probar campo
+
+Hacer un ciclo de aprendizaje:
+
+EXPERIENCIA 1
+    ↓
+FieldEncoder
+    ↓
+campo dinámico
+    ↓
+resultado
+    ↓
+experiencia registrada
+    ↓
+CDT
+    ↓
+CONSOLIDACIÓN
+    ↓
+regularidades reutilizables
+    ↓
+nuevo episodio
+    ↓
+FieldEncoder
+    ↓
+D_phi
+    ↓
+estado completamente nuevo
+
+La hipótesis es que CDT no tiene que almacenar la respuesta futura.
+
+Debe almacenar experiencias/regularidades consolidadas que modifican el aprendizaje o el contexto del campo.
+
+La distinción crítica es:
+
+### Memoria prohibida como respuesta
+
+nuevo_estado X
+      ↓
+CDT
+      ↓
+respuesta Y
+
+Esto sería recuperación.
+
+### Memoria permitida como experiencia
+
+experiencias anteriores
+      ↓
+CDT
+      ↓
+señal/estructura consolidada
+      ↓
+D_phi aprende la regla
+      ↓
+nuevo estado X
+      ↓
+D_phi(X)
+      ↓
+Y
+
+Aquí Y nunca debe existir en CDT antes del test.
+
+---
+
+# 4. Arquitectura experimental
+
+Implementar explícitamente cinco modos.
+
+## MODE_0_RAW
+
+Gemma → output
+
+Baseline lingüístico.
+
+## MODE_1_STATIC_FIELD
+
+Gemma → FieldEncoder → z
+
+Sin dinámica.
+
+## MODE_2_DYNAMIC_FIELD
+
+Gemma → FieldEncoder → D_phi(z,c)
+
+Sin CDT/RQM.
+
+## MODE_3_DYNAMIC_PLUS_CDT_TRAINING
+
+Experiencias
+    ↓
+CDT consolidation
+    ↓
+señal de experiencia consolidada
+    ↓
+entrenamiento/adaptación de D_phi
+    ↓
+nuevo estado
+    ↓
+D_phi
+
+CDT participa en el aprendizaje histórico, pero no puede devolver el target durante la evaluación.
+
+## MODE_4_FULL
+
+Arquitectura completa, incluyendo RQM/CDT cuando corresponda.
+
+El resultado principal debe provenir de MODE_2 y MODE_3, no solamente de MODE_4.
+
+---
+
+# 5. Definición de CDT como experiencia y no como respuesta
+
+El agente debe implementar una interfaz conceptual equivalente a:
+
+ConsolidatedExperience {
+    context_signature
+    state_before
+    action_or_relation
+    state_after
+    confidence
+    energy
+    repetition_count
+}
+
+Pero durante un test de generalización:
+
+- state_after del target no puede haber sido observado para el nuevo estado;
+- no se puede hacer lookup de un estado equivalente;
+- no se puede buscar el vecino más cercano;
+- no se puede recorrer RQM hasta encontrar el target;
+- no se puede usar CDT para devolver directamente el target.
+
+CDT puede aportar:
+
+- regularidades;
+- estadísticas;
+- parámetros de contexto;
+- patrones de transición;
+- experiencia agregada;
+- señal de confianza;
+- estructura consolidada.
+
+El experimento debe registrar exactamente qué información sale de CDT.
+
+---
+
+# 6. E18 — Aprendizaje de regla a partir de experiencias
 
 ## Pregunta
-¿El campo aprende una regla abstracta o memoriza trayectorias?
+
+¿Puede el campo descubrir una regla común a partir de múltiples experiencias y posteriormente aplicarla a una instancia que nunca vio?
 
 ## Dataset
-Generar vectores 2D/3D con identidad de instancia separada de identidad de regla.
 
-Reglas:
-- H1 translation: (x,y) -> (x+dx,y+dy)
-- H2 rotation: (x,y) -> R(theta)(x,y)
-- H3 reflection
-- H4 scaling
-- H5 affine: x' = Ax+b
-- H6 rotation + translation
-- H7 reflection + translation
+Usar transformaciones matemáticas porque permiten conocer la respuesta correcta sin almacenarla.
 
-## Entrenamiento
-Para una regla, entrenar varios puntos y ocultar otros puntos de la misma regla. La prueba debe aplicar la regla a una instancia nueva, no recuperar una trayectoria.
+### Regla R1 — Translation
 
-## Test
-1. regla vista / punto nuevo;
-2. parámetro de regla no visto;
-3. composición no vista;
-4. extrapolación fuera del rango;
-5. transformación inversa.
+(x,y) → (x+dx,y+dy)
 
-## Controles
-table, nearest-neighbor, static field, D_phi, RQM direct, RQM compose, random dynamics y linear dynamics.
+### Regla R2 — Rotation
 
-## Métricas
-endpoint cosine, error euclídeo, relative transformation error, rule consistency, multi-step error, energy, stability y abstention.
+x → R(theta)x
+
+### Regla R3 — Reflection
+
+### Regla R4 — Scaling
+
+### Regla R5 — Affine
+
+x' = Ax+b
+
+### Regla R6 — composición
+
+R2(R1(x))
+
+---
+
+# 7. E18A — Aprendizaje directo sin CDT
+
+Entrenar únicamente:
+
+FieldEncoder + D_phi
+
+Experiencias:
+
+A1 → B1
+A2 → B2
+A3 → B3
+A4 → B4
+
+Test:
+
+A5 → ?
+
+A5 jamás apareció durante entrenamiento.
+
+Objetivo:
+
+D_phi(A5) ≈ B5
+
+Este es el baseline fundamental.
+
+---
+
+# 8. E18B — Aprendizaje mediante consolidación CDT
+
+Ahora separar entrenamiento por episodios.
+
+### Episodio 1
+
+A1 → B1
+
+### Episodio 2
+
+A2 → B2
+
+### Episodio 3
+
+A3 → B3
+
+Cada experiencia pasa por consolidación.
+
+Después de varias experiencias:
+
+CDT
+ ↓
+regularidad consolidada
+ ↓
+actualización/adaptación del campo
+
+Finalmente:
+
+A_new → ?
+
+La instancia A_new nunca fue vista.
 
 ## PASS
-Dynamic field debe generalizar a puntos no vistos y superar static, nearest-neighbor y random dynamics sin RQM/CDT.
+
+El campo produce B_new correcto sin que B_new exista en CDT.
 
 ---
 
-# E19 — RQM-free State Generation
+# 9. E18C — Prueba de que CDT aporta aprendizaje y no recuperación
 
-## Pregunta
-¿Puede D_phi producir un estado nunca almacenado usando únicamente dinámica?
+Comparar cuatro condiciones:
 
-## Protocolo
-Entrenar A -> B y B -> C. Nunca entrenar A -> C.
+### C0 — No experiencia previa
 
-En test:
-A --D_phi--> B --D_phi--> C.
+Campo no recibe experiencias consolidadas.
 
-Probar 1, 2, 3, 4 y 8 pasos.
+### C1 — Experiencias sin consolidar
 
-C no puede aparecer:
-- como target de entrenamiento;
-- en memoria;
-- RQM;
-- CDT;
-- attractor bank;
-- prototipo;
-- selección de hiperparámetros.
+Se presentan experiencias durante entrenamiento pero no pasan por CDT.
 
-Comparar contra static, random dynamics, table y nearest-neighbor.
+### C2 — Experiencias consolidadas
 
-El resultado fuerte sería generar C correctamente con todos los mecanismos externos desactivados.
+Las mismas experiencias pasan por CDT.
 
----
+### C3 — CDT corrupto
 
-# E20 — Static vs Dynamic controlado
+Se introduce ruido controlado en la memoria consolidada.
 
-Para cada seed:
-1. inicializar un FieldEncoder común;
-2. clonar pesos exactamente;
-3. rama STATIC;
-4. rama DYNAMIC;
-5. mismo dataset;
-6. mismo batch order;
-7. mismo número de epochs;
-8. presupuesto comparable.
+Comparar:
 
-Comparar seen, unseen, OOD, rule generalization, 1/2/4/8-step, energy y stability.
+accuracy
+rule_generalization
+energy
+stability
+training_steps
 
-Reportar mean, median, std, paired delta dynamic-static y bootstrap 95% CI.
-
-Pregunta directa:
-¿La dinámica aporta capacidad que una geometría estática no puede producir?
+Si C2 mejora respecto a C0/C1 y sigue generando correctamente estados nunca almacenados, existe evidencia de que la consolidación aporta aprendizaje.
 
 ---
 
-# E21 — Separación FieldEncoder / Field Dynamics
+# 10. E19 — Prueba definitiva de no-lookup
 
-Entrenar Gemma -> FieldEncoder -> D_phi. Congelar ambos.
+Construir una auditoría automática.
 
-Probar nuevo input lingüístico, mismo concepto, misma regla y nueva instancia.
+Para cada target de test:
 
-Guardar:
-z_input
-z_after_1
-z_after_2
-z_target
-decoder_output
+target_seen_training = false
+target_seen_CDT = false
+target_seen_RQM = false
+target_seen_attractor = false
+target_seen_table = false
+target_seen_NN = false
 
-Separar:
-A. error de encoding;
-B. error de dinámica;
-C. error de decoding.
+Además:
 
-Esto evita atribuir a D_phi un fallo que pertenece al encoder.
+target_equivalent_seen = false
 
----
+porque no basta con esconder el vector exacto si existe una copia equivalente.
 
-# E22 — LLM swap / independencia de periferia
+Durante inferencia:
 
-Entrenar con Gemma 2 y guardar únicamente FieldEncoder, D_phi y decoder/probe independiente.
+CDT query count
+RQM query count
+table query count
+NN query count
+attractor query count
 
-Cambiar la periferia lingüística. Puede usarse otro modelo local o una transformación controlada del hidden state.
-
-No permitir fine-tuning del campo durante test.
-
-Comparar Gemma original -> field contra periferia alternativa -> field.
-
-Si hace falta adapter por dimensionalidad, el adapter debe estar predefinido o evaluarse por separado; no permitir que el adapter vuelva a aprender la tarea.
+debe ser cero en el experimento field-only.
 
 ---
 
-# E23 — Long-horizon rollout
+# 11. E20 — Regla frente a trayectoria
 
-Entrenar solo 1-step. Evaluar:
-1, 2, 4, 8, 16 y 32 pasos.
+Este experimento es fundamental.
 
-Medir error por paso, cosine, energy, norm, stability, diversidad de estados y distancia a attractores incorrectos.
+Construir dos datasets.
 
-Añadir perturbaciones epsilon:
-0.01, 0.05, 0.10, 0.20.
+## Dataset A — Trayectoria
 
-Medir recuperación de la trayectoria correcta. Esto conecta dinámica con basin/attractor sin asumir que toda recuperación es memoria.
+A → B → C → D
 
----
+## Dataset B — Regla
 
-# E24 — Causal intervention sobre el campo
+Muchos pares independientes:
 
-1. entrenar;
-2. guardar checkpoint;
-3. identificar subespacio/nodos activos sin usar test;
-4. intervenir con zero, noise o phase perturbation;
-5. ejecutar mismos inputs;
-6. restaurar checkpoint.
+A1 → B1
+A2 → B2
+A3 → B3
+...
 
-Comparar baseline, intervention y rollback.
+Después preguntar por:
 
-Resultado causal fuerte:
-- intervención produce cambio específico y reproducible en la regla;
-- rollback recupera comportamiento.
+A_new → ?
 
-No seleccionar la intervención usando el conjunto de test.
+Si solamente aprende trayectoria, fallará.
+
+Si aprende la regla, debería generalizar.
 
 ---
 
-# E25 — Continual Relational Learning real
+# 12. E21 — Regla abstracta + parámetro nuevo
 
-Fase A: regla R1.
-Fase B: regla R2.
-Fase C: regla R3.
+Entrenar:
 
-Después de cada fase evaluar todas las reglas.
-
-Variantes:
-A full;
-B sin rehearsal;
-C sin local bias;
-D sin prototypes;
-E sin todos los estabilizadores.
-
-Métricas:
-accuracy, forgetting R1/R2, forward transfer, backward transfer, energy drift y attractor drift.
-
----
-
-# E26 — Scaling
-
-Escalar conceptos:
-8, 16, 32, 64, 128.
-
-Relaciones:
-2, 4, 8, 16, 32.
-
-Registrar accuracy, OOD, rule generalization, parámetros, training time, inference time, memory y estadísticas del paisaje energético.
-
-La pregunta es si la propiedad escala o desaparece.
-
----
-
-# E27 — Compositional algebra
-
-Entrenar transformaciones individuales:
-T1 = translation
-T2 = rotation
-
-Probar T2(T1(x)) sin mostrar la composición directa.
-
-Después:
-T3 = reflection
-T4 = scaling
-
-Probar composiciones de longitud 3 y 4.
-
-Comparar D_phi contra RQM compose, table y static field.
-
-El target compuesto no puede aparecer como ejemplo directo.
-
----
-
-# E28 — Energy-based dynamics
-
-Hacer explícita una energía E(z,c) y dinámica z_{t+1}=D_phi(z_t,c).
-
-Medir energía inicial, energía por paso, energía target, energía de distractores, basin depth y barrier height.
-
-No imponer que la energía siempre disminuya: primero comprobar si la dinámica aprendida presenta descenso, barreras o trayectorias no monotónicas.
-
-Objetivo: distinguir dinámica energética real de una red recurrente que simplemente aproxima una transformación.
-
----
-
-# E29 — Counterfactual field
-
-Entrenar una regla R y cambiar una sola variable latente.
-
-Ejemplo:
-translation(dx=2,dy=0)
-vs
+translation(dx=2,dy=1)
+translation(dx=2,dy=1)
 translation(dx=2,dy=1)
 
-El campo debe producir trayectorias diferentes de manera sistemática.
+con diferentes estados iniciales.
+
+Test:
+
+translation(dx=2,dy=1)
+
+sobre un estado completamente nuevo.
+
+Después aumentar dificultad:
+
+Entrenar parámetros:
+
+dx ∈ {-2,-1,0,1,2}
+
+Test:
+
+dx = 3
+
+Esto prueba extrapolación del parámetro de la regla.
+
+---
+
+# 13. E22 — Composición no observada
+
+Entrenar por separado:
+
+T1(x)
+T2(x)
+
+Nunca entrenar:
+
+T2(T1(x))
+
+Test:
+
+D_phi(T2(T1(x)))
+
+La composición debe generarse.
+
+Comparar:
+
+- D_phi;
+- RQM compose;
+- table;
+- nearest-neighbor;
+- static field.
+
+La variante D_phi debe funcionar sin RQM.
+
+---
+
+# 14. E23 — Long-horizon
+
+Entrenar solamente transiciones de un paso.
+
+Probar:
+
+1
+2
+4
+8
+16
+32
+
+pasos.
 
 Medir:
-Delta input -> Delta trajectory.
 
-Evaluar sensibilidad, composicionalidad y posible linealidad/no-linealidad.
+- error;
+- cosine;
+- energía;
+- estabilidad;
+- norm;
+- desviación acumulada.
 
----
+Después añadir perturbación:
 
-# E30 — Persistencia real
+epsilon = 0.01
+0.05
+0.10
+0.20
 
-1. entrenar;
-2. guardar checkpoint;
-3. terminar proceso;
-4. reiniciar;
-5. cargar solo FieldEncoder + D_phi;
-6. repetir test;
-7. comparar bitácora y métricas.
+Pregunta:
 
-Después repetir con RQM/CDT/memoria auxiliar eliminados.
-
-PASS: el comportamiento permanece después del restart y el checkpoint del campo es suficiente para reproducirlo.
-
----
-
-# Controles obligatorios
-
-Agregar a los experimentos principales:
-
-1. Random field.
-2. Static field.
-3. Random dynamics.
-4. Linear dynamics.
-5. Nearest neighbor.
-6. Table.
-7. RQM only.
-8. LLM raw.
-
-No atribuir al campo una capacidad que también aparece en una baseline trivial.
+¿La dinámica mantiene la regla o colapsa después de varios pasos?
 
 ---
 
-# Protocolo estadístico
+# 15. E24 — Static vs Dynamic
 
-Mínimo:
-- 8 seeds durante desarrollo;
-- 16 seeds para resultado principal.
+Usar exactamente la misma inicialización del FieldEncoder.
 
-Para cada métrica:
+STATIC:
+z = FieldEncoder(x)
+
+DYNAMIC:
+z' = D_phi(z,c)
+
+Misma seed, dataset, batch order y presupuesto.
+
+Comparar generalización a estados nuevos.
+
+El objetivo no es que dynamic tenga mejor accuracy en todo. El objetivo es identificar qué comportamiento solamente aparece cuando existe dinámica.
+
+---
+
+# 16. E25 — CDT como memoria de experiencia, no como memoria de respuesta
+
+Este es el experimento que más conecta con la arquitectura propuesta.
+
+### Fase 1
+
+Campo aprende experiencias:
+
+E1
+E2
+E3
+E4
+
+### Consolidación
+
+E1..E4 → CDT
+
+### Fase 2
+
+Aparece una nueva familia de estados:
+
+N1
+N2
+N3
+
+No aparecen sus targets.
+
+CDT puede aportar las regularidades aprendidas de E1..E4.
+
+El campo debe inferir:
+
+N1 → ?
+N2 → ?
+N3 → ?
+
+## Hipótesis
+
+La experiencia consolidada permite que D_phi aprenda más rápido o generalice mejor, pero la respuesta final es generada por la dinámica del campo.
+
+Esto es mucho más interesante que simplemente demostrar que CDT puede recuperar información.
+
+---
+
+# 17. E26 — Ablación de experiencia
+
+Comparar:
+
+A — sin experiencia previa
+B — experiencia reciente sin consolidar
+C — experiencia consolidada en CDT
+D — CDT parcialmente corrupto
+E — CDT con experiencias irrelevantes
+
+Medir:
+
+- velocidad de aprendizaje;
+- muestras necesarias;
+- generalización;
+- error;
+- estabilidad.
+
+Una propiedad especialmente interesante sería:
+
+C > B > A
+
+en generalización, sin que C tenga acceso directo a los targets de test.
+
+---
+
+# 18. E27 — Transferencia de regla
+
+Aprender una regla en una familia:
+
+familia A
+
+Consolidarla.
+
+Después presentar:
+
+familia B
+
+con estados que nunca aparecieron.
+
+La pregunta:
+
+¿La CDT permite que el campo transfiera una regularidad abstracta a una nueva instancia?
+
+Esto empieza a separar memoria episódica de conocimiento estructural.
+
+---
+
+# 19. E28 — Catastrophic forgetting con conocimiento consolidado
+
+Aprender:
+
+R1
+
+Consolidar.
+
+Aprender:
+
+R2
+
+Consolidar.
+
+Aprender:
+
+R3
+
+Después probar:
+
+R1
+R2
+R3
+
+Variantes:
+
+1. sin CDT;
+2. CDT activo;
+3. CDT corrupto;
+4. CDT con experiencias irrelevantes.
+
+Medir forgetting y transferencia.
+
+---
+
+# 20. E29 — Intervención causal
+
+Guardar checkpoint del campo.
+
+Intervenir solamente sobre componentes asociados a la dinámica aprendida.
+
+Ejecutar:
+
+baseline
+intervention
+rollback
+
+Una intervención válida debe cambiar el comportamiento de forma reproducible.
+
+El rollback debe restaurarlo.
+
+---
+
+# 21. E30 — Persistencia después de apagar todo
+
+Después de consolidar:
+
+1. terminar proceso;
+2. reiniciar;
+3. cargar checkpoint;
+4. no restaurar estado temporal;
+5. ejecutar nueva experiencia;
+6. probar nuevo estado.
+
+Separar:
+
+checkpoint FieldEncoder
+checkpoint D_phi
+CDT
+RAM episódica
+RQM
+
+Repetir progresivamente quitando cada componente.
+
+La pregunta final es:
+
+¿Qué conocimiento permanece realmente en el campo?
+
+---
+
+# 22. Controles obligatorios
+
+Cada resultado principal debe compararse contra:
+
+1. Gemma raw;
+2. random FieldEncoder;
+3. static field;
+4. dynamic field aleatorio;
+5. linear dynamics;
+6. table;
+7. nearest-neighbor;
+8. RQM only;
+9. CDT retrieval only;
+10. dynamic + CDT;
+11. dynamic sin CDT.
+
+Especialmente importante:
+
+CDT retrieval only ≠ dynamic field.
+
+Si CDT retrieval resuelve el benchmark, eso demuestra memoria, no generación dinámica.
+
+---
+
+# 23. Métricas nuevas
+
+Además de accuracy:
+
+### Rule generalization
+
+Porcentaje de estados nuevos correctamente transformados.
+
+### Novel-state generation
+
+Porcentaje de targets nunca almacenados que son generados correctamente.
+
+### Experience gain
+
+accuracy_with_CDT - accuracy_without_CDT
+
+### Sample efficiency
+
+Número de experiencias necesarias para alcanzar un umbral.
+
+### Rule retention
+
+Capacidad de seguir aplicando la regla después de aprender otras reglas.
+
+### Transfer
+
+Rendimiento sobre una nueva familia de estados.
+
+### Rollout stability
+
+Error después de 1/2/4/8/16/32 pasos.
+
+### Leakage score
+
+Debe ser exactamente 0 para el experimento field-only.
+
+---
+
+# 24. Auditoría de información
+
+No basta con registrar flags.
+
+Implementar una auditoría de procedencia:
+
+target_origin
+
+y registrar si el target pudo influir en:
+
+- entrenamiento;
+- selección de hiperparámetros;
+- construcción de CDT;
+- construcción de RQM;
+- construcción de attractors;
+- decoder;
+- normalización;
+- thresholds.
+
+También registrar:
+
+information_path
+
+para cada predicción:
+
+input
+→ encoder
+→ field
+→ CDT context
+→ D_phi
+→ output
+
+Si aparece:
+
+input
+→ CDT
+→ target
+
+el experimento se marca LEAKED.
+
+---
+
+# 25. Protocolo estadístico
+
+Desarrollo:
+8 seeds.
+
+Resultados principales:
+16 seeds.
+
+Para cada comparación:
+
 - mean;
 - median;
 - std;
 - min/max;
 - bootstrap 95% CI;
-- paired delta cuando corresponda.
+- paired delta;
+- effect size;
+- curva de aprendizaje.
 
-Clasificación:
+No utilizar solamente PASS/FAIL.
+
+Estados:
+
 STRONG_POSITIVE
 POSITIVE
 PARTIAL
@@ -391,104 +844,111 @@ NEGATIVE
 LEAKED
 INVALID
 
-LEAKED e INVALID se excluyen de promedios científicos.
+---
+
+# 26. Qué NO hacer
+
+No convertir CDT en una tabla disfrazada.
+
+No almacenar el target de test.
+
+No usar RQM para resolver el target y después atribuirlo a D_phi.
+
+No construir attractor banks con estados de test.
+
+No usar nearest-neighbor para elegir el resultado.
+
+No ajustar hiperparámetros mirando el conjunto de test.
+
+No introducir el target como prototype.
+
+No aumentar RQM para resolver E13.
+
+No interpretar 100% de accuracy como prueba de regla.
+
+La propiedad buscada es:
+
+misma regla + estado nuevo → respuesta nueva generada por la dinámica.
 
 ---
 
-# Reproducibilidad
+# 27. Orden de ejecución
 
-Cada experimento debe producir:
-results.json
-results.csv
-config.json
-dataset.json
-dataset_hash
-model_hash
-checkpoint_hash
-seed
-git_commit
-rustc_version
-hardware
-runtime
-repro_command
+## Fase A — Aislamiento
 
-Un resultado debe poder repetirse sin depender del estado de un proceso anterior.
+1. leakage/provenance audit;
+2. FIELD_ONLY;
+3. static vs dynamic;
+4. RQM/CDT OFF.
 
----
+## Fase B — Regla
 
-# Qué NO hacer
+5. E18A directo;
+6. E18B con consolidación;
+7. E18C CDT vs no-CDT;
+8. E20 trayectoria vs regla;
+9. E21 parámetro nuevo.
 
-No aumentar porcentajes mediante complejidad que no demuestre una propiedad nueva.
+## Fase C — Composición
 
-Evitar:
-- más RQM para arreglar E13;
-- más tablas;
-- prototypes que codifiquen respuestas;
-- transformaciones hard-coded;
-- target vectors para seleccionar parámetros;
-- almacenar estados de test;
-- attractor banks construidos con targets;
-- usar test para elegir hiperparámetros;
-- llamar aprendizaje dinámico a interpolación estática;
-- llamar memoria a una tabla;
-- llamar cognición a una clasificación.
+10. E22 composición no observada;
+11. E23 long-horizon.
+
+## Fase D — Memoria como experiencia
+
+12. E25 CDT como experiencia;
+13. E26 ablation;
+14. E27 transferencia.
+
+## Fase E — Persistencia
+
+15. E28 continual learning;
+16. E29 causal intervention;
+17. E30 restart/persistence.
 
 ---
 
-# Orden recomendado
+# 28. Resultado decisivo
 
-## Fase A — Fundamento
-1. leakage audit universal;
-2. modos STATIC/DYNAMIC/FIELD_ONLY;
-3. controles;
-4. reproducibilidad.
+El resultado más fuerte de toda esta etapa sería obtener:
 
-## Fase B — Cuello de botella
-5. E18 Rule Learning;
-6. E20 Static vs Dynamic;
-7. E19 RQM-free.
+Experiencias anteriores
+        ↓
+      CDT
+        ↓
+regularidad consolidada
+        ↓
+     D_phi
+        ↓
+estado nuevo nunca visto
+        ↓
+respuesta nueva nunca almacenada
 
-## Fase C — Dinámica
-8. E23 Long-horizon;
-9. E27 Compositional algebra;
-10. E28 Energy dynamics.
+mientras simultáneamente:
 
-## Fase D — Independencia
-11. E21 Encoder/Dynamics separation;
-12. E22 LLM swap;
-13. E30 persistence.
+RQM = OFF
+lookup = OFF
+nearest_neighbor = OFF
+attractor_bank = OFF
+direct_memory = OFF
+target leakage = 0
 
-## Fase E — Plasticidad y escala
-14. E25 continual relational learning;
-15. E26 scaling;
-16. E24 causal intervention;
-17. E29 counterfactuals.
+Y demostrar que:
 
----
+Dynamic + consolidated experience
+        >
+Dynamic without experience
+        >
+Static field
+        >
+random controls
 
-# Resultado que realmente cambiaría el estado del proyecto
+en generalización de reglas, no solamente en recuperación.
 
-La evidencia fuerte de esta etapa no es obtener otro 100%.
+Si esto ocurre de forma reproducible, la interpretación defendible sería:
 
-Sería demostrar conjuntamente:
+> El sustrato externo puede adquirir regularidades a partir de experiencias consolidadas y utilizar esas regularidades para transformar estados nuevos que nunca fueron almacenados como respuestas.
 
-1. FieldEncoder aprende representación estable.
-2. D_phi aprende una regla y no una tabla.
-3. La regla generaliza a instancias no vistas.
-4. D_phi genera estados nunca almacenados.
-5. RQM OFF.
-6. CDT OFF.
-7. attractor bank OFF.
-8. direct memory OFF.
-9. static field queda por debajo en el benchmark dinámico.
-10. la propiedad sobrevive restart.
-11. el checkpoint del campo reproduce la propiedad.
-12. una intervención causal altera el comportamiento esperado.
-13. la capacidad escala.
-14. la capacidad no depende exclusivamente de Gemma.
+Eso sería evidencia mucho más fuerte de aprendizaje externo al LLM.
 
-Una conclusión defendible sería:
-
-> Existe evidencia experimental de un sustrato externo entrenable que aprende representaciones y dinámicas relacionales persistentes independientemente de los pesos del LLM, incluyendo generación de estados no almacenados.
-
-No saltar desde aquí directamente a AGI, vida o conciencia. Esas serían hipótesis posteriores.
+No demostraría por sí solo AGI, conciencia o vida. Demostraría algo más concreto y experimentalmente importante: aprendizaje persistente de una dinámica/regla fuera de los pesos del LLM, con memoria consolidada actuando como experiencia y no como tabla de respuestas.
