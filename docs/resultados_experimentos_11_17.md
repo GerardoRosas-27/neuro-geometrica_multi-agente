@@ -4,7 +4,7 @@ Rama: `exp/liquid-inference-experiments-8-9-10`
 
 Protocolo: `docs/experimentos_11_17_campo_entrenable.md`
 
-Commit al correr: 8310eda.
+Commit al correr: 092d60e (código+docs E12 GGUF).
 Hardware: x86_64.
 rustc: rustc 1.98.1 (48a229cea 2026-09-01).
 Semillas: 8 (0xE1100..0xE1107). Escala N=8 cubierta en E11 (`accuracy_ood`).
