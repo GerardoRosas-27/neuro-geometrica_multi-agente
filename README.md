@@ -62,6 +62,10 @@ tiempos de pared no son comparables entre máquinas.
 
 Protocolo reproducible para invariancia de representación, composición de relaciones y predicción dinámica: [`docs/experimentos_8_9_10_liquido.md`](docs/experimentos_8_9_10_liquido.md).
 
+## Experimentos 11–17 (campo entrenable)
+
+Protocolo para entrenar el sustrato de campo con el LLM congelado como periferia, incluyendo invariancia lingüística real, relaciones, aprendizaje incremental, dinámica predictiva, estados no observados y controles anti-leakage: [`docs/experimentos_11_17_campo_entrenable.md`](docs/experimentos_11_17_campo_entrenable.md).
+
 ## Puntos de entrada
 
 Un binario por rol. El resto está en `src/bin/archive/`.
