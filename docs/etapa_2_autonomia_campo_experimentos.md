@@ -952,3 +952,786 @@ Si esto ocurre de forma reproducible, la interpretación defendible sería:
 Eso sería evidencia mucho más fuerte de aprendizaje externo al LLM.
 
 No demostraría por sí solo AGI, conciencia o vida. Demostraría algo más concreto y experimentalmente importante: aprendizaje persistente de una dinámica/regla fuera de los pesos del LLM, con memoria consolidada actuando como experiencia y no como tabla de respuestas.
+
+
+---
+
+# 29. Protocolo Clean-Room v2 — ejecución desde cero
+
+Esta sección **prevalece sobre cualquier instrucción anterior del documento** para la ejecución E18–E30.
+
+## 29.1 Separación absoluta respecto de E11–E17
+
+E11–E17 quedan exclusivamente como resultados históricos. Para E18–E30 no se permite reutilizar:
+
+- checkpoints de FieldEncoder;
+- checkpoints de D_phi;
+- prototipos;
+- attractor banks;
+- tablas;
+- CDT/engrams;
+- RQM entrenado;
+- normalizaciones;
+- thresholds;
+- hiperparámetros elegidos por observar E11–E17;
+- ejemplos holdout de E13/E15/E17;
+- seeds seleccionadas por rendimiento.
+
+La única excepción es el código de infraestructura que no contiene estado aprendido.
+
+La periferia Gemma GGUF permanece congelada y puede reutilizarse como encoder lingüístico, pero el estado del campo debe inicializarse desde cero.
+
+Estado inicial obligatorio:
+
+    FieldEncoder = random initialization
+    D_phi        = random initialization
+    CDT          = empty
+    RQM          = disabled
+    attractor bank = empty
+    NN memory    = disabled
+    lookup table = disabled
+
+---
+
+## 29.2 Dataset completamente nuevo
+
+Crear un generador independiente para Stage 2. No copiar los datasets de E11–E17.
+
+Separar:
+
+    TRAIN
+    DEV
+    TEST
+
+El TEST se genera y se sella antes del entrenamiento.
+
+Cada manifest debe registrar:
+
+    dataset_version
+    generator_version
+    generator_commit
+    seed
+    sha256
+    rule_family
+    dimension
+    parameter_range
+
+Las seeds de desarrollo y confirmación deben ser diferentes.
+
+Propuesta:
+
+    development: 0xA300–0xA307
+    confirmation: 0xB300–0xB30F
+
+El contenido completo del TEST no puede entrar al pipeline de entrenamiento.
+
+---
+
+## 29.3 Anti-contaminación matemática
+
+No basta con comprobar que el vector exacto no apareció.
+
+Antes de entrenar, el generador debe verificar:
+
+    exact_duplicate
+    near_duplicate
+    equivalent_state
+    same_orbit
+    equivalent_transformation
+    equivalent_target
+
+Para reglas con simetrías, las equivalencias matemáticas también cuentan como contaminación.
+
+Si el auditor encuentra una coincidencia:
+
+    DATASET_INVALID
+
+El experimento no se ejecuta.
+
+---
+
+## 29.4 Lock de hiperparámetros
+
+El flujo obligatorio es:
+
+    TRAIN → DEV → LOCK → TEST
+
+DEV puede utilizarse para seleccionar:
+
+- learning rate;
+- epochs;
+- arquitectura;
+- regularización;
+- thresholds;
+- tamaño del campo;
+- λ;
+- criterio de parada.
+
+Después de mirar TEST no se permite modificar ninguno.
+
+Si se modifica una decisión después de observar TEST:
+
+    TEST_INVALIDATED
+
+y se debe generar un nuevo TEST sellado.
+
+---
+
+# 30. E18 reforzado — aprender una regla, no memorizar pares
+
+Usar transformaciones continuas conocidas:
+
+    y = x + b
+    y = R(theta)x
+    y = Mx
+    y = s*x
+    y = A*x+b
+    y = T2(T1(x))
+
+Variar dimensiones, estados iniciales, orientación, escala y parámetros.
+
+El test debe contener estados que no aparezcan en TRAIN y cuyos targets tampoco aparezcan.
+
+Medir además de accuracy:
+
+- MSE;
+- cosine;
+- error relativo;
+- energía;
+- estabilidad;
+- distancia al manifold;
+- error por dimensión.
+
+La condición científica no es simplemente acertar B. Es que D_phi aprenda una función que transforme X_new en B_new.
+
+---
+
+# 31. E18C reforzado — demostrar que CDT aporta aprendizaje
+
+Comparar las mismas experiencias bajo:
+
+    C0 = sin experiencia
+    C1 = experiencia sin consolidar
+    C2 = experiencia consolidada en CDT
+    C3 = CDT parcialmente corrupto
+    C4 = CDT irrelevante
+    C5 = CDT de otra regla
+
+Calcular:
+
+    experience_gain = accuracy_C2 - accuracy_C0
+
+pero también:
+
+    sample_efficiency_gain
+    novel_generation_gain
+    stability_gain
+
+La prueba no es válida si C2 mejora únicamente porque puede recuperar un ejemplo cercano al target.
+
+Añadir una condición:
+
+    C6 = CDT con estadísticas agregadas solamente
+
+Si C6 conserva parte importante de la mejora sin guardar episodios concretos, existe evidencia adicional de que CDT funciona como experiencia/regularidad y no como respuesta.
+
+---
+
+# 32. E19 reforzado — auditoría de procedencia
+
+Cada predicción debe producir un registro:
+
+    target_seen_training
+    target_seen_dev
+    target_seen_cdt
+    target_seen_rqm
+    target_seen_attractor
+    target_seen_table
+    target_seen_nn
+    target_equivalent_seen
+
+y contadores:
+
+    cdt_queries
+    rqm_queries
+    table_queries
+    nn_queries
+    attractor_queries
+
+Además:
+
+    target_in_normalization
+    target_in_decoder
+    target_in_threshold_selection
+    target_in_hyperparameter_selection
+
+Para FIELD_ONLY:
+
+    CDT queries       = 0
+    RQM queries       = 0
+    table queries     = 0
+    NN queries        = 0
+    attractor queries = 0
+    leakage_score     = 0
+
+Para DYNAMIC+CDT, CDT puede participar durante el aprendizaje histórico, pero no puede devolver el target durante evaluación.
+
+---
+
+# 33. E20 reforzado — regla contra trayectoria
+
+Usar tres conjuntos:
+
+### Trayectoria
+
+    A → B → C → D
+
+### Regla
+
+    A1 → B1
+    A2 → B2
+    A3 → B3
+    A4 → B4
+    ...
+
+### Anti-memorization
+
+Cambiar simultáneamente:
+
+- escala;
+- orientación;
+- magnitud;
+- distribución;
+- orden;
+- estados iniciales.
+
+Si el campo aprendió una regla, el tercer conjunto no debe destruir el comportamiento.
+
+---
+
+# 34. E21 reforzado — extrapolación
+
+No limitarse a valores vistos.
+
+Ejemplos:
+
+    TRAIN dx = -2,-1,0,1,2
+    TEST  dx = 3
+
+    TRAIN theta = -30,-15,0,15,30
+    TEST  theta = 45
+
+    TRAIN scale = 0.5,0.75,1,1.25,1.5
+    TEST  scale = 2
+
+Separar claramente:
+
+    interpolation
+    extrapolation
+
+porque son evidencias distintas.
+
+---
+
+# 35. E22 reforzado — composición sin RQM
+
+Entrenar:
+
+    T1(x)
+    T2(x)
+
+Nunca entrenar:
+
+    T2(T1(x))
+
+Evaluar:
+
+    D_phi(T2(T1(x)))
+
+La comparación debe incluir:
+
+- D_phi;
+- STATIC;
+- linear dynamics;
+- RQM compose;
+- table;
+- nearest-neighbor.
+
+La evidencia de autonomía solo puede venir de la variante:
+
+    D_phi + RQM OFF
+
+---
+
+# 36. E23 reforzado — rollout sin teacher forcing
+
+Entrenar únicamente un paso.
+
+Evaluar:
+
+    1, 2, 4, 8, 16, 32, 64
+
+Durante el rollout está prohibido insertar el estado verdadero intermedio.
+
+Debe utilizarse:
+
+    x1 = D_phi(x0)
+    x2 = D_phi(x1)
+    x3 = D_phi(x2)
+
+y así sucesivamente.
+
+Medir:
+
+- error acumulado;
+- cosine;
+- energía;
+- norm;
+- estabilidad;
+- recuperación ante perturbación.
+
+Esto elimina una fuente importante de falsos positivos en dinámica.
+
+---
+
+# 37. E24 reforzado — STATIC vs DYNAMIC pareado
+
+Usar la misma:
+
+- seed;
+- inicialización;
+- dataset;
+- batch order;
+- normalización;
+- presupuesto;
+- número de pasos.
+
+Comparar:
+
+    STATIC:
+    z = Encoder(x)
+
+    DYNAMIC:
+    z' = D_phi(z,c)
+
+Reportar:
+
+    delta = dynamic - static
+
+con mean, median, std, bootstrap 95% CI y effect size.
+
+La pregunta es qué capacidad aparece específicamente al introducir D_phi, no cuál obtiene mayor accuracy absoluta.
+
+---
+
+# 38. E25 — experimento central
+
+El ciclo completo debe ser:
+
+    experiencias E1..E4
+            ↓
+          CDT
+            ↓
+    regularidad consolidada
+            ↓
+      adaptación de D_phi
+            ↓
+        N_new
+            ↓
+         D_phi
+            ↓
+         Y_new
+
+La respuesta Y_new debe cumplir:
+
+    Y_new ∉ TRAIN
+    Y_new ∉ DEV
+    Y_new ∉ CDT
+    Y_new ∉ RQM
+    Y_new ∉ attractor bank
+    Y_new ∉ nearest-neighbor memory
+    Y_new ∉ table
+
+La hipótesis principal es:
+
+    Dynamic + consolidated experience
+             >
+    Dynamic without experience
+
+en generalización, sample efficiency y estabilidad.
+
+---
+
+# 39. E26 — ablation fuerte de experiencia
+
+Comparar:
+
+    A = sin experiencia
+    B = experiencia reciente sin consolidar
+    C = experiencia consolidada
+    D = CDT corrupto
+    E = CDT irrelevante
+    F = CDT de regla incorrecta
+    G = CDT con estadísticas agregadas
+
+La condición G es un control especialmente importante para separar:
+
+    experiencia/regularidad
+
+de:
+
+    memoria episódica/lookup
+
+---
+
+# 40. E27 — transferencia de regla
+
+Aprender en familia A.
+
+Consolidar.
+
+Probar familia B con estados nunca vistos.
+
+Crear niveles:
+
+    B1 = mismos espacios, nuevos valores
+    B2 = nueva distribución
+    B3 = nueva escala/orientación
+
+Los targets de B nunca pueden aparecer durante consolidación.
+
+---
+
+# 41. E28 — continual learning
+
+Ejecutar:
+
+    R1 → consolidate
+    R2 → consolidate
+    R3 → consolidate
+    R4 → consolidate
+
+Después probar todas.
+
+Comparar:
+
+1. sin CDT;
+2. CDT activo;
+3. CDT corrupto;
+4. replay;
+5. CDT + replay mínimo.
+
+Medir:
+
+- forgetting;
+- forward transfer;
+- backward transfer;
+- sample efficiency;
+- novel-state generation.
+
+No atribuir automáticamente una mejora a CDT si replay o prototypes explican el resultado.
+
+---
+
+# 42. E29 — intervención causal mejorada
+
+Guardar checkpoint antes de intervenir.
+
+Comparar:
+
+    baseline
+    targeted intervention
+    random intervention
+    rollback
+
+La intervención específica debe producir un cambio reproducible mayor que una perturbación aleatoria de igual magnitud.
+
+El rollback debe recuperar el comportamiento original.
+
+Esto permite distinguir correlación de dependencia causal.
+
+---
+
+# 43. E30 — persistencia después de reinicio
+
+Después de consolidar:
+
+1. guardar FieldEncoder;
+2. guardar D_phi;
+3. guardar CDT;
+4. terminar proceso;
+5. borrar RAM episódica;
+6. reiniciar;
+7. cargar checkpoints;
+8. probar estado nuevo.
+
+Ablaciones:
+
+    P0 = FieldEncoder + D_phi + CDT
+    P1 = FieldEncoder + D_phi
+    P2 = D_phi
+    P3 = CDT
+    P4 = CDT retrieval
+
+Esto identifica dónde persiste realmente la información.
+
+---
+
+# 44. El decoder no puede salvar el experimento
+
+Para los benchmarks matemáticos E18–E30 usar un decoder determinista independiente.
+
+Gemma debe actuar como periferia:
+
+    lenguaje → representación de campo
+
+No:
+
+    lenguaje → campo → Gemma inventa la respuesta
+
+La versión lingüística se ejecuta como benchmark separado después de validar el benchmark matemático.
+
+---
+
+# 45. Escalamiento
+
+Cada prueba tendrá niveles:
+
+    Level 1 = 2D
+    Level 2 = 4D
+    Level 3 = 8D
+    Level 4 = 16D
+    Level 5 = composición
+    Level 6 = long-horizon
+    Level 7 = extrapolación + perturbación
+
+No declarar robustez a partir de Level 1.
+
+---
+
+# 46. Controles obligatorios finales
+
+Ejecutar:
+
+1. Gemma raw;
+2. random FieldEncoder;
+3. random D_phi;
+4. STATIC;
+5. linear dynamics;
+6. polynomial baseline;
+7. MLP baseline;
+8. table;
+9. nearest-neighbor;
+10. RQM only;
+11. CDT retrieval;
+12. DYNAMIC sin CDT;
+13. DYNAMIC + CDT.
+
+La pregunta es si la dinámica aprendida aporta algo que un baseline más simple no explica.
+
+---
+
+# 47. Protocolo estadístico
+
+Desarrollo:
+
+    8 seeds
+
+Confirmación:
+
+    16 seeds nuevas
+
+Las seeds de confirmación no participan en selección de arquitectura.
+
+Reportar:
+
+- mean;
+- median;
+- std;
+- min/max;
+- bootstrap 95% CI;
+- paired delta;
+- effect size;
+- learning curves;
+- resultado por regla;
+- resultado por dificultad.
+
+Estados:
+
+    STRONG_POSITIVE
+    POSITIVE
+    PARTIAL
+    NULL
+    NEGATIVE
+    LEAKED
+    INVALID
+
+LEAKED e INVALID no entran en promedios.
+
+---
+
+# 48. Preregistro
+
+Antes de la corrida principal crear:
+
+    docs/stage2_preregistered_protocol.md
+
+Debe fijar:
+
+- hipótesis;
+- datasets;
+- seeds;
+- arquitectura;
+- hiperparámetros;
+- métricas;
+- controles;
+- criterios PASS/FAIL;
+- exclusiones.
+
+Registrar hashes de:
+
+    protocol
+    dataset
+    generator
+    model
+    code commit
+
+No cambiar el protocolo después de observar TEST.
+
+---
+
+# 49. Artefactos reproducibles
+
+Cada experimento debe generar como mínimo:
+
+    results/stage2/E18/
+      train_manifest.json
+      dev_manifest.json
+      test_manifest.json
+      metrics.csv
+      metrics.json
+      provenance.json
+      audit.json
+      config.json
+      summary.md
+
+Y cada resultado debe incluir:
+
+    dataset_hash
+    protocol_hash
+    code_commit
+    model_hash
+    seed
+
+---
+
+# 50. Orden definitivo
+
+## Fase 0 — Clean room
+
+1. nuevo generador;
+2. nuevos train/dev/test;
+3. hashes;
+4. anti-duplicados;
+5. provenance;
+6. checkpoints vacíos;
+7. comprobar ausencia de artefactos E11–E17.
+
+## Fase 1 — Dinámica
+
+8. E18A;
+9. E20;
+10. E21;
+11. E24.
+
+## Fase 2 — Composición
+
+12. E22;
+13. E23.
+
+## Fase 3 — Experiencia consolidada
+
+14. E18B;
+15. E18C;
+16. E25;
+17. E26;
+18. E27.
+
+## Fase 4 — Persistencia
+
+19. E28;
+20. E29;
+21. E30.
+
+## Fase 5 — Confirmación
+
+22. 16 seeds nuevas;
+23. bootstrap CI;
+24. paired analysis;
+25. auditoría final;
+26. informe reproducible.
+
+---
+
+# 51. Criterio de éxito más fuerte
+
+El resultado decisivo sería:
+
+    Experiencias anteriores
+            ↓
+           CDT
+            ↓
+    regularidad consolidada
+            ↓
+          D_phi
+            ↓
+    estado nuevo nunca visto
+            ↓
+    respuesta nueva nunca almacenada
+
+con:
+
+    RQM = OFF
+    lookup = OFF
+    NN = OFF
+    attractor bank = OFF
+    direct memory = OFF
+    leakage = 0
+
+y además:
+
+    Dynamic + consolidated experience
+                 >
+    Dynamic without experience
+                 >
+    Static field
+                 >
+    random controls
+
+en generalización de reglas, no simplemente en recuperación.
+
+La interpretación defendible sería:
+
+> El sustrato externo puede adquirir regularidades a partir de experiencias consolidadas y utilizar una dinámica aprendida para transformar estados nuevos que nunca fueron almacenados como respuestas.
+
+Esto no demostraría por sí solo AGI, conciencia o vida. Sí sería evidencia mucho más fuerte de aprendizaje persistente de una dinámica fuera de los pesos del LLM.
+
+---
+
+# 52. Principio final
+
+La prioridad no es conseguir PASS.
+
+La prioridad es construir una prueba donde, si aparece PASS, sea difícil explicarlo por:
+
+- contaminación;
+- lookup;
+- nearest-neighbor;
+- tabla;
+- RQM;
+- attractor bank;
+- decoder lingüístico;
+- estado temporal;
+- selección manual de hiperparámetros.
+
+**La etapa debe empezar desde cero y permitir que los datos, no los resultados E11–E17, determinen si el campo realmente aprendió una regla.**
