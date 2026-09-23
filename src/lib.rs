@@ -51,6 +51,8 @@ pub mod liquid_cdt_rqm_fuse;
 pub mod liquid_cdt_vs_main_bench;
 /// Experimentos 8/9/10: invariancia, composición, predicción futura (rama exp).
 pub mod liquid_experiments_8_9_10;
+/// Experimentos 11–17: campo entrenable (encoder θ + dinámica φ).
+pub mod liquid_experiments_11_17;
 pub mod matrix_free_cognitive_substrate;
 pub mod native_checkpoint;
 pub mod native_cognitive_closed_loop;
