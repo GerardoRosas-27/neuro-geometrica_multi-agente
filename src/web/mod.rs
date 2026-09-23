@@ -7,6 +7,7 @@
 //! Los token_ids **nunca** entran a FieldState.
 
 pub mod api;
+pub mod experiment_suite;
 pub mod field_eval;
 pub mod llm_periphery;
 pub mod process_job;

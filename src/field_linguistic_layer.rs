@@ -117,11 +117,24 @@ fn subwords(text: &str) -> Vec<String> {
             .trim_end_matches("sión")
             .trim_end_matches("ando")
             .trim_end_matches("iendo")
+            // Diminutivos ES: alinea "perrito"/"perrita" con raíz de "perro" (E8).
+            .trim_end_matches("citos")
+            .trim_end_matches("citas")
+            .trim_end_matches("illos")
+            .trim_end_matches("illas")
+            .trim_end_matches("itos")
+            .trim_end_matches("itas")
+            .trim_end_matches("illo")
+            .trim_end_matches("illa")
+            .trim_end_matches("ito")
+            .trim_end_matches("ita")
             .trim_end_matches("ar")
             .trim_end_matches("er")
             .trim_end_matches("ir")
+            .trim_end_matches("es")
             .trim_end_matches('s')
-            .trim_end_matches("es");
+            .trim_end_matches('o')
+            .trim_end_matches('a');
         let stem = if stem.len() >= 3 { stem } else { raw };
         parts.push(stem.to_string());
         if raw.len() > stem.len() {

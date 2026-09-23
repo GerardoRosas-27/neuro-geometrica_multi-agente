@@ -132,6 +132,13 @@
     $("tr-acc").textContent =
       job.accuracy == null ? "—" : (100 * job.accuracy).toFixed(1) + "%";
     $("tr-eng").textContent = job.engrams != null ? job.engrams : "—";
+    if ($("tr-family")) {
+      const fam = j.last_dataset_family || "—";
+      const exps = Array.isArray(j.last_experiment_ids) && j.last_experiment_ids.length
+        ? ` (${j.last_experiment_ids.join(",")})`
+        : "";
+      $("tr-family").textContent = fam === "—" ? "—" : fam + exps;
+    }
     $("tr-dataset").textContent =
       (job.dataset_size != null ? job.dataset_size : "—") +
       (job.dataset_source ? ` (${job.dataset_source})` : "");
@@ -282,6 +289,17 @@
     }
     $("te-eng").textContent = r.engrams;
     $("te-had").textContent = r.had_engrams ? "sí" : "no";
+    if ($("te-suite")) {
+      const suite = r.experiment_suite;
+      if (suite && suite.verdict_counts) {
+        const parts = Object.entries(suite.verdict_counts)
+          .map(([k, v]) => `${k}=${v}`)
+          .sort();
+        $("te-suite").textContent = `${suite.rows?.length || 0} filas · ${parts.join(" ")} · ${Math.round(suite.elapsed_ms || 0)} ms`;
+      } else {
+        $("te-suite").textContent = "—";
+      }
+    }
     $("te-id-acc").textContent =
       (100 * (r.identity_accuracy || 0)).toFixed(1) +
       `% (${r.identity_correct}/${r.identity_total})`;

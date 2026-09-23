@@ -58,6 +58,21 @@ tesis v2 es ΔR y *K_max(N, ρ)* frente a Hopfield/Hebb.
 `.cargo/config.toml` fija `target-cpu=native` en local. Los binarios y los
 tiempos de pared no son comparables entre máquinas.
 
+## Experimentos 8–10 (líquido)
+
+Protocolo reproducible para invariancia de representación, composición de relaciones y predicción dinámica: [`docs/experimentos_8_9_10_liquido.md`](docs/experimentos_8_9_10_liquido.md).
+
+## Etapa 2 — autonomía del campo (E18–E30)
+
+Protocolo de aprendizaje de reglas desde experiencia consolidada (FIELD_ONLY, anti-leakage, CDT como experiencia no como lookup): [`docs/etapa_2_autonomia_campo_experimentos.md`](docs/etapa_2_autonomia_campo_experimentos.md) — **§29+ Clean-Room v2 prevalece**.
+
+- **Clean-Room v2 (vigente):** módulo `src/field_autonomy_stage2_v2.rs`, seeds `0xA300–0xA307`, resultados [`docs/resultados_etapa_2_cleanroom_v2.md`](docs/resultados_etapa_2_cleanroom_v2.md). Smoke: `cargo run --example smoke_stage2_v2`. Suite DEV: `cargo run --release --example run_stage2_v2_dev`.
+- **Histórico / pre-cleanroom:** `src/field_autonomy_stage2.rs` + [`docs/resultados_etapa_2_autonomia.md`](docs/resultados_etapa_2_autonomia.md) (seeds `0xE1800..`) — no mezclar con v2.
+
+## Experimentos 11–17 (campo entrenable)
+
+Protocolo para entrenar el sustrato de campo con el LLM congelado como periferia, incluyendo invariancia lingüística real, relaciones, aprendizaje incremental, dinámica predictiva, estados no observados y controles anti-leakage: [`docs/experimentos_11_17_campo_entrenable.md`](docs/experimentos_11_17_campo_entrenable.md). Resultados: [`docs/resultados_experimentos_11_17.md`](docs/resultados_experimentos_11_17.md). Hallazgos E13/E15 (WIP): [`docs/hallazgos_e13_e15_endurecimiento.md`](docs/hallazgos_e13_e15_endurecimiento.md).
+
 ## Puntos de entrada
 
 Un binario por rol. El resto está en `src/bin/archive/`.

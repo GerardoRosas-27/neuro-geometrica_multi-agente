@@ -109,6 +109,12 @@ pub struct FuseReportDto {
     pub liquid_score: f64,
     pub route: String,
     pub rqm_score: Option<f64>,
+    pub top1_score: f64,
+    pub top2_score: f64,
+    pub margin: f64,
+    pub energy: f64,
+    pub abstained: bool,
+    pub hops: usize,
 }
 
 impl From<&FuseReport> for FuseReportDto {
@@ -122,6 +128,12 @@ impl From<&FuseReport> for FuseReportDto {
                 InferRoute::RqmFallback => "RqmFallback".into(),
             },
             rqm_score: r.rqm_score,
+            top1_score: r.top1_score,
+            top2_score: r.top2_score,
+            margin: r.margin,
+            energy: r.energy,
+            abstained: r.abstained,
+            hops: r.hops,
         }
     }
 }
@@ -163,6 +175,12 @@ mod tests {
             liquid_score: 0.9,
             route: InferRoute::Liquid,
             rqm_score: None,
+            top1_score: 0.9,
+            top2_score: 0.4,
+            margin: 0.5,
+            energy: 0.10536051565782635,
+            abstained: false,
+            hops: 1,
         };
         m.record_fuse(&r, 1.5);
         assert_eq!(m.route_liquid, 1);

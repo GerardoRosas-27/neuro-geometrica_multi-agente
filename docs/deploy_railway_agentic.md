@@ -117,6 +117,27 @@ cargo run --features web --bin agentic_web
 docker compose up --build
 ```
 
+
+
+## GGUF local (Docker compose / experimentos)
+
+El `Dockerfile` **no** descarga pesos. Para Gemma 2 real:
+
+1. Descarga el GGUF público (~1.7 GB) a `models/`:
+   ```bash
+   mkdir -p models
+   curl -L --retry 5 -C - -o models/gemma-2-2b-it-Q4_K_M.gguf \
+     "https://huggingface.co/bartowski/gemma-2-2b-it-GGUF/resolve/main/gemma-2-2b-it-Q4_K_M.gguf"
+   ```
+2. `docker-compose.yml` monta `./models:/models:ro` y define
+   `GEMMA2_GGUF=/models/gemma-2-2b-it-Q4_K_M.gguf`.
+3. Fuera de Docker (tests E12 / `FrozenGemma2Probe`):
+   ```bash
+   export GEMMA2_GGUF=/workspace/neuro-geometrica_multi-agente/models/gemma-2-2b-it-Q4_K_M.gguf
+   cargo test --release --lib field_gemma_probe -- --nocapture
+   ```
+Sin GGUF → periferia léxico; E12 → `SKIPPED_NO_GGUF` (honesto).
+
 ## Notas
 
 - No se descargan modelos en el build de Docker (binario razonable).

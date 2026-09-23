@@ -15,6 +15,9 @@
 //!
 //! Ver `docs/hibrido_liquido_cdt_rqm_fuse.md`.
 
+#![allow(dead_code)]
+#![allow(clippy::too_many_arguments)]
+
 use crate::entanglement::EntanglementConfig;
 use crate::liquid_cdt_memory::{
     CdtConsolidatedMemory, Episode, EpisodeKind, LiquidInfer, SleepReport,
@@ -49,6 +52,18 @@ pub struct FuseReport {
     pub liquid_score: f64,
     pub route: InferRoute,
     pub rqm_score: Option<f64>,
+    /// Score del ganador (líquido o RQM según ruta).
+    pub top1_score: f64,
+    /// Segundo mejor score entre candidatos (si se midió).
+    pub top2_score: f64,
+    /// Margen top-1 − top-2 (confianza local).
+    pub margin: f64,
+    /// Energía surrogate −ln(max(score, ε)).
+    pub energy: f64,
+    /// true si el margen cae bajo `abstain_margin`.
+    pub abstained: bool,
+    /// Saltos RQM aplicados (1 = directo; >1 = composición).
+    pub hops: usize,
 }
 
 /// Sistema fusionado: líquido + CDT sueño + índice RQM relacional.
@@ -67,6 +82,10 @@ pub struct FusedLiquidCdt {
     pub rqm_infer_calls: u64,
     /// Contador de `train_observed_transition` (sueño / teach inmediato).
     pub rqm_train_calls: u64,
+    /// Margen mínimo para no abstenerse (E9/E10).
+    pub abstain_margin: f64,
+    /// Máximo de hops RQM en `infer_compose` (sin guardar transitivos).
+    pub compose_max_hops: usize,
 }
 
 impl FusedLiquidCdt {
@@ -101,6 +120,8 @@ impl FusedLiquidCdt {
             num_labels,
             rqm_infer_calls: 0,
             rqm_train_calls: 0,
+            abstain_margin: 0.05,
+            compose_max_hops: 3,
         }
     }
 
@@ -140,10 +161,56 @@ impl FusedLiquidCdt {
     }
 
     fn query_rqm(&mut self, obs: usize) -> Option<(usize, f64)> {
+        self.query_rqm_ranked(obs).map(|(p, s, _)| (p, s))
+    }
+
+    /// Una sola query RQM → (pred, top1, top2).
+    fn query_rqm_ranked(&mut self, obs: usize) -> Option<(usize, f64, f64)> {
         let obs = obs % self.num_labels;
         let report = self.rqm.query(OBSERVER, 0.0, &[Self::cue_id(obs)]);
         self.rqm_infer_calls = self.rqm_infer_calls.wrapping_add(1);
-        Self::pick_rqm_label(&report.candidates, self.num_labels)
+        let mut scored: Vec<(usize, f64)> = report
+            .candidates
+            .iter()
+            .filter(|c| c.agent < self.num_labels)
+            .map(|c| (c.agent, c.score as f64))
+            .collect();
+        if scored.is_empty() {
+            return None;
+        }
+        scored.sort_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        let (pred, top1) = scored[0];
+        let top2 = scored.get(1).map(|(_, s)| *s).unwrap_or(0.0);
+        Some((pred, top1, top2))
+    }
+
+    fn finalize_report(
+        &self,
+        observation: usize,
+        predicted: usize,
+        liquid_score: f64,
+        route: InferRoute,
+        rqm_score: Option<f64>,
+        top1_score: f64,
+        top2_score: f64,
+        hops: usize,
+    ) -> FuseReport {
+        let margin = top1_score - top2_score;
+        let energy = -top1_score.max(1e-12).ln();
+        let abstained = margin < self.abstain_margin;
+        FuseReport {
+            observation,
+            predicted,
+            liquid_score,
+            route,
+            rqm_score,
+            top1_score,
+            top2_score,
+            margin,
+            energy,
+            abstained,
+            hops,
+        }
     }
 
     /// Hot path: líquido primero; RQM solo como fallback/router cuando hace falta.
@@ -160,31 +227,91 @@ impl FusedLiquidCdt {
         force_rqm: bool,
     ) -> FuseReport {
         let obs = obs % self.num_labels;
-        let liquid = self.liquid.infer(obs, candidates);
+        let ranked = self
+            .liquid
+            .core
+            .predict_ranked_from_observation(obs, candidates);
+        let liquid = crate::liquid_cdt_memory::LiquidReport {
+            observation: obs,
+            predicted: ranked.best_content,
+            score: ranked.best_score,
+            candidates_scored: ranked.scores,
+        };
         let has_rel = self.rqm_has_cue(obs);
         let low_score = liquid.score < self.liquid_min_score;
-        // Regla: score bajo **o** cue con relación entrenada → intentar RQM
-        // (sin hacer RQM el default de identidad: sin teach_relation, has_rel=false
-        // y el score líquido de identidad suele ser alto).
         let want_rqm = has_rel || low_score || force_rqm;
         if want_rqm && (has_rel || force_rqm) {
-            if let Some((pred, rqm_score)) = self.query_rqm(obs) {
-                return FuseReport {
-                    observation: obs,
-                    predicted: pred,
-                    liquid_score: liquid.score,
-                    route: InferRoute::RqmFallback,
-                    rqm_score: Some(rqm_score),
-                };
+            if let Some((pred, rqm_score, top2)) = self.query_rqm_ranked(obs) {
+                return self.finalize_report(
+                    obs,
+                    pred,
+                    liquid.score,
+                    InferRoute::RqmFallback,
+                    Some(rqm_score),
+                    rqm_score,
+                    top2,
+                    1,
+                );
             }
         }
-        FuseReport {
-            observation: obs,
-            predicted: liquid.predicted,
-            liquid_score: liquid.score,
-            route: InferRoute::Liquid,
-            rqm_score: None,
+        self.finalize_report(
+            obs,
+            liquid.predicted,
+            liquid.score,
+            InferRoute::Liquid,
+            None,
+            ranked.best_score,
+            if ranked.second_score.is_finite() {
+                ranked.second_score
+            } else {
+                0.0
+            },
+            1,
+        )
+    }
+
+    /// Composición multi-hop **sin** almacenar pares transitivos.
+    ///
+    /// Entrena solo aristas directas (`teach_relation`); en inferencia camina
+    /// el índice RQM hasta `hops` para A→C / A→D. Margen bajo → abstención.
+    pub fn infer_compose(&mut self, obs: usize, candidates: &[usize], hops: usize) -> FuseReport {
+        let hops = hops.clamp(1, self.compose_max_hops.max(1));
+        let obs0 = obs % self.num_labels;
+        if hops == 1 {
+            return self.infer(obs0, candidates);
         }
+        let mut cur = obs0;
+        let mut last_score = 0.0f64;
+        let mut last_top2 = 0.0f64;
+        let mut used = 0usize;
+        for step in 0..hops {
+            if !self.rqm_has_cue(cur) {
+                break;
+            }
+            match self.query_rqm_ranked(cur) {
+                Some((nxt, sc, top2)) => {
+                    last_score = sc;
+                    last_top2 = top2;
+                    cur = nxt % self.num_labels;
+                    used = step + 1;
+                }
+                None => break,
+            }
+        }
+        if used == 0 {
+            return self.infer(obs0, candidates);
+        }
+        let liquid = self.liquid.infer(obs0, candidates);
+        self.finalize_report(
+            obs0,
+            cur,
+            liquid.score,
+            InferRoute::RqmFallback,
+            Some(last_score),
+            last_score,
+            last_top2,
+            used,
+        )
     }
 
     /// Enseña una relación arbitraria (fuerza MAIN): buffer + índice RQM inmediato
