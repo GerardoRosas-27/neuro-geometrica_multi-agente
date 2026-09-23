@@ -38,3 +38,8 @@ data/checkpoints/*.json
 data/checkpoints/datasets/
 !data/checkpoints/.gitkeep
 !data/checkpoints/datasets/.gitkeep
+
+# Pesos GGUF locales (no commitear ~1.7GB)
+models/*.gguf
+
+models/*.box-store-snap-*

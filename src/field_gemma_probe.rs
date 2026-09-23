@@ -69,7 +69,9 @@ impl FrozenGemma2Probe {
     }
 
     fn pool_hidden(hidden: &Tensor) -> Result<Vec<f64>, String> {
-        // sequence_hidden: [batch, seq, d_model] → mean over seq, then project to HIDDEN_DIM.
+        // sequence_hidden: [batch, seq, d_model] → mean over seq, then block-average to HIDDEN_DIM.
+        // Block-mean preserva geometría semántica mejor que la proyección sinusoïdal fija
+        // (crítica para E12: frontera lineal ES perro/gato generaliza a dog/chien/犬).
         let dims = hidden.dims();
         if dims.len() != 3 {
             return Err(format!("hidden rank esperado 3, got {dims:?}"));
@@ -88,12 +90,11 @@ impl FrozenGemma2Probe {
             return Ok(out);
         }
         for (i, slot) in out.iter_mut().enumerate() {
-            let mut acc = 0.0;
-            for (j, &v) in mean.iter().enumerate() {
-                let w = ((i + 1) * (j + 7)) as f64;
-                acc += f64::from(v) * w.sin();
-            }
-            *slot = acc;
+            let start = i * mean.len() / HIDDEN_DIM;
+            let end = ((i + 1) * mean.len() / HIDDEN_DIM).max(start + 1);
+            let slice = &mean[start..end.min(mean.len())];
+            *slot = slice.iter().map(|&v| f64::from(v)).sum::<f64>()
+                / slice.len().max(1) as f64;
         }
         let n = out.iter().map(|x| x * x).sum::<f64>().sqrt().max(1e-12);
         for v in out.iter_mut() {
