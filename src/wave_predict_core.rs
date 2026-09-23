@@ -172,6 +172,73 @@ impl WavePredictCore {
     }
 }
 
+/// Predicción rankeada (top-1 / top-2 / margen) para abstención (E9/E10).
+#[derive(Clone, Copy, Debug)]
+pub struct RankedPrediction {
+    pub best_content: usize,
+    pub best_score: f64,
+    pub second_content: Option<usize>,
+    pub second_score: f64,
+    pub margin: f64,
+    pub scores: usize,
+}
+
+impl WavePredictCore {
+    /// Puntúa todos los futuros y devuelve ranking estable.
+    pub fn predict_ranked(&self, future_contents: &[usize]) -> RankedPrediction {
+        assert!(!future_contents.is_empty(), "need at least one future hypothesis");
+        let mut scored: Vec<(usize, f64)> = future_contents
+            .iter()
+            .enumerate()
+            .map(|(i, &c)| {
+                let fut = WavePacket::future(i as u64, c, 1.0);
+                (c, score_future_against_past(&self.past, &fut))
+            })
+            .collect();
+        scored.sort_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        let best = scored[0];
+        let second = scored.get(1).copied();
+        let second_score = second.map(|(_, s)| s).unwrap_or(f64::NEG_INFINITY);
+        RankedPrediction {
+            best_content: best.0,
+            best_score: best.1,
+            second_content: second.map(|(c, _)| c),
+            second_score,
+            margin: best.1 - second_score,
+            scores: future_contents.len(),
+        }
+    }
+
+    /// Cadena de `hops` pasos: cada argmax se reinyecta como pasado (E10).
+    pub fn predict_chain(
+        &mut self,
+        start: usize,
+        hops: usize,
+        candidates: &[usize],
+    ) -> Vec<RankedPrediction> {
+        let mut out = Vec::with_capacity(hops.max(1));
+        let mut cur = start;
+        for _ in 0..hops.max(1) {
+            self.clear_past();
+            self.inject_past_content(cur);
+            let r = self.predict_ranked(candidates);
+            cur = r.best_content;
+            out.push(r);
+        }
+        out
+    }
+
+    pub fn predict_ranked_from_observation(
+        &mut self,
+        observation: usize,
+        candidates: &[usize],
+    ) -> RankedPrediction {
+        self.clear_past();
+        self.inject_past_content(observation);
+        self.predict_ranked(candidates)
+    }
+}
+
 // ─── Refinamiento opcional en rejilla 2D chica (lineal, pocos pasos) ────────
 
 pub const GRID: usize = 24;
