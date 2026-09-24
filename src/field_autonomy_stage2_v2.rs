@@ -19,7 +19,7 @@ use std::collections::HashSet;
 use std::fmt::Write as _;
 use std::time::Instant;
 
-pub const GENERATOR_VERSION: &str = "stage2_v2_gen_1.1.0";
+pub const GENERATOR_VERSION: &str = "stage2_v2_gen_1.2.0";
 pub const DATASET_VERSION: &str = "stage2_v2_ds_1.0.0";
 pub const PROTOCOL_SECTION: &str = "§29+ Clean-Room v2";
 
@@ -664,46 +664,38 @@ fn git_commit() -> String {
 
 fn point_features(p: (f64, f64), action: Option<(f64, f64)>) -> Vec<f64> {
     let (x, y) = p;
+    // Relative / centered / periodic features (v3.2):
+    // Absolute L2-ish views made far TEST |x|≫|Δ| look identical (~0.99 static).
+    // Phase + fractional channels keep small Δ distinguishable independent of origin.
+    let fx = x - x.floor();
+    let fy = y - y.floor();
     let mut f = vec![
-        x,
-        y,
-        x * x,
-        y * y,
-        x * y,
+        (x * 0.22).tanh(),       // bounded absolute (centered via tanh)
+        (y * 0.22).tanh(),
+        fx - 0.5,                // centered fractional — local Δ sensitivity
+        fy - 0.5,
         x.sin(),
+        x.cos(),
+        y.sin(),
         y.cos(),
+        (2.0 * x).sin() * 0.65,
+        (2.0 * y).sin() * 0.65,
         (0.5 * x).sin(),
         (0.5 * y).cos(),
-        (x + y) * 0.1,
-        (x - y) * 0.1,
-        1.0,
-        x.abs() * 0.1,
-        y.abs() * 0.1,
-        (x * 0.3).tanh(),
-        (y * 0.3).tanh(),
+        (x - y) * 0.12,          // relative axis
+        (x + y) * 0.06,
+        0.0,                     // action dx
+        0.0,                     // action dy
     ];
     f.truncate(FEAT_DIM);
     while f.len() < FEAT_DIM {
         f.push(0.0);
     }
-    // Soft-scale geometry (no full L2 normalize): absolute L2-norm made far-region
-    // translations look identical (~0.94–0.99 cosine), saturating static baseline.
-    // Keep raw (x,y) lightly scaled so Dφ/static can separate rule endpoints.
-    if FEAT_DIM >= 2 {
-        // Mildly whiten nonlinear channels; leave x,y at 0.2 scale.
-        f[0] *= 0.2;
-        f[1] *= 0.2;
-        if FEAT_DIM > 4 {
-            normalize(&mut f[2..FEAT_DIM - 2]);
-            for v in &mut f[2..FEAT_DIM - 2] {
-                *v *= 0.35;
-            }
-        }
-    }
+    // Do NOT L2-normalize the geometry block (that collapses far translations).
     if let Some((dx, dy)) = action {
         if FEAT_DIM >= 2 {
-            f[FEAT_DIM - 2] = dx * 0.35;
-            f[FEAT_DIM - 1] = dy * 0.35;
+            f[FEAT_DIM - 2] = dx * 0.55;
+            f[FEAT_DIM - 1] = dy * 0.55;
         }
     }
     f
@@ -718,52 +710,128 @@ fn encode_xy_geom(enc: &TrainableFieldEncoder, p: (f64, f64)) -> Vec<f64> {
     enc.encode(&point_features(p, None))
 }
 
-/// Linear point decoder ψ → (x, y). Enables compose chaining without oracle-mid.
+/// Residual MLP point decoder ψ → (x, y). Joint-trainable with Dφ for compose.
+/// out = W_skip ψ + b + W2 tanh(W1 ψ + b1) + b2
 #[derive(Clone, Debug)]
 struct PointDecoder {
     dim: usize,
-    w: Vec<f64>, // 2 * dim, row-major
+    hidden: usize,
+    w_skip: Vec<f64>, // 2 * dim
     b: [f64; 2],
+    w1: Vec<f64>, // hidden * dim
+    b1: Vec<f64>, // hidden
+    w2: Vec<f64>, // 2 * hidden
+    b2: [f64; 2],
+    eta: f64,
 }
 
 impl PointDecoder {
-    fn fit(psis: &[Vec<f64>], pts: &[(f64, f64)], epochs: usize) -> Self {
-        let dim = psis.first().map(|v| v.len()).unwrap_or(FIELD_DIM);
-        let mut w = vec![0.0; 2 * dim];
-        let mut b = [0.0_f64; 2];
-        let eta = 0.05;
-        let lambda = 1e-4;
-        let n_ep = epochs.max(40);
-        for _ in 0..n_ep {
-            for (psi, &(px, py)) in psis.iter().zip(pts.iter()) {
-                let mut pred = [b[0], b[1]];
-                for j in 0..dim {
-                    let v = psi.get(j).copied().unwrap_or(0.0);
-                    pred[0] += w[j] * v;
-                    pred[1] += w[dim + j] * v;
-                }
-                let e0 = pred[0] - px;
-                let e1 = pred[1] - py;
-                b[0] -= eta * e0;
-                b[1] -= eta * e1;
-                for j in 0..dim {
-                    let v = psi.get(j).copied().unwrap_or(0.0);
-                    w[j] -= eta * (e0 * v + lambda * w[j]);
-                    w[dim + j] -= eta * (e1 * v + lambda * w[dim + j]);
-                }
-            }
+    fn new(dim: usize, hidden: usize, seed: u64) -> Self {
+        let mut rng = Xoshiro256StarStar::seed_from_u64(seed ^ 0xDEC0DE);
+        let scale1 = 0.25 / (dim as f64).sqrt();
+        let scale2 = 0.25 / (hidden as f64).sqrt();
+        let scale_s = 0.15 / (dim as f64).sqrt();
+        let mut w1 = vec![0.0; hidden * dim];
+        for v in &mut w1 {
+            *v = (rng.gen::<f64>() * 2.0 - 1.0) * scale1;
         }
-        Self { dim, w, b }
+        let mut w2 = vec![0.0; 2 * hidden];
+        for v in &mut w2 {
+            *v = (rng.gen::<f64>() * 2.0 - 1.0) * scale2;
+        }
+        let mut w_skip = vec![0.0; 2 * dim];
+        for v in &mut w_skip {
+            *v = (rng.gen::<f64>() * 2.0 - 1.0) * scale_s;
+        }
+        Self {
+            dim,
+            hidden,
+            w_skip,
+            b: [0.0, 0.0],
+            w1,
+            b1: vec![0.0; hidden],
+            w2,
+            b2: [0.0, 0.0],
+            eta: 0.04,
+        }
+    }
+
+    fn forward(&self, psi: &[f64]) -> (f64, f64, Vec<f64>) {
+        let mut h = self.b1.clone();
+        for i in 0..self.hidden {
+            let mut acc = self.b1[i];
+            for j in 0..self.dim {
+                acc += self.w1[i * self.dim + j] * psi.get(j).copied().unwrap_or(0.0);
+            }
+            h[i] = acc.tanh();
+        }
+        let mut pred = [self.b[0] + self.b2[0], self.b[1] + self.b2[1]];
+        for j in 0..self.dim {
+            let v = psi.get(j).copied().unwrap_or(0.0);
+            pred[0] += self.w_skip[j] * v;
+            pred[1] += self.w_skip[self.dim + j] * v;
+        }
+        for i in 0..self.hidden {
+            pred[0] += self.w2[i] * h[i];
+            pred[1] += self.w2[self.hidden + i] * h[i];
+        }
+        (pred[0], pred[1], h)
     }
 
     fn decode(&self, psi: &[f64]) -> (f64, f64) {
-        let mut pred = [self.b[0], self.b[1]];
+        let (x, y, _) = self.forward(psi);
+        (x, y)
+    }
+
+    /// One SGD step on MSE(decode(ψ), target). Returns loss.
+    fn train_step(&mut self, psi: &[f64], target: (f64, f64)) -> f64 {
+        let (px, py, h) = self.forward(psi);
+        let e0 = px - target.0;
+        let e1 = py - target.1;
+        let loss = 0.5 * (e0 * e0 + e1 * e1);
+        if self.eta <= 0.0 {
+            return loss;
+        }
+        let eta = self.eta;
+        let lambda = 1e-4;
+        // dL/dpred = (e0, e1)
+        self.b[0] -= eta * e0;
+        self.b[1] -= eta * e1;
+        self.b2[0] -= eta * e0;
+        self.b2[1] -= eta * e1;
         for j in 0..self.dim {
             let v = psi.get(j).copied().unwrap_or(0.0);
-            pred[0] += self.w[j] * v;
-            pred[1] += self.w.get(self.dim + j).copied().unwrap_or(0.0) * v;
+            self.w_skip[j] -= eta * (e0 * v + lambda * self.w_skip[j]);
+            self.w_skip[self.dim + j] -= eta * (e1 * v + lambda * self.w_skip[self.dim + j]);
         }
-        (pred[0], pred[1])
+        // backprop through W2 and hidden tanh
+        let mut dh = vec![0.0; self.hidden];
+        for i in 0..self.hidden {
+            dh[i] = e0 * self.w2[i] + e1 * self.w2[self.hidden + i];
+            self.w2[i] -= eta * (e0 * h[i] + lambda * self.w2[i]);
+            self.w2[self.hidden + i] -= eta * (e1 * h[i] + lambda * self.w2[self.hidden + i]);
+        }
+        for i in 0..self.hidden {
+            let g = dh[i] * (1.0 - h[i] * h[i]);
+            self.b1[i] -= eta * g;
+            for j in 0..self.dim {
+                let v = psi.get(j).copied().unwrap_or(0.0);
+                self.w1[i * self.dim + j] -= eta * (g * v + lambda * self.w1[i * self.dim + j]);
+            }
+        }
+        loss
+    }
+
+    fn fit(psis: &[Vec<f64>], pts: &[(f64, f64)], epochs: usize) -> Self {
+        let dim = psis.first().map(|v| v.len()).unwrap_or(FIELD_DIM);
+        let mut dec = Self::new(dim, 32, 0xF17);
+        let n_ep = epochs.max(60);
+        for _ in 0..n_ep {
+            for (psi, &pt) in psis.iter().zip(pts.iter()) {
+                let _ = dec.train_step(psi, pt);
+            }
+        }
+        dec
     }
 
     fn point_err(a: (f64, f64), b: (f64, f64)) -> f64 {
@@ -1115,12 +1183,25 @@ fn train_consistency(
                 std::slice::from_ref(&psi_b),
                 &empty,
             );
-            // Moderate x≠y contrast: open dyn−static margin; avoid over-repulsion.
-            if rng.gen::<f64>() < 0.28 {
+            // Stronger x≠y contrast (v3.2): open dyn−static margin vs saturated static.
+            if rng.gen::<f64>() < 0.42 {
                 let _ = enc.train_step(
                     &fa,
                     std::slice::from_ref(&psi),
                     std::slice::from_ref(&psi_b),
+                );
+                steps += 1;
+            }
+            // Geom-only contrast: harden static baseline (no action shared).
+            if rng.gen::<f64>() < 0.35 {
+                let fag = point_features(s.x, None);
+                let fbg = point_features(s.y, None);
+                let psi_g = enc.encode(&fag);
+                let psi_bg = enc.encode(&fbg);
+                let _ = enc.train_step(
+                    &fag,
+                    std::slice::from_ref(&psi_g),
+                    std::slice::from_ref(&psi_bg),
                 );
                 steps += 1;
             }
@@ -1144,7 +1225,23 @@ fn train_dynamics(
     let empty: [Vec<f64>; 0] = [];
     let mut steps = 0usize;
     let du = dyn_updates.max(1);
-    for _ in 0..epochs {
+    let ep_max = epochs.max(1) as f64;
+    for ep in 0..epochs {
+        // Horizon annealing toward h32 (v3.2): short → mid → long over epochs.
+        let progress = ep as f64 / ep_max;
+        let max_h = if progress < 0.2 {
+            4usize
+        } else if progress < 0.4 {
+            8
+        } else if progress < 0.65 {
+            16
+        } else {
+            32
+        };
+        let hs: Vec<usize> = [2usize, 4, 8, 16, 32]
+            .into_iter()
+            .filter(|&h| h <= max_h)
+            .collect();
         for s in samples {
             let fa = point_features(s.x, s.action);
             let psi_a = enc.encode(&fa);
@@ -1166,14 +1263,17 @@ fn train_dynamics(
                 }
                 normalize(&mut tgt);
             }
-            for _ in 0..du {
+            // Dyn-focused extra updates when static geom already looks "easy".
+            let src_g = encode_xy_geom(enc, s.x);
+            let tgt_g = encode_xy_geom(enc, s.y);
+            let static_cos = cosine(&src_g, &tgt_g);
+            let extra = if static_cos > 0.92 { 2 } else if static_cos > 0.85 { 1 } else { 0 };
+            for _ in 0..(du + extra) {
                 let _ = dynm.train_transition(&src, &tgt);
                 steps += 1;
             }
-            // Real multi-step unroll (teacher-forced chain + free-run correction).
-            // Orientado a E23 h=2..8; no soft-mix notes-only.
-            if du >= 2 {
-                let hs = [2usize, 4, 8];
+            // Multi-step unroll with annealed horizon (TF + free-run).
+            if du >= 2 && !hs.is_empty() {
                 let h = hs[rng.gen_range(0..hs.len())];
                 let mut pt = s.x;
                 let mut true_fps = vec![src.clone()];
@@ -1181,12 +1281,10 @@ fn train_dynamics(
                     pt = s.rule.apply(pt);
                     true_fps.push(encode_xy(enc, pt, s.action));
                 }
-                // Teacher-forced consecutive transitions along true orbit.
                 for t in 0..h {
                     let _ = dynm.train_transition(&true_fps[t], &true_fps[t + 1]);
                     steps += 1;
                 }
-                // Free-run from src; each step pulled toward true next state.
                 let mut rolled = src.clone();
                 for t in 0..h {
                     let _ = dynm.train_transition(&rolled, &true_fps[t + 1]);
@@ -1194,6 +1292,42 @@ fn train_dynamics(
                     rolled = dynm.step(&rolled);
                 }
             }
+        }
+    }
+    steps
+}
+
+/// Joint decoder↔Dφ training on single-rule transitions (no compose targets).
+/// Aligns decode(dyn(encode(x))) → y in point space for E22 mid-state chaining.
+fn train_decoder_joint(
+    enc: &TrainableFieldEncoder,
+    dynm: &mut FieldDynamics,
+    decoder: &mut PointDecoder,
+    samples: &[Sample],
+    epochs: usize,
+    seed: u64,
+) -> usize {
+    let mut rng = Xoshiro256StarStar::seed_from_u64(seed ^ 0xA01E7);
+    let mut steps = 0usize;
+    for _ in 0..epochs {
+        for s in samples {
+            let src = encode_xy(enc, s.x, s.action);
+            let tgt = encode_xy(enc, s.y, s.action);
+            let pred = dynm.step(&src);
+            let _ = dynm.train_transition(&src, &tgt);
+            let _ = decoder.train_step(&pred, s.y);
+            let _ = decoder.train_step(&src, s.x);
+            let _ = decoder.train_step(&tgt, s.y);
+            // Geom-only views: mid-state after first rule often decoded without action.
+            let src_g = encode_xy_geom(enc, s.x);
+            let tgt_g = encode_xy_geom(enc, s.y);
+            let _ = decoder.train_step(&src_g, s.x);
+            let _ = decoder.train_step(&tgt_g, s.y);
+            if rng.gen::<f64>() < 0.5 {
+                let pred_g_step = dynm.step(&encode_xy(enc, s.x, s.action));
+                let _ = decoder.train_step(&pred_g_step, s.y);
+            }
+            steps += 1;
         }
     }
     steps
@@ -1812,8 +1946,7 @@ pub fn run_e22(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
         .collect();
     let linear = LinearDyn::fit(&train_src, &train_tgt);
 
-    // Fit point decoder on TRAIN encodings (no TEST leakage).
-    // Include action and geom-only views so mid-state decode is robust.
+    // Residual MLP decoder + joint Dφ train on single-rule transitions (no compose).
     let mut dec_psis = Vec::new();
     let mut dec_pts = Vec::new();
     for s in &train {
@@ -1825,12 +1958,13 @@ pub fn run_e22(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
         dec_pts.push(s.x);
         dec_psis.push(encode_xy_geom(&enc, s.y));
         dec_pts.push(s.y);
-        // Also map one dyn step toward y (teacher) → decode should recover y.
         let pred = dynm.step(&encode_xy(&enc, s.x, s.action));
         dec_psis.push(pred);
         dec_pts.push(s.y);
     }
-    let decoder = PointDecoder::fit(&dec_psis, &dec_pts, 160);
+    let mut decoder = PointDecoder::fit(&dec_psis, &dec_pts, 120);
+    let joint_ep = (hp.dyn_epochs / 4).max(40).min(160);
+    steps += train_decoder_joint(&enc, &mut dynm, &mut decoder, &train, joint_ep, seed ^ 0xDEC);
 
     // Primary: end-to-end compose via decoder mid (NO oracle-mid). RQM-OFF.
     let mut e2e_cos = Vec::new();
@@ -1892,7 +2026,7 @@ pub fn run_e22(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
     let beats = cos_dyn > ev_shot.cos_nn + 0.02 && cos_dyn > ev_shot.cos_table + 0.02;
     row.verdict = verdict_of(cos_dyn, cos_static, 0, beats).into();
     row.notes = format!(
-        "e2e-decoder compose RQM-OFF cos={:.3} static_no_action={:.3} step1={:.3} pt_err={:.3}; oracle-mid cos={:.3}; single-shot={:.3}; linear={:.3} nn={:.3} table={:.3}",
+        "e2e-mlp-decoder joint compose RQM-OFF cos={:.3} static_no_action={:.3} step1={:.3} pt_err={:.3}; oracle-mid cos={:.3}; single-shot={:.3}; linear={:.3} nn={:.3} table={:.3}",
         cos_dyn, cos_static, mean(&step1_cos), mean(&e2e_pt_err), mean(&oracle_cos),
         ev_shot.cos_dyn, ev_shot.cos_linear, ev_shot.cos_nn, ev_shot.cos_table
     );
@@ -1962,7 +2096,7 @@ pub fn run_e23(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
     row.stability = cos_h.get(3).copied().unwrap_or(0.0);
     row.leakage_score = 0;
     row.notes = format!(
-        "horizons {:?} cos {:?} energy {:?} (real multi-step unroll train h=2/4/8; no teacher forcing at eval)",
+        "horizons {:?} cos {:?} energy {:?} (horizon anneal→h32 TF+free-run; no teacher forcing at eval)",
         horizons, cos_h, energy_h
     );
     row.verdict = if row.cosine_dynamic < COS_PARTIAL {

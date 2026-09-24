@@ -73,11 +73,12 @@ fn main() {
     md.push_str("Periferia: numeric FIELD_ONLY; RQM/NN/table/attractor OFF en eval.\n\n");
     md.push_str("## Hardening en esta corrida\n\n");
     md.push_str("- `HyperparamLock::long()`: más datos/épocas/updates.\n");
-    md.push_str("- Static baseline **sin** action channels (geom-only) para margen dyn−static.\n");
-    md.push_str("- Real multi-step unroll train (teacher-forced + free-run h=2/4/8).\n");
-    md.push_str("- E22: decoder mid end-to-end compose (sin oracle-mid); oracle en notes.\n");
-    md.push_str("- Currícula multi-familia (trans/rot/scale/affine) mezclada en TRAIN.\n");
-    md.push_str("- E21: curriculum dx denso + multifamily mix.\n\n");
+    md.push_str("- Features relativas/periódicas (frac + multi-freq) — anti saturación static.\n");
+    md.push_str("- Static baseline **sin** action + contraste geom-only en encoder.\n");
+    md.push_str("- Dyn-focused extra updates cuando static_cos alta.\n");
+    md.push_str("- Horizon annealing → h32 (TF + free-run) para E23.\n");
+    md.push_str("- E22: residual MLP PointDecoder joint con Dφ (sin oracle-mid; sin train compose).\n");
+    md.push_str("- Currícula multi-familia + E21 dx denso.\n\n");
     md.push_str(&format!(
         "Wall time: **{elapsed:.1}s**. Filas: {}.\n\n",
         rows.len()
@@ -110,7 +111,7 @@ fn main() {
     md.push_str("\nCSV: [`resultados_etapa_2_v3_long.csv`](resultados_etapa_2_v3_long.csv)\n\n");
     md.push_str("## Lectura honesta (corrida LONG)\n\n");
     md.push_str("- Leakage FIELD_ONLY y contaminación: ver secciones arriba (deben ser 0).\n");
-    md.push_str("- Palancas v3.1: static sin action; unroll real h=2/4/8; decoder compose; multifamily.\n");
+    md.push_str("- Palancas v3.2: relative features; MLP joint decoder; horizon anneal→h32; dyn-focused margin.\n");
     md.push_str("- Seeds confirmación `0xB300–0xB30F`: **no corridas** (DEV no locked aún para confirmación).\n");
     fs::write("docs/resultados_etapa_2_v3_long.md", &md).expect("write md");
     println!("wrote docs/resultados_etapa_2_v3_long.{{md,csv}} ({elapsed:.1}s)");
