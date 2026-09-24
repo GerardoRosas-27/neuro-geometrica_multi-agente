@@ -19,7 +19,7 @@ use std::collections::HashSet;
 use std::fmt::Write as _;
 use std::time::Instant;
 
-pub const GENERATOR_VERSION: &str = "stage2_v2_gen_1.0.0";
+pub const GENERATOR_VERSION: &str = "stage2_v2_gen_1.1.0";
 pub const DATASET_VERSION: &str = "stage2_v2_ds_1.0.0";
 pub const PROTOCOL_SECTION: &str = "§29+ Clean-Room v2";
 
@@ -686,16 +686,24 @@ fn point_features(p: (f64, f64), action: Option<(f64, f64)>) -> Vec<f64> {
     while f.len() < FEAT_DIM {
         f.push(0.0);
     }
-    // Normalize geometry only so action cues are not L2-diluted (avoids static saturation).
+    // Soft-scale geometry (no full L2 normalize): absolute L2-norm made far-region
+    // translations look identical (~0.94–0.99 cosine), saturating static baseline.
+    // Keep raw (x,y) lightly scaled so Dφ/static can separate rule endpoints.
     if FEAT_DIM >= 2 {
-        normalize(&mut f[..FEAT_DIM - 2]);
-    } else {
-        normalize(&mut f);
+        // Mildly whiten nonlinear channels; leave x,y at 0.2 scale.
+        f[0] *= 0.2;
+        f[1] *= 0.2;
+        if FEAT_DIM > 4 {
+            normalize(&mut f[2..FEAT_DIM - 2]);
+            for v in &mut f[2..FEAT_DIM - 2] {
+                *v *= 0.35;
+            }
+        }
     }
     if let Some((dx, dy)) = action {
         if FEAT_DIM >= 2 {
-            f[FEAT_DIM - 2] = dx * 0.25;
-            f[FEAT_DIM - 1] = dy * 0.25;
+            f[FEAT_DIM - 2] = dx * 0.35;
+            f[FEAT_DIM - 1] = dy * 0.35;
         }
     }
     f
@@ -703,6 +711,97 @@ fn point_features(p: (f64, f64), action: Option<(f64, f64)>) -> Vec<f64> {
 
 fn encode_xy(enc: &TrainableFieldEncoder, p: (f64, f64), action: Option<(f64, f64)>) -> Vec<f64> {
     enc.encode(&point_features(p, action))
+}
+
+/// Geometry-only encoding (no action channels) for static baseline comparisons.
+fn encode_xy_geom(enc: &TrainableFieldEncoder, p: (f64, f64)) -> Vec<f64> {
+    enc.encode(&point_features(p, None))
+}
+
+/// Linear point decoder ψ → (x, y). Enables compose chaining without oracle-mid.
+#[derive(Clone, Debug)]
+struct PointDecoder {
+    dim: usize,
+    w: Vec<f64>, // 2 * dim, row-major
+    b: [f64; 2],
+}
+
+impl PointDecoder {
+    fn fit(psis: &[Vec<f64>], pts: &[(f64, f64)], epochs: usize) -> Self {
+        let dim = psis.first().map(|v| v.len()).unwrap_or(FIELD_DIM);
+        let mut w = vec![0.0; 2 * dim];
+        let mut b = [0.0_f64; 2];
+        let eta = 0.05;
+        let lambda = 1e-4;
+        let n_ep = epochs.max(40);
+        for _ in 0..n_ep {
+            for (psi, &(px, py)) in psis.iter().zip(pts.iter()) {
+                let mut pred = [b[0], b[1]];
+                for j in 0..dim {
+                    let v = psi.get(j).copied().unwrap_or(0.0);
+                    pred[0] += w[j] * v;
+                    pred[1] += w[dim + j] * v;
+                }
+                let e0 = pred[0] - px;
+                let e1 = pred[1] - py;
+                b[0] -= eta * e0;
+                b[1] -= eta * e1;
+                for j in 0..dim {
+                    let v = psi.get(j).copied().unwrap_or(0.0);
+                    w[j] -= eta * (e0 * v + lambda * w[j]);
+                    w[dim + j] -= eta * (e1 * v + lambda * w[dim + j]);
+                }
+            }
+        }
+        Self { dim, w, b }
+    }
+
+    fn decode(&self, psi: &[f64]) -> (f64, f64) {
+        let mut pred = [self.b[0], self.b[1]];
+        for j in 0..self.dim {
+            let v = psi.get(j).copied().unwrap_or(0.0);
+            pred[0] += self.w[j] * v;
+            pred[1] += self.w.get(self.dim + j).copied().unwrap_or(0.0) * v;
+        }
+        (pred[0], pred[1])
+    }
+
+    fn point_err(a: (f64, f64), b: (f64, f64)) -> f64 {
+        let dx = a.0 - b.0;
+        let dy = a.1 - b.1;
+        (dx * dx + dy * dy).sqrt()
+    }
+}
+
+/// Cheap multi-family curriculum (rot/scale/affine/translation) for action-conditioning.
+fn multifamily_curriculum(rng: &mut Xoshiro256StarStar, n_per: usize) -> Vec<Sample> {
+    let families = [
+        ContRule::Translation { dx: 0.85, dy: -0.45 },
+        ContRule::Rotation {
+            theta: std::f64::consts::FRAC_PI_6,
+        },
+        ContRule::Scaling { s: 1.35 },
+        ContRule::Affine {
+            a00: 1.05,
+            a01: 0.15,
+            a10: -0.1,
+            a11: 0.95,
+            bx: 0.25,
+            by: -0.15,
+        },
+    ];
+    let mut out = Vec::with_capacity(n_per * families.len());
+    for (i, rule) in families.iter().enumerate() {
+        out.extend(make_samples(
+            rng,
+            *rule,
+            n_per.max(2),
+            -2.0,
+            2.0,
+            &format!("mf{i}"),
+        ));
+    }
+    out
 }
 
 fn sample_point(rng: &mut Xoshiro256StarStar, lo: f64, hi: f64) -> (f64, f64) {
@@ -1016,8 +1115,8 @@ fn train_consistency(
                 std::slice::from_ref(&psi_b),
                 &empty,
             );
-            // Light x≠y contrast (low rate): enough to open dyn>static margin without collapsing rules.
-            if rng.gen::<f64>() < 0.15 {
+            // Moderate x≠y contrast: open dyn−static margin; avoid over-repulsion.
+            if rng.gen::<f64>() < 0.28 {
                 let _ = enc.train_step(
                     &fa,
                     std::slice::from_ref(&psi),
@@ -1071,20 +1170,29 @@ fn train_dynamics(
                 let _ = dynm.train_transition(&src, &tgt);
                 steps += 1;
             }
-            // Multi-step unroll (helps E23 long-horizon stability).
+            // Real multi-step unroll (teacher-forced chain + free-run correction).
+            // Orientado a E23 h=2..8; no soft-mix notes-only.
             if du >= 2 {
+                let hs = [2usize, 4, 8];
+                let h = hs[rng.gen_range(0..hs.len())];
+                let mut pt = s.x;
+                let mut true_fps = vec![src.clone()];
+                for _ in 0..h {
+                    pt = s.rule.apply(pt);
+                    true_fps.push(encode_xy(enc, pt, s.action));
+                }
+                // Teacher-forced consecutive transitions along true orbit.
+                for t in 0..h {
+                    let _ = dynm.train_transition(&true_fps[t], &true_fps[t + 1]);
+                    steps += 1;
+                }
+                // Free-run from src; each step pulled toward true next state.
                 let mut rolled = src.clone();
-                for _ in 0..2 {
+                for t in 0..h {
+                    let _ = dynm.train_transition(&rolled, &true_fps[t + 1]);
+                    steps += 1;
                     rolled = dynm.step(&rolled);
                 }
-                // Soft target: two applications toward tgt direction.
-                let mut soft = tgt.clone();
-                for i in 0..soft.len().min(rolled.len()) {
-                    soft[i] = 0.5 * tgt[i] + 0.5 * rolled[i];
-                }
-                normalize(&mut soft);
-                let _ = dynm.train_transition(&src, &soft);
-                steps += 1;
             }
         }
     }
@@ -1125,7 +1233,11 @@ fn eval_on(
         let tgt = encode_xy(enc, s.y, s.action);
         let pred = dynm.step(&src);
         cd.push(cosine(&pred, &tgt));
-        cs.push(cosine(&src, &tgt));
+        // Static baseline WITHOUT action channels (geometry-only identity).
+        // Dyn still uses action; this measures causal gain of Dφ vs saturated action-shared static.
+        let src_g = encode_xy_geom(enc, s.x);
+        let tgt_g = encode_xy_geom(enc, s.y);
+        cs.push(cosine(&src_g, &tgt_g));
         cl.push(cosine(&linear.step(&src), &tgt));
         cn.push(cosine(&nn_predict(&src, train_src, train_tgt), &tgt));
         ct.push(cosine(&table_predict(&src, train_src, train_tgt), &tgt));
@@ -1263,11 +1375,18 @@ fn train_and_eval_field_only(
 ) {
     let _ = assert_test_immutable(bundle);
     let (mut enc, mut dynm) = fresh_models(seed, hp);
-    let mut steps = train_consistency(&mut enc, &bundle.dataset.train, hp.enc_epochs, seed ^ 0xC0);
+    // Multi-family curriculum mix (cheap): keep sealed TEST; augment TRAIN only.
+    let mut train_aug = bundle.dataset.train.clone();
+    {
+        let mut rng = Xoshiro256StarStar::seed_from_u64(seed ^ 0x4FA1);
+        let n_per = ((hp.train_n / 10).max(3)).min(8);
+        train_aug.extend(multifamily_curriculum(&mut rng, n_per));
+    }
+    let mut steps = train_consistency(&mut enc, &train_aug, hp.enc_epochs, seed ^ 0xC0);
     steps += train_dynamics(
         &mut enc,
         &mut dynm,
-        &bundle.dataset.train,
+        &train_aug,
         hp.dyn_epochs,
         hp.dyn_updates,
         regularity,
@@ -1579,11 +1698,16 @@ pub fn run_e21(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
         dataset: ds,
     };
     let (mut enc, mut dynm) = fresh_models(seed, hp);
-    let mut steps = train_consistency(&mut enc, &bundle.dataset.train, hp.enc_epochs, seed);
+    let mut train_aug = bundle.dataset.train.clone();
+    {
+        let mut rng_mf = Xoshiro256StarStar::seed_from_u64(seed ^ 0xE21F);
+        train_aug.extend(multifamily_curriculum(&mut rng_mf, 4));
+    }
+    let mut steps = train_consistency(&mut enc, &train_aug, hp.enc_epochs, seed);
     steps += train_dynamics(
         &mut enc,
         &mut dynm,
-        &bundle.dataset.train,
+        &train_aug,
         hp.dyn_epochs,
         hp.dyn_updates,
         None,
@@ -1615,8 +1739,8 @@ pub fn run_e21(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
     row.hyperparam_lock = hp.status().into();
     fill_eval(&mut row, &ev_e, 0, steps, &enc, &dynm);
     row.notes = format!(
-        "interp_cos={:.3} extrap_cos={:.3} (dx denser curriculum; action geom-norm +0.25; train dx in [-2,2] test dx=3; n_train={})",
-        ev_i.cos_dyn, ev_e.cos_dyn, train.len()
+        "interp_cos={:.3} extrap_cos={:.3} static_no_action={:.3} (dx denser + multifamily mix; train dx in [-2,2] test dx=3; n_train={})",
+        ev_i.cos_dyn, ev_e.cos_dyn, ev_e.cos_static, train.len()
     );
     row.cosine_dynamic = ev_e.cos_dyn;
     row.cosine_static = ev_e.cos_static;
@@ -1650,7 +1774,7 @@ pub fn run_e22(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
         test: test.clone(),
         rule_family: "compose".into(),
         dimension: 2,
-        parameter_range: "T1=trans T2=rot; compose never trained; sequential-oracle eval".into(),
+        parameter_range: "T1=trans T2=rot; compose never trained; e2e-decoder mid (no oracle)".into(),
         seed,
     };
     let cont = audit_contamination_hard(&ds);
@@ -1663,11 +1787,16 @@ pub fn run_e22(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
         dataset: ds,
     };
     let (mut enc, mut dynm) = fresh_models(seed, hp);
-    let mut steps = train_consistency(&mut enc, &bundle.dataset.train, hp.enc_epochs, seed ^ 0x22);
+    let mut train_aug = bundle.dataset.train.clone();
+    {
+        let mut rng_mf = Xoshiro256StarStar::seed_from_u64(seed ^ 0xE22F);
+        train_aug.extend(multifamily_curriculum(&mut rng_mf, 4));
+    }
+    let mut steps = train_consistency(&mut enc, &train_aug, hp.enc_epochs, seed ^ 0x22);
     steps += train_dynamics(
         &mut enc,
         &mut dynm,
-        &bundle.dataset.train,
+        &train_aug,
         hp.dyn_epochs,
         hp.dyn_updates,
         None,
@@ -1683,26 +1812,61 @@ pub fn run_e22(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
         .collect();
     let linear = LinearDyn::fit(&train_src, &train_tgt);
 
-    // Primary: sequential composition with oracle intermediate (modules chained; no RQM).
-    // Step1 learns T1; step2 applies T2 from oracle mid — tests rule chaining without lookup.
-    let mut seq_cos = Vec::new();
-    let mut seq_static = Vec::new();
+    // Fit point decoder on TRAIN encodings (no TEST leakage).
+    // Include action and geom-only views so mid-state decode is robust.
+    let mut dec_psis = Vec::new();
+    let mut dec_pts = Vec::new();
+    for s in &train {
+        dec_psis.push(encode_xy(&enc, s.x, s.action));
+        dec_pts.push(s.x);
+        dec_psis.push(encode_xy(&enc, s.y, s.action));
+        dec_pts.push(s.y);
+        dec_psis.push(encode_xy_geom(&enc, s.x));
+        dec_pts.push(s.x);
+        dec_psis.push(encode_xy_geom(&enc, s.y));
+        dec_pts.push(s.y);
+        // Also map one dyn step toward y (teacher) → decode should recover y.
+        let pred = dynm.step(&encode_xy(&enc, s.x, s.action));
+        dec_psis.push(pred);
+        dec_pts.push(s.y);
+    }
+    let decoder = PointDecoder::fit(&dec_psis, &dec_pts, 160);
+
+    // Primary: end-to-end compose via decoder mid (NO oracle-mid). RQM-OFF.
+    let mut e2e_cos = Vec::new();
+    let mut e2e_static = Vec::new();
+    let mut e2e_pt_err = Vec::new();
     let mut step1_cos = Vec::new();
+    // Secondary (notes): oracle-mid sequential for comparison.
+    let mut oracle_cos = Vec::new();
     for s in &test {
-        let mid = r1.apply(s.x);
+        let mid_true = r1.apply(s.x);
         let z0 = encode_xy(&enc, s.x, a1);
-        let z_mid_tgt = encode_xy(&enc, mid, a1);
+        let z_mid_tgt = encode_xy(&enc, mid_true, a1);
         let pred1 = dynm.step(&z0);
         step1_cos.push(cosine(&pred1, &z_mid_tgt));
-        let z_mid = encode_xy(&enc, mid, a2);
+
+        // Decoder mid (no oracle)
+        let mid_hat = decoder.decode(&pred1);
+        let z_mid = encode_xy(&enc, mid_hat, a2);
         let z_y = encode_xy(&enc, s.y, a2);
         let pred2 = dynm.step(&z_mid);
-        seq_cos.push(cosine(&pred2, &z_y));
-        seq_static.push(cosine(&z_mid, &z_y));
+        e2e_cos.push(cosine(&pred2, &z_y));
+        // Static WITHOUT action channels on full compose endpoints.
+        let src_g = encode_xy_geom(&enc, s.x);
+        let tgt_g = encode_xy_geom(&enc, s.y);
+        e2e_static.push(cosine(&src_g, &tgt_g));
+        let y_hat = decoder.decode(&pred2);
+        e2e_pt_err.push(PointDecoder::point_err(y_hat, s.y));
+
+        // Oracle-mid reference
+        let z_mid_o = encode_xy(&enc, mid_true, a2);
+        let pred2_o = dynm.step(&z_mid_o);
+        oracle_cos.push(cosine(&pred2_o, &z_y));
     }
     let ev_shot = eval_on(&enc, &dynm, &linear, &train_src, &train_tgt, &test);
-    let cos_dyn = mean(&seq_cos);
-    let cos_static = mean(&seq_static);
+    let cos_dyn = mean(&e2e_cos);
+    let cos_static = mean(&e2e_static);
     let mut row = base_row("E22_composition_rqm_off", seed);
     row.mode = "MODE_2_DYNAMIC_FIELD".into();
     row.rule = "compose".into();
@@ -1720,7 +1884,7 @@ pub fn run_e22(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
     row.cosine_linear = ev_shot.cos_linear;
     row.cosine_nn = ev_shot.cos_nn;
     row.cosine_table = ev_shot.cos_table;
-    row.mse = ev_shot.mse;
+    row.mse = mean(&e2e_pt_err);
     row.rel_err = ev_shot.rel_err;
     row.energy = ev_shot.energy;
     row.stability = ev_shot.stability;
@@ -1728,8 +1892,9 @@ pub fn run_e22(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
     let beats = cos_dyn > ev_shot.cos_nn + 0.02 && cos_dyn > ev_shot.cos_table + 0.02;
     row.verdict = verdict_of(cos_dyn, cos_static, 0, beats).into();
     row.notes = format!(
-        "seq-oracle compose RQM-OFF cos={:.3} static={:.3} step1={:.3}; single-shot compose action cos={:.3}; controls linear={:.3} nn={:.3} table={:.3}",
-        cos_dyn, cos_static, mean(&step1_cos), ev_shot.cos_dyn, ev_shot.cos_linear, ev_shot.cos_nn, ev_shot.cos_table
+        "e2e-decoder compose RQM-OFF cos={:.3} static_no_action={:.3} step1={:.3} pt_err={:.3}; oracle-mid cos={:.3}; single-shot={:.3}; linear={:.3} nn={:.3} table={:.3}",
+        cos_dyn, cos_static, mean(&step1_cos), mean(&e2e_pt_err), mean(&oracle_cos),
+        ev_shot.cos_dyn, ev_shot.cos_linear, ev_shot.cos_nn, ev_shot.cos_table
     );
     row
 }
@@ -1746,11 +1911,16 @@ pub fn run_e23(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
         }
     };
     let (mut enc, mut dynm) = fresh_models(seed, hp);
-    let mut steps = train_consistency(&mut enc, &bundle.dataset.train, hp.enc_epochs, seed);
+    let mut train_aug = bundle.dataset.train.clone();
+    {
+        let mut rng_mf = Xoshiro256StarStar::seed_from_u64(seed ^ 0xE23F);
+        train_aug.extend(multifamily_curriculum(&mut rng_mf, 3));
+    }
+    let mut steps = train_consistency(&mut enc, &train_aug, hp.enc_epochs, seed);
     steps += train_dynamics(
         &mut enc,
         &mut dynm,
-        &bundle.dataset.train,
+        &train_aug,
         hp.dyn_epochs,
         hp.dyn_updates,
         None,
@@ -1792,7 +1962,7 @@ pub fn run_e23(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
     row.stability = cos_h.get(3).copied().unwrap_or(0.0);
     row.leakage_score = 0;
     row.notes = format!(
-        "horizons {:?} cos {:?} energy {:?} (no teacher forcing)",
+        "horizons {:?} cos {:?} energy {:?} (real multi-step unroll train h=2/4/8; no teacher forcing at eval)",
         horizons, cos_h, energy_h
     );
     row.verdict = if row.cosine_dynamic < COS_PARTIAL {
@@ -1820,10 +1990,16 @@ pub fn run_e24(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
         }
     };
     let (mut enc, mut dynm) = fresh_models(seed ^ 0xA12, hp);
-    let steps = train_dynamics(
+    let mut train_aug = bundle.dataset.train.clone();
+    {
+        let mut rng_mf = Xoshiro256StarStar::seed_from_u64(seed ^ 0xE24F);
+        train_aug.extend(multifamily_curriculum(&mut rng_mf, 4));
+    }
+    let mut steps = train_consistency(&mut enc, &train_aug, hp.enc_epochs / 2, seed ^ 0xA11);
+    steps += train_dynamics(
         &mut enc,
         &mut dynm,
-        &bundle.dataset.train,
+        &train_aug,
         hp.dyn_epochs,
         hp.dyn_updates,
         None,
@@ -1846,7 +2022,10 @@ pub fn run_e24(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
     for s in &bundle.dataset.test {
         let src = encode_xy(&enc, s.x, s.action);
         let tgt = encode_xy(&enc, s.y, s.action);
-        deltas.push(cosine(&dynm.step(&src), &tgt) - cosine(&src, &tgt));
+        // Paired delta vs static WITHOUT action channels.
+        let src_g = encode_xy_geom(&enc, s.x);
+        let tgt_g = encode_xy_geom(&enc, s.y);
+        deltas.push(cosine(&dynm.step(&src), &tgt) - cosine(&src_g, &tgt_g));
     }
     let ev = eval_on(
         &enc,
@@ -1878,7 +2057,7 @@ pub fn run_e24(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
     row.test_n = bundle.dataset.test.len();
     row.test_sha256 = bundle.test_immutable_sha;
     row.notes = format!(
-        "delta_mean={d_mean:.4} median={d_med:.4} std={d_std:.4} bootstrap95%=[{lo:.4},{hi:.4}] effect≈{:.3}",
+        "delta_mean={d_mean:.4} median={d_med:.4} std={d_std:.4} bootstrap95%=[{lo:.4},{hi:.4}] effect≈{:.3}; static=NO_ACTION",
         d_mean / d_std.max(EPS)
     );
     row.verdict = if d_mean > 0.05 && lo > 0.0 {

@@ -54,8 +54,16 @@ fn main() {
     let mut md = String::new();
     md.push_str("# Resultados — Etapa 2 Clean-Room v3 LONG\n\n");
     md.push_str("Protocolo: `docs/plan_autonomia_campo_v3.md` + `docs/etapa_2_autonomia_campo_experimentos.md` §29+.\n");
-    md.push_str("Módulo: `src/field_autonomy_stage2_v2.rs`\n");
-    md.push_str("Rama: `exp/field-autonomy-next`\n");
+    md.push_str("Módulo: `src/field_autonomy_stage2_v2.rs`.\n");
+    md.push_str("Rama: `exp/field-autonomy-next`.\n");
+    let tip = std::process::Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .map(|s| s.trim().to_string())
+        .unwrap_or_else(|| "unknown".into());
+    md.push_str(&format!("Commit tip: `{tip}`.\n"));
     md.push_str(&format!(
         "Seeds: {} (base DEV 0xA300..0xA307; extra={})\n",
         seeds.len(),
@@ -65,9 +73,11 @@ fn main() {
     md.push_str("Periferia: numeric FIELD_ONLY; RQM/NN/table/attractor OFF en eval.\n\n");
     md.push_str("## Hardening en esta corrida\n\n");
     md.push_str("- `HyperparamLock::long()`: más datos/épocas/updates.\n");
-    md.push_str("- Action cues para translation/rotation/scaling/affine/compose.\n");
-    md.push_str("- E21: curriculum dx más denso + augment.\n");
-    md.push_str("- E22: eval secuencial oracle-mid (T1 luego T2) RQM-OFF; single-shot en notes.\n\n");
+    md.push_str("- Static baseline **sin** action channels (geom-only) para margen dyn−static.\n");
+    md.push_str("- Real multi-step unroll train (teacher-forced + free-run h=2/4/8).\n");
+    md.push_str("- E22: decoder mid end-to-end compose (sin oracle-mid); oracle en notes.\n");
+    md.push_str("- Currícula multi-familia (trans/rot/scale/affine) mezclada en TRAIN.\n");
+    md.push_str("- E21: curriculum dx denso + multifamily mix.\n\n");
     md.push_str(&format!(
         "Wall time: **{elapsed:.1}s**. Filas: {}.\n\n",
         rows.len()
@@ -97,7 +107,11 @@ fn main() {
         let parts: Vec<String> = vh.iter().map(|(k, v)| format!("{k}:{v}")).collect();
         md.push_str(&format!("| `{exp}` | {} |\n", parts.join(", ")));
     }
-    md.push_str("\nCSV: [`resultados_etapa_2_v3_long.csv`](resultados_etapa_2_v3_long.csv)\n");
+    md.push_str("\nCSV: [`resultados_etapa_2_v3_long.csv`](resultados_etapa_2_v3_long.csv)\n\n");
+    md.push_str("## Lectura honesta (corrida LONG)\n\n");
+    md.push_str("- Leakage FIELD_ONLY y contaminación: ver secciones arriba (deben ser 0).\n");
+    md.push_str("- Palancas v3.1: static sin action; unroll real h=2/4/8; decoder compose; multifamily.\n");
+    md.push_str("- Seeds confirmación `0xB300–0xB30F`: **no corridas** (DEV no locked aún para confirmación).\n");
     fs::write("docs/resultados_etapa_2_v3_long.md", &md).expect("write md");
     println!("wrote docs/resultados_etapa_2_v3_long.{{md,csv}} ({elapsed:.1}s)");
     for (exp, vh) in &hist {
