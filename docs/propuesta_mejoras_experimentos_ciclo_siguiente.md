@@ -343,8 +343,8 @@ Hasta entonces: **reservadas / no corridas**.
 | Artefacto | Estado |
 |---|---|
 | Esta propuesta | **Landed** en `exp/mejoras-siguiente-ciclo` |
-| Resultados numéricos del ciclo | Plantilla vacía → `docs/resultados_ciclo_siguiente.md` |
-| Código de experimentos nuevos | **No** implementado aún (docs-first) |
+| Resultados numéricos del ciclo | Plantilla + sección implementado/pendiente → `docs/resultados_ciclo_siguiente.md` |
+| Código P0 producto + E21/E22 harden | **Implementado** (corridas PASS pendientes) |
 | Merge a main | **No** |
 
 Cuando existan corridas: llenar la plantilla, adjuntar CSV, y enlazar SHAs de harness. Hasta entonces, cualquier cifra fuera de Clean-Room DEV / hallazgos E13-E15 citados arriba es **inválida**.
