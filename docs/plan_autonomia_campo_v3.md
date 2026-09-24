@@ -6,7 +6,7 @@ Fecha: 2026-09-23
 
 > **Cierre del ciclo v3.7 + confirmación:** ver
 > [`cierre_exp_field_autonomy_next_v3.md`](cierre_exp_field_autonomy_next_v3.md)
-> (tip evidencia `33a35db`). Este plan sigue siendo la especificación;
+> (cierre docs `44c1910`; tip evidencia `33a35db`). Este plan sigue siendo la especificación;
 > el cierre resume qué quedó cerrado/abierto **sin merge a main**.
 
 ## 1. Objetivo

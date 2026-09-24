@@ -1,6 +1,7 @@
 # Cierre experimental — `exp/field-autonomy-next` (plan v3 / autonomía del campo)
 
 **Rama:** `exp/field-autonomy-next`  
+**Tip de este cierre (docs):** `44c1910c9df0fb0703cdf92d72aa90466b996c32`  
 **Tip de evidencia (LONG v3.7 + confirmación stamp):** `33a35db0ccb77b429158b757e733e834a38b86df`  
 **Contenido de palancas v3.7:** `0b000b113107325e349611f3db99168fbb418a6b`  
 **Fecha de este cierre:** 2026-09-24 (America/Mexico_City)  
@@ -207,8 +208,8 @@ POS+STRONG en held-out `0xB300–0xB30F` (verificado fila a fila en el CSV).
 | Clean-Room v2 (histórico previo) | [`docs/resultados_etapa_2_cleanroom_v2.md`](resultados_etapa_2_cleanroom_v2.md) |
 | Este cierre | [`docs/cierre_exp_field_autonomy_next_v3.md`](cierre_exp_field_autonomy_next_v3.md) |
 
-**Tip SHA de evidencia al redactar este cierre:**  
-`33a35db0ccb77b429158b757e733e834a38b86df`  
+**Tip SHA de este documento de cierre:** `44c1910c9df0fb0703cdf92d72aa90466b996c32`  
+**Tip SHA de evidencia (LONG+confirm stamp):** `33a35db0ccb77b429158b757e733e834a38b86df`  
 (`docs: stamp tip SHA for v3.7 LONG + confirmation results`)
 
 Reproducir suite (referencia README / ejemplos Stage2 v2):
