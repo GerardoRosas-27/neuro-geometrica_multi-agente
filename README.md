@@ -69,6 +69,13 @@ Protocolo de aprendizaje de reglas desde experiencia consolidada (FIELD_ONLY, an
 - **Clean-Room v2 (vigente):** módulo `src/field_autonomy_stage2_v2.rs`, seeds `0xA300–0xA307`, resultados [`docs/resultados_etapa_2_cleanroom_v2.md`](docs/resultados_etapa_2_cleanroom_v2.md). Smoke: `cargo run --example smoke_stage2_v2`. Suite DEV: `cargo run --release --example run_stage2_v2_dev`.
 - **Histórico / pre-cleanroom:** `src/field_autonomy_stage2.rs` + [`docs/resultados_etapa_2_autonomia.md`](docs/resultados_etapa_2_autonomia.md) (seeds `0xE1800..`) — no mezclar con v2.
 
+## Ciclo siguiente (rama experimental)
+
+Plan de mejoras de producto + experimentos E31+ / endurecimiento E13–E22–E30 (docs-first, **no** merge a main):
+[`docs/propuesta_mejoras_experimentos_ciclo_siguiente.md`](docs/propuesta_mejoras_experimentos_ciclo_siguiente.md).
+Plantilla de resultados (vacía hasta corrida real): [`docs/resultados_ciclo_siguiente.md`](docs/resultados_ciclo_siguiente.md).
+Rama: `exp/mejoras-siguiente-ciclo` (desde `origin/main` @ `e05cef1`).
+
 ## Experimentos 11–17 (campo entrenable)
 
 Protocolo para entrenar el sustrato de campo con el LLM congelado como periferia, incluyendo invariancia lingüística real, relaciones, aprendizaje incremental, dinámica predictiva, estados no observados y controles anti-leakage: [`docs/experimentos_11_17_campo_entrenable.md`](docs/experimentos_11_17_campo_entrenable.md). Resultados: [`docs/resultados_experimentos_11_17.md`](docs/resultados_experimentos_11_17.md). Hallazgos E13/E15 (WIP): [`docs/hallazgos_e13_e15_endurecimiento.md`](docs/hallazgos_e13_e15_endurecimiento.md).
