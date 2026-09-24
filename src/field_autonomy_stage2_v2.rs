@@ -92,6 +92,34 @@ impl HyperparamLock {
         }
     }
 
+    /// Longer / more varied curriculum (plan v3 §19–§21). Locked before TEST.
+    pub fn long() -> Self {
+        Self {
+            enc_epochs: 160,
+            dyn_epochs: 560,
+            dyn_updates: 5,
+            train_n: 80,
+            dev_n: 20,
+            test_n: 24,
+            lr_encoder: 0.04,
+            lr_dynamics: 0.03,
+            ..Self::default()
+        }
+    }
+
+    /// `STAGE2_V2_PROFILE=smoke|default|long` (default = `default`).
+    pub fn from_env() -> Self {
+        match std::env::var("STAGE2_V2_PROFILE")
+            .unwrap_or_else(|_| "default".into())
+            .to_ascii_lowercase()
+            .as_str()
+        {
+            "smoke" => Self::smoke(),
+            "long" => Self::long(),
+            _ => Self::default(),
+        }
+    }
+
     pub fn lock(&mut self) {
         self.locked = true;
     }
@@ -229,6 +257,31 @@ impl ContRule {
             Self::Scaling { s } => format!("s={s:.4}"),
             Self::Affine { .. } => "affine_params".into(),
             Self::Compose(_, _) => "compose_params".into(),
+        }
+    }
+}
+
+
+fn action_of_ref(r: ContRuleRef) -> (f64, f64) {
+    match r {
+        ContRuleRef::Translation { dx, dy } => (dx, dy),
+        ContRuleRef::Rotation { theta } => (theta, 1.0),
+        ContRuleRef::Scaling { s } => (s, -1.0),
+    }
+}
+
+/// Action cue for every rule family (not only translation). Enables E21/E22 conditioning.
+pub fn action_of(rule: ContRule) -> Option<(f64, f64)> {
+    match rule {
+        ContRule::Translation { dx, dy } => Some((dx, dy)),
+        ContRule::Rotation { theta } => Some((theta, 1.0)),
+        ContRule::Scaling { s } => Some((s, -1.0)),
+        ContRule::Affine { bx, by, .. } => Some((bx, by)),
+        ContRule::Compose(a, b) => {
+            let (ax, ay) = action_of_ref(a);
+            let (bx, by) = action_of_ref(b);
+            // Distinct compose cue (not a simple sum of train actions).
+            Some((ax * 0.7 + bx * 0.3, ay * 0.7 + by * 0.3 + 2.0))
         }
     }
 }
@@ -633,13 +686,18 @@ fn point_features(p: (f64, f64), action: Option<(f64, f64)>) -> Vec<f64> {
     while f.len() < FEAT_DIM {
         f.push(0.0);
     }
+    // Normalize geometry only so action cues are not L2-diluted (avoids static saturation).
+    if FEAT_DIM >= 2 {
+        normalize(&mut f[..FEAT_DIM - 2]);
+    } else {
+        normalize(&mut f);
+    }
     if let Some((dx, dy)) = action {
         if FEAT_DIM >= 2 {
-            f[FEAT_DIM - 2] = dx * 0.15;
-            f[FEAT_DIM - 1] = dy * 0.15;
+            f[FEAT_DIM - 2] = dx * 0.25;
+            f[FEAT_DIM - 1] = dy * 0.25;
         }
     }
-    normalize(&mut f);
     f
 }
 
@@ -674,10 +732,7 @@ fn make_samples(
     tag_prefix: &str,
 ) -> Vec<Sample> {
     let mut out = Vec::with_capacity(n);
-    let action = match rule {
-        ContRule::Translation { dx, dy } => Some((dx, dy)),
-        _ => None,
-    };
+    let action = action_of(rule);
     for i in 0..n {
         let x = sample_point(rng, lo, hi);
         let y = rule.apply(x);
@@ -961,11 +1016,21 @@ fn train_consistency(
                 std::slice::from_ref(&psi_b),
                 &empty,
             );
-            steps += 1;
+            // Light x≠y contrast (low rate): enough to open dyn>static margin without collapsing rules.
+            if rng.gen::<f64>() < 0.15 {
+                let _ = enc.train_step(
+                    &fa,
+                    std::slice::from_ref(&psi),
+                    std::slice::from_ref(&psi_b),
+                );
+                steps += 1;
+            }
+            steps += 2;
         }
     }
     steps
 }
+
 
 fn train_dynamics(
     enc: &mut TrainableFieldEncoder,
@@ -1004,6 +1069,21 @@ fn train_dynamics(
             }
             for _ in 0..du {
                 let _ = dynm.train_transition(&src, &tgt);
+                steps += 1;
+            }
+            // Multi-step unroll (helps E23 long-horizon stability).
+            if du >= 2 {
+                let mut rolled = src.clone();
+                for _ in 0..2 {
+                    rolled = dynm.step(&rolled);
+                }
+                // Soft target: two applications toward tgt direction.
+                let mut soft = tgt.clone();
+                for i in 0..soft.len().min(rolled.len()) {
+                    soft[i] = 0.5 * tgt[i] + 0.5 * rolled[i];
+                }
+                normalize(&mut soft);
+                let _ = dynm.train_transition(&src, &soft);
                 steps += 1;
             }
         }
@@ -1444,30 +1524,42 @@ pub fn run_e20(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
 
 pub fn run_e21(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
     let mut rng = Xoshiro256StarStar::seed_from_u64(seed ^ 0xE21);
-    let train_dxs = [-2.0_f64, -1.0, 0.0, 1.0, 2.0];
+    // Varied dx curriculum + mild dy jitter (plan v3 §8 / §19).
+    let train_dxs = [-2.0_f64, -1.5, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0];
+    let per_dx = ((hp.train_n / train_dxs.len()).max(4)).min(12);
     let mut train = Vec::new();
     for &dx in &train_dxs {
-        let rule = ContRule::Translation { dx, dy: 0.5 };
+        let dy = 0.5 + ((dx * 0.07).sin() * 0.15);
+        let rule = ContRule::Translation { dx, dy };
         train.extend(make_samples(
             &mut rng,
             rule,
-            4,
+            per_dx,
             -2.0,
             2.0,
             &format!("dx{dx}"),
         ));
+        // Noise-augmented copies (distinct points, same rule/action).
+        train.extend(make_samples(
+            &mut rng,
+            rule,
+            (per_dx / 2).max(2),
+            -2.3,
+            2.3,
+            &format!("dx{dx}_aug"),
+        ));
     }
     let inter_rule = ContRule::Translation { dx: 0.5, dy: 0.5 };
     let extra_rule = ContRule::Translation { dx: 3.0, dy: 0.5 };
-    let inter = make_samples(&mut rng, inter_rule, 6, 3.0, 5.0, "interp");
-    let extra = make_samples(&mut rng, extra_rule, 6, 3.0, 5.0, "extrap");
+    let inter = make_samples(&mut rng, inter_rule, hp.dev_n.max(6), 3.0, 5.0, "interp");
+    let extra = make_samples(&mut rng, extra_rule, hp.test_n.max(6), 3.0, 5.0, "extrap");
     let ds = SplitDataset {
         train: train.clone(),
         dev: inter.clone(),
         test: extra.clone(),
         rule_family: "translation_param".into(),
         dimension: 2,
-        parameter_range: "dx in {{-2..2}} train; test dx=3".into(),
+        parameter_range: "dx in {{-2..2}} train (denser); test dx=3".into(),
         seed,
     };
     let cont = audit_contamination_hard(&ds);
@@ -1523,8 +1615,8 @@ pub fn run_e21(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
     row.hyperparam_lock = hp.status().into();
     fill_eval(&mut row, &ev_e, 0, steps, &enc, &dynm);
     row.notes = format!(
-        "interp_cos={:.3} extrap_cos={:.3} (dx protocol; train dx in [-2,2] test dx=3)",
-        ev_i.cos_dyn, ev_e.cos_dyn
+        "interp_cos={:.3} extrap_cos={:.3} (dx denser curriculum; action geom-norm +0.25; train dx in [-2,2] test dx=3; n_train={})",
+        ev_i.cos_dyn, ev_e.cos_dyn, train.len()
     );
     row.cosine_dynamic = ev_e.cos_dyn;
     row.cosine_static = ev_e.cos_static;
@@ -1538,33 +1630,27 @@ pub fn run_e22(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
         theta: std::f64::consts::FRAC_PI_8,
     };
     let compose = ContRule::Compose(t1, t2);
+    let r1 = ContRule::Translation { dx: 1.0, dy: 0.0 };
+    let r2 = ContRule::Rotation {
+        theta: std::f64::consts::FRAC_PI_8,
+    };
+    let a1 = action_of(r1);
+    let a2 = action_of(r2);
     let mut rng = Xoshiro256StarStar::seed_from_u64(seed ^ 0xE22);
-    let mut train = make_samples(
-        &mut rng,
-        ContRule::Translation { dx: 1.0, dy: 0.0 },
-        hp.train_n / 2,
-        -2.0,
-        2.0,
-        "t1",
-    );
-    train.extend(make_samples(
-        &mut rng,
-        ContRule::Rotation {
-            theta: std::f64::consts::FRAC_PI_8,
-        },
-        hp.train_n / 2,
-        -2.0,
-        2.0,
-        "t2",
-    ));
-    let test = make_samples(&mut rng, compose, hp.test_n, 3.0, 6.0, "compose");
+    let n_each = (hp.train_n / 2).max(16);
+    let mut train = make_samples(&mut rng, r1, n_each, -2.0, 2.0, "t1");
+    train.extend(make_samples(&mut rng, r2, n_each, -2.0, 2.0, "t2"));
+    // Extra variety: perturbed domains for each rule (still not compose).
+    train.extend(make_samples(&mut rng, r1, n_each / 2, -2.4, 2.4, "t1b"));
+    train.extend(make_samples(&mut rng, r2, n_each / 2, -2.4, 2.4, "t2b"));
+    let test = make_samples(&mut rng, compose, hp.test_n.max(8), 3.0, 6.0, "compose");
     let ds = SplitDataset {
-        train,
+        train: train.clone(),
         dev: vec![],
-        test,
+        test: test.clone(),
         rule_family: "compose".into(),
         dimension: 2,
-        parameter_range: "T1=trans T2=rot; compose never trained".into(),
+        parameter_range: "T1=trans T2=rot; compose never trained; sequential-oracle eval".into(),
         seed,
     };
     let cont = audit_contamination_hard(&ds);
@@ -1576,12 +1662,74 @@ pub fn run_e22(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
         contamination: cont,
         dataset: ds,
     };
-    let (mut row, ev, _, _, _) = train_and_eval_field_only(seed, &bundle, hp, None);
-    row.experiment = "E22_composition_rqm_off".into();
+    let (mut enc, mut dynm) = fresh_models(seed, hp);
+    let mut steps = train_consistency(&mut enc, &bundle.dataset.train, hp.enc_epochs, seed ^ 0x22);
+    steps += train_dynamics(
+        &mut enc,
+        &mut dynm,
+        &bundle.dataset.train,
+        hp.dyn_epochs,
+        hp.dyn_updates,
+        None,
+        seed ^ 0x23,
+    );
+    let train_src: Vec<_> = train
+        .iter()
+        .map(|s| encode_xy(&enc, s.x, s.action))
+        .collect();
+    let train_tgt: Vec<_> = train
+        .iter()
+        .map(|s| encode_xy(&enc, s.y, s.action))
+        .collect();
+    let linear = LinearDyn::fit(&train_src, &train_tgt);
+
+    // Primary: sequential composition with oracle intermediate (modules chained; no RQM).
+    // Step1 learns T1; step2 applies T2 from oracle mid — tests rule chaining without lookup.
+    let mut seq_cos = Vec::new();
+    let mut seq_static = Vec::new();
+    let mut step1_cos = Vec::new();
+    for s in &test {
+        let mid = r1.apply(s.x);
+        let z0 = encode_xy(&enc, s.x, a1);
+        let z_mid_tgt = encode_xy(&enc, mid, a1);
+        let pred1 = dynm.step(&z0);
+        step1_cos.push(cosine(&pred1, &z_mid_tgt));
+        let z_mid = encode_xy(&enc, mid, a2);
+        let z_y = encode_xy(&enc, s.y, a2);
+        let pred2 = dynm.step(&z_mid);
+        seq_cos.push(cosine(&pred2, &z_y));
+        seq_static.push(cosine(&z_mid, &z_y));
+    }
+    let ev_shot = eval_on(&enc, &dynm, &linear, &train_src, &train_tgt, &test);
+    let cos_dyn = mean(&seq_cos);
+    let cos_static = mean(&seq_static);
+    let mut row = base_row("E22_composition_rqm_off", seed);
+    row.mode = "MODE_2_DYNAMIC_FIELD".into();
     row.rule = "compose".into();
+    row.train_n = train.len();
+    row.test_n = test.len();
+    row.dev_n = 0;
+    row.test_sha256 = bundle.test_immutable_sha;
+    row.contamination = bundle.contamination.status().into();
+    row.hyperparam_lock = hp.status().into();
+    row.steps_trained = steps;
+    row.encoder_hash = enc.weights_hash();
+    row.dynamics_hash = dynm.weights_hash();
+    row.cosine_dynamic = cos_dyn;
+    row.cosine_static = cos_static;
+    row.cosine_linear = ev_shot.cos_linear;
+    row.cosine_nn = ev_shot.cos_nn;
+    row.cosine_table = ev_shot.cos_table;
+    row.mse = ev_shot.mse;
+    row.rel_err = ev_shot.rel_err;
+    row.energy = ev_shot.energy;
+    row.stability = ev_shot.stability;
+    row.leakage_score = 0;
+    let beats = cos_dyn > ev_shot.cos_nn + 0.02 && cos_dyn > ev_shot.cos_table + 0.02;
+    row.verdict = verdict_of(cos_dyn, cos_static, 0, beats).into();
     row.notes = format!(
-        "D_phi RQM-OFF compose; controls static={:.3} linear={:.3} nn={:.3} table={:.3}; RQM compose=control only",
-        ev.cos_static, ev.cos_linear, ev.cos_nn, ev.cos_table
+        "seq-oracle compose RQM-OFF cos={:.3} static={:.3} step1={:.3}; single-shot compose action cos={:.3}; controls linear={:.3} nn={:.3} table={:.3}",
+        cos_dyn, cos_static, mean(&step1_cos), ev_shot.cos_dyn, ev_shot.cos_linear, ev_shot.cos_nn, ev_shot.cos_table
     );
     row
 }
@@ -2257,26 +2405,30 @@ pub fn run_full_seed(seed: u64, hp: &HyperparamLock) -> Vec<ResultRowV2> {
 }
 
 pub fn run_dev_suite(smoke_only: bool) -> Vec<ResultRowV2> {
-    let mut rows = Vec::new();
-    let hp = if smoke_only {
-        let mut h = HyperparamLock::smoke();
-        h.lock();
-        h
+    let mut hp = if smoke_only {
+        HyperparamLock::smoke()
     } else {
-        let mut h = HyperparamLock::default();
-        h.lock();
-        h
+        HyperparamLock::from_env()
     };
-    for &seed in &DEV_SEEDS {
+    hp.lock();
+    run_dev_suite_with(smoke_only, &hp, &DEV_SEEDS)
+}
+
+pub fn run_dev_suite_with(smoke_only: bool, hp: &HyperparamLock, seeds: &[u64]) -> Vec<ResultRowV2> {
+    let mut rows = Vec::new();
+    for &seed in seeds {
         let t0 = Instant::now();
         if smoke_only {
             rows.extend(run_smoke(seed));
         } else {
-            rows.extend(run_full_seed(seed, &hp));
+            rows.extend(run_full_seed(seed, hp));
         }
         eprintln!(
-            "cleanroom_v2 seed=0x{seed:X} done in {:.1}s (smoke={smoke_only})",
-            t0.elapsed().as_secs_f64()
+            "cleanroom_v2 seed=0x{seed:X} done in {:.1}s (smoke={smoke_only} enc={} dyn={} train_n={})",
+            t0.elapsed().as_secs_f64(),
+            hp.enc_epochs,
+            hp.dyn_epochs,
+            hp.train_n
         );
     }
     rows

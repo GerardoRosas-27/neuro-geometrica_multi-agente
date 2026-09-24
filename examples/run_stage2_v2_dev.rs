@@ -44,7 +44,7 @@ fn main() {
         "Protocolo: `docs/etapa_2_autonomia_campo_experimentos.md` **§29+** (prevalece).\n",
     );
     md.push_str("Módulo: `src/field_autonomy_stage2_v2.rs` (legacy `field_autonomy_stage2.rs` = histórico / pre-cleanroom).\n");
-    md.push_str("Rama: `exp/field-autonomy-stage-2`\n");
+    md.push_str("Rama: `exp/field-autonomy-next`\n");
     md.push_str(&format!(
         "Seeds desarrollo: 8 × `0xA300..0xA307` ({})\n",
         if smoke_only {
@@ -62,10 +62,11 @@ fn main() {
         rows.len()
     ));
     md.push_str("## Hyperparam lock\n\n");
-    let mut hp = HyperparamLock::default();
-    if smoke_only {
-        hp = HyperparamLock::smoke();
-    }
+    let mut hp = if smoke_only {
+        HyperparamLock::smoke()
+    } else {
+        HyperparamLock::from_env()
+    };
     hp.lock();
     md.push_str(&format!(
         "- Flujo: TRAIN→DEV→LOCK→TEST\n- Status tras suite: **{}**\n- enc_epochs={} dyn_epochs={} dyn_updates={} train_n/dev_n/test_n={}/{}/{}\n- Confirmation no usada → TEST no invalidado por retune post-TEST.\n\n",
