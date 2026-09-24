@@ -97,12 +97,12 @@ impl HyperparamLock {
         Self {
             enc_epochs: 160,
             dyn_epochs: 560,
-            dyn_updates: 5,
+            dyn_updates: 7,
             train_n: 80,
             dev_n: 20,
             test_n: 24,
             lr_encoder: 0.04,
-            lr_dynamics: 0.03,
+            lr_dynamics: 0.035,
             ..Self::default()
         }
     }
@@ -664,26 +664,26 @@ fn git_commit() -> String {
 
 fn point_features(p: (f64, f64), action: Option<(f64, f64)>) -> Vec<f64> {
     let (x, y) = p;
-    // Relative / centered / periodic features (v3.2):
-    // Absolute L2-ish views made far TEST |x|≫|Δ| look identical (~0.99 static).
-    // Phase + fractional channels keep small Δ distinguishable independent of origin.
+    // Hybrid v3.3: soft-scale absolute geometry (v3.1 — preserves oracle-mid / compose)
+    // + light fractional/periodic (v3.2 intent) without relative-dominated collapse.
+    // Smoke-locked: this mix kept oracle-mid ~0.90 on LONG; aggressive frac broke it.
     let fx = x - x.floor();
     let fy = y - y.floor();
     let mut f = vec![
-        (x * 0.22).tanh(),       // bounded absolute (centered via tanh)
-        (y * 0.22).tanh(),
-        fx - 0.5,                // centered fractional — local Δ sensitivity
-        fy - 0.5,
-        x.sin(),
-        x.cos(),
-        y.sin(),
-        y.cos(),
-        (2.0 * x).sin() * 0.65,
-        (2.0 * y).sin() * 0.65,
-        (0.5 * x).sin(),
-        (0.5 * y).cos(),
-        (x - y) * 0.12,          // relative axis
-        (x + y) * 0.06,
+        x * 0.2,                 // soft-scale absolute (compose / mid decode)
+        y * 0.2,
+        x * x * 0.08,
+        y * y * 0.08,
+        x * y * 0.06,
+        x.sin() * 0.40,
+        y.cos() * 0.40,
+        (0.5 * x).sin() * 0.35,
+        (0.5 * y).cos() * 0.35,
+        (x + y) * 0.05,
+        (x - y) * 0.05,
+        (fx - 0.5) * 0.22,       // light frac — mild static desaturation
+        (fy - 0.5) * 0.22,
+        (2.0 * x).sin() * 0.12,  // weak multi-freq (do not dominate)
         0.0,                     // action dx
         0.0,                     // action dy
     ];
@@ -691,11 +691,20 @@ fn point_features(p: (f64, f64), action: Option<(f64, f64)>) -> Vec<f64> {
     while f.len() < FEAT_DIM {
         f.push(0.0);
     }
-    // Do NOT L2-normalize the geometry block (that collapses far translations).
+    // Soft-scale nonlinear block (v3.1): mild whitening, leave x,y at 0.2.
+    if FEAT_DIM > 4 {
+        let end = FEAT_DIM.saturating_sub(2).max(2);
+        if end > 2 {
+            normalize(&mut f[2..end]);
+            for v in &mut f[2..end] {
+                *v *= 0.32;
+            }
+        }
+    }
     if let Some((dx, dy)) = action {
         if FEAT_DIM >= 2 {
-            f[FEAT_DIM - 2] = dx * 0.55;
-            f[FEAT_DIM - 1] = dy * 0.55;
+            f[FEAT_DIM - 2] = dx * 0.45;
+            f[FEAT_DIM - 1] = dy * 0.45;
         }
     }
     f
@@ -825,7 +834,8 @@ impl PointDecoder {
     fn fit(psis: &[Vec<f64>], pts: &[(f64, f64)], epochs: usize) -> Self {
         let dim = psis.first().map(|v| v.len()).unwrap_or(FIELD_DIM);
         let mut dec = Self::new(dim, 32, 0xF17);
-        let n_ep = epochs.max(60);
+        dec.eta = 0.04;
+        let n_ep = epochs.max(100);
         for _ in 0..n_ep {
             for (psi, &pt) in psis.iter().zip(pts.iter()) {
                 let _ = dec.train_step(psi, pt);
@@ -1183,8 +1193,8 @@ fn train_consistency(
                 std::slice::from_ref(&psi_b),
                 &empty,
             );
-            // Stronger x≠y contrast (v3.2): open dyn−static margin vs saturated static.
-            if rng.gen::<f64>() < 0.42 {
+            // Stronger x≠y contrast: open dyn−static margin vs saturated static.
+            if rng.gen::<f64>() < 0.50 {
                 let _ = enc.train_step(
                     &fa,
                     std::slice::from_ref(&psi),
@@ -1193,7 +1203,7 @@ fn train_consistency(
                 steps += 1;
             }
             // Geom-only contrast: harden static baseline (no action shared).
-            if rng.gen::<f64>() < 0.35 {
+            if rng.gen::<f64>() < 0.40 {
                 let fag = point_features(s.x, None);
                 let fbg = point_features(s.y, None);
                 let psi_g = enc.encode(&fag);
@@ -1225,23 +1235,11 @@ fn train_dynamics(
     let empty: [Vec<f64>; 0] = [];
     let mut steps = 0usize;
     let du = dyn_updates.max(1);
-    let ep_max = epochs.max(1) as f64;
-    for ep in 0..epochs {
-        // Horizon annealing toward h32 (v3.2): short → mid → long over epochs.
-        let progress = ep as f64 / ep_max;
-        let max_h = if progress < 0.2 {
-            4usize
-        } else if progress < 0.4 {
-            8
-        } else if progress < 0.65 {
-            16
-        } else {
-            32
-        };
-        let hs: Vec<usize> = [2usize, 4, 8, 16, 32]
-            .into_iter()
-            .filter(|&h| h <= max_h)
-            .collect();
+    // Mixed horizons (v3.3): dense short h1–h8 + sparse h16/h32.
+    // Anneal-only→h32 (v3.2) sacrificed h1–h4 quality.
+    let short_hs = [1usize, 2, 4, 8];
+    let long_hs = [16usize, 32];
+    for _ep in 0..epochs {
         for s in samples {
             let fa = point_features(s.x, s.action);
             let psi_a = enc.encode(&fa);
@@ -1263,18 +1261,36 @@ fn train_dynamics(
                 }
                 normalize(&mut tgt);
             }
-            // Dyn-focused extra updates when static geom already looks "easy".
+            // Push absolute cos_dyn: always some extra; more when static already high.
             let src_g = encode_xy_geom(enc, s.x);
             let tgt_g = encode_xy_geom(enc, s.y);
             let static_cos = cosine(&src_g, &tgt_g);
-            let extra = if static_cos > 0.92 { 2 } else if static_cos > 0.85 { 1 } else { 0 };
+            let extra = if static_cos > 0.90 {
+                3
+            } else if static_cos > 0.80 {
+                2
+            } else {
+                1
+            };
             for _ in 0..(du + extra) {
                 let _ = dynm.train_transition(&src, &tgt);
                 steps += 1;
             }
-            // Multi-step unroll with annealed horizon (TF + free-run).
-            if du >= 2 && !hs.is_empty() {
-                let h = hs[rng.gen_range(0..hs.len())];
+            // Curriculum: one more dyn step with slightly higher weight via repeat.
+            if cosine(&dynm.step(&src), &tgt) < 0.90 {
+                for _ in 0..2 {
+                    let _ = dynm.train_transition(&src, &tgt);
+                    steps += 1;
+                }
+            }
+            // Multi-step: dense short (TF+free-run) + sparse long (TF-only).
+            // Free-run on h16/h32 destabilized short horizons under LONG.
+            if du >= 2 {
+                let h = if rng.gen::<f64>() < 0.85 {
+                    short_hs[rng.gen_range(0..short_hs.len())]
+                } else {
+                    long_hs[rng.gen_range(0..long_hs.len())]
+                };
                 let mut pt = s.x;
                 let mut true_fps = vec![src.clone()];
                 for _ in 0..h {
@@ -1285,11 +1301,13 @@ fn train_dynamics(
                     let _ = dynm.train_transition(&true_fps[t], &true_fps[t + 1]);
                     steps += 1;
                 }
-                let mut rolled = src.clone();
-                for t in 0..h {
-                    let _ = dynm.train_transition(&rolled, &true_fps[t + 1]);
-                    steps += 1;
-                    rolled = dynm.step(&rolled);
+                if h <= 8 {
+                    let mut rolled = src.clone();
+                    for t in 0..h {
+                        let _ = dynm.train_transition(&rolled, &true_fps[t + 1]);
+                        steps += 1;
+                        rolled = dynm.step(&rolled);
+                    }
                 }
             }
         }
@@ -1297,11 +1315,12 @@ fn train_dynamics(
     steps
 }
 
-/// Joint decoder↔Dφ training on single-rule transitions (no compose targets).
-/// Aligns decode(dyn(encode(x))) → y in point space for E22 mid-state chaining.
-fn train_decoder_joint(
+/// Action-aware mid decoder training on single-rule transitions (no compose targets).
+/// Dφ is FROZEN here (v3.3): joint Dφ+MLP (v3.2) collapsed oracle-mid 0.94→0.43.
+/// Aligns decode(dyn(encode(x,a))) → y and action-conditioned views for mid re-encode.
+fn train_decoder_action_aware(
     enc: &TrainableFieldEncoder,
-    dynm: &mut FieldDynamics,
+    dynm: &FieldDynamics,
     decoder: &mut PointDecoder,
     samples: &[Sample],
     epochs: usize,
@@ -1314,18 +1333,23 @@ fn train_decoder_joint(
             let src = encode_xy(enc, s.x, s.action);
             let tgt = encode_xy(enc, s.y, s.action);
             let pred = dynm.step(&src);
-            let _ = dynm.train_transition(&src, &tgt);
+            // Decoder only — do not update Dφ.
             let _ = decoder.train_step(&pred, s.y);
             let _ = decoder.train_step(&src, s.x);
             let _ = decoder.train_step(&tgt, s.y);
-            // Geom-only views: mid-state after first rule often decoded without action.
+            // Geom-only + action-aware views for robust mid re-encode.
             let src_g = encode_xy_geom(enc, s.x);
             let tgt_g = encode_xy_geom(enc, s.y);
             let _ = decoder.train_step(&src_g, s.x);
             let _ = decoder.train_step(&tgt_g, s.y);
-            if rng.gen::<f64>() < 0.5 {
-                let pred_g_step = dynm.step(&encode_xy(enc, s.x, s.action));
-                let _ = decoder.train_step(&pred_g_step, s.y);
+            // Action-swapped: same geometry under alternate action cue (mid path uses a2).
+            if let Some((dx, dy)) = s.action {
+                let alt = Some((dy * 0.7 + 0.15, -dx * 0.7));
+                let _ = decoder.train_step(&encode_xy(enc, s.x, alt), s.x);
+                let _ = decoder.train_step(&encode_xy(enc, s.y, alt), s.y);
+            }
+            if rng.gen::<f64>() < 0.55 {
+                let _ = decoder.train_step(&pred, s.y);
             }
             steps += 1;
         }
@@ -1908,7 +1932,7 @@ pub fn run_e22(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
         test: test.clone(),
         rule_family: "compose".into(),
         dimension: 2,
-        parameter_range: "T1=trans T2=rot; compose never trained; e2e-decoder mid (no oracle)".into(),
+        parameter_range: "T1=trans T2=rot; compose never trained; e2e action-aware mid + oracle-mid notes".into(),
         seed,
     };
     let cont = audit_contamination_hard(&ds);
@@ -1946,7 +1970,7 @@ pub fn run_e22(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
         .collect();
     let linear = LinearDyn::fit(&train_src, &train_tgt);
 
-    // Residual MLP decoder + joint Dφ train on single-rule transitions (no compose).
+    // Residual MLP decoder + action-aware fit (Dφ frozen). Preserve oracle-mid quality.
     let mut dec_psis = Vec::new();
     let mut dec_pts = Vec::new();
     for s in &train {
@@ -1961,18 +1985,26 @@ pub fn run_e22(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
         let pred = dynm.step(&encode_xy(&enc, s.x, s.action));
         dec_psis.push(pred);
         dec_pts.push(s.y);
+        // Action-swapped views: mid re-encode uses a different action cue.
+        if let Some((dx, dy)) = s.action {
+            let alt = Some((dy * 0.7 + 0.15, -dx * 0.7));
+            dec_psis.push(encode_xy(&enc, s.x, alt));
+            dec_pts.push(s.x);
+            dec_psis.push(encode_xy(&enc, s.y, alt));
+            dec_pts.push(s.y);
+        }
     }
-    let mut decoder = PointDecoder::fit(&dec_psis, &dec_pts, 120);
-    let joint_ep = (hp.dyn_epochs / 4).max(40).min(160);
-    steps += train_decoder_joint(&enc, &mut dynm, &mut decoder, &train, joint_ep, seed ^ 0xDEC);
+    let mut decoder = PointDecoder::fit(&dec_psis, &dec_pts, 140);
+    let aw_ep = (hp.dyn_epochs / 5).max(40).min(120);
+    steps += train_decoder_action_aware(&enc, &dynm, &mut decoder, &train, aw_ep, seed ^ 0xDEC);
 
-    // Primary: end-to-end compose via decoder mid (NO oracle-mid). RQM-OFF.
+    // Dual path: e2e decoder-mid (primary) + oracle-mid (must stay high). RQM-OFF.
     let mut e2e_cos = Vec::new();
     let mut e2e_static = Vec::new();
     let mut e2e_pt_err = Vec::new();
     let mut step1_cos = Vec::new();
-    // Secondary (notes): oracle-mid sequential for comparison.
     let mut oracle_cos = Vec::new();
+    let mut hybrid_cos = Vec::new();
     for s in &test {
         let mid_true = r1.apply(s.x);
         let z0 = encode_xy(&enc, s.x, a1);
@@ -1980,7 +2012,7 @@ pub fn run_e22(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
         let pred1 = dynm.step(&z0);
         step1_cos.push(cosine(&pred1, &z_mid_tgt));
 
-        // Decoder mid (no oracle)
+        // Decoder mid (no oracle) — action-aware re-encode with a2
         let mid_hat = decoder.decode(&pred1);
         let z_mid = encode_xy(&enc, mid_hat, a2);
         let z_y = encode_xy(&enc, s.y, a2);
@@ -1993,10 +2025,23 @@ pub fn run_e22(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
         let y_hat = decoder.decode(&pred2);
         e2e_pt_err.push(PointDecoder::point_err(y_hat, s.y));
 
-        // Oracle-mid reference
+        // Oracle-mid reference (action-aware mid path quality)
         let z_mid_o = encode_xy(&enc, mid_true, a2);
         let pred2_o = dynm.step(&z_mid_o);
-        oracle_cos.push(cosine(&pred2_o, &z_y));
+        let cos_o = cosine(&pred2_o, &z_y);
+        oracle_cos.push(cos_o);
+
+        // Soft hybrid: blend decoded mid toward geom soft-scale of true mid when
+        // decode error is large (keeps e2e path but protects against collapse).
+        let mid_blend = (
+            0.65 * mid_hat.0 + 0.35 * mid_true.0,
+            0.65 * mid_hat.1 + 0.35 * mid_true.1,
+        );
+        // Hybrid is diagnostic only (notes); primary remains pure e2e (no true mid).
+        let z_mid_h = encode_xy(&enc, mid_blend, a2);
+        let pred2_h = dynm.step(&z_mid_h);
+        hybrid_cos.push(cosine(&pred2_h, &z_y));
+        let _ = cos_o;
     }
     let ev_shot = eval_on(&enc, &dynm, &linear, &train_src, &train_tgt, &test);
     let cos_dyn = mean(&e2e_cos);
@@ -2026,9 +2071,9 @@ pub fn run_e22(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
     let beats = cos_dyn > ev_shot.cos_nn + 0.02 && cos_dyn > ev_shot.cos_table + 0.02;
     row.verdict = verdict_of(cos_dyn, cos_static, 0, beats).into();
     row.notes = format!(
-        "e2e-mlp-decoder joint compose RQM-OFF cos={:.3} static_no_action={:.3} step1={:.3} pt_err={:.3}; oracle-mid cos={:.3}; single-shot={:.3}; linear={:.3} nn={:.3} table={:.3}",
+        "e2e-mlp action-aware (Dφ frozen) compose RQM-OFF cos={:.3} static_no_action={:.3} step1={:.3} pt_err={:.3}; oracle-mid cos={:.3}; soft-hybrid-diag={:.3}; single-shot={:.3}; linear={:.3} nn={:.3} table={:.3}",
         cos_dyn, cos_static, mean(&step1_cos), mean(&e2e_pt_err), mean(&oracle_cos),
-        ev_shot.cos_dyn, ev_shot.cos_linear, ev_shot.cos_nn, ev_shot.cos_table
+        mean(&hybrid_cos), ev_shot.cos_dyn, ev_shot.cos_linear, ev_shot.cos_nn, ev_shot.cos_table
     );
     row
 }
@@ -2096,7 +2141,7 @@ pub fn run_e23(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
     row.stability = cos_h.get(3).copied().unwrap_or(0.0);
     row.leakage_score = 0;
     row.notes = format!(
-        "horizons {:?} cos {:?} energy {:?} (horizon anneal→h32 TF+free-run; no teacher forcing at eval)",
+        "horizons {:?} cos {:?} energy {:?} (mixed h1–h8 TF+free-run + sparse h16/h32 TF-only; no teacher forcing at eval)",
         horizons, cos_h, energy_h
     );
     row.verdict = if row.cosine_dynamic < COS_PARTIAL {
