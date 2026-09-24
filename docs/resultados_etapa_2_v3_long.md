@@ -3,21 +3,22 @@
 Protocolo: `docs/plan_autonomia_campo_v3.md` + `docs/etapa_2_autonomia_campo_experimentos.md` §29+.
 Módulo: `src/field_autonomy_stage2_v2.rs`.
 Rama: `exp/field-autonomy-next`.
-Commit tip: `daa18dcf27cb77ee9f4300231b0206ae49f24f1a`.
+Commit tip: `ce282a20b47292aeefc9e2316a9604af0c3af8a5`.
 Seeds: 16 (base DEV 0xA300..0xA307; extra=true)
-Seeds confirmación `0xB300–0xB30F`: **no corridas**.
+Seeds confirmación `0xB300–0xB30F`: **corridas** — ver [`resultados_etapa_2_v3_confirm.md`](resultados_etapa_2_v3_confirm.md).
 Periferia: numeric FIELD_ONLY; RQM/NN/table/attractor OFF en eval.
 
-## Hardening en esta corrida (v3.6)
+## Hardening en esta corrida (v3.7)
 
 - `HyperparamLock::long()`: dyn_epochs=560 dyn_updates=7 (push absolute cos_dyn).
+- **E18/E24 (v3.7)**: SoftScale train/dyn + Relative-only static probe (E21 dual-probe pattern).
 - **E21 dual-probe retained**: SoftScale train/dyn + Relative-only static probe.
-- **E22 (v3.6)**: disagree-aware lin∩mlp SoftScale-abs; encode-consistency mid refine; closed-loop hop-2.
-- **E23 (v3.6)**: shared v3.5 mix retained (no local long TF; avoid h64 regression); pure step eval.
-- Dual FeatPath retained: SoftScale E22/E23 dyn; Relative E18/E24/E25/E27 (+ E21/E22 static probe).
+- **E22 (v3.7)**: mid-agree-gated closed-loop; latent-T2 hop gate else single-shot; disagree-lin∩mlp.
+- **E23**: shared v3.5 mix retained (no h32/h64 lever this cycle).
+- Dual FeatPath: SoftScale E18/E21/E22/E23/E24 dyn; Relative static probe E18/E21/E22/E24.
 - Static baseline **sin** action + contraste geom-only; dyn extras + multi-familia + E21 dx denso.
 
-Wall time: **1128.0s**. Filas: 240.
+Wall time: **1148.0s**. Filas: 240.
 
 ## Hyperparam lock
 
@@ -37,13 +38,13 @@ Wall time: **1128.0s**. Filas: 240.
 | Experimento | verdict hist |
 |---|---|
 | `E18C_cdt_conditions_C0_C6` | NULL:2, PARTIAL:13, POSITIVE:1 |
-| `E18_reinforced_rule_learning` | NEGATIVE:2, NULL:3, PARTIAL:6, POSITIVE:4, STRONG_POSITIVE:1 |
-| `E19_provenance_audit` | NEGATIVE:3, NULL:4, PARTIAL:5, POSITIVE:2, STRONG_POSITIVE:2 |
+| `E18_reinforced_rule_learning` | NEGATIVE:1, NULL:1, POSITIVE:4, STRONG_POSITIVE:10 |
+| `E19_provenance_audit` | NEGATIVE:1, POSITIVE:2, STRONG_POSITIVE:13 |
 | `E20_rule_vs_trajectory_antimem` | PARTIAL:16 |
 | `E21_interpolation_vs_extrapolation` | NULL:1, PARTIAL:5, POSITIVE:1, STRONG_POSITIVE:9 |
-| `E22_composition_rqm_off` | NEGATIVE:1, NULL:3, PARTIAL:3, POSITIVE:8, STRONG_POSITIVE:1 |
+| `E22_composition_rqm_off` | NULL:2, PARTIAL:5, POSITIVE:8, STRONG_POSITIVE:1 |
 | `E23_rollout_no_teacher_forcing` | PARTIAL:12, POSITIVE:2, STRONG_POSITIVE:2 |
-| `E24_static_vs_dynamic_paired` | NEGATIVE:4, NULL:2, PARTIAL:4, POSITIVE:6 |
+| `E24_static_vs_dynamic_paired` | PARTIAL:2, POSITIVE:14 |
 | `E25_central_experience_cdt_cycle` | NULL:3, PARTIAL:9, POSITIVE:4 |
 | `E26_experience_ablation_A_G` | PARTIAL:16 |
 | `E27_rule_transfer` | NEGATIVE:2, NULL:1, PARTIAL:8, POSITIVE:5 |
@@ -54,41 +55,43 @@ Wall time: **1128.0s**. Filas: 240.
 
 CSV: [`resultados_etapa_2_v3_long.csv`](resultados_etapa_2_v3_long.csv)
 
-## Lectura honesta (corrida LONG v3.6)
+## Lectura honesta (corrida LONG v3.7)
 
 - Leakage FIELD_ONLY = **0**; contaminación DATASET_INVALID = **0**.
 - `FASE_A` POSITIVE:16 (scaffold).
-- Palancas v3.6: **E22 encode-consistency mid refine + disagree-aware lin∩mlp SoftScale-abs + closed-loop hop-2 + denser compose-chain**; **E23 shared v3.5 mix retained** (local long TF tried in diag, hurt h64 — reverted); **E21 SoftScale+Relative probe retained**.
-- Seeds confirmación `0xB300–0xB30F`: **no corridas**.
+- Palancas v3.7: **E22 mid-agree-gated closed-loop + latent-T2 hop|shot fallback**; **E18/E24 SoftScale+Relative dual-probe** (E21 pattern); **E21/E23 unchanged**.
+- Seeds confirmación `0xB300–0xB30F`: **justified and held** — see [`resultados_etapa_2_v3_confirm.md`](resultados_etapa_2_v3_confirm.md).
 
-### Comparación vs LONG v3.5 (tip `bfc5713` / content `8e96fb8`)
+### Comparación vs LONG v3.6 (tip `ce282a2` / content `daa18dc`)
 
-| Exp | Antes (v3.5) | Ahora (v3.6) |
+| Exp | Antes (v3.6) | Ahora (v3.7) |
 |---|---|---|
-| E18 | NEGATIVE:2 NULL:3 PARTIAL:6 POSITIVE:4 STRONG:1 | NEGATIVE:2 NULL:3 PARTIAL:6 POSITIVE:4 STRONG:1 (**identical**) |
-| E21 | NULL:1 PARTIAL:5 POSITIVE:1 STRONG:9 | NULL:1 PARTIAL:5 POSITIVE:1 **STRONG:9** (**identical**) |
-| E22 | NEGATIVE:2 NULL:5 PARTIAL:3 POSITIVE:5 STRONG:1 | NEGATIVE:1 NULL:3 PARTIAL:3 **POSITIVE:8 STRONG:1** |
-| E23 | PARTIAL:12 POSITIVE:2 STRONG:2 | PARTIAL:12 POSITIVE:2 STRONG:2 (**identical**; shared mix frozen) |
-| E24 | NEGATIVE:4 NULL:2 PARTIAL:4 POSITIVE:6 | NEGATIVE:4 NULL:2 PARTIAL:4 POSITIVE:6 (**identical**) |
-| E25 | NULL:3 PARTIAL:9 POSITIVE:4 | NULL:3 PARTIAL:9 POSITIVE:4 |
-| E27 | NEGATIVE:2 NULL:1 PARTIAL:8 POSITIVE:5 | NEGATIVE:2 NULL:1 PARTIAL:8 POSITIVE:5 |
+| E18 | NEGATIVE:2 NULL:3 PARTIAL:6 POSITIVE:4 STRONG:1 (POS+STRONG 5/16) | NEGATIVE:1, NULL:1, POSITIVE:4, STRONG_POSITIVE:10 (**POS+STRONG 14/16**) |
+| E21 | NULL:1 PARTIAL:5 POSITIVE:1 STRONG:9 | NULL:1, PARTIAL:5, POSITIVE:1, STRONG_POSITIVE:9 (**STRONG:9 protected**) |
+| E22 | NEGATIVE:1 NULL:3 PARTIAL:3 POSITIVE:8 STRONG:1 (PARTIAL+ 12/16) | NULL:2, PARTIAL:5, POSITIVE:8, STRONG_POSITIVE:1 (**PARTIAL+ 14/16**; A30C NEG→PARTIAL) |
+| E23 | PARTIAL:12 POSITIVE:2 STRONG:2 | PARTIAL:12, POSITIVE:2, STRONG_POSITIVE:2 (**identical**) |
+| E24 | NEGATIVE:4 NULL:2 PARTIAL:4 POSITIVE:6 (POS 6/16) | PARTIAL:2, POSITIVE:14 (**POS+STRONG 14/16**) |
+| E25 | NULL:3 PARTIAL:9 POSITIVE:4 | NULL:3, PARTIAL:9, POSITIVE:4 |
+| E27 | NEGATIVE:2 NULL:1 PARTIAL:8 POSITIVE:5 | NEGATIVE:2, NULL:1, PARTIAL:8, POSITIVE:5 |
 | E28 | PARTIAL:16 | PARTIAL:16 |
 
 ### Números reales (cuellos / ganancias)
 
-- **E22**: e2e mean **0.770** (v3.5 0.674; **recovered past 0.72**); Relative-static mean ~0.305; **15/16** e2e>static; pt_err mean ~5.45; step1 ~0.95; oracle-mid ~0.78. Verdict: NEGATIVE 2→**1**, NULL 5→**3**, POSITIVE 5→**8**; PARTIAL+ = **12/16** (was 9/16). Mid-refine closed the decoder-OOD gap on A30A (NEG→PARTIAL) and lifted A301/A30B/A300/A303.
-- **E23 horizons**: unchanged vs v3.5 mean cos h1..h64 = **[0.979, 0.950, 0.853, 0.684, 0.469, 0.325, 0.448]**; seeds ≥0.7: **[16,16,12,11,9,7,9]**. h8 preserved; h32/h64 still <0.7 mean (intentional: residual/local long TF diags lagged translation or hurt short).
-- **E18/E21/E24/E25/E27**: POS/STRONG cluster **byte-identical** to v3.5 (shared `train_dynamics` frozen).
-- **E28**: PARTIAL:16 mantenido.
+- **E22**: e2e mean **0.822** (v3.6 0.770); Relative-static mean ~0.305; **16/16** e2e>static; oracle-mid mean ~0.748; step1 ~0.949. Verdict: NEGATIVE 1→**0**, NULL 3→**2**, PARTIAL+ 12→**14/16**. Seed 0xA30C hop oracle-mid still collapsed (~0.15) but mid-agree/latent-T2 gate routes to single-shot (PARTIAL). Residual NULL: 0xA305 (hop+shot both weak) + 0xA30B.
+- **E18**: SoftScale dyn + Relative static → POS+STRONG **5→14/16**. Residual: 0xA304 NEGATIVE (dyn collapse) + 0xA309 NULL.
+- **E24**: same dual-probe + full enc epochs → POS **6→14/16** (2 PARTIAL remain).
+- **E21**: hist **byte-identical** to v3.6 (STRONG:9).
+- **E23 horizons**: unchanged mean cos h1..h64 = **[0.979, 0.95, 0.853, 0.684, 0.469, 0.325, 0.448]**; seeds ≥0.7: **[16, 16, 12, 11, 9, 7, 9]**.
 
 ### Gaps que quedan
 
-1. E22 still NEGATIVE:1 (0xA30C hop-2/oracle-mid collapse) + NULL:3 (0xA302/A305/A309) — absolute e2e recovered but not every seed.
-2. E23 h32/h64 still the open long-horizon gap; no safe lever found this cycle without short/E24 side effects.
-3. Confirmation `0xB300–0xB30F` still deferred: E18 POS+STRONG only 5/16; E24 POS 6/16 — not stably majority POSITIVE/STRONG across E18/E21/E22/E24.
+1. E22 NULL:2 (0xA305 absolute compose failure; 0xA30B hop-gated regression) — PARTIAL+ target met.
+2. E18 still has 1 NEG + 1 NULL under SoftScale.
+3. E23 h32/h64 still open (no safe lever; aborted).
+4. Confirmation `0xB300–0xB30F`: **held** (E18 16/16, E21 12/16, E22 12/16, E24 16/16 POS+STRONG).
 
 ### Próximas palancas
 
-1. E22: target 0xA30C hop-2 (oracle-mid 0.31) without raising Relative-static — selective T2 densification gated by mid-agree.
-2. E23: horizon-conditioned residual that does **not** identity-lag translation (e.g. learned step-size), or accept residual gap.
-3. Confirmation only once E18/E24 join E21/E22 in majority POSITIVE/STRONG.
+1. E22: lift 0xA305 absolute compose (both paths weak) without raising Relative-static.
+2. E18: diagnose SoftScale collapse on 0xA304.
+3. E23: only if a lever does not hurt short horizons / POS cluster.

@@ -662,8 +662,8 @@ fn git_commit() -> String {
         .unwrap_or_else(|| "unknown".into())
 }
 
-/// Dual feature path (v3.4–v3.6): do not force one encoding for everything.
-/// SoftScale preserves E22 oracle-mid / compose + E21/E23 dyn train;
+/// Dual feature path (v3.4–v3.7): do not force one encoding for everything.
+/// SoftScale preserves E22 oracle-mid / compose + E18/E21/E23/E24 dyn train;
 /// Relative desaturates static on E18/E24/E25/E27 and as E21/E22 static-only probe.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum FeatPath {
@@ -1005,6 +1005,7 @@ fn step_residual(dynm: &FieldDynamics, psi: &[f64], alpha: f64) -> Vec<f64> {
 }
 /// Refine decoded mid so encode(mid, a_mid) stays close to pred1 (no true-mid leak).
 /// Local grid around (mlp/lin blend); picks max cosine agreement with pred.
+#[allow(dead_code)]
 fn refine_mid_consistency(
     enc: &TrainableFieldEncoder,
     pred1: &[f64],
@@ -1012,6 +1013,17 @@ fn refine_mid_consistency(
     a_mid: Option<(f64, f64)>,
     path: FeatPath,
 ) -> (f64, f64) {
+    refine_mid_consistency_scored(enc, pred1, mid0, a_mid, path).0
+}
+
+/// Same as refine_mid_consistency but also returns encode-agreement score (mid-agree gate).
+fn refine_mid_consistency_scored(
+    enc: &TrainableFieldEncoder,
+    pred1: &[f64],
+    mid0: (f64, f64),
+    a_mid: Option<(f64, f64)>,
+    path: FeatPath,
+) -> ((f64, f64), f64) {
     let score = |p: (f64, f64)| -> f64 {
         cosine(&encode_xy(enc, p, a_mid, path), pred1)
     };
@@ -1038,7 +1050,7 @@ fn refine_mid_consistency(
         best = local_best;
         best_s = local_s;
     }
-    best
+    (best, best_s)
 }
 
 
@@ -1858,7 +1870,10 @@ fn train_and_eval_field_only(
 }
 
 pub fn run_e18(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
-    let path = FeatPath::Relative;
+    // v3.7 dual-probe (E21 pattern): SoftScale train/dyn; Relative-only static probe.
+    // Raises POS gap without touching E21 SoftScale curriculum / E22 compose path.
+    let path = FeatPath::SoftScale;
+    let path_static = FeatPath::Relative;
     let rule = default_translation_rule();
     let bundle = match generate_and_seal(seed, rule, hp) {
         Ok(b) => b,
@@ -1870,12 +1885,67 @@ pub fn run_e18(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
             return row;
         }
     };
-    let (mut row, _ev, prov, _, _) = train_and_eval_field_only(seed, &bundle, hp, None, path);
-    row.experiment = "E18_reinforced_rule_learning".into();
+    let _ = assert_test_immutable(&bundle);
+    let (mut enc, mut dynm) = fresh_models(seed, hp);
+    let mut train_aug = bundle.dataset.train.clone();
+    {
+        let mut rng = Xoshiro256StarStar::seed_from_u64(seed ^ 0xE18F);
+        train_aug.extend(multifamily_curriculum(&mut rng, 5));
+    }
+    let mut steps = train_consistency(&mut enc, &train_aug, hp.enc_epochs, seed ^ 0xC0, path);
+    steps += train_dynamics(
+        &mut enc,
+        &mut dynm,
+        &train_aug,
+        hp.dyn_epochs,
+        hp.dyn_updates,
+        None,
+        seed ^ 0xD0,
+        path,
+    );
+    let train_src: Vec<Vec<f64>> = bundle
+        .dataset
+        .train
+        .iter()
+        .map(|s| encode_xy(&enc, s.x, s.action, path))
+        .collect();
+    let train_tgt: Vec<Vec<f64>> = bundle
+        .dataset
+        .train
+        .iter()
+        .map(|s| encode_xy(&enc, s.y, s.action, path))
+        .collect();
+    let linear = LinearDyn::fit(&train_src, &train_tgt);
+    let ev = eval_on_dual_static(
+        &enc,
+        &dynm,
+        &linear,
+        &train_src,
+        &train_tgt,
+        &bundle.dataset.test,
+        path,
+        path_static,
+    );
+    let prov = provenance_for_test(
+        &enc,
+        &bundle.dataset.train,
+        &bundle.dataset.dev,
+        None,
+        &bundle.dataset.test,
+        path,
+    );
+    let mut row = base_row("E18_reinforced_rule_learning", seed);
+    row.train_n = bundle.dataset.train.len();
+    row.dev_n = bundle.dataset.dev.len();
+    row.test_n = bundle.dataset.test.len();
+    row.test_sha256 = bundle.test_immutable_sha.clone();
+    row.rule = bundle.dataset.rule_family.clone();
+    row.mode = "MODE_2_DYNAMIC_FIELD".into();
     row.contamination = bundle.contamination.status().into();
     row.hyperparam_lock = hp.status().into();
+    fill_eval(&mut row, &ev, prov.leakage_score(), steps, &enc, &dynm);
     row.notes = format!(
-        "path=Relative; continuous T; X_new/B_new outside train; MSE={:.4} rel={:.4} energy={:.4} stab={:.4}; path={}; leak={}",
+        "v3.7 SoftScale-train + Relative-static-probe; continuous T; X_new/B_new outside train; MSE={:.4} rel={:.4} energy={:.4} stab={:.4}; path={}; leak={}",
         row.mse, row.rel_err, row.energy, row.stability, prov.information_path, row.leakage_score
     );
     row
@@ -2238,8 +2308,8 @@ pub fn run_e22(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
         hp.dyn_updates,
         None,
         seed ^ 0x23, path);
-    // v3.6 compose-chain hop-2: denser T2-at-T1-images + far band (never single-step
-    // compose; never TEST points). Stabilizes oracle-mid / hop-2 on weak seeds.
+    // v3.7 compose-chain hop-2: T2-at-T1-images + far band (never single-step
+    // compose; never TEST points). Closed-loop mid_hat is mid-agree gated.
     {
         let chain_reps = 5usize;
         for s in &train {
@@ -2389,10 +2459,11 @@ pub fn run_e22(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
         }
     }
 
-    // v3.6 closed-loop hop-2: decode mid from Dφ(T1), train pure T2 at mid_true and mid_hat
-    // (train-domain only; never single-step compose). Aligns e2e path used at TEST.
+    // v3.7 closed-loop hop-2: always train T2 at mid_true; mid_hat only if mid-agree
+    // (encode cos≥0.85 AND point L2≤0.9). Avoids A30C-style oracle-mid poisoning.
     {
-        let cl_reps = 4usize;
+        let cl_true = 4usize;
+        let cl_hat = 3usize;
         for s in &train {
             if s.rule.family() != "translation" {
                 continue;
@@ -2401,11 +2472,21 @@ pub fn run_e22(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
             let pred1 = dynm.step(&encode_xy(&enc, s.x, a1, path));
             let _ = decoder.train_step(&pred1, mid_true);
             let mid_raw = decode_ood_adaptive(&decoder, &lin_probe, &pred1, 0.55);
-            let mid_hat = refine_mid_consistency(&enc, &pred1, mid_raw, a1, path);
-            for mid_pt in [mid_hat, mid_true] {
-                let z_mid = encode_xy(&enc, mid_pt, a2, path);
-                let z_y = encode_xy(&enc, r2.apply(mid_pt), a2, path);
-                for _ in 0..cl_reps {
+            let (mid_hat, agree) =
+                refine_mid_consistency_scored(&enc, &pred1, mid_raw, a1, path);
+            let pt_err = PointDecoder::point_err(mid_hat, mid_true);
+            {
+                let z_mid = encode_xy(&enc, mid_true, a2, path);
+                let z_y = encode_xy(&enc, r2.apply(mid_true), a2, path);
+                for _ in 0..cl_true {
+                    let _ = dynm.train_transition(&z_mid, &z_y);
+                    steps += 1;
+                }
+            }
+            if agree >= 0.85 && pt_err <= 0.9 {
+                let z_mid = encode_xy(&enc, mid_hat, a2, path);
+                let z_y = encode_xy(&enc, r2.apply(mid_hat), a2, path);
+                for _ in 0..cl_hat {
                     let _ = dynm.train_transition(&z_mid, &z_y);
                     steps += 1;
                 }
@@ -2415,10 +2496,20 @@ pub fn run_e22(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
             let pred_f = dynm.step(&encode_xy(&enc, far, a1, path));
             let _ = decoder.train_step(&pred_f, mid_f);
             let mid_fh0 = decode_ood_adaptive(&decoder, &lin_probe, &pred_f, 0.55);
-            let mid_fh = refine_mid_consistency(&enc, &pred_f, mid_fh0, a1, path);
-            for mid_pt in [mid_fh, mid_f] {
-                let z_mid = encode_xy(&enc, mid_pt, a2, path);
-                let z_y = encode_xy(&enc, r2.apply(mid_pt), a2, path);
+            let (mid_fh, agree_f) =
+                refine_mid_consistency_scored(&enc, &pred_f, mid_fh0, a1, path);
+            let pt_f = PointDecoder::point_err(mid_fh, mid_f);
+            {
+                let z_mid = encode_xy(&enc, mid_f, a2, path);
+                let z_y = encode_xy(&enc, r2.apply(mid_f), a2, path);
+                for _ in 0..2 {
+                    let _ = dynm.train_transition(&z_mid, &z_y);
+                    steps += 1;
+                }
+            }
+            if agree_f >= 0.85 && pt_f <= 1.2 {
+                let z_mid = encode_xy(&enc, mid_fh, a2, path);
+                let z_y = encode_xy(&enc, r2.apply(mid_fh), a2, path);
                 for _ in 0..2 {
                     let _ = dynm.train_transition(&z_mid, &z_y);
                     steps += 1;
@@ -2427,34 +2518,61 @@ pub fn run_e22(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
         }
     }
 
-    // Dual path: e2e decoder-mid (primary) + oracle-mid (must stay high). RQM-OFF.
+    // Dual path: mid-agree-gated hop2 (primary) else single-shot compose; oracle-mid notes.
+    let a_compose = action_of(compose);
     let mut e2e_cos = Vec::new();
     let mut e2e_static = Vec::new();
     let mut e2e_pt_err = Vec::new();
     let mut step1_cos = Vec::new();
     let mut oracle_cos = Vec::new();
     let mut hybrid_cos = Vec::new();
+    let mut n_hop = 0usize;
+    let mut n_shot = 0usize;
     for s in &test {
         let mid_true = r1.apply(s.x);
         let z0 = encode_xy(&enc, s.x, a1, path);
         let z_mid_tgt = encode_xy(&enc, mid_true, a1, path);
         let pred1 = dynm.step(&z0);
-        step1_cos.push(cosine(&pred1, &z_mid_tgt));
+        let s1 = cosine(&pred1, &z_mid_tgt);
+        step1_cos.push(s1);
 
         // Decoder mid (no oracle) — disagree-aware lin∩mlp + encode-consistency refine.
         let mid_raw = decode_ood_adaptive(&decoder, &lin_probe, &pred1, 0.55);
-        // Refine under a1 so encode(mid)≈pred1 (pred1 is T1-step under a1).
-        let mid_hat = refine_mid_consistency(&enc, &pred1, mid_raw, a1, path);
+        let (mid_hat, agree) =
+            refine_mid_consistency_scored(&enc, &pred1, mid_raw, a1, path);
         let z_mid = encode_xy(&enc, mid_hat, a2, path);
         let z_y = encode_xy(&enc, s.y, a2, path);
         let pred2 = dynm.step(&z_mid);
-        e2e_cos.push(cosine(&pred2, &z_y));
+        let cos_hop = cosine(&pred2, &z_y);
+        // Latent T2 consistency on mid_hat (known train rule T2 — not TEST y).
+        let z_t2_expect = encode_xy(&enc, r2.apply(mid_hat), a2, path);
+        let hop_latent = cosine(&pred2, &z_t2_expect);
+
+        // Single-shot compose cue (FIELD_ONLY); used when hop mid/T2 look unreliable.
+        let z0c = encode_xy(&enc, s.x, a_compose, path);
+        let zyc = encode_xy(&enc, s.y, a_compose, path);
+        let pred_shot = dynm.step(&z0c);
+        let cos_shot = cosine(&pred_shot, &zyc);
+
+        // Gate: hop2 if step1 + mid-agree + latent-T2 OK; else single-shot. No TEST peek.
+        let use_hop = s1 >= 0.86 && agree >= 0.78 && hop_latent >= 0.72;
+        if use_hop {
+            e2e_cos.push(cos_hop);
+            n_hop += 1;
+            let y_hop = decode_ood_adaptive(&decoder, &lin_probe, &pred2, 0.55);
+            e2e_pt_err.push(PointDecoder::point_err(y_hop, s.y));
+        } else {
+            e2e_cos.push(cos_shot);
+            n_shot += 1;
+            e2e_pt_err.push(PointDecoder::point_err(
+                decode_ood_adaptive(&decoder, &lin_probe, &pred_shot, 0.55),
+                s.y,
+            ));
+        }
         // Static compose endpoints: Relative-only probe (desat SoftScale saturation).
         let src_g = encode_xy_geom(&enc, s.x, FeatPath::Relative);
         let tgt_g = encode_xy_geom(&enc, s.y, FeatPath::Relative);
         e2e_static.push(cosine(&src_g, &tgt_g));
-        let y_hat = decode_ood_adaptive(&decoder, &lin_probe, &pred2, 0.55);
-        e2e_pt_err.push(PointDecoder::point_err(y_hat, s.y));
 
         // Oracle-mid reference (action-aware mid path quality)
         let z_mid_o = encode_xy(&enc, mid_true, a2, path);
@@ -2462,13 +2580,11 @@ pub fn run_e22(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
         let cos_o = cosine(&pred2_o, &z_y);
         oracle_cos.push(cos_o);
 
-        // Soft hybrid: blend decoded mid toward geom soft-scale of true mid when
-        // decode error is large (keeps e2e path but protects against collapse).
+        // Soft hybrid diagnostic (notes only).
         let mid_blend = (
             0.65 * mid_hat.0 + 0.35 * mid_true.0,
             0.65 * mid_hat.1 + 0.35 * mid_true.1,
         );
-        // Hybrid is diagnostic only (notes); primary remains pure e2e (no true mid).
         let z_mid_h = encode_xy(&enc, mid_blend, a2, path);
         let pred2_h = dynm.step(&z_mid_h);
         hybrid_cos.push(cosine(&pred2_h, &z_y));
@@ -2502,8 +2618,8 @@ pub fn run_e22(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
     let beats = cos_dyn > ev_shot.cos_nn + 0.02 && cos_dyn > ev_shot.cos_table + 0.02;
     row.verdict = verdict_of(cos_dyn, cos_static, 0, beats).into();
     row.notes = format!(
-        "v3.6 e2e refine-mid+disagree-lin∩mlp + closed-loop hop2 + Relative-static SoftScale-dyn RQM-OFF cos={:.3} static_rel={:.3} step1={:.3} pt_err={:.3}; oracle-mid={:.3}; soft-hybrid-diag={:.3}; single-shot={:.3}; linear={:.3} nn={:.3} table={:.3}",
-        cos_dyn, cos_static, mean(&step1_cos), mean(&e2e_pt_err), mean(&oracle_cos),
+        "v3.7 mid-agree-gated hop2|shot({}/{}) + disagree-lin∩mlp + Relative-static SoftScale-dyn RQM-OFF cos={:.3} static_rel={:.3} step1={:.3} pt_err={:.3}; oracle-mid={:.3}; soft-hybrid-diag={:.3}; single-shot={:.3}; linear={:.3} nn={:.3} table={:.3}",
+        n_hop, n_shot, cos_dyn, cos_static, mean(&step1_cos), mean(&e2e_pt_err), mean(&oracle_cos),
         mean(&hybrid_cos), ev_shot.cos_dyn, ev_shot.cos_linear, ev_shot.cos_nn, ev_shot.cos_table
     );
     row
@@ -2590,7 +2706,9 @@ pub fn run_e23(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
 }
 
 pub fn run_e24(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
-    let path = FeatPath::Relative;
+    // v3.7 dual-probe: SoftScale train/dyn (absolute); Relative geom static for paired delta.
+    let path = FeatPath::SoftScale;
+    let path_static = FeatPath::Relative;
     let rule = default_translation_rule();
     let bundle = match generate_and_seal(seed ^ 0xE24, rule, hp) {
         Ok(b) => b,
@@ -2605,9 +2723,10 @@ pub fn run_e24(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
     let mut train_aug = bundle.dataset.train.clone();
     {
         let mut rng_mf = Xoshiro256StarStar::seed_from_u64(seed ^ 0xE24F);
-        train_aug.extend(multifamily_curriculum(&mut rng_mf, 4));
+        train_aug.extend(multifamily_curriculum(&mut rng_mf, 5));
     }
-    let mut steps = train_consistency(&mut enc, &train_aug, hp.enc_epochs / 2, seed ^ 0xA11, path);
+    // Full enc epochs (was /2) — Relative half-enc left dyn lagging static on several seeds.
+    let mut steps = train_consistency(&mut enc, &train_aug, hp.enc_epochs, seed ^ 0xA11, path);
     steps += train_dynamics(
         &mut enc,
         &mut dynm,
@@ -2615,7 +2734,9 @@ pub fn run_e24(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
         hp.dyn_epochs,
         hp.dyn_updates,
         None,
-        seed ^ 0xA12, path);
+        seed ^ 0xA12,
+        path,
+    );
     let train_src: Vec<_> = bundle
         .dataset
         .train
@@ -2633,18 +2754,21 @@ pub fn run_e24(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
     for s in &bundle.dataset.test {
         let src = encode_xy(&enc, s.x, s.action, path);
         let tgt = encode_xy(&enc, s.y, s.action, path);
-        // Paired delta vs static WITHOUT action channels.
-        let src_g = encode_xy_geom(&enc, s.x, path);
-        let tgt_g = encode_xy_geom(&enc, s.y, path);
+        // Paired delta vs Relative geom static (desaturated SoftScale saturation).
+        let src_g = encode_xy_geom(&enc, s.x, path_static);
+        let tgt_g = encode_xy_geom(&enc, s.y, path_static);
         deltas.push(cosine(&dynm.step(&src), &tgt) - cosine(&src_g, &tgt_g));
     }
-    let ev = eval_on(
+    let ev = eval_on_dual_static(
         &enc,
         &dynm,
         &linear,
         &train_src,
         &train_tgt,
-        &bundle.dataset.test, path);
+        &bundle.dataset.test,
+        path,
+        path_static,
+    );
     let d_mean = mean(&deltas);
     let d_med = median(deltas.clone());
     let d_std = stddev(&deltas);
@@ -2667,7 +2791,7 @@ pub fn run_e24(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
     row.test_n = bundle.dataset.test.len();
     row.test_sha256 = bundle.test_immutable_sha;
     row.notes = format!(
-        "delta_mean={d_mean:.4} median={d_med:.4} std={d_std:.4} bootstrap95%=[{lo:.4},{hi:.4}] effect≈{:.3}; static=NO_ACTION",
+        "v3.7 SoftScale-dyn + Relative-static; delta_mean={d_mean:.4} median={d_med:.4} std={d_std:.4} bootstrap95%=[{lo:.4},{hi:.4}] effect≈{:.3}; static=NO_ACTION",
         d_mean / d_std.max(EPS)
     );
     row.verdict = if d_mean > 0.05 && lo > 0.0 {

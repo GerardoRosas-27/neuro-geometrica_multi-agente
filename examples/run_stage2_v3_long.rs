@@ -71,12 +71,13 @@ fn main() {
     ));
     md.push_str("Seeds confirmación `0xB300–0xB30F`: **no corridas**.\n");
     md.push_str("Periferia: numeric FIELD_ONLY; RQM/NN/table/attractor OFF en eval.\n\n");
-    md.push_str("## Hardening en esta corrida (v3.6)\n\n");
+    md.push_str("## Hardening en esta corrida (v3.7)\n\n");
     md.push_str("- `HyperparamLock::long()`: dyn_epochs=560 dyn_updates=7 (push absolute cos_dyn).\n");
+    md.push_str("- **E18/E24 (v3.7)**: SoftScale train/dyn + Relative-only static probe (E21 dual-probe pattern).\n");
     md.push_str("- **E21 dual-probe retained**: SoftScale train/dyn + Relative-only static probe.\n");
-    md.push_str("- **E22 (v3.6)**: disagree-aware lin∩mlp SoftScale-abs; encode-consistency mid refine; closed-loop hop-2.\n");
-    md.push_str("- **E23 (v3.6)**: shared v3.5 mix retained (no local long TF; avoid h64 regression); pure step eval.\n");
-    md.push_str("- Dual FeatPath retained: SoftScale E22/E23 dyn; Relative E18/E24/E25/E27 (+ E21/E22 static probe).\n");
+    md.push_str("- **E22 (v3.7)**: mid-agree-gated closed-loop; latent-T2 hop gate else single-shot; disagree-lin∩mlp.\n");
+    md.push_str("- **E23**: shared v3.5 mix retained (no h32/h64 lever this cycle).\n");
+    md.push_str("- Dual FeatPath: SoftScale E18/E21/E22/E23/E24 dyn; Relative static probe E18/E21/E22/E24.\n");
     md.push_str("- Static baseline **sin** action + contraste geom-only; dyn extras + multi-familia + E21 dx denso.\n\n");
     md.push_str(&format!(
         "Wall time: **{elapsed:.1}s**. Filas: {}.\n\n",
@@ -110,8 +111,8 @@ fn main() {
     md.push_str("\nCSV: [`resultados_etapa_2_v3_long.csv`](resultados_etapa_2_v3_long.csv)\n\n");
     md.push_str("## Lectura honesta (corrida LONG)\n\n");
     md.push_str("- Leakage FIELD_ONLY y contaminación: ver secciones arriba (deben ser 0).\n");
-    md.push_str("- Palancas v3.6: E22 mid-refine + disagree-aware lin∩mlp + closed-loop hop2; E23 shared mix retained; E21 probe retained.\n");
-    md.push_str("- Seeds confirmación `0xB300–0xB30F`: **no corridas** (DEV no locked aún para confirmación).\n");
+    md.push_str("- Palancas v3.7: E22 mid-agree/latent-T2 gated hop|shot; E18/E24 SoftScale+Rel probe; E21/E23 retained.\n");
+    md.push_str("- Seeds confirmación `0xB300–0xB30F`: **no corridas** unless E18/E21/E22/E24 majority POS+STRONG.\n");
     fs::write("docs/resultados_etapa_2_v3_long.md", &md).expect("write md");
     println!("wrote docs/resultados_etapa_2_v3_long.{{md,csv}} ({elapsed:.1}s)");
     for (exp, vh) in &hist {
