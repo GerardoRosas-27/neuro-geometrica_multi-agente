@@ -99,72 +99,113 @@
     return m;
   }
 
+  function setText(id, value) {
+    const el = $(id);
+    if (el) el.textContent = value;
+  }
+
   function renderLiveJob(job) {
     if (!job) return;
-    const cur = job.current_batch || 0;
-    const infinite = !!(job.infinite || job.total_batches == null);
-    const bar = $("tr-progress-bar");
-    if (infinite) {
-      bar.style.width = job.running ? "100%" : "0%";
-      bar.classList.toggle("infinite", !!job.running);
-      $("tr-progress-label").textContent =
-        `Lote ${cur} (∞ infinito)` + (job.running ? " (en curso)" : "");
-    } else {
-      const total = Math.max(1, job.total_batches || 1);
-      bar.style.width = Math.min(100, (100 * cur) / total) + "%";
-      bar.classList.remove("infinite");
-      $("tr-progress-label").textContent =
-        `Lote ${cur} / ${job.total_batches}` + (job.running ? " (en curso)" : "");
-    }
-    $("tr-status").textContent = job.running
-      ? job.cancelled
-        ? "deteniendo…"
-        : infinite
-          ? "entrenando ∞…"
-          : "entrenando…"
-      : job.cancelled
-        ? "detenido"
-        : job.job_id
-          ? "idle / listo"
-          : "idle";
-    $("tr-job").textContent = job.job_id || "—";
-    // "Épocas / lote": mostrar lote actual (progreso) + épocas por lote (config).
-    // Antes solo se mostraba job.epochs (siempre 1) y un typo `j.` rompía el resto.
-    const epochsCfg = job.epochs != null ? job.epochs : "—";
-    $("tr-epochs").textContent =
-      `lote ${cur} · ${epochsCfg} ép/lote` +
-      (job.batch_size != null ? ` · bs=${job.batch_size}` : "");
-    $("tr-acc").textContent =
-      job.accuracy == null ? "—" : (100 * job.accuracy).toFixed(1) + "%";
-    $("tr-eng").textContent = job.engrams != null ? job.engrams : "—";
-    if ($("tr-family")) {
+    try {
+      const cur =
+        job.current_batch != null && job.current_batch !== ""
+          ? Number(job.current_batch)
+          : 0;
+      const infinite = !!(job.infinite || job.total_batches == null);
+      const bar = $("tr-progress-bar");
+      if (bar) {
+        if (infinite) {
+          bar.style.width = job.running ? "100%" : "0%";
+          bar.classList.toggle("infinite", !!job.running);
+        } else {
+          const total = Math.max(1, Number(job.total_batches) || 1);
+          bar.style.width = Math.min(100, (100 * cur) / total) + "%";
+          bar.classList.remove("infinite");
+        }
+      }
+      setText(
+        "tr-progress-label",
+        infinite
+          ? `Lote ${cur} (∞ infinito)` + (job.running ? " (en curso)" : "")
+          : `Lote ${cur} / ${job.total_batches}` +
+            (job.running ? " (en curso)" : "")
+      );
+      setText(
+        "tr-status",
+        job.running
+          ? job.cancelled
+            ? "deteniendo…"
+            : infinite
+              ? "entrenando ∞…"
+              : "entrenando…"
+          : job.cancelled
+            ? "detenido"
+            : job.job_id
+              ? "idle / listo"
+              : "idle"
+      );
+      setText("tr-job", job.job_id || "—");
+      // Lote actual (progreso) + épocas/lote (config). Nunca solo epochs.
+      const epochsCfg = job.epochs != null ? job.epochs : "—";
+      const bs =
+        job.batch_size != null && job.batch_size !== ""
+          ? ` · bs=${job.batch_size}`
+          : "";
+      setText("tr-epochs", `lote ${cur} · ${epochsCfg} ép/lote${bs}`);
+      setText(
+        "tr-acc",
+        job.accuracy == null || job.accuracy === ""
+          ? "—"
+          : (100 * Number(job.accuracy)).toFixed(1) + "%"
+      );
+      setText(
+        "tr-eng",
+        job.engrams != null && job.engrams !== "" ? job.engrams : "—"
+      );
       const fam = job.last_dataset_family || "—";
-      const exps = Array.isArray(job.last_experiment_ids) && job.last_experiment_ids.length
-        ? ` (${job.last_experiment_ids.join(",")})`
-        : "";
-      $("tr-family").textContent = fam === "—" ? "—" : fam + exps;
-    }
-    $("tr-dataset").textContent =
-      (job.dataset_size != null ? job.dataset_size : "—") +
-      (job.dataset_source ? ` (${job.dataset_source})` : "");
-    $("tr-ds-saved").textContent =
-      job.datasets_saved != null ? job.datasets_saved : "—";
-    $("tr-ckpt").textContent =
-      job.last_dataset_path ||
-      (job.last_checkpoint && job.last_checkpoint.path) ||
-      "—";
-    $("tr-decoded").textContent = job.last_decoded || "—";
+      const exps =
+        Array.isArray(job.last_experiment_ids) && job.last_experiment_ids.length
+          ? ` (${job.last_experiment_ids.join(",")})`
+          : "";
+      setText("tr-family", fam === "—" ? "—" : fam + exps);
+      setText(
+        "tr-dataset",
+        (job.dataset_size != null ? job.dataset_size : "—") +
+          (job.dataset_source ? ` (${job.dataset_source})` : "")
+      );
+      setText(
+        "tr-ds-saved",
+        job.datasets_saved != null ? job.datasets_saved : "—"
+      );
+      setText(
+        "tr-ckpt",
+        job.last_dataset_path ||
+          (job.last_checkpoint && job.last_checkpoint.path) ||
+          "—"
+      );
+      setText("tr-decoded", job.last_decoded || "—");
 
-    const merged =
-      liveEvents.length > 0
-        ? liveEvents
-        : Array.isArray(job.events)
-          ? job.events
-          : [];
-    if (merged.length) {
+      const merged =
+        liveEvents.length > 0
+          ? liveEvents
+          : Array.isArray(job.events)
+            ? job.events
+            : [];
       const log = $("tr-log");
-      log.textContent = formatLog(merged);
-      log.scrollTop = log.scrollHeight;
+      if (log) {
+        if (merged.length) {
+          log.textContent = formatLog(merged);
+          log.scrollTop = log.scrollHeight;
+        } else {
+          log.textContent = job.running
+            ? "(sin eventos aún — esperando lote…)"
+            : job.job_id
+              ? "(sin eventos en memoria — refresca o espera el próximo lote)"
+              : "(consola vacía)";
+        }
+      }
+    } catch (err) {
+      console.warn("renderLiveJob failed", err);
     }
   }
 
@@ -332,6 +373,7 @@
   }
 
   function renderTelemetry(t) {
+    if (!t) return;
     const job = t.live_job || (t.train && t.train.live) || null;
     // Aislar errores de render de job para no bloquear líquido/CDT/RQM.
     try {
@@ -342,32 +384,64 @@
       console.warn("render job metrics failed", err);
     }
 
-    $("li-q").textContent = t.liquid.queries;
-    $("li-score").textContent = Number(t.liquid.score_last).toFixed(4);
-    $("li-avg").textContent = Number(t.liquid.score_avg).toFixed(4);
-    $("li-lat").textContent = Number(t.liquid.latency_us_last).toFixed(2);
-    $("li-pct").textContent = Number(t.liquid.route_pct).toFixed(1) + "%";
-    $("li-route").textContent = t.liquid.last_route || "—";
+    try {
+      const li = t.liquid || {};
+      setText("li-q", li.queries != null ? li.queries : "—");
+      setText(
+        "li-score",
+        li.score_last != null ? Number(li.score_last).toFixed(4) : "—"
+      );
+      setText(
+        "li-avg",
+        li.score_avg != null ? Number(li.score_avg).toFixed(4) : "—"
+      );
+      setText(
+        "li-lat",
+        li.latency_us_last != null
+          ? Number(li.latency_us_last).toFixed(2)
+          : "—"
+      );
+      setText(
+        "li-pct",
+        li.route_pct != null ? Number(li.route_pct).toFixed(1) + "%" : "—"
+      );
+      setText("li-route", li.last_route || "—");
 
-    $("cd-eng").textContent = t.cdt.engram_count;
-    $("cd-wake").textContent = t.cdt.wake_buffer;
-    $("cd-sleeps").textContent = t.cdt.sleeps;
+      const cd = t.cdt || {};
+      setText("cd-eng", cd.engram_count != null ? cd.engram_count : "—");
+      setText("cd-wake", cd.wake_buffer != null ? cd.wake_buffer : "—");
+      setText("cd-sleeps", cd.sleeps != null ? cd.sleeps : "—");
 
-    $("rq-inf").textContent = t.rqm.infer_calls;
-    $("rq-tr").textContent = t.rqm.train_calls;
-    $("rq-pct").textContent = Number(t.rqm.route_pct).toFixed(1) + "%";
-    $("rq-cues").textContent = t.rqm.relational_cues;
+      const rq = t.rqm || {};
+      setText("rq-inf", rq.infer_calls != null ? rq.infer_calls : "—");
+      setText("rq-tr", rq.train_calls != null ? rq.train_calls : "—");
+      setText(
+        "rq-pct",
+        rq.route_pct != null ? Number(rq.route_pct).toFixed(1) + "%" : "—"
+      );
+      setText(
+        "rq-cues",
+        rq.relational_cues != null ? rq.relational_cues : "—"
+      );
+    } catch (err) {
+      console.warn("render liquid/cdt/rqm failed", err);
+    }
 
-    if (t.last_sleep_optimize && !t.sleep_job?.running)
-      renderSleepReport(t.last_sleep_optimize);
-    if (t.last_field_eval && !t.tests_job?.running) renderTests(t.last_field_eval);
-    badgeMode.textContent = `LLM: ${t.llm_mode}`;
-    if (t.processes) {
-      updateProcessBadges({
-        train: (t.processes.active || []).includes("train"),
-        sleep: (t.processes.active || []).includes("sleep"),
-        tests: (t.processes.active || []).includes("tests"),
-      });
+    try {
+      if (t.last_sleep_optimize && !t.sleep_job?.running)
+        renderSleepReport(t.last_sleep_optimize);
+      if (t.last_field_eval && !t.tests_job?.running)
+        renderTests(t.last_field_eval);
+      if (badgeMode) badgeMode.textContent = `LLM: ${t.llm_mode || "—"}`;
+      if (t.processes) {
+        updateProcessBadges({
+          train: (t.processes.active || []).includes("train"),
+          sleep: (t.processes.active || []).includes("sleep"),
+          tests: (t.processes.active || []).includes("tests"),
+        });
+      }
+    } catch (err) {
+      console.warn("render telemetry extras failed", err);
     }
   }
 
@@ -412,9 +486,14 @@
   async function pollTrainOnce() {
     try {
       const st = await api("/api/train/status");
-      if (Array.isArray(st.events) && st.events.length && liveEvents.length === 0) {
-        liveEvents = st.events.slice();
-        eventAfter = maxSeq(liveEvents);
+      // Sembrar consola desde status (incluye historial) si el buffer local está vacío
+      // o si el servidor trae un event_seq más alto que el nuestro.
+      if (Array.isArray(st.events) && st.events.length) {
+        const serverMax = maxSeq(st.events);
+        if (liveEvents.length === 0 || serverMax > eventAfter) {
+          liveEvents = st.events.slice();
+          eventAfter = serverMax;
+        }
       }
       renderLiveJob(st);
       const ev = await api("/api/train/events?after=" + eventAfter);
