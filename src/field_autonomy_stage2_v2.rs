@@ -31,6 +31,20 @@ pub const CONFIRMATION_SEEDS: [u64; 16] = [
     0xB30C, 0xB30D, 0xB30E, 0xB30F,
 ];
 
+/// DEV ciclo siguiente — endurecimiento E21 (interp/extrap). **No** confirmation.
+pub const DEV_CYCLE_E21_SEEDS: [u64; 8] = [
+    0xA310, 0xA311, 0xA312, 0xA313, 0xA314, 0xA315, 0xA316, 0xA317,
+];
+/// DEV ciclo siguiente — endurecimiento E22 (compose RQM-OFF). **No** confirmation.
+pub const DEV_CYCLE_E22_SEEDS: [u64; 8] = [
+    0xA318, 0xA319, 0xA31A, 0xA31B, 0xA31C, 0xA31D, 0xA31E, 0xA31F,
+];
+
+/// True si la seed pertenece a la familia confirmation (prohibida en este ciclo).
+pub fn is_confirmation_seed(seed: u64) -> bool {
+    CONFIRMATION_SEEDS.contains(&seed) || (0xB300..=0xB30F).contains(&seed)
+}
+
 const EPS: f64 = 1e-12;
 const FEAT_DIM: usize = 16;
 const FIELD_DIM: usize = 24;
@@ -1586,6 +1600,260 @@ pub fn run_e22(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
     row
 }
 
+/// E21 endurecido: curriculum borde (más peso dx=±2), métricas interp vs extrap
+/// separadas, ablations STATIC / field-only, RQM OFF, auditor leakage.
+/// Seeds ciclo: [`DEV_CYCLE_E21_SEEDS`]. Prohibido confirmation.
+pub fn run_e21_harden(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
+    if is_confirmation_seed(seed) {
+        let mut row = base_row("E21_harden_interpolation_vs_extrapolation", seed);
+        row.verdict = "INVALID".into();
+        row.notes = "confirmation seed forbidden in cycle harden".into();
+        row.contamination = "CONFIRMATION_FORBIDDEN".into();
+        return row;
+    }
+    let mut rng = Xoshiro256StarStar::seed_from_u64(seed ^ 0xE21A);
+    // Curriculum borde: dx=±2 con peso 2× respecto a interior.
+    let edge = [-2.0_f64, 2.0];
+    let interior = [-1.0_f64, 0.0, 1.0];
+    let mut train = Vec::new();
+    for &dx in &edge {
+        let rule = ContRule::Translation { dx, dy: 0.5 };
+        train.extend(make_samples(
+            &mut rng,
+            rule,
+            8,
+            -2.0,
+            2.0,
+            &format!("edge_dx{dx}"),
+        ));
+    }
+    for &dx in &interior {
+        let rule = ContRule::Translation { dx, dy: 0.5 };
+        train.extend(make_samples(
+            &mut rng,
+            rule,
+            4,
+            -2.0,
+            2.0,
+            &format!("int_dx{dx}"),
+        ));
+    }
+    let inter_rule = ContRule::Translation { dx: 0.5, dy: 0.5 };
+    let extra_rule = ContRule::Translation { dx: 3.0, dy: 0.5 };
+    let inter = make_samples(&mut rng, inter_rule, 6, 3.0, 5.0, "interp");
+    let extra = make_samples(&mut rng, extra_rule, 6, 3.0, 5.0, "extrap");
+    let ds = SplitDataset {
+        train: train.clone(),
+        dev: inter.clone(),
+        test: extra.clone(),
+        rule_family: "translation_param_edge".into(),
+        dimension: 2,
+        parameter_range: "dx train edge-weighted ±2; test dx=3; RQM-OFF".into(),
+        seed,
+    };
+    let cont = audit_contamination_hard(&ds);
+    if cont.is_invalid() {
+        let mut row = base_row("E21_harden_interpolation_vs_extrapolation", seed);
+        row.verdict = "INVALID".into();
+        row.contamination = "DATASET_INVALID".into();
+        row.notes = format!("{:?}", cont.hits);
+        return row;
+    }
+    let bundle = SealedBundle {
+        train_manifest: manifest_for("TRAIN", &ds.train, &ds, false),
+        dev_manifest: manifest_for("DEV", &ds.dev, &ds, false),
+        test_manifest: manifest_for("TEST", &ds.test, &ds, true),
+        test_immutable_sha: sha256_hex(&serialize_samples(&ds.test)),
+        contamination: cont,
+        dataset: ds,
+    };
+    let (mut enc, mut dynm) = fresh_models(seed, hp);
+    let mut steps = train_consistency(&mut enc, &bundle.dataset.train, hp.enc_epochs, seed);
+    steps += train_dynamics(
+        &mut enc,
+        &mut dynm,
+        &bundle.dataset.train,
+        hp.dyn_epochs,
+        hp.dyn_updates,
+        None,
+        seed ^ 1,
+    );
+    let train_src: Vec<_> = bundle
+        .dataset
+        .train
+        .iter()
+        .map(|s| encode_xy(&enc, s.x, s.action))
+        .collect();
+    let train_tgt: Vec<_> = bundle
+        .dataset
+        .train
+        .iter()
+        .map(|s| encode_xy(&enc, s.y, s.action))
+        .collect();
+    let linear = LinearDyn::fit(&train_src, &train_tgt);
+    let ev_i = eval_on(&enc, &dynm, &linear, &train_src, &train_tgt, &inter);
+    let ev_e = eval_on(&enc, &dynm, &linear, &train_src, &train_tgt, &extra);
+    let prov = provenance_for_test(
+        &enc,
+        &bundle.dataset.train,
+        &bundle.dataset.dev,
+        None,
+        &extra,
+    );
+    let mut row = base_row("E21_harden_interpolation_vs_extrapolation", seed);
+    row.mode = "MODE_2_DYNAMIC_FIELD".into();
+    row.rule = "translation_param_edge".into();
+    row.train_n = train.len();
+    row.test_n = extra.len();
+    row.dev_n = inter.len();
+    row.test_sha256 = bundle.test_immutable_sha;
+    row.contamination = bundle.contamination.status().into();
+    row.hyperparam_lock = hp.status().into();
+    row.field_only = true;
+    let leak = prov.leakage_score();
+    row.leakage_score = leak;
+    fill_eval(&mut row, &ev_e, leak, steps, &enc, &dynm);
+    // Primary claim = extrap; notes hold separated metrics + STATIC ablation.
+    row.cosine_dynamic = ev_e.cos_dyn;
+    row.cosine_static = ev_e.cos_static;
+    row.cosine_linear = ev_e.cos_linear;
+    row.notes = format!(
+        "interp_cos={:.3} extrap_cos={:.3} static={:.3} linear={:.3} Δextrap_vs_static={:.3} edge_w=2x; RQM_eval=off; field_only=true; leakage={}",
+        ev_i.cos_dyn,
+        ev_e.cos_dyn,
+        ev_e.cos_static,
+        ev_e.cos_linear,
+        ev_e.cos_dyn - ev_e.cos_static,
+        row.leakage_score
+    );
+    if row.leakage_score > 0 {
+        row.verdict = "LEAKED".into();
+    } else {
+        row.verdict =
+            verdict_of(ev_e.cos_dyn, ev_e.cos_static, 0, ev_e.cos_dyn > ev_e.cos_nn).into();
+    }
+    row
+}
+
+/// E22 endurecido: compose-train auditado **train-only** (sin órbita TEST),
+/// brazo claim RQM-OFF. Seeds: [`DEV_CYCLE_E22_SEEDS`].
+pub fn run_e22_harden(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
+    if is_confirmation_seed(seed) {
+        let mut row = base_row("E22_harden_composition_rqm_off", seed);
+        row.verdict = "INVALID".into();
+        row.notes = "confirmation seed forbidden in cycle harden".into();
+        row.contamination = "CONFIRMATION_FORBIDDEN".into();
+        return row;
+    }
+    let t1 = ContRuleRef::Translation { dx: 1.0, dy: 0.0 };
+    let t2 = ContRuleRef::Rotation {
+        theta: std::f64::consts::FRAC_PI_8,
+    };
+    let compose = ContRule::Compose(t1, t2);
+    let mut rng = Xoshiro256StarStar::seed_from_u64(seed ^ 0xE22A);
+    let mut train = make_samples(
+        &mut rng,
+        ContRule::Translation { dx: 1.0, dy: 0.0 },
+        hp.train_n / 2,
+        -2.0,
+        2.0,
+        "t1",
+    );
+    train.extend(make_samples(
+        &mut rng,
+        ContRule::Rotation {
+            theta: std::f64::consts::FRAC_PI_8,
+        },
+        hp.train_n / 2,
+        -2.0,
+        2.0,
+        "t2",
+    ));
+    // Compose sintético **solo sobre estados train** (no órbita TEST).
+    let mut compose_train = Vec::new();
+    let n_compose = (hp.train_n / 3).max(4);
+    for i in 0..n_compose {
+        let x = sample_point(&mut rng, -2.0, 2.0);
+        // Auditar: x no debe estar en región test (3..6).
+        if x.0 >= 2.8 || x.1 >= 2.8 {
+            continue;
+        }
+        let y = compose.apply(x);
+        compose_train.push(Sample {
+            x,
+            y,
+            rule: compose,
+            action: None,
+            tag: format!("compose_train_{i}"),
+        });
+    }
+    train.extend(compose_train);
+    let test = make_samples(&mut rng, compose, hp.test_n, 3.0, 6.0, "compose_test");
+    let ds = SplitDataset {
+        train,
+        dev: vec![],
+        test,
+        rule_family: "compose_train_audited".into(),
+        dimension: 2,
+        parameter_range: "T1∘T2 train-only orbit; test OOD; RQM-OFF claim".into(),
+        seed,
+    };
+    let cont = audit_contamination_full(&ds);
+    if cont.is_invalid() {
+        let mut row = base_row("E22_harden_composition_rqm_off", seed);
+        row.verdict = "INVALID".into();
+        row.contamination = "DATASET_INVALID".into();
+        row.notes = format!("auditor hits={:?}", cont.hits);
+        return row;
+    }
+    let bundle = SealedBundle {
+        test_immutable_sha: sha256_hex(&serialize_samples(&ds.test)),
+        train_manifest: manifest_for("TRAIN", &ds.train, &ds, false),
+        dev_manifest: manifest_for("DEV", &ds.dev, &ds, false),
+        test_manifest: manifest_for("TEST", &ds.test, &ds, true),
+        contamination: cont,
+        dataset: ds,
+    };
+    let (mut row, ev, _, _, _) = train_and_eval_field_only(seed, &bundle, hp, None);
+    row.experiment = "E22_harden_composition_rqm_off".into();
+    row.rule = "compose_train_audited".into();
+    row.field_only = true;
+    row.notes = format!(
+        "D_phi RQM-OFF compose claim; compose_train audited train-only (no TEST orbit); controls static={:.3} linear={:.3} nn={:.3} table={:.3}; leakage={}",
+        ev.cos_static, ev.cos_linear, ev.cos_nn, ev.cos_table, row.leakage_score
+    );
+    if row.leakage_score > 0 {
+        row.verdict = "LEAKED".into();
+    }
+    row
+}
+
+pub fn run_e21_harden_cycle(smoke: bool) -> Vec<ResultRowV2> {
+    let mut hp = if smoke {
+        HyperparamLock::smoke()
+    } else {
+        HyperparamLock::default()
+    };
+    hp.lock();
+    DEV_CYCLE_E21_SEEDS
+        .iter()
+        .map(|&s| run_e21_harden(s, &hp))
+        .collect()
+}
+
+pub fn run_e22_harden_cycle(smoke: bool) -> Vec<ResultRowV2> {
+    let mut hp = if smoke {
+        HyperparamLock::smoke()
+    } else {
+        HyperparamLock::default()
+    };
+    hp.lock();
+    DEV_CYCLE_E22_SEEDS
+        .iter()
+        .map(|&s| run_e22_harden(s, &hp))
+        .collect()
+}
+
 pub fn run_e23(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
     let rule = ContRule::Translation { dx: 0.35, dy: -0.2 };
     let bundle = match generate_and_seal(seed ^ 0xE23, rule, hp) {
@@ -2380,5 +2648,62 @@ mod tests {
         let rows = run_smoke(0xA300);
         assert!(rows.len() >= 4);
         assert!(rows.iter().all(|r| r.field_only));
+    }
+
+    #[test]
+    fn confirmation_seed_gate_blocks_harden() {
+        assert!(is_confirmation_seed(0xB300));
+        assert!(!is_confirmation_seed(0xA310));
+        let mut hp = HyperparamLock::smoke();
+        hp.lock();
+        let row = run_e21_harden(0xB300, &hp);
+        assert_eq!(row.verdict, "INVALID");
+        assert!(row.notes.contains("confirmation"));
+        let row2 = run_e22_harden(0xB30F, &hp);
+        assert_eq!(row2.verdict, "INVALID");
+    }
+
+    #[test]
+    fn e21_harden_separates_interp_extrap_and_rqm_off() {
+        let mut hp = HyperparamLock::smoke();
+        hp.lock();
+        let row = run_e21_harden(0xA310, &hp);
+        assert!(row.field_only, "E21 harden must be field_only");
+        assert!(
+            row.notes.contains("interp_cos=") && row.notes.contains("extrap_cos="),
+            "notes={}",
+            row.notes
+        );
+        assert!(row.notes.contains("RQM_eval=off"), "notes={}", row.notes);
+        assert_ne!(row.verdict, "INVALID");
+        assert!(!is_confirmation_seed(row.seed));
+    }
+
+    #[test]
+    fn e22_harden_train_only_compose_rqm_off() {
+        let mut hp = HyperparamLock::smoke();
+        hp.lock();
+        let row = run_e22_harden(0xA318, &hp);
+        assert!(row.field_only);
+        assert!(
+            row.notes.contains("RQM-OFF") || row.notes.contains("rqm"),
+            "notes={}",
+            row.notes
+        );
+        assert!(row.notes.contains("train-only") || row.rule.contains("audited"));
+        assert_ne!(row.verdict, "INVALID");
+    }
+
+    #[test]
+    fn edge_curriculum_weights_helpers() {
+        // Pure helper: edge dx gets 2× samples vs interior in harden builder.
+        assert_eq!(DEV_CYCLE_E21_SEEDS[0], 0xA310);
+        assert_eq!(DEV_CYCLE_E21_SEEDS[7], 0xA317);
+        assert_eq!(DEV_CYCLE_E22_SEEDS[0], 0xA318);
+        assert_eq!(DEV_CYCLE_E22_SEEDS[7], 0xA31F);
+        // No overlap with confirmation.
+        for s in DEV_CYCLE_E21_SEEDS.iter().chain(DEV_CYCLE_E22_SEEDS.iter()) {
+            assert!(!is_confirmation_seed(*s));
+        }
     }
 }

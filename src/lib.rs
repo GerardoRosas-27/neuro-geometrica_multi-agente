@@ -24,6 +24,8 @@ pub mod entanglement;
 pub mod field_autonomy_stage2;
 /// Clean-Room v2 (§29+): independent generator, sealed TEST, anti-contamination.
 pub mod field_autonomy_stage2_v2;
+/// Endurecimientos E21/E22 ciclo siguiente (seeds 0xA310–0xA31F).
+pub mod field_autonomy_stage2_v2_harden;
 pub mod field_encoder;
 pub mod field_gemma_probe;
 /// Eval completa train+infer+CDT vs main RQM.
