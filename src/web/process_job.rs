@@ -212,6 +212,16 @@ pub struct TestsJob {
     /// `None` cuando `infinite == true`.
     pub total_cycles: Option<usize>,
     pub infinite: bool,
+    /// `smoke` | `experiments_smoke` | `stage2_v2_dev`
+    pub suite: String,
+    /// `smoke` | `dev` | `confirm` (confirm nunca desde UI)
+    pub mode: String,
+    pub seed_family: String,
+    /// Anti-leak telemetry (visible en panel / JSON job).
+    pub leakage_score: u64,
+    pub field_only: bool,
+    /// `off` en brazos de autonomía; `product_fuse` en smoke UI.
+    pub rqm_eval: String,
     pub events: VecDeque<ProcessEvent>,
     pub event_seq: u64,
     pub started_ms: Option<u64>,
@@ -231,6 +241,12 @@ impl Default for TestsJob {
             current_cycle: 0,
             total_cycles: Some(1),
             infinite: false,
+            suite: "smoke".into(),
+            mode: "smoke".into(),
+            seed_family: "0x51D0_0001".into(),
+            leakage_score: 0,
+            field_only: false,
+            rqm_eval: "product_fuse".into(),
             events: VecDeque::new(),
             event_seq: 0,
             started_ms: None,
@@ -266,6 +282,12 @@ impl TestsJob {
             current_cycle: self.current_cycle,
             total_cycles: self.total_cycles,
             infinite: self.infinite,
+            suite: self.suite.clone(),
+            mode: self.mode.clone(),
+            seed_family: self.seed_family.clone(),
+            leakage_score: self.leakage_score,
+            field_only: self.field_only,
+            rqm_eval: self.rqm_eval.clone(),
             current_batch: self.current_cycle,
             total_batches: self.total_cycles,
             events: self.events.iter().cloned().collect(),
@@ -288,6 +310,12 @@ pub struct TestsJobSnapshot {
     pub current_cycle: usize,
     pub total_cycles: Option<usize>,
     pub infinite: bool,
+    pub suite: String,
+    pub mode: String,
+    pub seed_family: String,
+    pub leakage_score: u64,
+    pub field_only: bool,
+    pub rqm_eval: String,
     pub current_batch: usize,
     pub total_batches: Option<usize>,
     pub events: Vec<ProcessEvent>,
@@ -304,6 +332,12 @@ pub struct TestsStartResponse {
     pub message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub infinite: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub suite: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mode: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub seed_family: Option<String>,
 }
 
 /// Snapshot global para reconexión tras refresh.

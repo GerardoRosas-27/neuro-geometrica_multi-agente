@@ -373,6 +373,9 @@ pub struct SleepRequest {
 pub struct TestsStartRequest {
     pub infinite: Option<bool>,
     pub cycles: Option<serde_json::Value>,
+    /// `smoke` (default) | `experiments_smoke` | `stage2_v2_dev`.
+    /// Confirmation nunca es seleccionable.
+    pub suite: Option<String>,
 }
 
 fn sleep_opts_from_req(req: SleepRequest) -> SleepOptimizeOpts {
@@ -459,15 +462,25 @@ async fn tests_start(
     State(st): State<SharedState>,
     body: Option<Json<TestsStartRequest>>,
 ) -> impl IntoResponse {
+    use crate::web::experiment_suite::parse_test_suite;
     use crate::web::process_job::resolve_infinite_cycles;
     let req = body.map(|j| j.0).unwrap_or(TestsStartRequest {
         infinite: None,
         cycles: None,
+        suite: None,
     });
+    let suite = parse_test_suite(req.suite.as_deref());
     let (infinite, total_cycles) = resolve_infinite_cycles(req.infinite, req.cycles.as_ref());
+    // DEV suite no debe bloquear el event-loop en infinito desde UI.
+    let (infinite, total_cycles) =
+        if suite == crate::web::experiment_suite::TestSuiteKind::Stage2V2Dev && infinite {
+            (false, Some(1))
+        } else {
+            (infinite, total_cycles)
+        };
     let started = {
         let mut g = st.lock().unwrap();
-        g.begin_tests_job(infinite, total_cycles)
+        g.begin_tests_job(infinite, total_cycles, suite)
     };
     if started.ok {
         spawn_tests_job(st);
@@ -882,6 +895,49 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(ev.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn tests_start_defaults_suite_smoke() {
+        let st = lex_state();
+        let app = test_router(st.clone());
+        let res = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/tests/start")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"infinite":false,"cycles":1}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["ok"], true);
+        assert_eq!(v["suite"], "smoke");
+        assert_eq!(v["mode"], "smoke");
+        // stop immediately so async worker exits
+        let _ = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/tests/stop")
+                    .header("content-type", "application/json")
+                    .body(Body::from("{}"))
+                    .unwrap(),
+            )
+            .await;
+        for _ in 0..100 {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+            if !st.lock().unwrap().tests_job.running {
+                break;
+            }
+        }
     }
 
     #[tokio::test]

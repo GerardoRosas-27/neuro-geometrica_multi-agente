@@ -10,7 +10,7 @@
   <header class="top">
     <div>
       <h1>Campo agentico · Líquido / CDT / RQM</h1>
-      <p class="sub">Chat = decoder del campo · Train desacoplado · Sueño optimiza F y simetría · Pruebas evalúan el modelo</p>
+      <p class="sub">Chat = <strong>decoder-only</strong> (no escribe datasets) · Train desacoplado · Sueño optimiza F y simetría · Pruebas = smoke por defecto</p>
     </div>
     <div class="badges">
       <span id="badge-mode" class="badge">modo…</span>
@@ -29,6 +29,7 @@
   <main class="layout-tabs">
     <!-- CHAT -->
     <section id="main-chat" class="main-panel active">
+      <p class="hint chat-hint">Chat = <strong>decoder-only</strong>: interpreta el campo. No escribe ejemplos a datasets ni arranca train (usa la pestaña Entrenamiento).</p>
       <div id="messages" class="messages" aria-live="polite"></div>
       <form id="chat-form" class="composer">
         <input id="chat-input" type="text" placeholder="Pregunta al campo (decoder de engramas/conceptos)…" autocomplete="off" />
@@ -41,7 +42,12 @@
       <div class="panel-grid">
         <div>
           <h2>Entrenamiento en vivo</h2>
-      <p class="hint">Gemma (o curriculum) genera datasets por familia: core / líquido E8–E10 / campo E11–E17 / autonomía E18–E30. Con <strong>Infinito</strong> rota familias indefinidamente; cada lote se guarda en checkpoints/datasets.</p>
+      <p class="hint">Gemma (o curriculum) genera datasets por familia: core / líquido E8–E10 / campo E11–E17 / autonomía E18–E30. Con <strong>Infinito</strong> rota familias indefinidamente; cada lote se guarda en checkpoints/datasets. Modo producto = <strong>smoke</strong> (no confirmation).</p>
+          <div class="mode-badges" id="train-mode-badges" aria-label="modo entrenamiento">
+            <span class="badge mode-badge" id="tr-mode-badge" data-mode="smoke">mode=smoke</span>
+            <span class="badge mode-badge" id="tr-seed-badge">seeds=0x51D0_0001</span>
+            <span class="badge mode-badge" id="tr-leak-badge">leakage=0 · field_only=false · rqm_eval=product_fuse</span>
+          </div>
           <div class="actions">
             <button type="button" id="btn-train">Iniciar</button>
             <label class="chk-infinite" title="Sin tope de lotes; solo Detener">
@@ -65,6 +71,8 @@
             <dt>Datasets guardados</dt><dd id="tr-ds-saved">—</dd>
             <dt>Último dataset</dt><dd id="tr-ckpt">—</dd>
             <dt>Decoder (preview)</dt><dd id="tr-decoded">—</dd>
+            <dt>Mode / seeds</dt><dd id="tr-mode-seeds">smoke / 0x51D0_0001</dd>
+            <dt>Leakage / field_only / rqm_eval</dt><dd id="tr-antileak">0 · false · product_fuse</dd>
           </dl>
           <h3>Consola de eventos</h3>
           <pre id="tr-log" class="log"></pre>
@@ -145,9 +153,15 @@
     <!-- PRUEBAS -->
     <section id="main-tests" class="main-panel">
       <h2>Pruebas del modelo de campo</h2>
-      <p class="hint">Siempre corre la <strong>suite de experimentos</strong> (smokes E8–E10, E13/E15, Clean-Room v2). Además evalúa fuse/campo/CDT; si no hay train+sueño, field_eval lo anota con honestidad. Infinito repite la batería hasta Detener.</p>
+      <p class="hint">Por defecto <strong>suite=smoke</strong> (fuse: identidad, latencia líquido, recall; &lt;~30–60s). No lanza Clean-Room DEV ni confirmation <code>0xB300</code>. Opcional API: <code>experiments_smoke</code> o <code>stage2_v2_dev</code> (documentado; no es el botón).</p>
+      <div class="mode-badges" id="tests-mode-badges" aria-label="modo pruebas">
+        <span class="badge mode-badge" id="te-mode-badge" data-mode="smoke">mode=smoke</span>
+        <span class="badge mode-badge" id="te-suite-badge">suite=smoke</span>
+        <span class="badge mode-badge" id="te-seed-badge">seeds=0x51D0_0001</span>
+        <span class="badge mode-badge" id="te-leak-badge">leakage=0 · field_only=false · rqm_eval=product_fuse</span>
+      </div>
       <div class="actions">
-        <button type="button" id="btn-tests">Iniciar</button>
+        <button type="button" id="btn-tests">Iniciar (smoke)</button>
         <label class="chk-infinite" title="Repite la batería hasta Detener">
           <input type="checkbox" id="chk-infinite-tests" checked /> Infinito
         </label>
@@ -173,6 +187,9 @@
         <dt>Handshake</dt><dd id="te-hs">—</dd>
         <dt>Histograma rutas</dt><dd id="te-routes">—</dd>
         <dt>Suite experimentos</dt><dd id="te-suite">—</dd>
+        <dt>Mode / suite</dt><dd id="te-mode-suite">smoke / smoke</dd>
+        <dt>Seed family</dt><dd id="te-seed-family">0x51D0_0001</dd>
+        <dt>Leakage / field_only / rqm_eval</dt><dd id="te-antileak">0 · false · product_fuse</dd>
       </dl>
       <h3>Consola en vivo</h3>
       <pre id="te-log" class="log"></pre>

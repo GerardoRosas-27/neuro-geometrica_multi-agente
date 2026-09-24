@@ -46,6 +46,19 @@ pub struct FieldEvalReport {
     /// Suite de experimentos UI (E8–E30 smokes); None si solo field_eval síncrono.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub experiment_suite: Option<ExperimentSuiteReport>,
+    /// Anti-leak / modo (P0.3).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub leakage_score: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub field_only: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rqm_eval: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mode: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub seed_family: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub suite: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Serialize)]
@@ -216,6 +229,12 @@ pub fn run_field_eval_with_progress(
         notes,
         elapsed_ms: t0.elapsed().as_secs_f64() * 1e3,
         experiment_suite: None,
+        leakage_score: None,
+        field_only: None,
+        rqm_eval: None,
+        mode: None,
+        seed_family: None,
+        suite: None,
     }
 }
 

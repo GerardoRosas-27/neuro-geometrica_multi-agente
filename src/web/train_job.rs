@@ -70,6 +70,12 @@ pub struct TrainJob {
     pub last_dataset_family: Option<String>,
     /// IDs de experimento del último lote.
     pub last_experiment_ids: Vec<String>,
+    /// UI mode badge: smoke|dev|confirm (train producto = smoke).
+    pub mode: String,
+    pub seed_family: String,
+    pub leakage_score: u64,
+    pub field_only: bool,
+    pub rqm_eval: String,
 }
 
 impl Default for TrainJob {
@@ -97,6 +103,11 @@ impl Default for TrainJob {
             last_dataset_path: None,
             last_dataset_family: None,
             last_experiment_ids: Vec::new(),
+            mode: "smoke".into(),
+            seed_family: "0x51D0_0001".into(),
+            leakage_score: 0,
+            field_only: false,
+            rqm_eval: "product_fuse".into(),
         }
     }
 }
@@ -156,6 +167,11 @@ impl TrainJob {
             last_dataset_path: self.last_dataset_path.clone(),
             last_dataset_family: self.last_dataset_family.clone(),
             last_experiment_ids: self.last_experiment_ids.clone(),
+            mode: self.mode.clone(),
+            seed_family: self.seed_family.clone(),
+            leakage_score: self.leakage_score,
+            field_only: self.field_only,
+            rqm_eval: self.rqm_eval.clone(),
         }
     }
 }
@@ -182,6 +198,11 @@ pub struct TrainJobSnapshot {
     pub last_dataset_path: Option<String>,
     pub last_dataset_family: Option<String>,
     pub last_experiment_ids: Vec<String>,
+    pub mode: String,
+    pub seed_family: String,
+    pub leakage_score: u64,
+    pub field_only: bool,
+    pub rqm_eval: String,
 }
 
 /// Request de arranque. `batches` acepta número, null, 0 o `"infinite"`.

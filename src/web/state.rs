@@ -3,7 +3,7 @@
 use crate::field_hybrid_infer::FieldHybridInfer;
 use crate::liquid_cdt_memory::SleepReport;
 use crate::liquid_cdt_rqm_fuse::{FuseReport, FusedLiquidCdt, InferRoute};
-use crate::web::experiment_suite::{run_ui_experiment_suite, ExperimentSuiteReport};
+use crate::web::experiment_suite::{run_ui_experiment_suite, ExperimentSuiteReport, TestSuiteKind};
 use crate::web::field_eval::{run_field_eval_with_progress, FieldEvalReport, FieldEvalStatus};
 use crate::web::llm_periphery::{
     generate_train_batch, open_best_probe, ConceptDecoder, LlmMode, PeripheralProbe, NUM_CONCEPTS,
@@ -159,17 +159,10 @@ impl AppState {
         let msg = message.trim();
         let lower = msg.to_lowercase();
 
+        // P0.4: Chat = decoder-only. No escribe datasets ni arranca train.
         if looks_like_train(&lower) {
-            let started = self.begin_live_train(None, 8, 1);
-            let reply = if started.ok {
-                format!(
-                    "Entrenamiento en vivo iniciado (job {}). Modo infinito · CDT por dataset. \
-                     Mira el panel Entrenamiento. Usa Detener para parar.",
-                    started.job_id
-                )
-            } else {
-                format!("No se pudo iniciar: {}", started.message)
-            };
+            let reply = "Chat es solo decoder del campo (no escribe datasets). Usa la pestaña Entrenamiento para iniciar un job de train."
+                .to_string();
             self.chat_log.push(ChatTurn {
                 role: "user".into(),
                 text: msg.into(),
@@ -180,13 +173,13 @@ impl AppState {
             self.chat_log.push(ChatTurn {
                 role: "agent".into(),
                 text: reply.clone(),
-                route: Some("train".into()),
+                route: Some("decoder_only".into()),
                 concept_in: None,
                 concept_out: None,
             });
             return ChatResponse {
                 reply,
-                route: "train".into(),
+                route: "decoder_only".into(),
                 concept_in: 0,
                 concept_out: 0,
                 liquid_score: 0.0,
@@ -416,6 +409,11 @@ impl AppState {
             last_dataset_path: self.train_job.last_dataset_path.clone(),
             last_dataset_family: None,
             last_experiment_ids: Vec::new(),
+            mode: "smoke".into(),
+            seed_family: "0x51D0_0001".into(),
+            leakage_score: 0,
+            field_only: false,
+            rqm_eval: "product_fuse".into(),
         };
         self.training = true;
         let mode_msg = if infinite {
@@ -435,7 +433,12 @@ impl AppState {
                 "batches": total_batches,
                 "infinite": infinite,
                 "batch_size": batch_size,
-                "epochs": epochs
+                "epochs": epochs,
+                "mode": "smoke",
+                "seed_family": "0x51D0_0001",
+                "leakage_score": 0,
+                "field_only": false,
+                "rqm_eval": "product_fuse",
             }),
         );
         self.push_train(
@@ -1118,6 +1121,7 @@ impl AppState {
         &mut self,
         infinite: bool,
         total_cycles: Option<usize>,
+        suite: TestSuiteKind,
     ) -> TestsStartResponse {
         if self.tests_job.running || self.field_eval_running {
             return TestsStartResponse {
@@ -1125,6 +1129,9 @@ impl AppState {
                 job_id: self.tests_job.job_id.clone(),
                 message: "ya hay pruebas en curso".into(),
                 infinite: None,
+                suite: None,
+                mode: None,
+                seed_family: None,
             };
         }
         let infinite = infinite || total_cycles.is_none() || total_cycles == Some(0);
@@ -1150,6 +1157,12 @@ impl AppState {
             current_cycle: 0,
             total_cycles,
             infinite,
+            suite: suite.as_str().into(),
+            mode: suite.mode().into(),
+            seed_family: suite.seed_family().into(),
+            leakage_score: 0,
+            field_only: suite.field_only(),
+            rqm_eval: suite.rqm_eval().into(),
             events: Default::default(),
             event_seq: 0,
             started_ms: Some(now_ms()),
@@ -1157,29 +1170,43 @@ impl AppState {
             last_report: keep,
         };
         self.field_eval_running = true;
-        let mode = if infinite {
+        let mode_label = if infinite {
             "∞ infinito".to_string()
         } else {
             format!("{} batería(s)", total_cycles.unwrap_or(1))
         };
         self.tests_job.push_event(
             "start",
-            format!("pruebas job {job_id} ({mode})"),
+            format!(
+                "pruebas job {job_id} (suite={}, mode={}, seeds={}, {mode_label})",
+                suite.as_str(),
+                suite.mode(),
+                suite.seed_family()
+            ),
             serde_json::json!({
                 "total": total,
                 "infinite": infinite,
                 "total_cycles": total_cycles,
+                "suite": suite.as_str(),
+                "mode": suite.mode(),
+                "seed_family": suite.seed_family(),
+                "leakage_score": 0,
+                "field_only": suite.field_only(),
+                "rqm_eval": suite.rqm_eval(),
             }),
         );
         TestsStartResponse {
             ok: true,
             job_id,
             message: if infinite {
-                "pruebas infinitas iniciadas".into()
+                format!("pruebas infinitas iniciadas (suite={})", suite.as_str())
             } else {
-                "pruebas iniciadas".into()
+                format!("pruebas iniciadas (suite={})", suite.as_str())
             },
             infinite: Some(infinite),
+            suite: Some(suite.as_str().into()),
+            mode: Some(suite.mode().into()),
+            seed_family: Some(suite.seed_family().into()),
         }
     }
 
@@ -1231,53 +1258,161 @@ impl AppState {
             }),
         );
 
-        // 1) Suite de experimentos (siempre; harness independientes).
-        self.tests_job.phase = "experiment_suite".into();
-        self.tests_job.push_event(
-            "suite_start",
-            "suite experimentos E8–E10 / E13·E15 / Clean-Room v2 smoke",
-            serde_json::json!({ "cycle": cycle }),
-        );
-        let suite = run_ui_experiment_suite();
-        let suite_summary = suite.summarize_counts();
-        self.last_experiment_suite = Some(suite.clone());
-        self.tests_job.push_event(
-            "suite_done",
-            format!(
-                "suite: {} filas · {} · {:.0} ms",
-                suite.rows.len(),
-                suite_summary,
-                suite.elapsed_ms
-            ),
-            serde_json::json!({
-                "cycle": cycle,
-                "verdict_counts": suite.verdict_counts,
-                "elapsed_ms": suite.elapsed_ms,
-                "rows": suite.rows,
-                "notes": suite.notes,
-            }),
-        );
+        // 1) Suite según parámetro (default smoke = solo field_eval).
+        let suite_kind =
+            crate::web::experiment_suite::parse_test_suite(Some(&self.tests_job.suite));
+        let mut suite_opt: Option<ExperimentSuiteReport> = None;
+        let mut suite_summary = "smoke_fuse".to_string();
+        match suite_kind {
+            TestSuiteKind::Smoke => {
+                self.tests_job.phase = "field_eval".into();
+                self.tests_job.push_event(
+                    "suite_start",
+                    "suite=smoke (fuse identidad/latencia/recall; sin Clean-Room DEV)",
+                    serde_json::json!({
+                        "cycle": cycle,
+                        "suite": "smoke",
+                        "mode": self.tests_job.mode,
+                        "seed_family": self.tests_job.seed_family,
+                        "field_only": self.tests_job.field_only,
+                        "rqm_eval": self.tests_job.rqm_eval,
+                        "leakage_score": self.tests_job.leakage_score,
+                    }),
+                );
+            }
+            TestSuiteKind::ExperimentsSmoke => {
+                self.tests_job.phase = "experiment_suite".into();
+                self.tests_job.push_event(
+                    "suite_start",
+                    "suite=experiments_smoke E8–E10 / E13·E15 / Clean-Room v2 (1 seed)",
+                    serde_json::json!({
+                        "cycle": cycle,
+                        "suite": "experiments_smoke",
+                        "mode": self.tests_job.mode,
+                        "seed_family": self.tests_job.seed_family,
+                        "field_only": self.tests_job.field_only,
+                        "rqm_eval": self.tests_job.rqm_eval,
+                    }),
+                );
+                let suite = run_ui_experiment_suite();
+                suite_summary = suite.summarize_counts();
+                self.last_experiment_suite = Some(suite.clone());
+                let leak = suite.rows.iter().filter(|r| r.verdict == "LEAKED").count() as u64;
+                self.tests_job.leakage_score = leak;
+                self.tests_job.push_event(
+                    "suite_done",
+                    format!(
+                        "suite: {} filas · {} · {:.0} ms · leakage={}",
+                        suite.rows.len(),
+                        suite_summary,
+                        suite.elapsed_ms,
+                        leak
+                    ),
+                    serde_json::json!({
+                        "cycle": cycle,
+                        "verdict_counts": suite.verdict_counts,
+                        "elapsed_ms": suite.elapsed_ms,
+                        "rows": suite.rows,
+                        "notes": suite.notes,
+                        "leakage_score": leak,
+                        "field_only": self.tests_job.field_only,
+                        "rqm_eval": self.tests_job.rqm_eval,
+                    }),
+                );
+                suite_opt = Some(suite);
+            }
+            TestSuiteKind::Stage2V2Dev => {
+                self.tests_job.phase = "stage2_v2_dev".into();
+                self.tests_job.push_event(
+                    "suite_start",
+                    "suite=stage2_v2_dev (8 seeds 0xA300–0xA307; no confirmation 0xB300)",
+                    serde_json::json!({
+                        "cycle": cycle,
+                        "suite": "stage2_v2_dev",
+                        "mode": "dev",
+                        "seed_family": "0xA300–0xA307",
+                        "field_only": true,
+                        "rqm_eval": "off",
+                    }),
+                );
+                let rows = crate::field_autonomy_stage2_v2::run_dev_suite(true);
+                let mut counts = std::collections::HashMap::new();
+                let mut leak = 0u64;
+                let mut exp_rows = Vec::new();
+                for r in &rows {
+                    *counts.entry(r.verdict.clone()).or_insert(0u64) += 1;
+                    leak = leak.saturating_add(r.leakage_score);
+                    exp_rows.push(crate::web::experiment_suite::SuiteRow {
+                        suite: "stage2_v2_dev".into(),
+                        experiment: r.experiment.clone(),
+                        verdict: r.verdict.clone(),
+                        notes: r.notes.clone(),
+                        elapsed_ms: 0.0,
+                    });
+                }
+                self.tests_job.leakage_score = leak;
+                self.tests_job.field_only = true;
+                self.tests_job.rqm_eval = "off".into();
+                let report = ExperimentSuiteReport {
+                    rows: exp_rows,
+                    verdict_counts: counts.clone(),
+                    elapsed_ms: 0.0,
+                    notes: vec![
+                        "stage2_v2_dev smoke_only hyperparams; confirmation diferida".into(),
+                        format!("leakage_score_sum={leak}"),
+                    ],
+                };
+                suite_summary = report.summarize_counts();
+                self.last_experiment_suite = Some(report.clone());
+                self.tests_job.push_event(
+                    "suite_done",
+                    format!(
+                        "stage2_v2_dev: {} filas · {} · leakage_sum={}",
+                        report.rows.len(),
+                        suite_summary,
+                        leak
+                    ),
+                    serde_json::json!({
+                        "cycle": cycle,
+                        "verdict_counts": counts,
+                        "rows": report.rows,
+                        "leakage_score": leak,
+                        "field_only": true,
+                        "rqm_eval": "off",
+                    }),
+                );
+                suite_opt = Some(report);
+            }
+        }
         if self.tests_job.cancelled {
             self.finish_tests_job(true);
             return false;
         }
 
-        // 2) field_eval del modelo (condicionado a engramas/sueño → notas honestas).
+        // 2) field_eval del modelo (siempre; smoke = solo esto + métricas fuse).
         let mut progress: Vec<(usize, usize, String)> = Vec::new();
         let mut report = self.run_tests_with_progress(|step, total, msg| {
             progress.push((step, total, msg.to_string()));
         });
+        report.leakage_score = Some(self.tests_job.leakage_score);
+        report.field_only = Some(self.tests_job.field_only);
+        report.rqm_eval = Some(self.tests_job.rqm_eval.clone());
+        report.mode = Some(self.tests_job.mode.clone());
+        report.seed_family = Some(self.tests_job.seed_family.clone());
+        report.suite = Some(self.tests_job.suite.clone());
         if !report.had_engrams {
-            report.notes.push(
+            report.notes.push(if suite_kind == TestSuiteKind::Smoke {
+                "field_eval sin engramas: se reporta estado actual (suite=smoke)".into()
+            } else {
                 "field_eval sin engramas/sin sueño consolidado: se reporta estado actual; suite de experimentos sí corrió"
-                    .into(),
-            );
+                    .into()
+            });
         } else if self.last_sleep_optimize.is_none() && self.last_sleep.is_none() {
             report
                 .notes
                 .push("había engramas pero no hay informe de sueño optimizado reciente".into());
         }
-        report.experiment_suite = Some(suite);
+        report.experiment_suite = suite_opt;
         for (step, total, msg) in progress {
             self.tests_job.step = step;
             self.tests_job.total_steps = total;
@@ -1590,7 +1725,12 @@ mod tests {
         s.probe =
             PeripheralProbe::Lexicon(crate::field_linguistic_layer::GemmaShapedLexicon::new(3));
         s.decoder = ConceptDecoder::new(LlmMode::Lexicon);
+        let before_ds = s.train_job.datasets_saved;
         let _ = s.handle_chat("hola campo de prueba único xyz");
+        let train_cmd = s.handle_chat("entrena ahora por favor");
+        assert_eq!(train_cmd.route, "decoder_only");
+        assert!(!s.train_job.running, "chat must not start train job");
+        assert_eq!(s.train_job.datasets_saved, before_ds);
         assert!(
             s.train_job.events.iter().all(|e| e.kind != "dataset"),
             "chat must not create train dataset events"

@@ -133,9 +133,9 @@
       job.accuracy == null ? "—" : (100 * job.accuracy).toFixed(1) + "%";
     $("tr-eng").textContent = job.engrams != null ? job.engrams : "—";
     if ($("tr-family")) {
-      const fam = j.last_dataset_family || "—";
-      const exps = Array.isArray(j.last_experiment_ids) && j.last_experiment_ids.length
-        ? ` (${j.last_experiment_ids.join(",")})`
+      const fam = job.last_dataset_family || "—";
+      const exps = Array.isArray(job.last_experiment_ids) && job.last_experiment_ids.length
+        ? ` (${job.last_experiment_ids.join(",")})`
         : "";
       $("tr-family").textContent = fam === "—" ? "—" : fam + exps;
     }
@@ -149,6 +149,24 @@
       (job.last_checkpoint && job.last_checkpoint.path) ||
       "—";
     $("tr-decoded").textContent = job.last_decoded || "—";
+    const trMode = job.mode || "smoke";
+    const trSeed = job.seed_family || "0x51D0_0001";
+    const trLeak = job.leakage_score != null ? job.leakage_score : 0;
+    const trFo = job.field_only === true;
+    const trRqm = job.rqm_eval || "product_fuse";
+    if ($("tr-mode-badge")) {
+      $("tr-mode-badge").textContent = `mode=${trMode}`;
+      $("tr-mode-badge").dataset.mode = trMode;
+    }
+    if ($("tr-seed-badge")) $("tr-seed-badge").textContent = `seeds=${trSeed}`;
+    if ($("tr-leak-badge")) {
+      $("tr-leak-badge").textContent =
+        `leakage=${trLeak} · field_only=${trFo} · rqm_eval=${trRqm}`;
+    }
+    if ($("tr-mode-seeds")) $("tr-mode-seeds").textContent = `${trMode} / ${trSeed}`;
+    if ($("tr-antileak")) {
+      $("tr-antileak").textContent = `${trLeak} · ${trFo} · ${trRqm}`;
+    }
 
     const merged =
       liveEvents.length > 0
@@ -263,6 +281,27 @@
           ? "idle / listo"
           : "idle";
     $("te-job").textContent = job.job_id || "—";
+    const teMode = job.mode || "smoke";
+    const teSuite = job.suite || "smoke";
+    const teSeed = job.seed_family || "0x51D0_0001";
+    const teLeak = job.leakage_score != null ? job.leakage_score : 0;
+    const teFo = job.field_only === true;
+    const teRqm = job.rqm_eval || "product_fuse";
+    if ($("te-mode-badge")) {
+      $("te-mode-badge").textContent = `mode=${teMode}`;
+      $("te-mode-badge").dataset.mode = teMode;
+    }
+    if ($("te-suite-badge")) $("te-suite-badge").textContent = `suite=${teSuite}`;
+    if ($("te-seed-badge")) $("te-seed-badge").textContent = `seeds=${teSeed}`;
+    if ($("te-leak-badge")) {
+      $("te-leak-badge").textContent =
+        `leakage=${teLeak} · field_only=${teFo} · rqm_eval=${teRqm}`;
+    }
+    if ($("te-mode-suite")) $("te-mode-suite").textContent = `${teMode} / ${teSuite}`;
+    if ($("te-seed-family")) $("te-seed-family").textContent = teSeed;
+    if ($("te-antileak")) {
+      $("te-antileak").textContent = `${teLeak} · ${teFo} · ${teRqm}`;
+    }
     $("te-progress").textContent =
       job.total_steps > 0
         ? `${job.step || 0} / ${job.total_steps} (${job.phase || "—"})` +
@@ -297,7 +336,19 @@
           .sort();
         $("te-suite").textContent = `${suite.rows?.length || 0} filas · ${parts.join(" ")} · ${Math.round(suite.elapsed_ms || 0)} ms`;
       } else {
-        $("te-suite").textContent = "—";
+        $("te-suite").textContent = r.suite === "smoke" ? "smoke (fuse only)" : "—";
+      }
+    }
+    if (r.mode || r.suite) {
+      if ($("te-mode-suite")) {
+        $("te-mode-suite").textContent = `${r.mode || "—"} / ${r.suite || "—"}`;
+      }
+      if ($("te-seed-family") && r.seed_family) {
+        $("te-seed-family").textContent = r.seed_family;
+      }
+      if ($("te-antileak")) {
+        $("te-antileak").textContent =
+          `${r.leakage_score ?? 0} · ${r.field_only === true} · ${r.rqm_eval || "—"}`;
       }
     }
     $("te-id-acc").textContent =
@@ -721,8 +772,8 @@
     $("te-report").textContent = "Ejecutando batería…";
     try {
       const body = infinite
-        ? { infinite: true, cycles: null }
-        : { infinite: false, cycles: 1 };
+        ? { infinite: true, cycles: null, suite: "smoke" }
+        : { infinite: false, cycles: 1, suite: "smoke" };
       const r = await api("/api/tests/start", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -768,7 +819,7 @@
 
   addMsg(
     "agent",
-    "Listo. Chat = interpretación del modelo de campo (decoder). Entrenamiento, Sueño y Pruebas son jobs en servidor: al refrescar la UI se reconecta sin cancelar.",
+    "Listo. Chat = decoder-only (no escribe datasets). Pruebas default = suite smoke. Entrenamiento/Sueño/Pruebas son jobs en servidor; al refrescar la UI se reconecta sin cancelar.",
   );
   refreshHealth();
   refreshTelemetry();
