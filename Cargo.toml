@@ -51,7 +51,7 @@ tokenizers = { version = "0.22.2", default-features = false, features = ["onig"]
 # Feature `web` (opcionales; no afectan `cargo test --lib` por defecto)
 axum = { version = "0.8", optional = true, features = ["json"] }
 tokio = { version = "1", optional = true, features = ["full"] }
-tower-http = { version = "0.6", optional = true, features = ["fs", "cors", "trace"] }
+tower-http = { version = "0.6", optional = true, features = ["fs", "cors", "trace", "set-header"] }
 tracing = { version = "0.1", optional = true }
 tracing-subscriber = { version = "0.3", optional = true, features = ["env-filter"] }
 uuid = { version = "1", optional = true, features = ["v4", "serde"] }

@@ -18,8 +18,11 @@ use std::convert::Infallible;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use axum::http::{header, HeaderValue};
+use tower::ServiceBuilder;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::services::ServeDir;
+use tower_http::set_header::SetResponseHeaderLayer;
 use tower_http::trace::TraceLayer;
 
 pub type SharedState = Arc<Mutex<AppState>>;
@@ -239,9 +242,18 @@ pub fn router(state: SharedState, static_dir: PathBuf) -> Router {
         .route("/api/chat/history", get(chat_history))
         .with_state(state);
 
+    // Estáticos: no-cache para que index.html siempre pida app.js/css frescos
+    // (cache-bust ?v=N en index.html es la defensa principal; esto refuerza).
+    let static_svc = ServiceBuilder::new()
+        .layer(SetResponseHeaderLayer::overriding(
+            header::CACHE_CONTROL,
+            HeaderValue::from_static("no-cache, must-revalidate"),
+        ))
+        .service(ServeDir::new(static_dir).append_index_html_on_directories(true));
+
     Router::new()
         .merge(api)
-        .fallback_service(ServeDir::new(static_dir).append_index_html_on_directories(true))
+        .fallback_service(static_svc)
         .layer(cors)
         .layer(TraceLayer::new_for_http())
 }
