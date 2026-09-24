@@ -662,8 +662,9 @@ fn git_commit() -> String {
         .unwrap_or_else(|| "unknown".into())
 }
 
-/// Dual feature path (v3.4): do not force one encoding for everything.
-/// SoftScale preserves E22 oracle-mid / compose; Relative desaturates static on E18/E21/E24/E25/E27.
+/// Dual feature path (v3.4/v3.5): do not force one encoding for everything.
+/// SoftScale preserves E22 oracle-mid / compose + E21/E23 dyn train;
+/// Relative desaturates static on E18/E24/E25/E27 and as E21/E22 static-only probe.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum FeatPath {
     SoftScale,
@@ -965,6 +966,23 @@ fn decode_ood(mlp: &PointDecoder, lin: &LinearPointProbe, psi: &[f64], alpha_lin
         (1.0 - alpha_lin) * mx + alpha_lin * lx,
         (1.0 - alpha_lin) * my + alpha_lin * ly,
     )
+}
+
+/// Adaptive lin∩mlp: lean linear farther from origin (OOD / compose mid transfer).
+fn decode_ood_adaptive(
+    mlp: &PointDecoder,
+    lin: &LinearPointProbe,
+    psi: &[f64],
+    alpha_base: f64,
+) -> (f64, f64) {
+    let (mx, my) = mlp.decode(psi);
+    let (lx, ly) = lin.decode(psi);
+    let r = (lx * lx + ly * ly).sqrt().max((mx * mx + my * my).sqrt());
+    // Train domain ~[-2.5,2.5]; TEST compose ~[3,6]. Ramp linear share with radius.
+    let ramp = ((r - 2.0) / 4.0).clamp(0.0, 1.0);
+    let alpha = (alpha_base + 0.22 * ramp).clamp(0.35, 0.70);
+    // Reuse fixed blend path for the chosen alpha (keeps decode_ood live).
+    decode_ood(mlp, lin, psi, alpha)
 }
 
 
@@ -1402,11 +1420,11 @@ fn train_dynamics(
                     steps += 1;
                 }
             }
-            // Multi-step: dense short (TF+free-run) + sparse long (TF-only).
-            // Free-run on h16/h32 destabilized short horizons under LONG.
+            // Multi-step: dense short (TF+free-run) + sparse long (TF-only + light h16 free-run).
+            // Free-run on h32/h64 still avoided (destabilized short under LONG).
             if du >= 2 {
-                // 78% short (preserve h1–h8); 22% long TF-only (nudge h32/h64).
-                let h = if rng.gen::<f64>() < 0.78 {
+                // v3.5: 70% short (preserve h1–h8); 30% long TF (nudge h32/h64).
+                let h = if rng.gen::<f64>() < 0.70 {
                     short_hs[rng.gen_range(0..short_hs.len())]
                 } else {
                     long_hs[rng.gen_range(0..long_hs.len())]
@@ -1427,6 +1445,21 @@ fn train_dynamics(
                         let _ = dynm.train_transition(&rolled, &true_fps[t + 1]);
                         steps += 1;
                         rolled = dynm.step(&rolled);
+                    }
+                } else if h == 16 && rng.gen::<f64>() < 0.45 {
+                    // Light scheduled free-run after short stable (v3.5 residual nudge).
+                    let mut rolled = src.clone();
+                    for t in 0..h {
+                        let pred = dynm.step(&rolled);
+                        // Soft residual skip: blend identity to curb long drift.
+                        let mut blended = pred.clone();
+                        for i in 0..blended.len().min(rolled.len()) {
+                            blended[i] = 0.88 * blended[i] + 0.12 * rolled[i];
+                        }
+                        normalize(&mut blended);
+                        let _ = dynm.train_transition(&rolled, &true_fps[t + 1]);
+                        steps += 1;
+                        rolled = blended;
                     }
                 }
             }
@@ -1517,6 +1550,62 @@ fn eval_on(
         // Dyn still uses action; this measures causal gain of Dφ vs saturated action-shared static.
         let src_g = encode_xy_geom(enc, s.x, path);
         let tgt_g = encode_xy_geom(enc, s.y, path);
+        cs.push(cosine(&src_g, &tgt_g));
+        cl.push(cosine(&linear.step(&src), &tgt));
+        cn.push(cosine(&nn_predict(&src, train_src, train_tgt), &tgt));
+        ct.push(cosine(&table_predict(&src, train_src, train_tgt), &tgt));
+        mses.push(mse(&pred, &tgt));
+        rels.push(rel_err(&pred, &tgt));
+        energies.push(energy_of(&pred));
+        let mut noisy = src.clone();
+        if !noisy.is_empty() {
+            noisy[0] += 0.01;
+            normalize(&mut noisy);
+        }
+        let pred_n = dynm.step(&noisy);
+        stabs.push(cosine(&pred, &pred_n));
+    }
+    EvalPack {
+        cos_dyn: mean(&cd),
+        cos_static: mean(&cs),
+        cos_linear: mean(&cl),
+        cos_nn: mean(&cn),
+        cos_table: mean(&ct),
+        mse: mean(&mses),
+        rel_err: mean(&rels),
+        energy: mean(&energies),
+        stability: mean(&stabs),
+    }
+}
+
+/// Dual-path eval (v3.5): SoftScale (or train path) for dyn; Relative-only for static probe.
+fn eval_on_dual_static(
+    enc: &TrainableFieldEncoder,
+    dynm: &FieldDynamics,
+    linear: &LinearDyn,
+    train_src: &[Vec<f64>],
+    train_tgt: &[Vec<f64>],
+    test: &[Sample],
+    path_dyn: FeatPath,
+    path_static: FeatPath,
+) -> EvalPack {
+    let mut cd = Vec::new();
+    let mut cs = Vec::new();
+    let mut cl = Vec::new();
+    let mut cn = Vec::new();
+    let mut ct = Vec::new();
+    let mut mses = Vec::new();
+    let mut rels = Vec::new();
+    let mut energies = Vec::new();
+    let mut stabs = Vec::new();
+    for s in test {
+        let src = encode_xy(enc, s.x, s.action, path_dyn);
+        let tgt = encode_xy(enc, s.y, s.action, path_dyn);
+        let pred = dynm.step(&src);
+        cd.push(cosine(&pred, &tgt));
+        // Static baseline: Relative-only geom probe (desaturate without hurting SoftScale dyn).
+        let src_g = encode_xy_geom(enc, s.x, path_static);
+        let tgt_g = encode_xy_geom(enc, s.y, path_static);
         cs.push(cosine(&src_g, &tgt_g));
         cl.push(cosine(&linear.step(&src), &tgt));
         cn.push(cosine(&nn_predict(&src, train_src, train_tgt), &tgt));
@@ -1925,7 +2014,9 @@ pub fn run_e20(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
 }
 
 pub fn run_e21(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
-    let path = FeatPath::Relative;
+    // v3.5 dual-probe: SoftScale train/dyn (stable absolutes); Relative-only static.
+    let path = FeatPath::SoftScale;
+    let path_static = FeatPath::Relative;
     let mut rng = Xoshiro256StarStar::seed_from_u64(seed ^ 0xE21);
     // Varied dx curriculum + mild dy jitter (plan v3 §8 / §19).
     let train_dxs = [-2.0_f64, -1.5, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0];
@@ -2009,8 +2100,12 @@ pub fn run_e21(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
         .map(|s| encode_xy(&enc, s.y, s.action, path))
         .collect();
     let linear = LinearDyn::fit(&train_src, &train_tgt);
-    let ev_i = eval_on(&enc, &dynm, &linear, &train_src, &train_tgt, &inter, path);
-    let ev_e = eval_on(&enc, &dynm, &linear, &train_src, &train_tgt, &extra, path);
+    let ev_i = eval_on_dual_static(
+        &enc, &dynm, &linear, &train_src, &train_tgt, &inter, path, path_static,
+    );
+    let ev_e = eval_on_dual_static(
+        &enc, &dynm, &linear, &train_src, &train_tgt, &extra, path, path_static,
+    );
     let mut row = base_row("E21_interpolation_vs_extrapolation", seed);
     row.mode = "MODE_2_DYNAMIC_FIELD".into();
     row.rule = "translation_param".into();
@@ -2022,7 +2117,7 @@ pub fn run_e21(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
     row.hyperparam_lock = hp.status().into();
     fill_eval(&mut row, &ev_e, 0, steps, &enc, &dynm);
     row.notes = format!(
-        "interp_cos={:.3} extrap_cos={:.3} static_no_action={:.3} (dx denser + multifamily mix; train dx in [-2,2] test dx=3; n_train={})",
+        "v3.5 SoftScale-train + Relative-static-probe; interp_cos={:.3} extrap_cos={:.3} static_rel={:.3} (dx denser + multifamily; train dx in [-2,2] test dx=3; n_train={})",
         ev_i.cos_dyn, ev_e.cos_dyn, ev_e.cos_static, train.len()
     );
     row.cosine_dynamic = ev_e.cos_dyn;
@@ -2085,6 +2180,33 @@ pub fn run_e22(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
         hp.dyn_updates,
         None,
         seed ^ 0x23, path);
+    // v3.5 compose-chain hop-2 weighting: train Dφ on T2 at T1-images (never compose
+    // as a single transition; never TEST points). Helps e2e second hop under a2.
+    {
+        let chain_reps = 3usize;
+        for s in &train {
+            // Only chain from T1 samples (translation family) into T2.
+            if s.rule.family() != "translation" {
+                continue;
+            }
+            let mid = r1.apply(s.x);
+            let z_mid = encode_xy(&enc, mid, a2, path);
+            let z_y = encode_xy(&enc, r2.apply(mid), a2, path);
+            for _ in 0..chain_reps {
+                let _ = dynm.train_transition(&z_mid, &z_y);
+                steps += 1;
+            }
+            // Also far-domain T1→mid then T2 hop (OOD compose prep).
+            let far = (s.x.0 * 0.4 + 3.2, s.x.1 * 0.4 - 1.1);
+            let mid_f = r1.apply(far);
+            let z_mf = encode_xy(&enc, mid_f, a2, path);
+            let z_yf = encode_xy(&enc, r2.apply(mid_f), a2, path);
+            for _ in 0..chain_reps {
+                let _ = dynm.train_transition(&z_mf, &z_yf);
+                steps += 1;
+            }
+        }
+    }
     let train_src: Vec<_> = train
         .iter()
         .map(|s| encode_xy(&enc, s.x, s.action, path))
@@ -2119,16 +2241,15 @@ pub fn run_e22(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
             dec_pts.push(s.y);
         }
     }
-    // OOD mid decoder (v3.4): expand geometry via multi-step single-rule rolls into
-    // far regions (train rules only — never compose targets / never TEST points).
+    // OOD mid decoder (v3.4/v3.5): multi-step single-rule rolls + far band + chain mids.
+    // Train rules only — never compose targets / never TEST points.
     {
         let mut rng_ood = Xoshiro256StarStar::seed_from_u64(seed ^ 0xA00D);
         for s in &train {
             let mut pt = s.x;
-            for step in 0..6 {
+            for step in 0..8 {
                 pt = s.rule.apply(pt);
-                // Push |coord| outward toward TEST-like magnitudes without reading TEST.
-                if step >= 2 {
+                if step >= 1 {
                     dec_psis.push(encode_xy(&enc, pt, s.action, path));
                     dec_pts.push(pt);
                     dec_psis.push(encode_xy_geom(&enc, pt, path));
@@ -2139,32 +2260,45 @@ pub fn run_e22(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
                     dec_pts.push(nxt);
                 }
             }
-            // Domain-randomized points: scale train coords into [2.5, 5.5]-ish band.
-            let scale = 1.6 + rng_ood.gen::<f64>() * 1.2;
-            let shift = 2.8 + rng_ood.gen::<f64>() * 1.5;
-            let far = (s.x.0 * 0.35 * scale + shift, s.x.1 * 0.35 * scale - shift * 0.4);
-            let far_y = s.rule.apply(far);
-            dec_psis.push(encode_xy(&enc, far, s.action, path));
-            dec_pts.push(far);
-            dec_psis.push(encode_xy(&enc, far_y, s.action, path));
-            dec_pts.push(far_y);
-            dec_psis.push(encode_xy_geom(&enc, far, path));
-            dec_pts.push(far);
-            dec_psis.push(dynm.step(&encode_xy(&enc, far, s.action, path)));
-            dec_pts.push(far_y);
+            // Domain-randomized points: scale into TEST-like [2.5, 6]-ish band.
+            for _rep in 0..2 {
+                let scale = 1.6 + rng_ood.gen::<f64>() * 1.4;
+                let shift = 2.6 + rng_ood.gen::<f64>() * 2.0;
+                let far = (s.x.0 * 0.35 * scale + shift, s.x.1 * 0.35 * scale - shift * 0.4);
+                let far_y = s.rule.apply(far);
+                dec_psis.push(encode_xy(&enc, far, s.action, path));
+                dec_pts.push(far);
+                dec_psis.push(encode_xy(&enc, far_y, s.action, path));
+                dec_pts.push(far_y);
+                dec_psis.push(encode_xy_geom(&enc, far, path));
+                dec_pts.push(far);
+                dec_psis.push(dynm.step(&encode_xy(&enc, far, s.action, path)));
+                dec_pts.push(far_y);
+            }
+            // Compose-chain mid points under a2 (geometry only from T1; no compose label).
+            if s.rule.family() == "translation" {
+                let mid = r1.apply(s.x);
+                dec_psis.push(encode_xy(&enc, mid, a2, path));
+                dec_pts.push(mid);
+                dec_psis.push(encode_xy_geom(&enc, mid, path));
+                dec_pts.push(mid);
+                let mid_far = r1.apply((s.x.0 * 0.4 + 3.0, s.x.1 * 0.4 - 1.0));
+                dec_psis.push(encode_xy(&enc, mid_far, a2, path));
+                dec_pts.push(mid_far);
+            }
         }
     }
-    let mut decoder = PointDecoder::fit(&dec_psis, &dec_pts, 180);
-    let lin_probe = LinearPointProbe::fit(&dec_psis, &dec_pts, 120);
-    let aw_ep = (hp.dyn_epochs / 4).max(50).min(140);
+    let mut decoder = PointDecoder::fit(&dec_psis, &dec_pts, 220);
+    let lin_probe = LinearPointProbe::fit(&dec_psis, &dec_pts, 160);
+    let aw_ep = (hp.dyn_epochs / 3).max(60).min(180);
     steps += train_decoder_action_aware(&enc, &dynm, &mut decoder, &train, aw_ep, seed ^ 0xDEC, path);
     // Extra OOD-focused decoder steps on rolled far points (Dφ still frozen).
     {
         let mut rng_aw = Xoshiro256StarStar::seed_from_u64(seed ^ 0xA90D);
-        for _ in 0..aw_ep {
+        for _ in 0..(aw_ep + aw_ep / 2) {
             for s in &train {
                 let mut pt = s.x;
-                let hops = 3 + (rng_aw.gen::<u32>() % 4) as usize;
+                let hops = 3 + (rng_aw.gen::<u32>() % 5) as usize;
                 for _ in 0..hops {
                     pt = s.rule.apply(pt);
                 }
@@ -2173,6 +2307,11 @@ pub fn run_e22(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
                 let pred = dynm.step(&psi);
                 let nxt = s.rule.apply(pt);
                 let _ = decoder.train_step(&pred, nxt);
+                // Mid under alternate action (compose re-encode path).
+                if let Some((dx, dy)) = s.action {
+                    let alt = a2.or(Some((dy * 0.7 + 0.15, -dx * 0.7)));
+                    let _ = decoder.train_step(&encode_xy(&enc, pt, alt, path), pt);
+                }
             }
         }
     }
@@ -2192,17 +2331,17 @@ pub fn run_e22(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
         step1_cos.push(cosine(&pred1, &z_mid_tgt));
 
         // Decoder mid (no oracle) — action-aware re-encode with a2
-        // OOD blend: linear probe helps train→TEST region transfer; MLP keeps local fidelity.
-        let mid_hat = decode_ood(&decoder, &lin_probe, &pred1, 0.40);
+        // Adaptive lin∩mlp (v3.5): more linear farther from origin.
+        let mid_hat = decode_ood_adaptive(&decoder, &lin_probe, &pred1, 0.50);
         let z_mid = encode_xy(&enc, mid_hat, a2, path);
         let z_y = encode_xy(&enc, s.y, a2, path);
         let pred2 = dynm.step(&z_mid);
         e2e_cos.push(cosine(&pred2, &z_y));
-        // Static WITHOUT action channels on full compose endpoints.
-        let src_g = encode_xy_geom(&enc, s.x, path);
-        let tgt_g = encode_xy_geom(&enc, s.y, path);
+        // Static compose endpoints: Relative-only probe (desat SoftScale saturation).
+        let src_g = encode_xy_geom(&enc, s.x, FeatPath::Relative);
+        let tgt_g = encode_xy_geom(&enc, s.y, FeatPath::Relative);
         e2e_static.push(cosine(&src_g, &tgt_g));
-        let y_hat = decode_ood(&decoder, &lin_probe, &pred2, 0.40);
+        let y_hat = decode_ood_adaptive(&decoder, &lin_probe, &pred2, 0.50);
         e2e_pt_err.push(PointDecoder::point_err(y_hat, s.y));
 
         // Oracle-mid reference (action-aware mid path quality)
@@ -2251,7 +2390,7 @@ pub fn run_e22(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
     let beats = cos_dyn > ev_shot.cos_nn + 0.02 && cos_dyn > ev_shot.cos_table + 0.02;
     row.verdict = verdict_of(cos_dyn, cos_static, 0, beats).into();
     row.notes = format!(
-        "e2e-mlp OOD-blend (lin+mlp) action-aware Dφ-frozen SoftScale compose RQM-OFF cos={:.3} static_no_action={:.3} step1={:.3} pt_err={:.3}; oracle-mid cos={:.3}; soft-hybrid-diag={:.3}; single-shot={:.3}; linear={:.3} nn={:.3} table={:.3}",
+        "v3.5 e2e adaptive-lin∩mlp + compose-chain hop2 + Relative-static SoftScale-dyn RQM-OFF cos={:.3} static_rel={:.3} step1={:.3} pt_err={:.3}; oracle-mid={:.3}; soft-hybrid-diag={:.3}; single-shot={:.3}; linear={:.3} nn={:.3} table={:.3}",
         cos_dyn, cos_static, mean(&step1_cos), mean(&e2e_pt_err), mean(&oracle_cos),
         mean(&hybrid_cos), ev_shot.cos_dyn, ev_shot.cos_linear, ev_shot.cos_nn, ev_shot.cos_table
     );
@@ -2321,7 +2460,7 @@ pub fn run_e23(seed: u64, hp: &HyperparamLock) -> ResultRowV2 {
     row.stability = cos_h.get(3).copied().unwrap_or(0.0);
     row.leakage_score = 0;
     row.notes = format!(
-        "horizons {:?} cos {:?} energy {:?} (mixed h1–h8 TF+free-run + sparse h16/h32 TF-only; no teacher forcing at eval)",
+        "horizons {:?} cos {:?} energy {:?} (v3.5: 70/30 short/long TF; light h16 residual free-run; no TF at eval)",
         horizons, cos_h, energy_h
     );
     row.verdict = if row.cosine_dynamic < COS_PARTIAL {

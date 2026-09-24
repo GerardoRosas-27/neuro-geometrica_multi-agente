@@ -71,14 +71,13 @@ fn main() {
     ));
     md.push_str("Seeds confirmación `0xB300–0xB30F`: **no corridas**.\n");
     md.push_str("Periferia: numeric FIELD_ONLY; RQM/NN/table/attractor OFF en eval.\n\n");
-    md.push_str("## Hardening en esta corrida (v3.4)\n\n");
+    md.push_str("## Hardening en esta corrida (v3.5)\n\n");
     md.push_str("- `HyperparamLock::long()`: dyn_epochs=560 dyn_updates=7 (push absolute cos_dyn).\n");
-    md.push_str("- **Dual FeatPath (v3.4)**: SoftScale for E22 mid/compose + E23 rollout; Relative/centered for E18/E21/E24/E25/E27 static desaturation.\n");
-    md.push_str("- Static baseline **sin** action + contraste geom-only en encoder.\n");
-    md.push_str("- Dyn-focused extras + low-cos curriculum repeats.\n");
-    md.push_str("- E23: mixed h1–h8 TF+free-run + richer long TF (h16/h32/h64, ~22%); no free-run on long.\n");
-    md.push_str("- E22: SoftScale + OOD decoder (rule-roll far domain + lin∩mlp blend); Dφ frozen; e2e primary.\n");
-    md.push_str("- Currícula multi-familia + E21 dx denso.\n\n");
+    md.push_str("- **E21 dual-probe (v3.5)**: SoftScale train/dyn + Relative-only static probe.\n");
+    md.push_str("- **E22 (v3.5)**: compose-chain hop-2 Dφ; adaptive lin∩mlp; Relative static endpoints; stronger OOD decoder.\n");
+    md.push_str("- **E23 (v3.5)**: 70/30 short/long TF; light h16 residual free-run (no h32/h64 free-run).\n");
+    md.push_str("- Dual FeatPath retained: SoftScale E22/E23 dyn; Relative E18/E24/E25/E27 (+ E21/E22 static probe).\n");
+    md.push_str("- Static baseline **sin** action + contraste geom-only; dyn extras + multi-familia + E21 dx denso.\n\n");
     md.push_str(&format!(
         "Wall time: **{elapsed:.1}s**. Filas: {}.\n\n",
         rows.len()
@@ -111,7 +110,7 @@ fn main() {
     md.push_str("\nCSV: [`resultados_etapa_2_v3_long.csv`](resultados_etapa_2_v3_long.csv)\n\n");
     md.push_str("## Lectura honesta (corrida LONG)\n\n");
     md.push_str("- Leakage FIELD_ONLY y contaminación: ver secciones arriba (deben ser 0).\n");
-    md.push_str("- Palancas v3.4: dual FeatPath; E22 OOD mid decoder; E23 long-TF nudge; Relative static desat on E18/E21/E24/E25/E27.\n");
+    md.push_str("- Palancas v3.5: E21 SoftScale+Relative probe; E22 compose-chain+adaptive blend+Relative static; E23 70/30+h16 residual.\n");
     md.push_str("- Seeds confirmación `0xB300–0xB30F`: **no corridas** (DEV no locked aún para confirmación).\n");
     fs::write("docs/resultados_etapa_2_v3_long.md", &md).expect("write md");
     println!("wrote docs/resultados_etapa_2_v3_long.{{md,csv}} ({elapsed:.1}s)");
