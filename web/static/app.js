@@ -128,14 +128,19 @@
           ? "idle / listo"
           : "idle";
     $("tr-job").textContent = job.job_id || "—";
-    $("tr-epochs").textContent = job.epochs != null ? job.epochs : "—";
+    // "Épocas / lote": mostrar lote actual (progreso) + épocas por lote (config).
+    // Antes solo se mostraba job.epochs (siempre 1) y un typo `j.` rompía el resto.
+    const epochsCfg = job.epochs != null ? job.epochs : "—";
+    $("tr-epochs").textContent =
+      `lote ${cur} · ${epochsCfg} ép/lote` +
+      (job.batch_size != null ? ` · bs=${job.batch_size}` : "");
     $("tr-acc").textContent =
       job.accuracy == null ? "—" : (100 * job.accuracy).toFixed(1) + "%";
     $("tr-eng").textContent = job.engrams != null ? job.engrams : "—";
     if ($("tr-family")) {
-      const fam = j.last_dataset_family || "—";
-      const exps = Array.isArray(j.last_experiment_ids) && j.last_experiment_ids.length
-        ? ` (${j.last_experiment_ids.join(",")})`
+      const fam = job.last_dataset_family || "—";
+      const exps = Array.isArray(job.last_experiment_ids) && job.last_experiment_ids.length
+        ? ` (${job.last_experiment_ids.join(",")})`
         : "";
       $("tr-family").textContent = fam === "—" ? "—" : fam + exps;
     }
@@ -328,9 +333,14 @@
 
   function renderTelemetry(t) {
     const job = t.live_job || (t.train && t.train.live) || null;
-    if (job) renderLiveJob(job);
-    if (t.sleep_job) renderSleepJob(t.sleep_job);
-    if (t.tests_job) renderTestsJob(t.tests_job);
+    // Aislar errores de render de job para no bloquear líquido/CDT/RQM.
+    try {
+      if (job) renderLiveJob(job);
+      if (t.sleep_job) renderSleepJob(t.sleep_job);
+      if (t.tests_job) renderTestsJob(t.tests_job);
+    } catch (err) {
+      console.warn("render job metrics failed", err);
+    }
 
     $("li-q").textContent = t.liquid.queries;
     $("li-score").textContent = Number(t.liquid.score_last).toFixed(4);
