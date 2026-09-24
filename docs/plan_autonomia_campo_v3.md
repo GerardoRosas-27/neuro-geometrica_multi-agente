@@ -4,6 +4,11 @@ Rama: `exp/field-autonomy-next`
 Base: `main`
 Fecha: 2026-09-23
 
+> **Cierre del ciclo v3.7 + confirmación:** ver
+> [`cierre_exp_field_autonomy_next_v3.md`](cierre_exp_field_autonomy_next_v3.md)
+> (tip evidencia `33a35db`). Este plan sigue siendo la especificación;
+> el cierre resume qué quedó cerrado/abierto **sin merge a main**.
+
 ## 1. Objetivo
 
 Esta rama parte deliberadamente de `main`, no de las ramas experimentales anteriores. Su objetivo es construir una segunda generación de experimentos que determine qué capacidad cognitiva permanece en el sustrato externo cuando se eliminan progresivamente los mecanismos que pueden convertirlo en un sistema de recuperación de respuestas.
