@@ -3,7 +3,7 @@
 Protocolo: `docs/plan_autonomia_campo_v3.md` + `docs/etapa_2_autonomia_campo_experimentos.md` §29+.
 Módulo: `src/field_autonomy_stage2_v2.rs`.
 Rama: `exp/field-autonomy-next`.
-Commit tip: `ce282a20b47292aeefc9e2316a9604af0c3af8a5`.
+Commit tip: `0b000b113107325e349611f3db99168fbb418a6b`.
 Seeds: 16 (base DEV 0xA300..0xA307; extra=true)
 Seeds confirmación `0xB300–0xB30F`: **corridas** — ver [`resultados_etapa_2_v3_confirm.md`](resultados_etapa_2_v3_confirm.md).
 Periferia: numeric FIELD_ONLY; RQM/NN/table/attractor OFF en eval.

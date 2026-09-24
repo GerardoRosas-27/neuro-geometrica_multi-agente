@@ -1,6 +1,6 @@
 # Confirmación — Etapa 2 Clean-Room v3 (0xB300–0xB30F)
 
-Rama: `exp/field-autonomy-next`. Commit tip: `ce282a20b47292aeefc9e2316a9604af0c3af8a5`.
+Rama: `exp/field-autonomy-next`. Commit tip: `0b000b113107325e349611f3db99168fbb418a6b`.
 Hyperparams: same `HyperparamLock::long()` locked on DEV; no retune.
 Wall time: **1145.4s**. Filas: 240.
 
