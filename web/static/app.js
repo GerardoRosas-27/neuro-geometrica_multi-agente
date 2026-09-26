@@ -19,10 +19,22 @@
   let useSse = true;
   let eventSource = null;
 
-  function addMsg(role, text, meta) {
+  const MODE_LABEL = {
+    field_decoder: "Decoder del campo",
+    gemma_raw: "Gemma 2 original",
+  };
+
+  function addMsg(role, text, meta, mode) {
     const el = document.createElement("div");
     el.className = `msg ${role}`;
-    el.textContent = text;
+    if (mode) {
+      const b = document.createElement("span");
+      b.className = `mode-badge ${mode}`;
+      b.textContent = MODE_LABEL[mode] || mode;
+      el.appendChild(b);
+      el.appendChild(document.createElement("br"));
+    }
+    el.appendChild(document.createTextNode(text));
     if (meta) {
       const m = document.createElement("span");
       m.className = "meta";
@@ -31,7 +43,43 @@
     }
     messages.appendChild(el);
     messages.scrollTop = messages.scrollHeight;
+    return el;
   }
+
+  // Bandera «Decoder del campo» (persistida). ON = campo + Gemma decoder; OFF = Gemma 2 original.
+  const chkField = $("chk-field-decoder");
+  const modeHint = $("chat-mode-hint");
+  const FIELD_KEY = "chat.fieldDecoder";
+  let rawAvailable = null;
+  try {
+    const saved = localStorage.getItem(FIELD_KEY);
+    if (saved !== null) chkField.checked = saved === "1";
+  } catch (_) {}
+  function chatMode() {
+    return chkField.checked ? "field_decoder" : "gemma_raw";
+  }
+  function syncChatMode() {
+    const on = chkField.checked;
+    modeHint.classList.remove("warn");
+    if (on) {
+      modeHint.textContent = "Activo · campo líquido/CDT/RQM → Gemma interpreta (decoder-only)";
+      input.placeholder = "Pregunta al campo (decoder de engramas/conceptos)…";
+    } else {
+      modeHint.textContent = "Inactivo · Gemma 2 congelado original (sin campo)";
+      input.placeholder = "Habla con Gemma 2 original…";
+      if (rawAvailable === false) {
+        modeHint.textContent += " · GGUF no disponible en el servidor";
+        modeHint.classList.add("warn");
+      }
+    }
+  }
+  chkField.addEventListener("change", () => {
+    try {
+      localStorage.setItem(FIELD_KEY, chkField.checked ? "1" : "0");
+    } catch (_) {}
+    syncChatMode();
+  });
+  syncChatMode();
 
   async function api(path, opts) {
     const res = await fetch(path, opts);
@@ -66,6 +114,10 @@
     try {
       const h = await api("/health");
       badgeMode.textContent = `LLM: ${h.llm_mode}`;
+      if (typeof h.raw_gemma_available === "boolean") {
+        rawAvailable = h.raw_gemma_available;
+        syncChatMode();
+      }
       const bits = [`ok · engramas ${h.engrams}`];
       if (h.training) bits.push("entrenando");
       if (h.sleeping) bits.push("durmiendo");
@@ -677,22 +729,40 @@
     const message = input.value.trim();
     if (!message) return;
     input.value = "";
-    addMsg("user", message);
+    const mode = chatMode();
+    addMsg("user", message, null, mode);
+    const pending =
+      mode === "gemma_raw"
+        ? addMsg("agent pending", "Gemma 2 original generando…", null, mode)
+        : null;
     try {
-      const r = await api("/api/chat", {
+      const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ message }),
+        body: JSON.stringify({ message, mode }),
       });
-      const meta = `ruta=${r.route} · in=${r.concept_in}→out=${r.concept_out} · líquido=${Number(r.liquid_score).toFixed(3)} · eng=${r.engrams} · decoded=${r.decoded}`;
-      addMsg("agent", r.reply, meta);
+      let r = null;
+      try {
+        r = await res.json();
+      } catch (_) {}
+      if (pending) pending.remove();
+      if (!r || (!res.ok && !r.reply)) {
+        throw new Error((r && r.error) || `/api/chat → ${res.status}`);
+      }
+      const rMode = r.mode || mode;
+      const meta =
+        rMode === "gemma_raw"
+          ? `modelo=Gemma 2 original (sin campo) · ${r.decoded || ""}`
+          : `ruta=${r.route} · in=${r.concept_in}→out=${r.concept_out} · líquido=${Number(r.liquid_score).toFixed(3)} · eng=${r.engrams} · decoded=${r.decoded}`;
+      addMsg("agent", r.reply, meta, rMode);
       if (r.route === "train") {
         await reconnectProcesses();
       }
       refreshTelemetry();
       refreshHealth();
     } catch (e) {
-      addMsg("agent", "Error: " + e.message);
+      if (pending) pending.remove();
+      addMsg("agent", "Error: " + e.message, null, mode);
     }
   });
 

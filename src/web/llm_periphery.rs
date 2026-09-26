@@ -9,9 +9,10 @@
 //! `open_best_probe()` intenta `FrozenGemma2Probe` (env `GEMMA2_GGUF` o rutas
 //! comunes). Si no hay GGUF → `GemmaShapedLexicon` + `LabelDecoder` (siempre arranca).
 
-use crate::field_gemma_probe::FrozenGemma2Probe;
+use crate::field_gemma_probe::{FrozenGemma2Probe, RawGemmaHandle};
 use crate::field_hybrid_infer::{features_to_concept_id, LabelDecoder, PeripheralDecoder};
 use crate::field_linguistic_layer::{FrozenLinguisticProbe, GemmaShapedLexicon};
+use crate::native_gemma2_runtime::Gemma2GenerationConfig;
 use std::env;
 use std::path::Path;
 
@@ -202,6 +203,14 @@ impl PeripheralProbe {
         }
     }
 
+    /// Handle al Gemma 2 original para chat crudo (`None` si no hay GGUF).
+    pub fn raw_handle(&self) -> Option<RawGemmaHandle> {
+        match self {
+            Self::Gemma(p) => Some(p.raw_handle()),
+            Self::Lexicon(_) => None,
+        }
+    }
+
     /// Texto → features (firewall tira tokens) → concept_id. Nunca toca FieldState.
     pub fn encode_concept(&mut self, text: &str) -> usize {
         let features = match self {
@@ -209,6 +218,69 @@ impl PeripheralProbe {
             Self::Lexicon(p) => p.analyze(text).into_field_features(),
         };
         features_to_concept_id(&features, NUM_CONCEPTS)
+    }
+}
+
+/// Modo del chat (bandera UI «Decoder del campo»).
+#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ChatMode {
+    /// ON: campo (líquido/CDT/RQM) produce el estado; Gemma solo interpreta (decoder-only).
+    FieldDecoder,
+    /// OFF: Gemma 2 congelado original como LLM plano. Sin campo.
+    GemmaRaw,
+}
+
+impl ChatMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::FieldDecoder => "field_decoder",
+            Self::GemmaRaw => "gemma_raw",
+        }
+    }
+
+    /// Resuelve el modo desde el request. `mode` (string) tiene prioridad sobre
+    /// `field_decoder` (bool). Ausente → `FieldDecoder` (comportamiento histórico).
+    pub fn resolve(mode: Option<&str>, field_decoder: Option<bool>) -> Result<Self, String> {
+        if let Some(m) = mode {
+            let m = m.trim().to_ascii_lowercase();
+            return match m.as_str() {
+                "" => Ok(field_decoder
+                    .map(Self::from_flag)
+                    .unwrap_or(Self::FieldDecoder)),
+                "field_decoder" | "field" | "decoder" | "campo" => Ok(Self::FieldDecoder),
+                "gemma_raw" | "raw" | "gemma" | "llm" => Ok(Self::GemmaRaw),
+                other => Err(format!(
+                    "modo de chat desconocido: «{other}» (usa \"field_decoder\" o \"gemma_raw\")"
+                )),
+            };
+        }
+        Ok(field_decoder
+            .map(Self::from_flag)
+            .unwrap_or(Self::FieldDecoder))
+    }
+
+    fn from_flag(on: bool) -> Self {
+        if on {
+            Self::FieldDecoder
+        } else {
+            Self::GemmaRaw
+        }
+    }
+}
+
+/// Config de generación para chat crudo. Env: `RAW_CHAT_MAX_TOKENS` (def 256),
+/// `RAW_CHAT_TEMPERATURE` (def 0.7), `RAW_CHAT_TOP_P` (def 0.9), `RAW_CHAT_CONTEXT` (def 2048).
+pub fn raw_chat_config(seed: u64) -> Gemma2GenerationConfig {
+    fn env_or<T: std::str::FromStr>(k: &str, d: T) -> T {
+        env::var(k).ok().and_then(|v| v.parse().ok()).unwrap_or(d)
+    }
+    Gemma2GenerationConfig {
+        max_tokens: env_or("RAW_CHAT_MAX_TOKENS", 256usize).clamp(1, 2048),
+        context_limit: env_or("RAW_CHAT_CONTEXT", 2048usize).clamp(128, 8192),
+        temperature: env_or("RAW_CHAT_TEMPERATURE", 0.7f64).clamp(0.0, 2.0),
+        top_p: env_or("RAW_CHAT_TOP_P", 0.9f64).clamp(0.05, 1.0),
+        seed,
     }
 }
 
@@ -369,6 +441,76 @@ impl ConceptDecoder {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn chat_mode_default_is_field_decoder() {
+        assert_eq!(
+            ChatMode::resolve(None, None).unwrap(),
+            ChatMode::FieldDecoder
+        );
+        assert_eq!(
+            ChatMode::resolve(Some(""), None).unwrap(),
+            ChatMode::FieldDecoder
+        );
+    }
+
+    #[test]
+    fn chat_mode_parses_strings_and_flag() {
+        assert_eq!(
+            ChatMode::resolve(Some("gemma_raw"), None).unwrap(),
+            ChatMode::GemmaRaw
+        );
+        assert_eq!(
+            ChatMode::resolve(Some(" RAW "), None).unwrap(),
+            ChatMode::GemmaRaw
+        );
+        assert_eq!(
+            ChatMode::resolve(Some("field_decoder"), None).unwrap(),
+            ChatMode::FieldDecoder
+        );
+        assert_eq!(
+            ChatMode::resolve(None, Some(false)).unwrap(),
+            ChatMode::GemmaRaw
+        );
+        assert_eq!(
+            ChatMode::resolve(None, Some(true)).unwrap(),
+            ChatMode::FieldDecoder
+        );
+        // `mode` gana sobre el bool.
+        assert_eq!(
+            ChatMode::resolve(Some("gemma_raw"), Some(true)).unwrap(),
+            ChatMode::GemmaRaw
+        );
+        assert!(ChatMode::resolve(Some("otro"), None).is_err());
+        assert_eq!(ChatMode::GemmaRaw.as_str(), "gemma_raw");
+    }
+
+    #[test]
+    fn lexicon_probe_has_no_raw_handle() {
+        let probe = PeripheralProbe::Lexicon(GemmaShapedLexicon::new(7));
+        assert!(probe.raw_handle().is_none());
+    }
+
+    #[test]
+    fn raw_chat_config_is_sane() {
+        let c = raw_chat_config(1);
+        assert!(c.max_tokens >= 1 && c.max_tokens <= 2048);
+        assert!(c.context_limit > c.max_tokens);
+        assert!(c.temperature >= 0.0);
+    }
+
+    #[test]
+    fn raw_prompt_uses_gemma_template_without_field() {
+        let p = crate::field_gemma_probe::render_raw_gemma_prompt(
+            &[("hola".into(), "¡Hola!".into())],
+            "¿qué es un campo?",
+        );
+        assert!(p.starts_with("<start_of_turn>user\nhola<end_of_turn>"));
+        assert!(p.ends_with(
+            "<start_of_turn>user\n¿qué es un campo?<end_of_turn>\n<start_of_turn>model\n"
+        ));
+        assert!(!p.contains("decoder"));
+    }
 
     #[test]
     fn lexicon_probe_always_opens() {

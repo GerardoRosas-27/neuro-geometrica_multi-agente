@@ -1,12 +1,14 @@
 //! Estado compartido de la app agentica (Arc<Mutex<AppState>>).
 
+use crate::field_gemma_probe::{RawGemmaHandle, RawGemmaReply};
 use crate::field_hybrid_infer::FieldHybridInfer;
 use crate::liquid_cdt_memory::SleepReport;
 use crate::liquid_cdt_rqm_fuse::{FuseReport, FusedLiquidCdt, InferRoute};
 use crate::web::experiment_suite::{run_ui_experiment_suite, ExperimentSuiteReport};
 use crate::web::field_eval::{run_field_eval_with_progress, FieldEvalReport, FieldEvalStatus};
 use crate::web::llm_periphery::{
-    generate_train_batch, open_best_probe, ConceptDecoder, LlmMode, PeripheralProbe, NUM_CONCEPTS,
+    generate_train_batch, open_best_probe, ChatMode, ConceptDecoder, LlmMode, PeripheralProbe,
+    NUM_CONCEPTS,
 };
 use crate::web::process_job::{
     ProcessesSnapshot, SleepJob, SleepStartResponse, TestsJob, TestsStartResponse,
@@ -36,6 +38,9 @@ pub struct TrainEvent {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ChatTurn {
+    /// `field_decoder` | `gemma_raw` (badge UI). `None` en logs antiguos.
+    #[serde(default)]
+    pub mode: Option<String>,
     pub role: String,
     pub text: String,
     pub route: Option<String>,
@@ -45,6 +50,8 @@ pub struct ChatTurn {
 
 #[derive(Clone, Debug, Serialize)]
 pub struct ChatResponse {
+    /// Modo que respondió: `field_decoder` (campo + Gemma decoder) | `gemma_raw`.
+    pub mode: String,
     pub reply: String,
     pub route: String,
     pub concept_in: usize,
@@ -59,7 +66,24 @@ pub struct ChatResponse {
 #[derive(Clone, Debug, Deserialize)]
 pub struct ChatRequest {
     pub message: String,
+    /// `"field_decoder"` (def) | `"gemma_raw"`.
+    #[serde(default)]
+    pub mode: Option<String>,
+    /// Alternativa booleana a `mode`: true = decoder del campo, false = Gemma crudo.
+    #[serde(default)]
+    pub field_decoder: Option<bool>,
 }
+
+impl ChatRequest {
+    pub fn chat_mode(&self) -> Result<ChatMode, String> {
+        ChatMode::resolve(self.mode.as_deref(), self.field_decoder)
+    }
+}
+
+const FIELD_MODE: &str = "field_decoder";
+const RAW_MODE: &str = "gemma_raw";
+/// Pares (user, model) de chat crudo que se reenvían como contexto.
+const RAW_HISTORY_PAIRS: usize = 4;
 
 /// Compat: respuesta síncrona legacy (tests / intents). Preferir job async.
 #[derive(Clone, Debug, Serialize)]
@@ -95,6 +119,8 @@ pub struct AppState {
     pub ever_trained: bool,
     /// Última suite de experimentos (pestaña Pruebas).
     pub last_experiment_suite: Option<ExperimentSuiteReport>,
+    /// Llamadas al chat crudo Gemma (no cuentan como infer líquido/RQM).
+    pub raw_chat_calls: u64,
 }
 
 impl AppState {
@@ -122,6 +148,91 @@ impl AppState {
             field_eval_running: false,
             ever_trained: false,
             last_experiment_suite: None,
+            raw_chat_calls: 0,
+        }
+    }
+
+    /// Prepara chat crudo (OFF): handle al Gemma original + historial crudo.
+    /// `Err` si no hay GGUF. No toca fuse/campo/telemetría líquida.
+    pub fn raw_chat_prepare(&self) -> Result<(RawGemmaHandle, Vec<(String, String)>), String> {
+        let handle = self.probe.raw_handle().ok_or_else(|| {
+            "Gemma 2 original no disponible: no se encontró el GGUF \
+             (models/gemma-2-2b-it-Q4_K_M.gguf o env GEMMA2_GGUF). \
+             Activa «Decoder del campo» o instala el modelo en el servidor."
+                .to_string()
+        })?;
+        Ok((handle, self.raw_history()))
+    }
+
+    /// Últimos pares (user, model) del chat crudo exitoso.
+    pub fn raw_history(&self) -> Vec<(String, String)> {
+        let mut pairs = Vec::new();
+        let turns = &self.chat_log;
+        let mut i = 0;
+        while i + 1 < turns.len() {
+            let (u, a) = (&turns[i], &turns[i + 1]);
+            if u.role == "user"
+                && a.role == "agent"
+                && u.mode.as_deref() == Some(RAW_MODE)
+                && a.mode.as_deref() == Some(RAW_MODE)
+                && a.route.as_deref() == Some(RAW_MODE)
+            {
+                pairs.push((u.text.clone(), a.text.clone()));
+                i += 2;
+            } else {
+                i += 1;
+            }
+        }
+        let n = pairs.len();
+        pairs.split_off(n.saturating_sub(RAW_HISTORY_PAIRS))
+    }
+
+    /// Registra el turno crudo (éxito o error) y construye la respuesta.
+    /// No incrementa contadores líquido/RQM; sí `raw_chat_calls`.
+    pub fn record_raw_chat(
+        &mut self,
+        message: &str,
+        result: &Result<RawGemmaReply, String>,
+    ) -> ChatResponse {
+        self.raw_chat_calls = self.raw_chat_calls.wrapping_add(1);
+        let (reply, route) = match result {
+            Ok(r) => (r.text.clone(), RAW_MODE),
+            Err(e) => (format!("Error Gemma 2 original: {e}"), "gemma_raw_error"),
+        };
+        for (role, text, route) in [
+            ("user", message.trim().to_string(), None),
+            ("agent", reply.clone(), Some(route.to_string())),
+        ] {
+            self.chat_log.push(ChatTurn {
+                mode: Some(RAW_MODE.into()),
+                role: role.into(),
+                text,
+                route,
+                concept_in: None,
+                concept_out: None,
+            });
+        }
+        if self.chat_log.len() > 200 {
+            let drain = self.chat_log.len() - 200;
+            self.chat_log.drain(0..drain);
+        }
+        let decoded = match result {
+            Ok(r) => format!(
+                "gemma2-original · {} tok prompt · {} tok gen · {:.1}s",
+                r.prompt_tokens, r.generated_tokens, r.seconds
+            ),
+            Err(_) => "gemma2-original · error".into(),
+        };
+        ChatResponse {
+            mode: RAW_MODE.into(),
+            reply,
+            route: route.into(),
+            concept_in: 0,
+            concept_out: 0,
+            liquid_score: 0.0,
+            rqm_score: None,
+            engrams: self.fuse.engram_count(),
+            decoded,
         }
     }
 
@@ -171,6 +282,7 @@ impl AppState {
                 format!("No se pudo iniciar: {}", started.message)
             };
             self.chat_log.push(ChatTurn {
+                mode: Some(FIELD_MODE.into()),
                 role: "user".into(),
                 text: msg.into(),
                 route: None,
@@ -178,6 +290,7 @@ impl AppState {
                 concept_out: None,
             });
             self.chat_log.push(ChatTurn {
+                mode: Some(FIELD_MODE.into()),
                 role: "agent".into(),
                 text: reply.clone(),
                 route: Some("train".into()),
@@ -185,6 +298,7 @@ impl AppState {
                 concept_out: None,
             });
             return ChatResponse {
+                mode: FIELD_MODE.into(),
                 reply,
                 route: "train".into(),
                 concept_in: 0,
@@ -200,6 +314,7 @@ impl AppState {
             if !self.has_training_evidence() {
                 let reply = "Necesitas entrenar antes de dormir (al menos 1 lote o engramas/datasets_saved > 0). Usa la pestaña Entrenamiento.".to_string();
                 self.chat_log.push(ChatTurn {
+                    mode: Some(FIELD_MODE.into()),
                     role: "user".into(),
                     text: msg.into(),
                     route: None,
@@ -207,6 +322,7 @@ impl AppState {
                     concept_out: None,
                 });
                 self.chat_log.push(ChatTurn {
+                    mode: Some(FIELD_MODE.into()),
                     role: "agent".into(),
                     text: reply.clone(),
                     route: Some("sleep".into()),
@@ -214,6 +330,7 @@ impl AppState {
                     concept_out: None,
                 });
                 return ChatResponse {
+                    mode: FIELD_MODE.into(),
                     reply,
                     route: "sleep".into(),
                     concept_in: 0,
@@ -233,6 +350,7 @@ impl AppState {
                 sleep.sleep_ms
             );
             self.chat_log.push(ChatTurn {
+                mode: Some(FIELD_MODE.into()),
                 role: "user".into(),
                 text: msg.into(),
                 route: None,
@@ -240,6 +358,7 @@ impl AppState {
                 concept_out: None,
             });
             self.chat_log.push(ChatTurn {
+                mode: Some(FIELD_MODE.into()),
                 role: "agent".into(),
                 text: reply.clone(),
                 route: Some("sleep".into()),
@@ -247,6 +366,7 @@ impl AppState {
                 concept_out: None,
             });
             return ChatResponse {
+                mode: FIELD_MODE.into(),
                 reply,
                 route: "sleep".into(),
                 concept_in: 0,
@@ -276,6 +396,7 @@ impl AppState {
                 }
             );
             self.chat_log.push(ChatTurn {
+                mode: Some(FIELD_MODE.into()),
                 role: "user".into(),
                 text: msg.into(),
                 route: None,
@@ -283,6 +404,7 @@ impl AppState {
                 concept_out: None,
             });
             self.chat_log.push(ChatTurn {
+                mode: Some(FIELD_MODE.into()),
                 role: "agent".into(),
                 text: reply.clone(),
                 route: Some("status".into()),
@@ -290,6 +412,7 @@ impl AppState {
                 concept_out: None,
             });
             return ChatResponse {
+                mode: FIELD_MODE.into(),
                 reply,
                 route: "status".into(),
                 concept_in: 0,
@@ -337,6 +460,7 @@ impl AppState {
 
         self.last_fuse = Some(report.clone());
         self.chat_log.push(ChatTurn {
+            mode: Some(FIELD_MODE.into()),
             role: "user".into(),
             text: msg.into(),
             route: None,
@@ -344,6 +468,7 @@ impl AppState {
             concept_out: None,
         });
         self.chat_log.push(ChatTurn {
+            mode: Some(FIELD_MODE.into()),
             role: "agent".into(),
             text: reply.clone(),
             route: Some(route.into()),
@@ -356,6 +481,7 @@ impl AppState {
         }
 
         ChatResponse {
+            mode: FIELD_MODE.into(),
             reply,
             route: route.into(),
             concept_in,

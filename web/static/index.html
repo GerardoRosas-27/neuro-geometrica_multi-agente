@@ -6,13 +6,13 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <title>Neuro-Geométrica · Campo agentico</title>
-  <link rel="stylesheet" href="/styles.css?v=28" />
+  <link rel="stylesheet" href="/styles.css?v=29" />
 </head>
 <body>
   <header class="top">
     <div>
       <h1>Campo agentico · Líquido / CDT / RQM</h1>
-      <p class="sub">Chat = decoder del campo · Train desacoplado · Sueño optimiza F y simetría · Pruebas evalúan el modelo</p>
+      <p class="sub">Chat = decoder del campo (bandera) o Gemma 2 original · Train desacoplado · Sueño optimiza F y simetría · Pruebas evalúan el modelo</p>
     </div>
     <div class="badges">
       <span id="badge-mode" class="badge">modo…</span>
@@ -31,6 +31,14 @@
   <main class="layout-tabs">
     <!-- CHAT -->
     <section id="main-chat" class="main-panel active">
+      <div class="chat-toolbar">
+        <label class="switch" title="Activo: el campo (líquido/CDT/RQM) responde y Gemma solo interpreta (decoder). Inactivo: Gemma 2 congelado original, sin campo.">
+          <input type="checkbox" id="chk-field-decoder" checked />
+          <span class="slider" aria-hidden="true"></span>
+          <span class="switch-label">Decoder del campo</span>
+        </label>
+        <span id="chat-mode-hint" class="chat-mode-hint">Activo · campo líquido/CDT/RQM → Gemma interpreta (decoder-only)</span>
+      </div>
       <div id="messages" class="messages" aria-live="polite"></div>
       <form id="chat-form" class="composer">
         <input id="chat-input" type="text" placeholder="Pregunta al campo (decoder de engramas/conceptos)…" autocomplete="off" />
@@ -185,6 +193,6 @@
     </section>
   </main>
 
-  <script src="/app.js?v=28"></script>
+  <script src="/app.js?v=29"></script>
 </body>
 </html>

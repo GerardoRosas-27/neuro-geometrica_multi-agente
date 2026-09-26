@@ -14,18 +14,100 @@ use crate::native_gemma2::{
     resolve_gemma2_device, resolve_gemma2_model_path, Gemma2Tokenizer, LayerExecutionMask,
     QuantizedGemma2,
 };
+use crate::native_gemma2_runtime::{Gemma2GenerationConfig, Gemma2Session};
 use candle_core::{Device, Tensor};
 use std::fs::File;
 use std::path::Path;
+use std::sync::{Arc, Mutex};
 
 const STEM_HASH_SALT: u64 = 0x57E4_CAFE;
 
 /// Gemma 2 cargada desde GGUF. Fallar al construir si no hay modelo.
 pub struct FrozenGemma2Probe {
-    model: QuantizedGemma2,
-    tokenizer: Gemma2Tokenizer,
+    /// Pesos compartidos con [`RawGemmaHandle`] (chat crudo) para no cargar el
+    /// GGUF dos veces en RAM.
+    model: Arc<Mutex<QuantizedGemma2>>,
+    tokenizer: Arc<Gemma2Tokenizer>,
     device: Device,
     mask: LayerExecutionMask,
+}
+
+/// Acceso al Gemma 2 congelado **original** (denso, sin máscara T2.1, sin campo)
+/// para generación de texto autoregresiva plana: prompt → plantilla chat → respuesta.
+/// Comparte pesos con la sonda. No toca FieldState ni el fuse líquido/CDT/RQM.
+#[derive(Clone)]
+pub struct RawGemmaHandle {
+    model: Arc<Mutex<QuantizedGemma2>>,
+    tokenizer: Arc<Gemma2Tokenizer>,
+}
+
+/// Resultado de una generación cruda.
+#[derive(Clone, Debug)]
+pub struct RawGemmaReply {
+    pub text: String,
+    pub prompt_tokens: usize,
+    pub generated_tokens: usize,
+    pub seconds: f64,
+}
+
+/// Plantilla chat oficial de Gemma 2 (sin system prompt, sin campo).
+pub fn render_raw_gemma_prompt(history: &[(String, String)], input: &str) -> String {
+    let mut prompt = String::new();
+    for (user, model) in history {
+        prompt.push_str("<start_of_turn>user\n");
+        prompt.push_str(user);
+        prompt.push_str("<end_of_turn>\n<start_of_turn>model\n");
+        prompt.push_str(model);
+        prompt.push_str("<end_of_turn>\n");
+    }
+    prompt.push_str("<start_of_turn>user\n");
+    prompt.push_str(input);
+    prompt.push_str("<end_of_turn>\n<start_of_turn>model\n");
+    prompt
+}
+
+impl RawGemmaHandle {
+    /// Genera respuesta con el Gemma 2 original (todas las capas).
+    /// Bloqueante (CPU): llamar desde `spawn_blocking`.
+    pub fn generate_chat(
+        &self,
+        history: &[(String, String)],
+        input: &str,
+        config: Gemma2GenerationConfig,
+    ) -> Result<RawGemmaReply, String> {
+        let started = std::time::Instant::now();
+        // Recorta historial hasta que quepa (deja margen para generar).
+        let budget = config
+            .context_limit
+            .saturating_sub(config.max_tokens)
+            .max(16);
+        let mut tokens = None;
+        for skip in 0..=history.len() {
+            let prompt = render_raw_gemma_prompt(&history[skip..], input);
+            let mut t = vec![self.tokenizer.bos_id];
+            t.extend(self.tokenizer.encode(&prompt).map_err(|e| e.to_string())?);
+            if t.len() <= budget {
+                tokens = Some(t);
+                break;
+            }
+        }
+        let tokens =
+            tokens.ok_or_else(|| format!("el mensaje excede el contexto ({budget} tokens)"))?;
+        let mut model = self.model.lock().unwrap_or_else(|e| e.into_inner());
+        // Sesión nueva: la sonda comparte KV cache, así que siempre prefill completo.
+        let mut session = Gemma2Session::new();
+        let out = session
+            .generate(&mut model, &self.tokenizer, &tokens, None, config, |_| {})
+            .map_err(|e| e.to_string());
+        model.clear_kv_cache();
+        let out = out?;
+        Ok(RawGemmaReply {
+            text: out.text,
+            prompt_tokens: tokens.len(),
+            generated_tokens: out.metrics.generated_tokens,
+            seconds: started.elapsed().as_secs_f64(),
+        })
+    }
 }
 
 impl FrozenGemma2Probe {
@@ -41,11 +123,19 @@ impl FrozenGemma2Probe {
         let skip = LayerSkipMask::from_t21_expensive_skip();
         let mask = LayerExecutionMask::from_enabled(skip.on.clone());
         Ok(Self {
-            model,
-            tokenizer,
+            model: Arc::new(Mutex::new(model)),
+            tokenizer: Arc::new(tokenizer),
             device,
             mask,
         })
+    }
+
+    /// Handle al Gemma original (denso) para chat crudo; comparte pesos.
+    pub fn raw_handle(&self) -> RawGemmaHandle {
+        RawGemmaHandle {
+            model: Arc::clone(&self.model),
+            tokenizer: Arc::clone(&self.tokenizer),
+        }
     }
 
     fn stem_bag(text: &str) -> Vec<f64> {
@@ -124,10 +214,10 @@ impl FrozenLinguisticProbe for FrozenGemma2Probe {
                 stem_bag,
             );
         };
-        self.model.clear_kv_cache();
-        let out = self
-            .model
-            .forward_with_mask(&ids, 0, Some(&self.mask), None, true, true);
+        let mut model = self.model.lock().unwrap_or_else(|e| e.into_inner());
+        model.clear_kv_cache();
+        let out = model.forward_with_mask(&ids, 0, Some(&self.mask), None, true, true);
+        drop(model);
         let Ok(out) = out else {
             return LinguisticPacket::from_parts(
                 tokens,
