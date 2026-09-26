@@ -64,10 +64,11 @@ Protocolo reproducible para invariancia de representación, composición de rela
 
 ## Etapa 2 — autonomía del campo (E18–E30)
 
-Protocolo de aprendizaje de reglas desde experiencia consolidada (FIELD_ONLY, anti-leakage, CDT como experiencia no como lookup): [`docs/etapa_2_autonomia_campo_experimentos.md`](docs/etapa_2_autonomia_campo_experimentos.md) — **§29+ Clean-Room v2 prevalece**.
+Protocolo de aprendizaje de reglas desde experiencia consolidada (FIELD_ONLY, anti-leakage, CDT como experiencia no como lookup): [`docs/etapa_2_autonomia_campo_experimentos.md`](docs/etapa_2_autonomia_campo_experimentos.md) — **§29+ Clean-Room v2/v3 prevalece**.
 
-- **Clean-Room v2 (vigente):** módulo `src/field_autonomy_stage2_v2.rs`, seeds `0xA300–0xA307`, resultados [`docs/resultados_etapa_2_cleanroom_v2.md`](docs/resultados_etapa_2_cleanroom_v2.md). Smoke: `cargo run --example smoke_stage2_v2`. Suite DEV: `cargo run --release --example run_stage2_v2_dev`.
-- **Histórico / pre-cleanroom:** `src/field_autonomy_stage2.rs` + [`docs/resultados_etapa_2_autonomia.md`](docs/resultados_etapa_2_autonomia.md) (seeds `0xE1800..`) — no mezclar con v2.
+- **Cierre experimental v3 (rama `exp/field-autonomy-next`, no mergeado a main):** [`docs/cierre_exp_field_autonomy_next_v3.md`](docs/cierre_exp_field_autonomy_next_v3.md) — plan [`docs/plan_autonomia_campo_v3.md`](docs/plan_autonomia_campo_v3.md); LONG [`docs/resultados_etapa_2_v3_long.md`](docs/resultados_etapa_2_v3_long.md); confirmación `0xB300–0xB30F` [`docs/resultados_etapa_2_v3_confirm.md`](docs/resultados_etapa_2_v3_confirm.md).
+- **Clean-Room v2 (base):** módulo `src/field_autonomy_stage2_v2.rs`, seeds DEV `0xA300–0xA307` (+ LONG `0xA300–0xA30F`), resultados [`docs/resultados_etapa_2_cleanroom_v2.md`](docs/resultados_etapa_2_cleanroom_v2.md). Smoke: `cargo run --example smoke_stage2_v2`. Suite DEV: `cargo run --release --example run_stage2_v2_dev`.
+- **Histórico / pre-cleanroom:** `src/field_autonomy_stage2.rs` + [`docs/resultados_etapa_2_autonomia.md`](docs/resultados_etapa_2_autonomia.md) (seeds `0xE1800..`) — no mezclar con v2/v3.
 
 ## Experimentos 11–17 (campo entrenable)
 
