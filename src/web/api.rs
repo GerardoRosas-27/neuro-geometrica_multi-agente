@@ -7,6 +7,7 @@ use crate::web::state::{AppState, ChatRequest};
 use crate::web::telemetry::{FuseReportDto, SleepReportDto, TelemetrySnapshot};
 use crate::web::train_job::{LiveTrainStartRequest, TrainJobSnapshot, TrainLiveEvent};
 use axum::extract::{Query, State};
+use axum::http::{header, HeaderValue};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
@@ -18,7 +19,6 @@ use std::convert::Infallible;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use axum::http::{header, HeaderValue};
 use tower::ServiceBuilder;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::services::ServeDir;
@@ -38,6 +38,9 @@ pub struct HealthResponse {
     pub testing: bool,
     pub active_processes: Vec<String>,
     pub probe: String,
+    /// True si el Gemma 2 original (GGUF) está cargado → chat crudo disponible.
+    pub raw_gemma_available: bool,
+    pub raw_chat_calls: u64,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -271,21 +274,83 @@ async fn health(State(st): State<SharedState>) -> impl IntoResponse {
         testing: g.tests_job.running || g.field_eval_running,
         active_processes: procs.active,
         probe: g.probe.name().into(),
+        raw_gemma_available: g.probe.raw_handle().is_some(),
+        raw_chat_calls: g.raw_chat_calls,
     })
 }
 
-async fn chat(State(st): State<SharedState>, Json(body): Json<ChatRequest>) -> impl IntoResponse {
-    let (resp, should_spawn) = {
-        let mut g = st.lock().unwrap();
-        let was_running = g.train_job.running;
-        let resp = g.handle_chat(&body.message);
-        let should_spawn = resp.route == "train" && g.train_job.running && !was_running;
-        (resp, should_spawn)
+async fn chat(
+    State(st): State<SharedState>,
+    Json(body): Json<ChatRequest>,
+) -> axum::response::Response {
+    use crate::web::llm_periphery::ChatMode;
+    use axum::http::StatusCode;
+    let mode = match body.chat_mode() {
+        Ok(m) => m,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({ "ok": false, "error": e })),
+            )
+                .into_response();
+        }
     };
-    if should_spawn {
-        spawn_live_train_loop(st);
+    match mode {
+        ChatMode::FieldDecoder => {
+            let (resp, should_spawn) = {
+                let mut g = st.lock().unwrap();
+                let was_running = g.train_job.running;
+                let resp = g.handle_chat(&body.message);
+                let should_spawn = resp.route == "train" && g.train_job.running && !was_running;
+                (resp, should_spawn)
+            };
+            if should_spawn {
+                spawn_live_train_loop(st);
+            }
+            Json(resp).into_response()
+        }
+        ChatMode::GemmaRaw => chat_gemma_raw(st, body.message).await,
     }
-    Json(resp)
+}
+
+/// OFF: Gemma 2 congelado original como LLM plano. Nunca cae al campo.
+/// La generación corre en `spawn_blocking` sin sostener el lock de AppState.
+async fn chat_gemma_raw(st: SharedState, message: String) -> axum::response::Response {
+    use crate::web::llm_periphery::raw_chat_config;
+    use axum::http::StatusCode;
+    let msg = message.trim().to_string();
+    if msg.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "ok": false, "mode": "gemma_raw", "error": "mensaje vacío" })),
+        )
+            .into_response();
+    }
+    let prepared = st.lock().unwrap().raw_chat_prepare();
+    let (handle, history) = match prepared {
+        Ok(v) => v,
+        Err(e) => {
+            let resp = st.lock().unwrap().record_raw_chat(&msg, &Err(e));
+            return (StatusCode::SERVICE_UNAVAILABLE, Json(resp)).into_response();
+        }
+    };
+    let seed = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos() as u64)
+        .unwrap_or(0x6E33A);
+    let cfg = raw_chat_config(seed);
+    let input = msg.clone();
+    let result = tokio::task::spawn_blocking(move || handle.generate_chat(&history, &input, cfg))
+        .await
+        .unwrap_or_else(|e| Err(format!("tarea de generación falló: {e}")));
+    let ok = result.is_ok();
+    let resp = st.lock().unwrap().record_raw_chat(&msg, &result);
+    let status = if ok {
+        StatusCode::OK
+    } else {
+        StatusCode::INTERNAL_SERVER_ERROR
+    };
+    (status, Json(resp)).into_response()
 }
 
 async fn train_start(
@@ -640,6 +705,76 @@ mod tests {
         let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(v["ok"], true);
         assert!(v["llm_mode"].as_str().is_some());
+    }
+
+    async fn post_chat(app: Router, body: &str) -> (StatusCode, serde_json::Value) {
+        let res = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/chat")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let status = res.status();
+        let bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        (status, serde_json::from_slice(&bytes).unwrap())
+    }
+
+    #[tokio::test]
+    async fn chat_default_mode_is_field_decoder() {
+        let app = test_router(lex_state());
+        let (st, v) = post_chat(app, r#"{"message":"hola campo"}"#).await;
+        assert_eq!(st, StatusCode::OK);
+        assert_eq!(v["mode"], "field_decoder");
+        let (st2, v2) = post_chat(
+            test_router(lex_state()),
+            r#"{"message":"hola campo","mode":"field_decoder"}"#,
+        )
+        .await;
+        assert_eq!(st2, StatusCode::OK);
+        assert_eq!(v2["mode"], "field_decoder");
+    }
+
+    #[tokio::test]
+    async fn chat_raw_without_gguf_errors_and_skips_field() {
+        let state = lex_state();
+        let (liq0, rqm0) = {
+            let g = state.lock().unwrap();
+            (g.metrics.liquid_queries, g.fuse.rqm_infer_calls)
+        };
+        let app = test_router(state.clone());
+        let (st, v) = post_chat(app.clone(), r#"{"message":"hola","mode":"gemma_raw"}"#).await;
+        assert_eq!(st, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(v["mode"], "gemma_raw");
+        assert_eq!(v["route"], "gemma_raw_error");
+        assert!(v["reply"].as_str().unwrap().contains("GGUF"));
+        // Bool alternativo: field_decoder=false → crudo.
+        let (st2, v2) = post_chat(app, r#"{"message":"hola","field_decoder":false}"#).await;
+        assert_eq!(st2, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(v2["mode"], "gemma_raw");
+        let g = state.lock().unwrap();
+        // No cae al campo: sin infer líquido/RQM.
+        assert_eq!(g.metrics.liquid_queries, liq0);
+        assert_eq!(g.fuse.rqm_infer_calls, rqm0);
+        assert_eq!(g.raw_chat_calls, 2);
+        assert!(g
+            .chat_log
+            .iter()
+            .all(|t| t.mode.as_deref() == Some("gemma_raw")));
+    }
+
+    #[tokio::test]
+    async fn chat_unknown_mode_is_bad_request() {
+        let app = test_router(lex_state());
+        let (st, v) = post_chat(app, r#"{"message":"hola","mode":"xyz"}"#).await;
+        assert_eq!(st, StatusCode::BAD_REQUEST);
+        assert_eq!(v["ok"], false);
     }
 
     #[tokio::test]

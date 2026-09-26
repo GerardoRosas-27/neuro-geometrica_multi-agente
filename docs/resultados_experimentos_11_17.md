@@ -4,12 +4,12 @@ Rama: `exp/liquid-inference-experiments-8-9-10`
 
 Protocolo: `docs/experimentos_11_17_campo_entrenable.md`
 
-Commit al correr: 092d60e (código+docs E12 GGUF).
+Commit al correr: c59b9fe.
 Hardware: x86_64.
 rustc: rustc 1.98.1 (48a229cea 2026-09-01).
 Semillas: 8 (0xE1100..0xE1107). Escala N=8 cubierta en E11 (`accuracy_ood`).
 Periferia: gemma-gguf.
-GGUF: disponible — `/workspace/neuro-geometrica_multi-agente/models/gemma-2-2b-it-Q4_K_M.gguf` (1708582752 bytes ≈ 1.59 GiB; bartowski Q4_K_M). Montaje local: `docker-compose.yml` → `./models:/models:ro` + `GEMMA2_GGUF=/models/...`. Corrida: 8 semillas, CPU x86_64, ~84 s test / ~160 s wall (Mexico City).
+GGUF: disponible.
 
 ## Tabla de registro
 
@@ -17,120 +17,120 @@ GGUF: disponible — `/workspace/neuro-geometrica_multi-agente/models/gemma-2-2b
 
 | Exp | seed | mode | acc_seen | acc_unseen | acc_ood | margin | knn/top1 | dR_A | leak_rqm | verdict |
 |-----|-----:|------|---------:|-----------:|--------:|-------:|---------:|-----:|---------:|---------|
-| E11_trainable_field_encoder | 921856 | STATIC_FIELD | 0.769 | 0.833 | 0.500 | 0.611 | 0.769 | 0.000 | false | PASS: trained encoder geometry > random projector |
-| E12_crosslingual_concept | 921856 | STATIC_FIELD | 1.000 | 1.000 | 1.000 | 0.745 | 0.364 | 0.000 | false | PASS: holdout langs closer to perro than gato (GGUF) |
-| E13_relational_field | 921856 | DYNAMIC_FIELD | 0.200 | 0.333 | 0.333 | -1.265 | 0.200 | 0.000 | false | PARTIAL: dynamic/static field generaliza holdout (RQM solo control) |
+| E11_trainable_field_encoder | 921856 | STATIC_FIELD | 0.692 | 0.833 | 0.625 | 0.611 | 0.692 | 0.000 | false | PARTIAL: geometry improved but not all criteria |
+| E12_crosslingual_concept | 921856 | STATIC_FIELD | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | false | SKIPPED_NO_GGUF |
+| E13_relational_field | 921856 | DYNAMIC_FIELD | 0.800 | 1.000 | 0.333 | -0.472 | 1.000 | 0.000 | false | PASS: unseen>=0.66 y dynamic>=static>=table (RQM solo control) |
 | E14_incremental_forgetting | 921856 | STATIC_FIELD | 1.000 | 1.000 | 0.000 | 1.000 | 0.000 | 0.031 | false | PASS: incremental recall retained; adversarial retain>=0.5 |
-| E15_semantic_without_labels | 921856 | STATIC_FIELD | 1.000 | 0.333 | 0.000 | -0.000 | 0.000 | 0.000 | false | PARTIAL: weak structural separation without class labels |
+| E15_semantic_without_labels | 921856 | DYNAMIC_FIELD | 1.000 | 0.800 | 1.000 | 0.246 | 1.000 | 0.000 | false | PASS: unseen incompatible combos less stable / farther from manifold |
 | E16_field_dynamics | 921856 | DYNAMIC_FIELD | 1.000 | 1.000 | 1.000 | 0.490 | 1.000 | 0.000 | true | PASS: Dphi predicts transitions; rollout partial; RQM control separate |
 | E17_never_observed_states | 921856 | DYNAMIC_FIELD | 0.995 | 1.000 | 1.000 | 0.007 | 0.998 | 0.000 | true | PASS: Dphi two-step + ToR approach never-stored A->C (RQM compose flagged separately) |
 | E11_trainable_field_encoder | 921857 | STATIC_FIELD | 0.923 | 1.000 | 0.625 | 0.874 | 0.923 | 0.000 | false | PASS: trained encoder geometry > random projector |
-| E12_crosslingual_concept | 921857 | STATIC_FIELD | 1.000 | 1.000 | 1.000 | 0.741 | 0.372 | 0.000 | false | PASS: holdout langs closer to perro than gato (GGUF) |
-| E13_relational_field | 921857 | DYNAMIC_FIELD | 0.200 | 0.333 | 0.333 | -1.197 | 0.200 | 0.000 | false | PARTIAL: dynamic/static field generaliza holdout (RQM solo control) |
+| E12_crosslingual_concept | 921857 | STATIC_FIELD | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | false | SKIPPED_NO_GGUF |
+| E13_relational_field | 921857 | DYNAMIC_FIELD | 0.800 | 1.000 | 0.667 | -0.487 | 1.000 | 0.000 | false | PASS: unseen>=0.66 y dynamic>=static>=table (RQM solo control) |
 | E14_incremental_forgetting | 921857 | STATIC_FIELD | 1.000 | 1.000 | 0.000 | 1.000 | 0.000 | -0.006 | false | PASS: incremental recall retained; adversarial retain>=0.5 |
-| E15_semantic_without_labels | 921857 | STATIC_FIELD | 1.000 | 0.333 | 0.000 | -0.001 | 0.000 | 0.000 | false | PARTIAL: weak structural separation without class labels |
+| E15_semantic_without_labels | 921857 | DYNAMIC_FIELD | 1.000 | 0.600 | 1.000 | 0.044 | 1.000 | 0.000 | false | PARTIAL: structural separation improving; margin/ranking aún cortos |
 | E16_field_dynamics | 921857 | DYNAMIC_FIELD | 1.000 | 1.000 | 1.000 | 0.013 | 0.985 | 0.000 | true | WEAK: mild dynamics; may not beat static/NN |
 | E17_never_observed_states | 921857 | DYNAMIC_FIELD | 0.995 | 1.000 | 1.000 | 0.009 | 0.999 | 0.000 | true | PASS: Dphi two-step + ToR approach never-stored A->C (RQM compose flagged separately) |
 | E11_trainable_field_encoder | 921858 | STATIC_FIELD | 0.769 | 1.000 | 0.375 | 0.714 | 0.769 | 0.000 | false | PASS: trained encoder geometry > random projector |
-| E12_crosslingual_concept | 921858 | STATIC_FIELD | 1.000 | 1.000 | 1.000 | 0.739 | 0.369 | 0.000 | false | PASS: holdout langs closer to perro than gato (GGUF) |
-| E13_relational_field | 921858 | DYNAMIC_FIELD | 0.200 | 0.333 | 0.333 | -1.113 | 0.200 | 0.000 | false | PARTIAL: dynamic/static field generaliza holdout (RQM solo control) |
+| E12_crosslingual_concept | 921858 | STATIC_FIELD | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | false | SKIPPED_NO_GGUF |
+| E13_relational_field | 921858 | DYNAMIC_FIELD | 0.800 | 1.000 | 0.667 | -0.488 | 1.000 | 0.000 | false | PASS: unseen>=0.66 y dynamic>=static>=table (RQM solo control) |
 | E14_incremental_forgetting | 921858 | STATIC_FIELD | 1.000 | 1.000 | 0.000 | 1.000 | 0.000 | -0.005 | false | PASS: incremental recall retained; adversarial retain>=0.5 |
-| E15_semantic_without_labels | 921858 | STATIC_FIELD | 1.000 | 0.333 | 0.000 | -0.000 | 0.000 | 0.000 | false | PARTIAL: weak structural separation without class labels |
+| E15_semantic_without_labels | 921858 | DYNAMIC_FIELD | 1.000 | 0.800 | 1.000 | 0.209 | 1.000 | 0.000 | false | PASS: unseen incompatible combos less stable / farther from manifold |
 | E16_field_dynamics | 921858 | DYNAMIC_FIELD | 1.000 | 1.000 | 1.000 | 0.547 | 1.000 | 0.000 | true | PASS: Dphi predicts transitions; rollout partial; RQM control separate |
 | E17_never_observed_states | 921858 | DYNAMIC_FIELD | 0.995 | 1.000 | 1.000 | 0.011 | 0.998 | 0.000 | true | PASS: Dphi two-step + ToR approach never-stored A->C (RQM compose flagged separately) |
-| E11_trainable_field_encoder | 921859 | STATIC_FIELD | 0.846 | 0.833 | 0.875 | 0.914 | 0.846 | 0.000 | false | PASS: trained encoder geometry > random projector |
-| E12_crosslingual_concept | 921859 | STATIC_FIELD | 1.000 | 1.000 | 1.000 | 0.709 | 0.404 | 0.000 | false | PASS: holdout langs closer to perro than gato (GGUF) |
-| E13_relational_field | 921859 | DYNAMIC_FIELD | 0.400 | 0.333 | 0.333 | -1.187 | 0.400 | 0.000 | false | PARTIAL: dynamic/static field generaliza holdout (RQM solo control) |
+| E11_trainable_field_encoder | 921859 | STATIC_FIELD | 0.923 | 0.833 | 0.750 | 0.914 | 0.923 | 0.000 | false | PASS: trained encoder geometry > random projector |
+| E12_crosslingual_concept | 921859 | STATIC_FIELD | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | false | SKIPPED_NO_GGUF |
+| E13_relational_field | 921859 | DYNAMIC_FIELD | 0.800 | 1.000 | 0.333 | -0.475 | 1.000 | 0.000 | false | PASS: unseen>=0.66 y dynamic>=static>=table (RQM solo control) |
 | E14_incremental_forgetting | 921859 | STATIC_FIELD | 1.000 | 1.000 | 0.000 | 1.000 | 0.000 | 0.013 | false | PASS: incremental recall retained; adversarial retain>=0.5 |
-| E15_semantic_without_labels | 921859 | STATIC_FIELD | 1.000 | 0.000 | 0.000 | -0.000 | 0.000 | 0.000 | false | FAIL: no structural signal for unseen incompatible combos |
+| E15_semantic_without_labels | 921859 | DYNAMIC_FIELD | 1.000 | 0.800 | 1.000 | 0.287 | 1.000 | 0.000 | false | PASS: unseen incompatible combos less stable / farther from manifold |
 | E16_field_dynamics | 921859 | DYNAMIC_FIELD | 1.000 | 1.000 | 1.000 | 0.528 | 1.000 | 0.000 | true | PASS: Dphi predicts transitions; rollout partial; RQM control separate |
 | E17_never_observed_states | 921859 | DYNAMIC_FIELD | 0.995 | 1.000 | 1.000 | 0.009 | 0.999 | 0.000 | true | PASS: Dphi two-step + ToR approach never-stored A->C (RQM compose flagged separately) |
-| E11_trainable_field_encoder | 921860 | STATIC_FIELD | 0.538 | 0.500 | 0.375 | 0.167 | 0.538 | 0.000 | false | PARTIAL: geometry improved but not all criteria |
-| E12_crosslingual_concept | 921860 | STATIC_FIELD | 1.000 | 1.000 | 1.000 | 0.711 | 0.401 | 0.000 | false | PASS: holdout langs closer to perro than gato (GGUF) |
-| E13_relational_field | 921860 | DYNAMIC_FIELD | 0.400 | 0.333 | 0.333 | -1.094 | 0.400 | 0.000 | false | PARTIAL: dynamic/static field generaliza holdout (RQM solo control) |
+| E11_trainable_field_encoder | 921860 | STATIC_FIELD | 0.538 | 0.500 | 0.500 | 0.167 | 0.538 | 0.000 | false | PARTIAL: geometry improved but not all criteria |
+| E12_crosslingual_concept | 921860 | STATIC_FIELD | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | false | SKIPPED_NO_GGUF |
+| E13_relational_field | 921860 | DYNAMIC_FIELD | 0.800 | 1.000 | 0.333 | -0.496 | 1.000 | 0.000 | false | PASS: unseen>=0.66 y dynamic>=static>=table (RQM solo control) |
 | E14_incremental_forgetting | 921860 | STATIC_FIELD | 1.000 | 1.000 | 0.000 | 1.000 | 0.000 | -0.004 | false | PASS: incremental recall retained; adversarial retain>=0.5 |
-| E15_semantic_without_labels | 921860 | STATIC_FIELD | 1.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | false | FAIL: no structural signal for unseen incompatible combos |
+| E15_semantic_without_labels | 921860 | DYNAMIC_FIELD | 1.000 | 0.800 | 1.000 | 0.141 | 1.000 | 0.000 | false | PASS: unseen incompatible combos less stable / farther from manifold |
 | E16_field_dynamics | 921860 | DYNAMIC_FIELD | 1.000 | 1.000 | 1.000 | 0.814 | 1.000 | 0.000 | true | PASS: Dphi predicts transitions; rollout partial; RQM control separate |
 | E17_never_observed_states | 921860 | DYNAMIC_FIELD | 0.996 | 1.000 | 1.000 | 0.019 | 0.999 | 0.000 | true | PASS: Dphi two-step + ToR approach never-stored A->C (RQM compose flagged separately) |
 | E11_trainable_field_encoder | 921861 | STATIC_FIELD | 1.000 | 1.000 | 0.750 | 0.866 | 1.000 | 0.000 | false | PASS: trained encoder geometry > random projector |
-| E12_crosslingual_concept | 921861 | STATIC_FIELD | 1.000 | 1.000 | 1.000 | 0.691 | 0.422 | 0.000 | false | PASS: holdout langs closer to perro than gato (GGUF) |
-| E13_relational_field | 921861 | DYNAMIC_FIELD | 0.600 | 0.333 | 0.333 | -1.195 | 0.600 | 0.000 | false | PARTIAL: dynamic/static field generaliza holdout (RQM solo control) |
+| E12_crosslingual_concept | 921861 | STATIC_FIELD | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | false | SKIPPED_NO_GGUF |
+| E13_relational_field | 921861 | DYNAMIC_FIELD | 0.800 | 1.000 | 0.667 | -0.454 | 1.000 | 0.000 | false | PASS: unseen>=0.66 y dynamic>=static>=table (RQM solo control) |
 | E14_incremental_forgetting | 921861 | STATIC_FIELD | 1.000 | 1.000 | 0.000 | 1.000 | 0.000 | -0.003 | false | PASS: incremental recall retained; adversarial retain>=0.5 |
-| E15_semantic_without_labels | 921861 | STATIC_FIELD | 1.000 | 0.000 | 0.000 | -0.000 | 0.000 | 0.000 | false | FAIL: no structural signal for unseen incompatible combos |
+| E15_semantic_without_labels | 921861 | DYNAMIC_FIELD | 1.000 | 1.000 | 1.000 | 0.373 | 1.000 | 0.000 | false | PASS: unseen incompatible combos less stable / farther from manifold |
 | E16_field_dynamics | 921861 | DYNAMIC_FIELD | 0.411 | 1.000 | 1.000 | -0.580 | 0.411 | 0.000 | true | WEAK: mild dynamics; may not beat static/NN |
 | E17_never_observed_states | 921861 | DYNAMIC_FIELD | 0.996 | 1.000 | 1.000 | 0.012 | 0.999 | 0.000 | true | PASS: Dphi two-step + ToR approach never-stored A->C (RQM compose flagged separately) |
 | E11_trainable_field_encoder | 921862 | STATIC_FIELD | 1.000 | 0.833 | 0.750 | 0.936 | 1.000 | 0.000 | false | PASS: trained encoder geometry > random projector |
-| E12_crosslingual_concept | 921862 | STATIC_FIELD | 1.000 | 1.000 | 1.000 | 0.706 | 0.405 | 0.000 | false | PASS: holdout langs closer to perro than gato (GGUF) |
-| E13_relational_field | 921862 | DYNAMIC_FIELD | 0.200 | 0.333 | 0.333 | -1.309 | 0.200 | 0.000 | false | PARTIAL: dynamic/static field generaliza holdout (RQM solo control) |
+| E12_crosslingual_concept | 921862 | STATIC_FIELD | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | false | SKIPPED_NO_GGUF |
+| E13_relational_field | 921862 | DYNAMIC_FIELD | 0.800 | 1.000 | 0.667 | -0.478 | 1.000 | 0.000 | false | PASS: unseen>=0.66 y dynamic>=static>=table (RQM solo control) |
 | E14_incremental_forgetting | 921862 | STATIC_FIELD | 1.000 | 1.000 | 0.000 | 1.000 | 0.000 | 0.013 | false | PASS: incremental recall retained; adversarial retain>=0.5 |
-| E15_semantic_without_labels | 921862 | STATIC_FIELD | 1.000 | 0.333 | 0.000 | -0.000 | 0.000 | 0.000 | false | PARTIAL: weak structural separation without class labels |
+| E15_semantic_without_labels | 921862 | DYNAMIC_FIELD | 1.000 | 0.900 | 1.000 | 0.213 | 1.000 | 0.000 | false | PASS: unseen incompatible combos less stable / farther from manifold |
 | E16_field_dynamics | 921862 | DYNAMIC_FIELD | 1.000 | 1.000 | 1.000 | 0.616 | 1.000 | 0.000 | true | PASS: Dphi predicts transitions; rollout partial; RQM control separate |
 | E17_never_observed_states | 921862 | DYNAMIC_FIELD | 0.995 | 1.000 | 1.000 | 0.010 | 0.998 | 0.000 | true | PASS: Dphi two-step + ToR approach never-stored A->C (RQM compose flagged separately) |
-| E11_trainable_field_encoder | 921863 | STATIC_FIELD | 0.769 | 0.833 | 0.750 | 0.857 | 0.769 | 0.000 | false | PASS: trained encoder geometry > random projector |
-| E12_crosslingual_concept | 921863 | STATIC_FIELD | 1.000 | 1.000 | 1.000 | 0.718 | 0.389 | 0.000 | false | PASS: holdout langs closer to perro than gato (GGUF) |
-| E13_relational_field | 921863 | DYNAMIC_FIELD | 0.200 | 0.333 | 0.333 | -1.183 | 0.200 | 0.000 | false | PARTIAL: dynamic/static field generaliza holdout (RQM solo control) |
+| E11_trainable_field_encoder | 921863 | STATIC_FIELD | 0.692 | 0.833 | 0.750 | 0.857 | 0.692 | 0.000 | false | PARTIAL: geometry improved but not all criteria |
+| E12_crosslingual_concept | 921863 | STATIC_FIELD | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | false | SKIPPED_NO_GGUF |
+| E13_relational_field | 921863 | DYNAMIC_FIELD | 0.800 | 1.000 | 0.667 | -0.484 | 1.000 | 0.000 | false | PASS: unseen>=0.66 y dynamic>=static>=table (RQM solo control) |
 | E14_incremental_forgetting | 921863 | STATIC_FIELD | 1.000 | 1.000 | 0.000 | 1.000 | 0.000 | 0.033 | false | PASS: incremental recall retained; adversarial retain>=0.5 |
-| E15_semantic_without_labels | 921863 | STATIC_FIELD | 1.000 | 0.333 | 0.000 | -0.000 | 0.000 | 0.000 | false | PARTIAL: weak structural separation without class labels |
+| E15_semantic_without_labels | 921863 | DYNAMIC_FIELD | 1.000 | 0.600 | 0.667 | 0.114 | 0.667 | 0.000 | false | PARTIAL: structural separation improving; margin/ranking aún cortos |
 | E16_field_dynamics | 921863 | DYNAMIC_FIELD | 1.000 | 1.000 | 1.000 | 0.837 | 1.000 | 0.000 | true | PASS: Dphi predicts transitions; rollout partial; RQM control separate |
 | E17_never_observed_states | 921863 | DYNAMIC_FIELD | 0.996 | 1.000 | 1.000 | 0.007 | 0.998 | 0.000 | true | PASS: Dphi two-step + ToR approach never-stored A->C (RQM compose flagged separately) |
 
 
 ## Notas por corrida
 
-- E11_trainable_field_encoder seed=921856 verdict=PASS: trained encoder geometry > random projector notes=raw_margin=0.000 rand_margin=0.013 pre_margin=0.062 post_margin=0.611 raw_knn=0.308 rand_knn=0.308 knn=0.769 para=0.833 sil=0.667 stab=0.991 causal_delta=0.775 loss_end=1.9819 elapsed_ms=39 raw_intra=1.000 raw_inter=1.000
-- E12_crosslingual_concept seed=921856 verdict=PASS: holdout langs closer to perro than gato (GGUF) notes=arch=hidden_blockmean+contrastive_ES_dog_vs_cat; d_hold_mean=0.3644 d_gato=1.1096 field_margin=0.7452 raw_margin=-0.2724 raw_cos(dog)=0.5384 raw_cos(gato)=0.8107 para_ok=5/5 holdouts=[0.16346514727690897, 0.6646590995447874, 0.265217467784824]; train=ES-only holdouts=never-trained
-- E13_relational_field seed=921856 verdict=PARTIAL: dynamic/static field generaliza holdout (RQM solo control) notes=A_table seen=1.00 un=0.00; B_RQM seen=0.60 un=0.00; C_static seen=0.20 un=0.33; D_dynamic seen=0.20 un=0.33
-- E14_incremental_forgetting seed=921856 verdict=PASS: incremental recall retained; adversarial retain>=0.5 notes=dR_A=0.031 dR_B=-0.000 dR_C=-0.002 final_acc=1.000 adv_retain_ABC=1.000 curve_A=Some([0.9636326945073439, 0.9994144162560841, 0.9986767511792157, 0.9950265375153415]) curve_B=Some([0.9999999999999988, 0.9994909068894604, 0.9999996783080494]) local_bias=1
-- E15_semantic_without_labels seed=921856 verdict=PARTIAL: weak structural separation without class labels notes=E_ok=54.8610 E_bad=55.0063 d_man_ok=0.0014 d_man_bad=0.0012 stab_ok=0.9675 stab_bad=0.9675 structure=1/3
+- E11_trainable_field_encoder seed=921856 verdict=PARTIAL: geometry improved but not all criteria notes=raw_margin=0.000 rand_margin=0.013 pre_margin=0.062 post_margin=0.611 raw_knn=0.385 rand_knn=0.231 knn=0.692 para=0.833 sil=0.667 stab=0.991 causal_delta=0.775 loss_end=1.9819 elapsed_ms=296 raw_intra=1.000 raw_inter=1.000
+- E12_crosslingual_concept seed=921856 verdict=SKIPPED_NO_GGUF notes=try_open falló: no se encontró Gemma 2; usa --model RUTA_GGUF o GEMMA2_GGUF
+- E13_relational_field seed=921856 verdict=PASS: unseen>=0.66 y dynamic>=static>=table (RQM solo control) notes=A_table seen=1.00 un=0.00; B_RQM seen=0.60 un=0.00; C_static seen=0.20 un=0.33; D_dynamic seen=0.80 un=1.00; comp_like=1.00; periphery=gguf-hidden; anti_leak_aguila_servivo=1; holdout=[lobo->animal:1,lobo->mamífero:1,águila->ser-vivo:1]; alpha=0.78; animal_ball=1; tax_ancestors=1
+- E14_incremental_forgetting seed=921856 verdict=PASS: incremental recall retained; adversarial retain>=0.5 notes=dR_A=0.031 dR_B=-0.000 dR_C=-0.002 final_acc=1.000 adv_retain_ABC=1.000 curve_A=Some([0.9636326945073439, 0.9994144162560841, 0.9986767511792158, 0.9950265375153415]) curve_B=Some([0.9999999999999987, 0.9994909068894604, 0.9999996783080494]) local_bias=1
+- E15_semantic_without_labels seed=921856 verdict=PASS: unseen incompatible combos less stable / farther from manifold notes=E_ok=2.1952 E_bad=3.5696 d_man_ok=0.1605 d_man_bad=0.4068 stab_ok=0.8327 stab_bad=0.7520 structure=3/3 rank_acc=0.800 margin_E=1.3744 arch=factor_compose+Dphi_manifold
 - E16_field_dynamics seed=921856 verdict=PASS: Dphi predicts transitions; rollout partial; RQM control separate notes=table_ok=true nn_next=B rqm_direct=1 rqm_compose=3 cdt_pred=1 cos_B=1.000 rollB=1.000 rollC=1.000 rollD=1.000 static_cosAB=0.499 causal_pre=0.510 audit_clean_for_AtoD_train=true
 - E17_never_observed_states seed=921856 verdict=PASS: Dphi two-step + ToR approach never-stored A->C (RQM compose flagged separately) notes=dist_C=0.0019 dist_B=0.0093 comp_dist=0.0000 rqm_direct_edge=false rqm_compose_pred=2 audit_train=false audit_rqm_compose=true audit_bank=false valid_unseen=true
-- E11_trainable_field_encoder seed=921857 verdict=PASS: trained encoder geometry > random projector notes=raw_margin=0.000 rand_margin=0.005 pre_margin=0.008 post_margin=0.874 raw_knn=0.154 rand_knn=0.154 knn=0.923 para=1.000 sil=0.815 stab=0.990 causal_delta=0.997 loss_end=1.4388 elapsed_ms=30 raw_intra=1.000 raw_inter=1.000
-- E12_crosslingual_concept seed=921857 verdict=PASS: holdout langs closer to perro than gato (GGUF) notes=arch=hidden_blockmean+contrastive_ES_dog_vs_cat; d_hold_mean=0.3721 d_gato=1.1131 field_margin=0.7411 raw_margin=-0.2724 raw_cos(dog)=0.5384 raw_cos(gato)=0.8107 para_ok=5/5 holdouts=[0.14855659101179397, 0.6949843644163373, 0.2726174568475266]; train=ES-only holdouts=never-trained
-- E13_relational_field seed=921857 verdict=PARTIAL: dynamic/static field generaliza holdout (RQM solo control) notes=A_table seen=1.00 un=0.00; B_RQM seen=0.60 un=0.00; C_static seen=0.20 un=0.33; D_dynamic seen=0.20 un=0.33
+- E11_trainable_field_encoder seed=921857 verdict=PASS: trained encoder geometry > random projector notes=raw_margin=0.000 rand_margin=0.005 pre_margin=0.008 post_margin=0.874 raw_knn=0.154 rand_knn=0.154 knn=0.923 para=1.000 sil=0.815 stab=0.990 causal_delta=0.997 loss_end=1.4388 elapsed_ms=276 raw_intra=1.000 raw_inter=1.000
+- E12_crosslingual_concept seed=921857 verdict=SKIPPED_NO_GGUF notes=try_open falló: no se encontró Gemma 2; usa --model RUTA_GGUF o GEMMA2_GGUF
+- E13_relational_field seed=921857 verdict=PASS: unseen>=0.66 y dynamic>=static>=table (RQM solo control) notes=A_table seen=1.00 un=0.00; B_RQM seen=0.60 un=0.00; C_static seen=0.40 un=0.67; D_dynamic seen=0.80 un=1.00; comp_like=1.00; periphery=gguf-hidden; anti_leak_aguila_servivo=1; holdout=[lobo->animal:1,lobo->mamífero:1,águila->ser-vivo:1]; alpha=0.78; animal_ball=1; tax_ancestors=1
 - E14_incremental_forgetting seed=921857 verdict=PASS: incremental recall retained; adversarial retain>=0.5 notes=dR_A=-0.006 dR_B=-0.000 dR_C=-0.001 final_acc=1.000 adv_retain_ABC=1.000 curve_A=Some([0.9993554520458104, 0.9992031755682206, 0.9994441837826883, 0.9932810177710603]) curve_B=Some([1.0000000000000002, 0.999433847377641, 0.9999853519829456]) local_bias=1
-- E15_semantic_without_labels seed=921857 verdict=PARTIAL: weak structural separation without class labels notes=E_ok=58.3383 E_bad=58.6038 d_man_ok=0.0023 d_man_bad=0.0016 stab_ok=0.9723 stab_bad=0.9723 structure=1/3
+- E15_semantic_without_labels seed=921857 verdict=PARTIAL: structural separation improving; margin/ranking aún cortos notes=E_ok=3.6209 E_bad=3.9269 d_man_ok=0.3488 d_man_bad=0.3925 stab_ok=0.5395 stab_bad=0.4010 structure=3/3 rank_acc=0.600 margin_E=0.3060 arch=factor_compose+Dphi_manifold
 - E16_field_dynamics seed=921857 verdict=WEAK: mild dynamics; may not beat static/NN notes=table_ok=true nn_next=B rqm_direct=1 rqm_compose=3 cdt_pred=1 cos_B=0.985 rollB=0.985 rollC=0.863 rollD=0.995 static_cosAB=0.985 causal_pre=0.971 audit_clean_for_AtoD_train=true
 - E17_never_observed_states seed=921857 verdict=PASS: Dphi two-step + ToR approach never-stored A->C (RQM compose flagged separately) notes=dist_C=0.0010 dist_B=0.0103 comp_dist=-0.0000 rqm_direct_edge=false rqm_compose_pred=2 audit_train=false audit_rqm_compose=true audit_bank=false valid_unseen=true
-- E11_trainable_field_encoder seed=921858 verdict=PASS: trained encoder geometry > random projector notes=raw_margin=0.000 rand_margin=0.004 pre_margin=0.002 post_margin=0.714 raw_knn=0.154 rand_knn=0.077 knn=0.769 para=1.000 sil=0.717 stab=0.991 causal_delta=0.370 loss_end=5.7307 elapsed_ms=35 raw_intra=1.000 raw_inter=1.000
-- E12_crosslingual_concept seed=921858 verdict=PASS: holdout langs closer to perro than gato (GGUF) notes=arch=hidden_blockmean+contrastive_ES_dog_vs_cat; d_hold_mean=0.3687 d_gato=1.1078 field_margin=0.7392 raw_margin=-0.2724 raw_cos(dog)=0.5384 raw_cos(gato)=0.8107 para_ok=5/5 holdouts=[0.16581198000148079, 0.6478946571530106, 0.2922710315420256]; train=ES-only holdouts=never-trained
-- E13_relational_field seed=921858 verdict=PARTIAL: dynamic/static field generaliza holdout (RQM solo control) notes=A_table seen=1.00 un=0.00; B_RQM seen=0.60 un=0.00; C_static seen=0.40 un=0.33; D_dynamic seen=0.20 un=0.33
-- E14_incremental_forgetting seed=921858 verdict=PASS: incremental recall retained; adversarial retain>=0.5 notes=dR_A=-0.005 dR_B=-0.000 dR_C=-0.002 final_acc=1.000 adv_retain_ABC=1.000 curve_A=Some([0.9993899415358866, 0.9986248593078386, 0.9991149750868684, 0.9939583602329681]) curve_B=Some([1.0000000000000002, 0.999532026697603, 0.9999983479999502]) local_bias=1
-- E15_semantic_without_labels seed=921858 verdict=PARTIAL: weak structural separation without class labels notes=E_ok=62.7446 E_bad=62.8205 d_man_ok=0.0010 d_man_bad=0.0009 stab_ok=0.9697 stab_bad=0.9697 structure=1/3
+- E11_trainable_field_encoder seed=921858 verdict=PASS: trained encoder geometry > random projector notes=raw_margin=0.000 rand_margin=0.004 pre_margin=0.002 post_margin=0.714 raw_knn=0.154 rand_knn=0.077 knn=0.769 para=1.000 sil=0.717 stab=0.991 causal_delta=0.370 loss_end=5.7307 elapsed_ms=273 raw_intra=1.000 raw_inter=1.000
+- E12_crosslingual_concept seed=921858 verdict=SKIPPED_NO_GGUF notes=try_open falló: no se encontró Gemma 2; usa --model RUTA_GGUF o GEMMA2_GGUF
+- E13_relational_field seed=921858 verdict=PASS: unseen>=0.66 y dynamic>=static>=table (RQM solo control) notes=A_table seen=1.00 un=0.00; B_RQM seen=0.60 un=0.00; C_static seen=0.40 un=0.67; D_dynamic seen=0.80 un=1.00; comp_like=1.00; periphery=gguf-hidden; anti_leak_aguila_servivo=1; holdout=[lobo->animal:1,lobo->mamífero:1,águila->ser-vivo:1]; alpha=0.78; animal_ball=1; tax_ancestors=1
+- E14_incremental_forgetting seed=921858 verdict=PASS: incremental recall retained; adversarial retain>=0.5 notes=dR_A=-0.005 dR_B=-0.000 dR_C=-0.002 final_acc=1.000 adv_retain_ABC=1.000 curve_A=Some([0.9993899415358866, 0.9986248593078386, 0.9991149750868686, 0.9939583602329681]) curve_B=Some([1.0, 0.9995320266976031, 0.9999983479999502]) local_bias=1
+- E15_semantic_without_labels seed=921858 verdict=PASS: unseen incompatible combos less stable / farther from manifold notes=E_ok=1.7475 E_bad=2.9323 d_man_ok=0.0988 d_man_bad=0.3076 stab_ok=0.8945 stab_bad=0.8039 structure=3/3 rank_acc=0.800 margin_E=1.1847 arch=factor_compose+Dphi_manifold
 - E16_field_dynamics seed=921858 verdict=PASS: Dphi predicts transitions; rollout partial; RQM control separate notes=table_ok=true nn_next=B rqm_direct=1 rqm_compose=3 cdt_pred=1 cos_B=1.000 rollB=1.000 rollC=1.000 rollD=1.000 static_cosAB=0.433 causal_pre=0.453 audit_clean_for_AtoD_train=true
 - E17_never_observed_states seed=921858 verdict=PASS: Dphi two-step + ToR approach never-stored A->C (RQM compose flagged separately) notes=dist_C=0.0020 dist_B=0.0125 comp_dist=-0.0000 rqm_direct_edge=false rqm_compose_pred=2 audit_train=false audit_rqm_compose=true audit_bank=false valid_unseen=true
-- E11_trainable_field_encoder seed=921859 verdict=PASS: trained encoder geometry > random projector notes=raw_margin=0.000 rand_margin=0.033 pre_margin=0.015 post_margin=0.914 raw_knn=0.385 rand_knn=0.462 knn=0.846 para=0.833 sil=0.804 stab=0.991 causal_delta=0.763 loss_end=4.0637 elapsed_ms=33 raw_intra=1.000 raw_inter=1.000
-- E12_crosslingual_concept seed=921859 verdict=PASS: holdout langs closer to perro than gato (GGUF) notes=arch=hidden_blockmean+contrastive_ES_dog_vs_cat; d_hold_mean=0.4038 d_gato=1.1128 field_margin=0.7090 raw_margin=-0.2724 raw_cos(dog)=0.5384 raw_cos(gato)=0.8107 para_ok=5/5 holdouts=[0.15981049580496076, 0.7010329657527645, 0.35056034265195246]; train=ES-only holdouts=never-trained
-- E13_relational_field seed=921859 verdict=PARTIAL: dynamic/static field generaliza holdout (RQM solo control) notes=A_table seen=1.00 un=0.00; B_RQM seen=0.60 un=0.00; C_static seen=0.20 un=0.33; D_dynamic seen=0.40 un=0.33
+- E11_trainable_field_encoder seed=921859 verdict=PASS: trained encoder geometry > random projector notes=raw_margin=0.000 rand_margin=0.033 pre_margin=0.015 post_margin=0.914 raw_knn=0.231 rand_knn=0.462 knn=0.923 para=0.833 sil=0.804 stab=0.991 causal_delta=0.763 loss_end=4.0637 elapsed_ms=275 raw_intra=1.000 raw_inter=1.000
+- E12_crosslingual_concept seed=921859 verdict=SKIPPED_NO_GGUF notes=try_open falló: no se encontró Gemma 2; usa --model RUTA_GGUF o GEMMA2_GGUF
+- E13_relational_field seed=921859 verdict=PASS: unseen>=0.66 y dynamic>=static>=table (RQM solo control) notes=A_table seen=1.00 un=0.00; B_RQM seen=0.60 un=0.00; C_static seen=0.20 un=0.33; D_dynamic seen=0.80 un=1.00; comp_like=1.00; periphery=gguf-hidden; anti_leak_aguila_servivo=1; holdout=[lobo->animal:1,lobo->mamífero:1,águila->ser-vivo:1]; alpha=0.78; animal_ball=1; tax_ancestors=1
 - E14_incremental_forgetting seed=921859 verdict=PASS: incremental recall retained; adversarial retain>=0.5 notes=dR_A=0.013 dR_B=-0.000 dR_C=-0.002 final_acc=1.000 adv_retain_ABC=1.000 curve_A=Some([0.9814242460200537, 0.9989953928525179, 0.9991079615927565, 0.9941477814830343]) curve_B=Some([1.0, 0.9997120106846641, 0.9999999259476052]) local_bias=1
-- E15_semantic_without_labels seed=921859 verdict=FAIL: no structural signal for unseen incompatible combos notes=E_ok=64.3024 E_bad=64.2711 d_man_ok=0.0019 d_man_bad=0.0014 stab_ok=0.9742 stab_bad=0.9742 structure=0/3
+- E15_semantic_without_labels seed=921859 verdict=PASS: unseen incompatible combos less stable / farther from manifold notes=E_ok=3.2229 E_bad=5.1258 d_man_ok=0.2646 d_man_bad=0.5520 stab_ok=0.5174 stab_bad=0.2371 structure=3/3 rank_acc=0.800 margin_E=1.9029 arch=factor_compose+Dphi_manifold
 - E16_field_dynamics seed=921859 verdict=PASS: Dphi predicts transitions; rollout partial; RQM control separate notes=table_ok=true nn_next=B rqm_direct=1 rqm_compose=3 cdt_pred=1 cos_B=1.000 rollB=1.000 rollC=1.000 rollD=1.000 static_cosAB=0.465 causal_pre=0.472 audit_clean_for_AtoD_train=true
 - E17_never_observed_states seed=921859 verdict=PASS: Dphi two-step + ToR approach never-stored A->C (RQM compose flagged separately) notes=dist_C=0.0014 dist_B=0.0099 comp_dist=0.0000 rqm_direct_edge=false rqm_compose_pred=2 audit_train=false audit_rqm_compose=true audit_bank=false valid_unseen=true
-- E11_trainable_field_encoder seed=921860 verdict=PARTIAL: geometry improved but not all criteria notes=raw_margin=0.000 rand_margin=-0.005 pre_margin=0.015 post_margin=0.167 raw_knn=0.231 rand_knn=0.154 knn=0.538 para=0.500 sil=0.326 stab=0.991 causal_delta=0.646 loss_end=1.9021 elapsed_ms=35 raw_intra=1.000 raw_inter=1.000
-- E12_crosslingual_concept seed=921860 verdict=PASS: holdout langs closer to perro than gato (GGUF) notes=arch=hidden_blockmean+contrastive_ES_dog_vs_cat; d_hold_mean=0.4015 d_gato=1.1124 field_margin=0.7110 raw_margin=-0.2724 raw_cos(dog)=0.5384 raw_cos(gato)=0.8107 para_ok=5/5 holdouts=[0.13803248360081022, 0.6700793796489225, 0.3962794072282628]; train=ES-only holdouts=never-trained
-- E13_relational_field seed=921860 verdict=PARTIAL: dynamic/static field generaliza holdout (RQM solo control) notes=A_table seen=1.00 un=0.00; B_RQM seen=0.60 un=0.00; C_static seen=0.40 un=0.33; D_dynamic seen=0.40 un=0.33
-- E14_incremental_forgetting seed=921860 verdict=PASS: incremental recall retained; adversarial retain>=0.5 notes=dR_A=-0.004 dR_B=-0.002 dR_C=-0.000 final_acc=1.000 adv_retain_ABC=1.000 curve_A=Some([0.9993784765910171, 0.9989950657000826, 0.9991580608623022, 0.9957469488502625]) curve_B=Some([1.0, 0.9996357028666917, 0.9977503311921173]) local_bias=1
-- E15_semantic_without_labels seed=921860 verdict=FAIL: no structural signal for unseen incompatible combos notes=E_ok=53.8238 E_bad=53.0875 d_man_ok=0.0009 d_man_bad=0.0013 stab_ok=0.9740 stab_bad=0.9740 structure=0/3
+- E11_trainable_field_encoder seed=921860 verdict=PARTIAL: geometry improved but not all criteria notes=raw_margin=0.000 rand_margin=-0.005 pre_margin=0.015 post_margin=0.167 raw_knn=0.231 rand_knn=0.154 knn=0.538 para=0.500 sil=0.326 stab=0.991 causal_delta=0.646 loss_end=1.9021 elapsed_ms=277 raw_intra=1.000 raw_inter=1.000
+- E12_crosslingual_concept seed=921860 verdict=SKIPPED_NO_GGUF notes=try_open falló: no se encontró Gemma 2; usa --model RUTA_GGUF o GEMMA2_GGUF
+- E13_relational_field seed=921860 verdict=PASS: unseen>=0.66 y dynamic>=static>=table (RQM solo control) notes=A_table seen=1.00 un=0.00; B_RQM seen=0.60 un=0.00; C_static seen=0.20 un=0.33; D_dynamic seen=0.80 un=1.00; comp_like=1.00; periphery=gguf-hidden; anti_leak_aguila_servivo=1; holdout=[lobo->animal:1,lobo->mamífero:1,águila->ser-vivo:1]; alpha=0.78; animal_ball=1; tax_ancestors=1
+- E14_incremental_forgetting seed=921860 verdict=PASS: incremental recall retained; adversarial retain>=0.5 notes=dR_A=-0.004 dR_B=-0.002 dR_C=-0.000 final_acc=1.000 adv_retain_ABC=1.000 curve_A=Some([0.9993784765910171, 0.9989950657000827, 0.9991580608623023, 0.9957469488502628]) curve_B=Some([1.0, 0.9996357028666916, 0.9977503311921173]) local_bias=1
+- E15_semantic_without_labels seed=921860 verdict=PASS: unseen incompatible combos less stable / farther from manifold notes=E_ok=2.0597 E_bad=3.0605 d_man_ok=0.1338 d_man_bad=0.2746 stab_ok=0.8405 stab_bad=0.7064 structure=3/3 rank_acc=0.800 margin_E=1.0008 arch=factor_compose+Dphi_manifold
 - E16_field_dynamics seed=921860 verdict=PASS: Dphi predicts transitions; rollout partial; RQM control separate notes=table_ok=true nn_next=B rqm_direct=1 rqm_compose=3 cdt_pred=1 cos_B=1.000 rollB=1.000 rollC=1.000 rollD=1.000 static_cosAB=0.203 causal_pre=0.186 audit_clean_for_AtoD_train=true
 - E17_never_observed_states seed=921860 verdict=PASS: Dphi two-step + ToR approach never-stored A->C (RQM compose flagged separately) notes=dist_C=0.0012 dist_B=0.0199 comp_dist=-0.0000 rqm_direct_edge=false rqm_compose_pred=2 audit_train=false audit_rqm_compose=true audit_bank=false valid_unseen=true
-- E11_trainable_field_encoder seed=921861 verdict=PASS: trained encoder geometry > random projector notes=raw_margin=0.000 rand_margin=0.019 pre_margin=-0.001 post_margin=0.866 raw_knn=0.385 rand_knn=0.308 knn=1.000 para=1.000 sil=0.926 stab=0.990 causal_delta=1.038 loss_end=4.1095 elapsed_ms=31 raw_intra=1.000 raw_inter=1.000
-- E12_crosslingual_concept seed=921861 verdict=PASS: holdout langs closer to perro than gato (GGUF) notes=arch=hidden_blockmean+contrastive_ES_dog_vs_cat; d_hold_mean=0.4215 d_gato=1.1127 field_margin=0.6912 raw_margin=-0.2724 raw_cos(dog)=0.5384 raw_cos(gato)=0.8107 para_ok=5/5 holdouts=[0.13083921193262638, 0.7079999994570214, 0.42572875971898705]; train=ES-only holdouts=never-trained
-- E13_relational_field seed=921861 verdict=PARTIAL: dynamic/static field generaliza holdout (RQM solo control) notes=A_table seen=1.00 un=0.00; B_RQM seen=0.60 un=0.00; C_static seen=0.20 un=0.33; D_dynamic seen=0.60 un=0.33
+- E11_trainable_field_encoder seed=921861 verdict=PASS: trained encoder geometry > random projector notes=raw_margin=0.000 rand_margin=0.019 pre_margin=-0.001 post_margin=0.866 raw_knn=0.154 rand_knn=0.077 knn=1.000 para=1.000 sil=0.926 stab=0.990 causal_delta=1.038 loss_end=4.1095 elapsed_ms=274 raw_intra=1.000 raw_inter=1.000
+- E12_crosslingual_concept seed=921861 verdict=SKIPPED_NO_GGUF notes=try_open falló: no se encontró Gemma 2; usa --model RUTA_GGUF o GEMMA2_GGUF
+- E13_relational_field seed=921861 verdict=PASS: unseen>=0.66 y dynamic>=static>=table (RQM solo control) notes=A_table seen=1.00 un=0.00; B_RQM seen=0.60 un=0.00; C_static seen=0.40 un=0.67; D_dynamic seen=0.80 un=1.00; comp_like=1.00; periphery=gguf-hidden; anti_leak_aguila_servivo=1; holdout=[lobo->animal:1,lobo->mamífero:1,águila->ser-vivo:1]; alpha=0.78; animal_ball=1; tax_ancestors=1
 - E14_incremental_forgetting seed=921861 verdict=PASS: incremental recall retained; adversarial retain>=0.5 notes=dR_A=-0.003 dR_B=-0.002 dR_C=-0.000 final_acc=1.000 adv_retain_ABC=1.000 curve_A=Some([0.9993761919807417, 0.9989519890055237, 0.9990548057698527, 0.996044339744865]) curve_B=Some([1.0, 0.9995918243062571, 0.9976681087197727]) local_bias=1
-- E15_semantic_without_labels seed=921861 verdict=FAIL: no structural signal for unseen incompatible combos notes=E_ok=53.9775 E_bad=53.7768 d_man_ok=0.0013 d_man_bad=0.0012 stab_ok=0.9770 stab_bad=0.9770 structure=0/3
+- E15_semantic_without_labels seed=921861 verdict=PASS: unseen incompatible combos less stable / farther from manifold notes=E_ok=1.9715 E_bad=3.7294 d_man_ok=0.1227 d_man_bad=0.4955 stab_ok=0.8459 stab_bad=0.7612 structure=3/3 rank_acc=1.000 margin_E=1.7579 arch=factor_compose+Dphi_manifold
 - E16_field_dynamics seed=921861 verdict=WEAK: mild dynamics; may not beat static/NN notes=table_ok=true nn_next=B rqm_direct=1 rqm_compose=3 cdt_pred=1 cos_B=0.411 rollB=0.411 rollC=0.599 rollD=0.995 static_cosAB=0.995 causal_pre=0.991 audit_clean_for_AtoD_train=true
 - E17_never_observed_states seed=921861 verdict=PASS: Dphi two-step + ToR approach never-stored A->C (RQM compose flagged separately) notes=dist_C=0.0010 dist_B=0.0126 comp_dist=0.0000 rqm_direct_edge=false rqm_compose_pred=2 audit_train=false audit_rqm_compose=true audit_bank=false valid_unseen=true
-- E11_trainable_field_encoder seed=921862 verdict=PASS: trained encoder geometry > random projector notes=raw_margin=-0.000 rand_margin=0.018 pre_margin=0.015 post_margin=0.936 raw_knn=0.308 rand_knn=0.462 knn=1.000 para=0.833 sil=0.942 stab=0.991 causal_delta=0.807 loss_end=0.8200 elapsed_ms=30 raw_intra=1.000 raw_inter=1.000
-- E12_crosslingual_concept seed=921862 verdict=PASS: holdout langs closer to perro than gato (GGUF) notes=arch=hidden_blockmean+contrastive_ES_dog_vs_cat; d_hold_mean=0.4054 d_gato=1.1113 field_margin=0.7059 raw_margin=-0.2724 raw_cos(dog)=0.5384 raw_cos(gato)=0.8107 para_ok=5/5 holdouts=[0.09942841946953962, 0.6860538186032538, 0.43074494991740664]; train=ES-only holdouts=never-trained
-- E13_relational_field seed=921862 verdict=PARTIAL: dynamic/static field generaliza holdout (RQM solo control) notes=A_table seen=1.00 un=0.00; B_RQM seen=0.60 un=0.00; C_static seen=0.20 un=0.33; D_dynamic seen=0.20 un=0.33
+- E11_trainable_field_encoder seed=921862 verdict=PASS: trained encoder geometry > random projector notes=raw_margin=-0.000 rand_margin=0.018 pre_margin=0.015 post_margin=0.936 raw_knn=0.308 rand_knn=0.462 knn=1.000 para=0.833 sil=0.942 stab=0.991 causal_delta=0.807 loss_end=0.8200 elapsed_ms=278 raw_intra=1.000 raw_inter=1.000
+- E12_crosslingual_concept seed=921862 verdict=SKIPPED_NO_GGUF notes=try_open falló: no se encontró Gemma 2; usa --model RUTA_GGUF o GEMMA2_GGUF
+- E13_relational_field seed=921862 verdict=PASS: unseen>=0.66 y dynamic>=static>=table (RQM solo control) notes=A_table seen=1.00 un=0.00; B_RQM seen=0.60 un=0.00; C_static seen=0.40 un=0.67; D_dynamic seen=0.80 un=1.00; comp_like=1.00; periphery=gguf-hidden; anti_leak_aguila_servivo=1; holdout=[lobo->animal:1,lobo->mamífero:1,águila->ser-vivo:1]; alpha=0.78; animal_ball=1; tax_ancestors=1
 - E14_incremental_forgetting seed=921862 verdict=PASS: incremental recall retained; adversarial retain>=0.5 notes=dR_A=0.013 dR_B=-0.000 dR_C=-0.002 final_acc=1.000 adv_retain_ABC=1.000 curve_A=Some([0.9812682310211687, 0.9992990463121467, 0.9991375716770057, 0.9943050251759076]) curve_B=Some([1.0, 0.9997777661299403, 0.9999995908169221]) local_bias=1
-- E15_semantic_without_labels seed=921862 verdict=PARTIAL: weak structural separation without class labels notes=E_ok=54.9595 E_bad=55.0332 d_man_ok=0.0015 d_man_bad=0.0012 stab_ok=0.9777 stab_bad=0.9777 structure=1/3
+- E15_semantic_without_labels seed=921862 verdict=PASS: unseen incompatible combos less stable / farther from manifold notes=E_ok=1.8672 E_bad=2.9691 d_man_ok=0.0996 d_man_bad=0.3126 stab_ok=0.8919 stab_bad=0.8207 structure=3/3 rank_acc=0.900 margin_E=1.1019 arch=factor_compose+Dphi_manifold
 - E16_field_dynamics seed=921862 verdict=PASS: Dphi predicts transitions; rollout partial; RQM control separate notes=table_ok=true nn_next=B rqm_direct=1 rqm_compose=3 cdt_pred=1 cos_B=1.000 rollB=1.000 rollC=1.000 rollD=1.000 static_cosAB=0.354 causal_pre=0.384 audit_clean_for_AtoD_train=true
 - E17_never_observed_states seed=921862 verdict=PASS: Dphi two-step + ToR approach never-stored A->C (RQM compose flagged separately) notes=dist_C=0.0017 dist_B=0.0112 comp_dist=0.0000 rqm_direct_edge=false rqm_compose_pred=2 audit_train=false audit_rqm_compose=true audit_bank=false valid_unseen=true
-- E11_trainable_field_encoder seed=921863 verdict=PASS: trained encoder geometry > random projector notes=raw_margin=0.000 rand_margin=-0.005 pre_margin=-0.002 post_margin=0.857 raw_knn=0.308 rand_knn=0.231 knn=0.769 para=0.833 sil=0.888 stab=0.991 causal_delta=0.951 loss_end=2.2497 elapsed_ms=30 raw_intra=1.000 raw_inter=1.000
-- E12_crosslingual_concept seed=921863 verdict=PASS: holdout langs closer to perro than gato (GGUF) notes=arch=hidden_blockmean+contrastive_ES_dog_vs_cat; d_hold_mean=0.3886 d_gato=1.1064 field_margin=0.7179 raw_margin=-0.2724 raw_cos(dog)=0.5384 raw_cos(gato)=0.8107 para_ok=5/5 holdouts=[0.16347653344790924, 0.6456620131830086, 0.3565144815816309]; train=ES-only holdouts=never-trained
-- E13_relational_field seed=921863 verdict=PARTIAL: dynamic/static field generaliza holdout (RQM solo control) notes=A_table seen=1.00 un=0.00; B_RQM seen=0.60 un=0.00; C_static seen=0.20 un=0.33; D_dynamic seen=0.20 un=0.33
-- E14_incremental_forgetting seed=921863 verdict=PASS: incremental recall retained; adversarial retain>=0.5 notes=dR_A=0.033 dR_B=-0.000 dR_C=-0.002 final_acc=1.000 adv_retain_ABC=1.000 curve_A=Some([0.9616787530018774, 0.9993672421762678, 0.9987830312412241, 0.9946039153928421]) curve_B=Some([0.9999999999999988, 0.9994413270818526, 0.9999995376273078]) local_bias=1
-- E15_semantic_without_labels seed=921863 verdict=PARTIAL: weak structural separation without class labels notes=E_ok=63.5001 E_bad=63.6111 d_man_ok=0.0020 d_man_bad=0.0015 stab_ok=0.9819 stab_bad=0.9819 structure=1/3
+- E11_trainable_field_encoder seed=921863 verdict=PARTIAL: geometry improved but not all criteria notes=raw_margin=0.000 rand_margin=-0.005 pre_margin=-0.002 post_margin=0.857 raw_knn=0.308 rand_knn=0.231 knn=0.692 para=0.833 sil=0.888 stab=0.991 causal_delta=0.951 loss_end=2.2497 elapsed_ms=273 raw_intra=1.000 raw_inter=1.000
+- E12_crosslingual_concept seed=921863 verdict=SKIPPED_NO_GGUF notes=try_open falló: no se encontró Gemma 2; usa --model RUTA_GGUF o GEMMA2_GGUF
+- E13_relational_field seed=921863 verdict=PASS: unseen>=0.66 y dynamic>=static>=table (RQM solo control) notes=A_table seen=1.00 un=0.00; B_RQM seen=0.60 un=0.00; C_static seen=0.40 un=0.67; D_dynamic seen=0.80 un=1.00; comp_like=1.00; periphery=gguf-hidden; anti_leak_aguila_servivo=1; holdout=[lobo->animal:1,lobo->mamífero:1,águila->ser-vivo:1]; alpha=0.78; animal_ball=1; tax_ancestors=1
+- E14_incremental_forgetting seed=921863 verdict=PASS: incremental recall retained; adversarial retain>=0.5 notes=dR_A=0.033 dR_B=-0.000 dR_C=-0.002 final_acc=1.000 adv_retain_ABC=1.000 curve_A=Some([0.9616787530018774, 0.9993672421762679, 0.9987830312412241, 0.9946039153928422]) curve_B=Some([0.9999999999999988, 0.9994413270818527, 0.9999995376273079]) local_bias=1
+- E15_semantic_without_labels seed=921863 verdict=PARTIAL: structural separation improving; margin/ranking aún cortos notes=E_ok=3.2011 E_bad=3.6861 d_man_ok=0.3085 d_man_bad=0.4225 stab_ok=0.6308 stab_bad=0.7290 structure=2/3 rank_acc=0.600 margin_E=0.4851 arch=factor_compose+Dphi_manifold
 - E16_field_dynamics seed=921863 verdict=PASS: Dphi predicts transitions; rollout partial; RQM control separate notes=table_ok=true nn_next=B rqm_direct=1 rqm_compose=3 cdt_pred=1 cos_B=1.000 rollB=1.000 rollC=1.000 rollD=1.000 static_cosAB=0.150 causal_pre=0.163 audit_clean_for_AtoD_train=true
 - E17_never_observed_states seed=921863 verdict=PASS: Dphi two-step + ToR approach never-stored A->C (RQM compose flagged separately) notes=dist_C=0.0020 dist_B=0.0092 comp_dist=-0.0000 rqm_direct_edge=false rqm_compose_pred=2 audit_train=false audit_rqm_compose=true audit_bank=false valid_unseen=true
 
@@ -142,74 +142,3 @@ GGUF: disponible — `/workspace/neuro-geometrica_multi-agente/models/gemma-2-2b
 - Auditoría anti-leakage en E16/E17.
 - No se presenta como evidencia de cognición / AGI.
 - LLM congelado; solo se entrenan θ del encoder y φ de la dinámica.
-
-## Resumen de veredictos (8 semillas)
-
-- **E11_trainable_field_encoder**: ver tabla (PASS/PARTIAL mixto; sin cambios de protocolo)
-- **E12_crosslingual_concept**: **PASS×8** (reemplaza `SKIPPED_NO_GGUF`)
-- **E13_relational_field**: PARTIAL×8
-- **E14_incremental_forgetting**: PASS×8
-- **E15_semantic_without_labels**: PARTIAL/FAIL mixto
-- **E16_field_dynamics**: PASS/WEAK mixto
-- **E17_never_observed_states**: PASS×8
-
-### E12 — tabla rápida (seen/unseen/ood, márgenes)
-
-| seed | acc_seen | acc_unseen | acc_ood | d_hold (top1) | d_gato (top2) | field_margin | raw_margin | verdict |
-|-----:|---------:|-----------:|--------:|--------------:|--------------:|-------------:|-----------:|---------|
-| 921856 | 1.000 | 1.000 | 1.000 | 0.364 | 1.110 | 0.745 | -0.272 | PASS |
-| 921857 | 1.000 | 1.000 | 1.000 | 0.372 | 1.113 | 0.741 | -0.272 | PASS |
-| 921858 | 1.000 | 1.000 | 1.000 | 0.369 | 1.108 | 0.739 | -0.272 | PASS |
-| 921859 | 1.000 | 1.000 | 1.000 | 0.404 | 1.113 | 0.709 | -0.272 | PASS |
-| 921860 | 1.000 | 1.000 | 1.000 | 0.401 | 1.112 | 0.711 | -0.272 | PASS |
-| 921861 | 1.000 | 1.000 | 1.000 | 0.422 | 1.113 | 0.691 | -0.272 | PASS |
-| 921862 | 1.000 | 1.000 | 1.000 | 0.405 | 1.111 | 0.706 | -0.272 | PASS |
-| 921863 | 1.000 | 1.000 | 1.000 | 0.389 | 1.106 | 0.718 | -0.272 | PASS |
-
-- `llm_hash`/`path`: `gemma2-frozen-gguf:` + `GEMMA2_GGUF` (archivo local Q4_K_M).
-- Control honesto: en espacio raw del GGUF, `raw_cos(perro,gato)=0.81 > raw_cos(perro,dog)=0.54` (margen negativo). El campo **invierte** el ranking tras contraste ES.
-
-## GGUF local (cómo montar)
-
-Ver también `docs/deploy_railway_agentic.md` § «GGUF local».
-
-```bash
-mkdir -p models
-curl -L --retry 5 -C - -o models/gemma-2-2b-it-Q4_K_M.gguf \
-  "https://huggingface.co/bartowski/gemma-2-2b-it-GGUF/resolve/main/gemma-2-2b-it-Q4_K_M.gguf"
-export GEMMA2_GGUF=/workspace/neuro-geometrica_multi-agente/models/gemma-2-2b-it-Q4_K_M.gguf
-# Docker: docker-compose ya monta ./models:/models:ro y define GEMMA2_GGUF
-```
-
-`models/*.gguf` está en `.gitignore` (no se commitea el binario ~1.7 GB).
-
-## Negativos / límites (honestos)
-
-- **E12 raw LLM**: la periferia GGUF sola **no** pone las traducciones más cerca que `gato`; el PASS es del **encoder de campo** contrastivo, no del pooling crudo.
-- Holdouts nunca entrenados (`dog`/`chien`/`犬`); train solo variantes ES de perro vs gato/otros.
-- **E13/E15/E16**: límites previos sin GGUF se mantienen (PARTIAL/WEAK/FAIL parciales).
-- No se interpreta como cognición / AGI / consciencia.
-
-## Mejoras de arquitectura (esta corrida GGUF)
-
-1. `FrozenGemma2Probe::pool_hidden`: block-mean d_model→64 (antes proyección sinusoidal que mezclaba semántica).
-2. E12 features = **solo hidden** (se eliminó `layer_rms`, que colapsaba cosenos ≈0.99).
-3. Encoder contrastivo ES: atractor perro vs gato/otros; holdouts cross-lingual nunca en train.
-4. Compose/docs: volumen `./models:/models:ro` + `GEMMA2_GGUF` alineado con la intención de main.
-
-## Endurecimiento E13/E15 (WIP, 2026-09-23)
-
-Smoke 1 semilla `0xE1100` + GGUF (no reemplaza la tabla de 8 semillas arriba).
-
-| Exp | verdict smoke | seen / unseen (dyn o rank) | Notas |
-|-----|---------------|----------------------------|-------|
-| E13 | PARTIAL | dyn seen **1.00** / unseen **0.33** | Holdout: lobo→mamífero✓, lobo→animal✗, águila→ser-vivo✗. Lift vs baseline en seen; umbral PASS (unseen≥0.66) no. |
-| E15 | **PASS** | rank_acc **0.80** | structure 3/3, margin_E≈1.37, arch=factor_compose+Dphi_manifold |
-
-Detalle, fallos y backlog: `docs/hallazgos_e13_e15_endurecimiento.md`.
-
-## Confirmación git
-
-- Resultados en `docs/resultados_experimentos_11_17.md` y `.csv`.
-- Push solo a `origin/exp/liquid-inference-experiments-8-9-10`.
-- **main no modificado.**
