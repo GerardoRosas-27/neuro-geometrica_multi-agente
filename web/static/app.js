@@ -23,10 +23,46 @@
     field_decoder: "Decoder del campo",
     gemma_raw: "Gemma 2 original",
   };
+  const CHAT_STORE_KEY = "chat.history.v1";
+  const CHAT_STORE_CAP = 200; // últimos N mensajes (user+agent)
 
-  function addMsg(role, text, meta, mode) {
+  function loadChatHistory() {
+    try {
+      const raw = localStorage.getItem(CHAT_STORE_KEY);
+      if (!raw) return [];
+      const arr = JSON.parse(raw);
+      return Array.isArray(arr) ? arr : [];
+    } catch (_) {
+      return [];
+    }
+  }
+  function saveChatHistory(list) {
+    try {
+      const capped = list.length > CHAT_STORE_CAP
+        ? list.slice(list.length - CHAT_STORE_CAP)
+        : list;
+      localStorage.setItem(CHAT_STORE_KEY, JSON.stringify(capped));
+      return capped;
+    } catch (_) {
+      return list;
+    }
+  }
+  function pushChatTurn(entry) {
+    const list = loadChatHistory();
+    list.push(entry);
+    saveChatHistory(list);
+  }
+  function clearChatHistory() {
+    try {
+      localStorage.removeItem(CHAT_STORE_KEY);
+    } catch (_) {}
+  }
+
+  function addMsg(role, text, meta, mode, opts) {
+    const o = opts || {};
     const el = document.createElement("div");
     el.className = `msg ${role}`;
+    if (o.error) el.classList.add("error");
     if (mode) {
       const b = document.createElement("span");
       b.className = `mode-badge ${mode}`;
@@ -43,7 +79,30 @@
     }
     messages.appendChild(el);
     messages.scrollTop = messages.scrollHeight;
+    // Persistir solo turnos definitivos (no "pending").
+    if (!o.skipStore && !/\bpending\b/.test(role)) {
+      pushChatTurn({
+        role: role.split(/\s+/)[0],
+        text,
+        meta: meta || null,
+        mode: mode || null,
+        error: !!o.error,
+        t: o.t || Date.now(),
+      });
+    }
     return el;
+  }
+
+  function renderStoredHistory() {
+    const list = loadChatHistory();
+    for (const e of list) {
+      addMsg(e.role || "agent", e.text || "", e.meta || null, e.mode || null, {
+        skipStore: true,
+        error: !!e.error,
+        t: e.t,
+      });
+    }
+    return list.length;
   }
 
   // Bandera «Decoder del campo» (persistida). ON = campo + Gemma decoder; OFF = Gemma 2 original.
@@ -788,8 +847,7 @@
         rMode === "gemma_raw"
           ? `modelo=Gemma 2 original (sin campo) · ${r.decoded || ""} · ${secs}s`
           : `ruta=${r.route} · in=${r.concept_in}→out=${r.concept_out} · líquido=${Number(r.liquid_score).toFixed(3)} · eng=${r.engrams} · decoded=${r.decoded} · ${secs}s`;
-      const el = addMsg("agent", r.reply, meta, rMode);
-      if (!res.ok) el.classList.add("error");
+      addMsg("agent", r.reply, meta, rMode, { error: !res.ok });
       if (r.route === "train") {
         await reconnectProcesses();
       }
@@ -803,8 +861,7 @@
           : e && e.message
             ? e.message
             : String(e);
-      const el = addMsg("agent", "Error: " + msg, null, mode);
-      el.classList.add("error");
+      addMsg("agent", "Error: " + msg, null, mode, { error: true });
       refreshHealth();
     } finally {
       clearTimeout(timer);
@@ -971,10 +1028,51 @@
     }
   });
 
-  addMsg(
-    "agent",
-    "Listo. Chat = interpretación del modelo de campo (decoder). Entrenamiento, Sueño y Pruebas son jobs en servidor: al refrescar la UI se reconecta sin cancelar.",
-  );
+  // Restaurar historial del navegador. Los paneles se ocultan con CSS
+  // (display:none), así que cambiar de pestaña no borra el DOM del chat.
+  const restored = renderStoredHistory();
+  if (!restored) {
+    addMsg(
+      "agent",
+      "Listo. Chat = interpretación del modelo de campo (decoder). Entrenamiento, Sueño y Pruebas son jobs en servidor: al refrescar la UI se reconecta sin cancelar. El historial se guarda en este navegador.",
+      null,
+      null,
+      { skipStore: true },
+    );
+  }
+
+  $("btn-new-chat").addEventListener("click", async () => {
+    if (
+      !confirm(
+        "¿Borrar la conversación y empezar de cero?\n\nSe limpia el historial de esta pantalla y el contexto del servidor (Gemma OFF).",
+      )
+    ) {
+      return;
+    }
+    const btn = $("btn-new-chat");
+    btn.disabled = true;
+    try {
+      await api("/api/chat/reset", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+      });
+    } catch (e) {
+      // Aun si el servidor falla, limpiamos la UI local.
+      console.warn("reset chat:", e);
+    }
+    clearChatHistory();
+    messages.innerHTML = "";
+    addMsg(
+      "agent",
+      "Chat nuevo. Historial borrado en esta pantalla y en el servidor.",
+      null,
+      null,
+      { skipStore: true },
+    );
+    btn.disabled = false;
+  });
+
   refreshHealth();
   refreshTelemetry();
   reconnectProcesses();

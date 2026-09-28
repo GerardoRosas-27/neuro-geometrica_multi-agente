@@ -169,6 +169,14 @@ impl AppState {
         }
     }
 
+    /// «Nuevo chat»: borra el historial del servidor (incluye los pares crudos
+    /// que el modo OFF reenvía como contexto). No toca campo/engramas/train.
+    pub fn reset_chat(&mut self) -> usize {
+        let n = self.chat_log.len();
+        self.chat_log.clear();
+        n
+    }
+
     /// Hot-swap: instala la sonda Gemma recién descargada/cargada.
     pub fn install_probe(&mut self, probe: PeripheralProbe) {
         let mode = probe.mode();

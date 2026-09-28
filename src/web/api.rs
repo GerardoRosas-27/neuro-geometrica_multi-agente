@@ -245,6 +245,7 @@ pub fn router(state: SharedState, static_dir: PathBuf) -> Router {
         .route("/api/telemetry/rqm", get(telemetry_rqm))
         .route("/api/telemetry/train", get(telemetry_train))
         .route("/api/chat/history", get(chat_history))
+        .route("/api/chat/reset", post(chat_reset))
         .with_state(state);
 
     // Estáticos: no-cache para que index.html siempre pida app.js/css frescos
@@ -793,6 +794,12 @@ async fn telemetry_train(State(st): State<SharedState>) -> impl IntoResponse {
     Json(build_full(&g).train)
 }
 
+/// «Nuevo chat»: vacía el historial del servidor (y el contexto crudo de OFF).
+async fn chat_reset(State(st): State<SharedState>) -> impl IntoResponse {
+    let cleared = st.lock().unwrap_or_else(|e| e.into_inner()).reset_chat();
+    Json(json!({ "ok": true, "cleared": cleared }))
+}
+
 async fn chat_history(State(st): State<SharedState>) -> impl IntoResponse {
     let g = st.lock().unwrap();
     Json(json!({ "turns": g.chat_log }))
@@ -902,6 +909,47 @@ mod tests {
             .chat_log
             .iter()
             .all(|t| t.mode.as_deref() == Some("gemma_raw")));
+    }
+
+    #[tokio::test]
+    async fn chat_reset_clears_history_and_raw_context() {
+        let st = lex_state();
+        let app = test_router(st.clone());
+        let _ = post_chat(app.clone(), r#"{"message":"hola campo"}"#).await;
+        {
+            let mut g = st.lock().unwrap();
+            // Simula un par crudo previo (contexto que OFF reenvía).
+            let ok = Ok(crate::field_gemma_probe::RawGemmaReply {
+                text: "¡Hola!".into(),
+                prompt_tokens: 3,
+                generated_tokens: 2,
+                seconds: 0.1,
+            });
+            g.record_raw_chat("hola", &ok);
+            assert_eq!(g.raw_history().len(), 1);
+            assert!(g.chat_log.len() >= 4);
+        }
+        let res = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/chat/reset")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["ok"], true);
+        assert!(v["cleared"].as_u64().unwrap() >= 4);
+        let g = st.lock().unwrap();
+        assert!(g.chat_log.is_empty());
+        assert!(g.raw_history().is_empty());
     }
 
     #[tokio::test]

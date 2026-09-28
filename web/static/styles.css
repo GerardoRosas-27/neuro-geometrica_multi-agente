@@ -203,3 +203,15 @@ h3 { margin: 1rem 0 0.4rem; font-size: 0.88rem; color: var(--muted); }
 /* Chat: error visible (timeout / modelo no disponible) y espera. */
 .msg.agent.error { border-color: #a14a4a; background: rgba(161, 74, 74, 0.18); }
 .msg.agent.pending { opacity: 0.75; font-style: italic; }
+
+.btn-new-chat {
+  margin-left: auto;
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.3rem 0.7rem;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+.btn-new-chat:hover { color: var(--fg); border-color: var(--muted); }
