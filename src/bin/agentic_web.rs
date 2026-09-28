@@ -6,6 +6,7 @@
 //!
 //! Escucha `0.0.0.0:$PORT` (default 8080). UI en `/`. GGUF opcional vía `GEMMA2_GGUF`.
 
+use cdt_rqm_epr::web::api::spawn_model_bootstrap;
 use cdt_rqm_epr::web::{router, AppState};
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -38,6 +39,7 @@ async fn main() {
         );
     }
 
+    spawn_model_bootstrap(state.clone());
     let app = router(state, static_dir);
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     tracing::info!(%addr, "agentic_web escuchando");

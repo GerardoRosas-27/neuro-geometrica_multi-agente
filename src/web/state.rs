@@ -10,6 +10,7 @@ use crate::web::llm_periphery::{
     generate_train_batch, open_best_probe, ChatMode, ConceptDecoder, LlmMode, PeripheralProbe,
     NUM_CONCEPTS,
 };
+use crate::web::model_fetch::{ModelConfig, ModelStatus};
 use crate::web::process_job::{
     ProcessesSnapshot, SleepJob, SleepStartResponse, TestsJob, TestsStartResponse,
 };
@@ -121,10 +122,14 @@ pub struct AppState {
     pub last_experiment_suite: Option<ExperimentSuiteReport>,
     /// Llamadas al chat crudo Gemma (no cuentan como infer líquido/RQM).
     pub raw_chat_calls: u64,
+    /// Config del GGUF (ruta/URL/sha) y estado de descarga/carga.
+    pub model_cfg: ModelConfig,
+    pub model_status: ModelStatus,
 }
 
 impl AppState {
     pub fn new() -> Self {
+        let model_cfg = ModelConfig::from_env();
         let probe = open_best_probe(0x0A6E_471C);
         let mode = probe.mode();
         let fuse = FusedLiquidCdt::new(NUM_CONCEPTS);
@@ -149,17 +154,144 @@ impl AppState {
             ever_trained: false,
             last_experiment_suite: None,
             raw_chat_calls: 0,
+            model_status: if matches!(mode, LlmMode::GemmaGguf) {
+                ModelStatus::new("ready", &model_cfg, "GGUF cargado")
+            } else if model_cfg.auto_download {
+                ModelStatus::new("missing", &model_cfg, "GGUF ausente; se descargará")
+            } else {
+                ModelStatus::new(
+                    "disabled",
+                    &model_cfg,
+                    "GGUF ausente y GEMMA2_AUTO_DOWNLOAD=0",
+                )
+            },
+            model_cfg,
         }
+    }
+
+    /// Hot-swap: instala la sonda Gemma recién descargada/cargada.
+    pub fn install_probe(&mut self, probe: PeripheralProbe) {
+        let mode = probe.mode();
+        self.probe = probe;
+        self.decoder = ConceptDecoder::new(mode);
+        self.model_status = ModelStatus::new("ready", &self.model_cfg, "GGUF cargado");
+    }
+
+    /// Texto explicativo cuando el LLM aún no está disponible.
+    pub fn model_unavailable_reason(&self) -> String {
+        let st = &self.model_status;
+        match st.state.as_str() {
+            "downloading" => {
+                let done = std::fs::metadata(self.model_cfg.part_path())
+                    .map(|m| m.len())
+                    .unwrap_or(st.downloaded_bytes);
+                let mb = done as f64 / 1e6;
+                match st.total_bytes {
+                    Some(t) if t > 0 => format!(
+                        "el modelo se está descargando ({mb:.0}/{:.0} MB, {:.0}%); reintenta en un momento",
+                        t as f64 / 1e6,
+                        100.0 * done as f64 / t as f64
+                    ),
+                    _ => format!("el modelo se está descargando ({mb:.0} MB); reintenta en un momento"),
+                }
+            }
+            "loading" => "el modelo se está cargando en memoria; reintenta en unos segundos".into(),
+            "error" => format!("no se pudo preparar el modelo: {}", st.detail),
+            "disabled" => format!(
+                "no hay GGUF en {} y la descarga automática está desactivada (GEMMA2_AUTO_DOWNLOAD=0)",
+                st.path
+            ),
+            _ => format!("no se encontró el GGUF ({})", st.path),
+        }
+    }
+
+    /// ON: si hay Gemma cargado y la respuesta viene del campo (Liquid/RQM),
+    /// devuelve (handle, prompt) para que Gemma **decodifique** el estado.
+    pub fn field_decode_job(
+        &self,
+        message: &str,
+        resp: &ChatResponse,
+    ) -> Option<(RawGemmaHandle, String)> {
+        if !matches!(resp.route.as_str(), "Liquid" | "RqmFallback") {
+            return None;
+        }
+        let handle = self.probe.raw_handle()?;
+        let rqm = resp
+            .rqm_score
+            .map(|r| format!(", RQM {r:.3}"))
+            .unwrap_or_default();
+        let state = format!(
+            "concepto {}→{} («{}»), ruta {}, líquido {:.3}{rqm}, engramas {}",
+            resp.concept_in,
+            resp.concept_out,
+            self.decoder.decode(resp.concept_out),
+            resp.route,
+            resp.liquid_score,
+            resp.engrams,
+        );
+        Some((
+            handle,
+            crate::field_gemma_probe::render_field_decoder_prompt(message.trim(), &state),
+        ))
+    }
+
+    /// Aplica el texto de Gemma (decoder) a la respuesta de campo ya registrada.
+    /// Si Gemma falló, conserva la respuesta del decoder léxico y anota el motivo:
+    /// ON **siempre** responde.
+    pub fn apply_field_decoded(
+        &mut self,
+        mut resp: ChatResponse,
+        result: Result<RawGemmaReply, String>,
+    ) -> ChatResponse {
+        match result {
+            Ok(r) if !r.text.trim().is_empty() => {
+                resp.reply = format!(
+                    "{}\n\n[campo] ruta={} · {}→{} · líquido={:.3} · engramas={}",
+                    r.text.trim(),
+                    resp.route,
+                    resp.concept_in,
+                    resp.concept_out,
+                    resp.liquid_score,
+                    resp.engrams
+                );
+                resp.decoded = format!(
+                    "gemma2 decoder · «{}» · {} tok · {:.1}s",
+                    self.decoder.decode(resp.concept_out),
+                    r.generated_tokens,
+                    r.seconds
+                );
+            }
+            Ok(_) => {
+                resp.reply.push_str(
+                    "\n\n(decoder Gemma devolvió texto vacío; se muestra el decoder léxico)",
+                );
+            }
+            Err(e) => {
+                resp.reply.push_str(&format!(
+                    "\n\n(decoder Gemma no respondió: {e}; se muestra el decoder léxico)"
+                ));
+            }
+        }
+        if let Some(last) = self
+            .chat_log
+            .iter_mut()
+            .rev()
+            .find(|t| t.role == "agent" && t.mode.as_deref() == Some(FIELD_MODE))
+        {
+            last.text = resp.reply.clone();
+        }
+        resp
     }
 
     /// Prepara chat crudo (OFF): handle al Gemma original + historial crudo.
     /// `Err` si no hay GGUF. No toca fuse/campo/telemetría líquida.
     pub fn raw_chat_prepare(&self) -> Result<(RawGemmaHandle, Vec<(String, String)>), String> {
         let handle = self.probe.raw_handle().ok_or_else(|| {
-            "Gemma 2 original no disponible: no se encontró el GGUF \
-             (models/gemma-2-2b-it-Q4_K_M.gguf o env GEMMA2_GGUF). \
-             Activa «Decoder del campo» o instala el modelo en el servidor."
-                .to_string()
+            format!(
+                "Gemma 2 original no disponible: {}. \
+                 Mientras tanto puedes usar «Decoder del campo».",
+                self.model_unavailable_reason()
+            )
         })?;
         Ok((handle, self.raw_history()))
     }
@@ -1708,6 +1840,44 @@ mod tests {
         let cont = s.run_one_live_batch();
         assert!(!cont, "tras cancel el siguiente lote debe devolver false");
         assert!(!s.train_job.running);
+    }
+
+    #[test]
+    fn field_decoder_reply_always_present_and_gemma_text_applied() {
+        let mut s = AppState::new();
+        s.probe =
+            PeripheralProbe::Lexicon(crate::field_linguistic_layer::GemmaShapedLexicon::new(1));
+        s.decoder = ConceptDecoder::new(LlmMode::Lexicon);
+        let resp = s.handle_chat("hola campo");
+        // Sin Gemma no hay job: responde el decoder léxico.
+        assert!(s.field_decode_job("hola campo", &resp).is_none());
+        assert!(!resp.reply.is_empty());
+        // Éxito Gemma: reemplaza reply y el turno del log.
+        let ok = s.apply_field_decoded(
+            resp.clone(),
+            Ok(RawGemmaReply {
+                text: "Hola, el campo lo leyó como épsilon.".into(),
+                prompt_tokens: 10,
+                generated_tokens: 9,
+                seconds: 0.5,
+            }),
+        );
+        assert!(ok.reply.starts_with("Hola, el campo"));
+        assert!(ok.decoded.starts_with("gemma2 decoder"));
+        assert_eq!(s.chat_log.last().unwrap().text, ok.reply);
+        // Error Gemma: conserva el léxico y anota el motivo.
+        let err = s.apply_field_decoded(resp.clone(), Err("timeout".into()));
+        assert!(err.reply.starts_with(&resp.reply));
+        assert!(err.reply.contains("timeout"));
+    }
+
+    #[test]
+    fn field_decoder_prompt_embeds_state_and_message() {
+        let p = crate::field_gemma_probe::render_field_decoder_prompt("hola", "ruta Liquid");
+        assert!(p.starts_with("<start_of_turn>user\n"));
+        assert!(p.starts_with("<start_of_turn>user\nhola"));
+        assert!(p.contains("ruta Liquid"));
+        assert!(p.ends_with("<end_of_turn>\n<start_of_turn>model\n"));
     }
 
     #[test]

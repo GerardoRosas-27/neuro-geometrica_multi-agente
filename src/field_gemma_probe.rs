@@ -19,6 +19,7 @@ use candle_core::{Device, Tensor};
 use std::fs::File;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 const STEM_HASH_SALT: u64 = 0x57E4_CAFE;
 
@@ -66,6 +67,22 @@ pub fn render_raw_gemma_prompt(history: &[(String, String)], input: &str) -> Str
     prompt
 }
 
+/// Prompt del **decoder del campo** (ON): el campo ya decidió el estado; Gemma
+/// solo lo verbaliza en español. No es chat genérico: el texto está anclado al
+/// estado producido por líquido/CDT/RQM.
+pub fn render_field_decoder_prompt(user_msg: &str, field_state: &str) -> String {
+    // Prompt corto a propósito: el prefill en CPU domina la latencia.
+    let mut prompt = String::from("<start_of_turn>user\n");
+    prompt.push_str(user_msg);
+    prompt.push_str(
+        "\n\n(Eres el decoder de un modelo de campo. Responde en español en 1-3 frases \
+         y cierra mencionando el estado del campo: ",
+    );
+    prompt.push_str(field_state);
+    prompt.push_str(")<end_of_turn>\n<start_of_turn>model\n");
+    prompt
+}
+
 impl RawGemmaHandle {
     /// Genera respuesta con el Gemma 2 original (todas las capas).
     /// Bloqueante (CPU): llamar desde `spawn_blocking`.
@@ -74,35 +91,93 @@ impl RawGemmaHandle {
         history: &[(String, String)],
         input: &str,
         config: Gemma2GenerationConfig,
+        deadline: Option<Instant>,
     ) -> Result<RawGemmaReply, String> {
-        let started = std::time::Instant::now();
         // Recorta historial hasta que quepa (deja margen para generar).
         let budget = config
             .context_limit
             .saturating_sub(config.max_tokens)
             .max(16);
-        let mut tokens = None;
         for skip in 0..=history.len() {
             let prompt = render_raw_gemma_prompt(&history[skip..], input);
             let mut t = vec![self.tokenizer.bos_id];
             t.extend(self.tokenizer.encode(&prompt).map_err(|e| e.to_string())?);
             if t.len() <= budget {
-                tokens = Some(t);
-                break;
+                return self.generate_tokens(t, config, deadline);
             }
         }
-        let tokens =
-            tokens.ok_or_else(|| format!("el mensaje excede el contexto ({budget} tokens)"))?;
-        let mut model = self.model.lock().unwrap_or_else(|e| e.into_inner());
+        Err(format!("el mensaje excede el contexto ({budget} tokens)"))
+    }
+
+    /// Genera desde un prompt ya renderizado (plantilla chat Gemma).
+    pub fn generate_prompt(
+        &self,
+        prompt: &str,
+        config: Gemma2GenerationConfig,
+        deadline: Option<Instant>,
+    ) -> Result<RawGemmaReply, String> {
+        let budget = config
+            .context_limit
+            .saturating_sub(config.max_tokens)
+            .max(16);
+        let mut t = vec![self.tokenizer.bos_id];
+        t.extend(self.tokenizer.encode(prompt).map_err(|e| e.to_string())?);
+        if t.len() > budget {
+            return Err(format!("el mensaje excede el contexto ({budget} tokens)"));
+        }
+        self.generate_tokens(t, config, deadline)
+    }
+
+    /// Núcleo: espera el lock del modelo como mucho hasta `deadline` y corta la
+    /// generación al llegar al plazo (devuelve el texto parcial, nunca cuelga).
+    fn generate_tokens(
+        &self,
+        tokens: Vec<u32>,
+        config: Gemma2GenerationConfig,
+        deadline: Option<Instant>,
+    ) -> Result<RawGemmaReply, String> {
+        let started = Instant::now();
+        let mut model = loop {
+            match self.model.try_lock() {
+                Ok(g) => break g,
+                Err(std::sync::TryLockError::Poisoned(e)) => break e.into_inner(),
+                Err(std::sync::TryLockError::WouldBlock) => {
+                    if deadline.is_some_and(|d| Instant::now() >= d) {
+                        return Err(
+                            "modelo ocupado (entrenamiento/pruebas usando Gemma); reintenta".into(),
+                        );
+                    }
+                    std::thread::sleep(Duration::from_millis(20));
+                }
+            }
+        };
         // Sesión nueva: la sonda comparte KV cache, así que siempre prefill completo.
         let mut session = Gemma2Session::new();
+        let mut timed_out = false;
         let out = session
-            .generate(&mut model, &self.tokenizer, &tokens, None, config, |_| {})
+            .generate_until(
+                &mut model,
+                &self.tokenizer,
+                &tokens,
+                None,
+                config,
+                |_| {},
+                |_| {
+                    let late = deadline.is_some_and(|d| Instant::now() >= d);
+                    timed_out |= late;
+                    late
+                },
+            )
             .map_err(|e| e.to_string());
         model.clear_kv_cache();
+        drop(model);
         let out = out?;
+        let mut text = out.text;
+        if timed_out {
+            text.push_str(" …[cortado por tiempo]");
+        }
         Ok(RawGemmaReply {
-            text: out.text,
+            text,
             prompt_tokens: tokens.len(),
             generated_tokens: out.metrics.generated_tokens,
             seconds: started.elapsed().as_secs_f64(),
