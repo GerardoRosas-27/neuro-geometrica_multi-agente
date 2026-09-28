@@ -41,6 +41,8 @@ pub struct HealthResponse {
     /// True si el Gemma 2 original (GGUF) está cargado → chat crudo disponible.
     pub raw_gemma_available: bool,
     pub raw_chat_calls: u64,
+    /// Estado del GGUF: ready | downloading | loading | missing | error | disabled.
+    pub model: crate::web::model_fetch::ModelStatus,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -262,7 +264,9 @@ pub fn router(state: SharedState, static_dir: PathBuf) -> Router {
 }
 
 async fn health(State(st): State<SharedState>) -> impl IntoResponse {
-    let g = st.lock().unwrap();
+    let mut g = st.lock().unwrap_or_else(|e| e.into_inner());
+    let cfg = g.model_cfg.clone();
+    g.model_status.refresh_progress(&cfg);
     let procs = g.processes_snapshot();
     Json(HealthResponse {
         ok: true,
@@ -276,7 +280,60 @@ async fn health(State(st): State<SharedState>) -> impl IntoResponse {
         probe: g.probe.name().into(),
         raw_gemma_available: g.probe.raw_handle().is_some(),
         raw_chat_calls: g.raw_chat_calls,
+        model: g.model_status.clone(),
     })
+}
+
+/// Arranque del modelo: si falta el GGUF y la descarga automática está activa,
+/// lo descarga en segundo plano (curl) y hace hot-swap de la sonda a Gemma.
+/// El servidor sigue sirviendo (léxico) mientras tanto.
+pub fn spawn_model_bootstrap(state: SharedState) {
+    let (cfg, needs) = {
+        let g = state.lock().unwrap_or_else(|e| e.into_inner());
+        (
+            g.model_cfg.clone(),
+            g.probe.raw_handle().is_none() && g.model_status.state == "missing",
+        )
+    };
+    if !needs {
+        return;
+    }
+    tokio::spawn(async move {
+        use crate::web::model_fetch::{download_gguf, ModelStatus};
+        if !cfg.path.is_file() {
+            state.lock().unwrap_or_else(|e| e.into_inner()).model_status =
+                ModelStatus::new("downloading", &cfg, "descargando GGUF");
+            let c = cfg.clone();
+            let r = tokio::task::spawn_blocking(move || download_gguf(&c))
+                .await
+                .unwrap_or_else(|e| Err(format!("tarea de descarga falló: {e}")));
+            if let Err(e) = r {
+                tracing::error!(error = %e, "descarga GGUF falló");
+                state.lock().unwrap_or_else(|e| e.into_inner()).model_status =
+                    ModelStatus::new("error", &cfg, e);
+                return;
+            }
+        }
+        state.lock().unwrap_or_else(|e| e.into_inner()).model_status =
+            ModelStatus::new("loading", &cfg, "cargando GGUF");
+        let c = cfg.clone();
+        let r = tokio::task::spawn_blocking(move || {
+            crate::web::llm_periphery::open_gemma_probe(&c.path)
+        })
+        .await
+        .unwrap_or_else(|e| Err(format!("tarea de carga falló: {e}")));
+        let mut g = state.lock().unwrap_or_else(|e| e.into_inner());
+        match r {
+            Ok(probe) => {
+                tracing::info!(path = %cfg.path.display(), "Gemma cargado (hot-swap)");
+                g.install_probe(probe);
+            }
+            Err(e) => {
+                tracing::error!(error = %e, "carga GGUF falló");
+                g.model_status = ModelStatus::new("error", &cfg, e);
+            }
+        }
+    });
 }
 
 async fn chat(
@@ -296,27 +353,89 @@ async fn chat(
         }
     };
     match mode {
-        ChatMode::FieldDecoder => {
-            let (resp, should_spawn) = {
-                let mut g = st.lock().unwrap();
-                let was_running = g.train_job.running;
-                let resp = g.handle_chat(&body.message);
-                let should_spawn = resp.route == "train" && g.train_job.running && !was_running;
-                (resp, should_spawn)
-            };
-            if should_spawn {
-                spawn_live_train_loop(st);
-            }
-            Json(resp).into_response()
-        }
+        ChatMode::FieldDecoder => chat_field_decoder(st, body.message).await,
         ChatMode::GemmaRaw => chat_gemma_raw(st, body.message).await,
     }
+}
+
+/// ON: campo (líquido/CDT/RQM) produce el estado bajo el lock (en hilo
+/// bloqueante, no en el event loop); Gemma lo **decodifica** a texto fuera del
+/// lock con plazo. Si Gemma no está o falla → decoder léxico. Siempre responde.
+async fn chat_field_decoder(st: SharedState, message: String) -> axum::response::Response {
+    use crate::web::llm_periphery::{chat_timeout, field_decoder_config};
+    use axum::http::StatusCode;
+    if message.trim().is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "ok": false, "mode": "field_decoder", "error": "mensaje vacío" })),
+        )
+            .into_response();
+    }
+    let deadline = std::time::Instant::now() + chat_timeout();
+    let t0 = std::time::Instant::now();
+    let st2 = st.clone();
+    let msg = message.clone();
+    let field = tokio::task::spawn_blocking(move || {
+        let mut g = st2.lock().unwrap_or_else(|e| e.into_inner());
+        let was_running = g.train_job.running;
+        let resp = g.handle_chat(&msg);
+        let should_spawn = resp.route == "train" && g.train_job.running && !was_running;
+        let job = g.field_decode_job(&msg, &resp);
+        let pending_note = (job.is_none()
+            && matches!(resp.route.as_str(), "Liquid" | "RqmFallback")
+            && g.model_status.state != "ready")
+            .then(|| g.model_unavailable_reason());
+        (resp, should_spawn, job, pending_note)
+    })
+    .await;
+    let (mut resp, should_spawn, job, pending_note) = match field {
+        Ok(v) => v,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "ok": false, "mode": "field_decoder",
+                              "error": format!("pipeline de campo falló: {e}") })),
+            )
+                .into_response();
+        }
+    };
+    let field_secs = t0.elapsed().as_secs_f64();
+    if should_spawn {
+        spawn_live_train_loop(st.clone());
+    }
+    if let Some((handle, prompt)) = job {
+        let seed = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos() as u64)
+            .unwrap_or(0xDEC0);
+        let cfg = field_decoder_config(seed);
+        let result = tokio::task::spawn_blocking(move || {
+            handle.generate_prompt(&prompt, cfg, Some(deadline))
+        })
+        .await
+        .unwrap_or_else(|e| Err(format!("tarea del decoder falló: {e}")));
+        tracing::info!(
+            field_secs,
+            decoder_secs = t0.elapsed().as_secs_f64() - field_secs,
+            ok = result.is_ok(),
+            "chat field_decoder"
+        );
+        resp = st
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .apply_field_decoded(resp, result);
+    } else if let Some(note) = pending_note {
+        resp.reply.push_str(&format!(
+            "\n\n(decoder Gemma aún no disponible: {note}; respuesta del decoder léxico)"
+        ));
+    }
+    Json(resp).into_response()
 }
 
 /// OFF: Gemma 2 congelado original como LLM plano. Nunca cae al campo.
 /// La generación corre en `spawn_blocking` sin sostener el lock de AppState.
 async fn chat_gemma_raw(st: SharedState, message: String) -> axum::response::Response {
-    use crate::web::llm_periphery::raw_chat_config;
+    use crate::web::llm_periphery::{chat_timeout, raw_chat_config};
     use axum::http::StatusCode;
     let msg = message.trim().to_string();
     if msg.is_empty() {
@@ -326,11 +445,22 @@ async fn chat_gemma_raw(st: SharedState, message: String) -> axum::response::Res
         )
             .into_response();
     }
-    let prepared = st.lock().unwrap().raw_chat_prepare();
+    let deadline = std::time::Instant::now() + chat_timeout();
+    let st2 = st.clone();
+    let prepared = tokio::task::spawn_blocking(move || {
+        st2.lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .raw_chat_prepare()
+    })
+    .await
+    .unwrap_or_else(|e| Err(format!("tarea falló: {e}")));
     let (handle, history) = match prepared {
         Ok(v) => v,
         Err(e) => {
-            let resp = st.lock().unwrap().record_raw_chat(&msg, &Err(e));
+            let resp = st
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .record_raw_chat(&msg, &Err(e));
             return (StatusCode::SERVICE_UNAVAILABLE, Json(resp)).into_response();
         }
     };
@@ -340,11 +470,16 @@ async fn chat_gemma_raw(st: SharedState, message: String) -> axum::response::Res
         .unwrap_or(0x6E33A);
     let cfg = raw_chat_config(seed);
     let input = msg.clone();
-    let result = tokio::task::spawn_blocking(move || handle.generate_chat(&history, &input, cfg))
-        .await
-        .unwrap_or_else(|e| Err(format!("tarea de generación falló: {e}")));
+    let result = tokio::task::spawn_blocking(move || {
+        handle.generate_chat(&history, &input, cfg, Some(deadline))
+    })
+    .await
+    .unwrap_or_else(|e| Err(format!("tarea de generación falló: {e}")));
     let ok = result.is_ok();
-    let resp = st.lock().unwrap().record_raw_chat(&msg, &result);
+    let resp = st
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .record_raw_chat(&msg, &result);
     let status = if ok {
         StatusCode::OK
     } else {

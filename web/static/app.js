@@ -51,6 +51,8 @@
   const modeHint = $("chat-mode-hint");
   const FIELD_KEY = "chat.fieldDecoder";
   let rawAvailable = null;
+  let modelStatus = null;
+  const CHAT_TIMEOUT_MS = 120000;
   try {
     const saved = localStorage.getItem(FIELD_KEY);
     if (saved !== null) chkField.checked = saved === "1";
@@ -68,10 +70,29 @@
       modeHint.textContent = "Inactivo · Gemma 2 congelado original (sin campo)";
       input.placeholder = "Habla con Gemma 2 original…";
       if (rawAvailable === false) {
-        modeHint.textContent += " · GGUF no disponible en el servidor";
+        modeHint.textContent += " · " + modelStatusText();
         modeHint.classList.add("warn");
       }
     }
+    if (on && rawAvailable === false) {
+      modeHint.textContent += " · decoder léxico (" + modelStatusText() + ")";
+    }
+  }
+  function modelStatusText() {
+    const m = modelStatus;
+    if (!m) return "modelo no disponible";
+    if (m.state === "downloading") {
+      const mb = (m.downloaded_bytes || 0) / 1e6;
+      const tot = m.total_bytes ? m.total_bytes / 1e6 : null;
+      return tot
+        ? `descargando modelo ${mb.toFixed(0)}/${tot.toFixed(0)} MB (${((100 * mb) / tot).toFixed(0)}%)`
+        : `descargando modelo ${mb.toFixed(0)} MB`;
+    }
+    if (m.state === "loading") return "cargando modelo…";
+    if (m.state === "error") return "error de modelo: " + m.detail;
+    if (m.state === "disabled") return "GGUF ausente (descarga desactivada)";
+    if (m.state === "ready") return "modelo listo";
+    return "GGUF no disponible en el servidor";
   }
   chkField.addEventListener("change", () => {
     try {
@@ -114,6 +135,7 @@
     try {
       const h = await api("/health");
       badgeMode.textContent = `LLM: ${h.llm_mode}`;
+      if (h.model) modelStatus = h.model;
       if (typeof h.raw_gemma_available === "boolean") {
         rawAvailable = h.raw_gemma_available;
         syncChatMode();
@@ -731,38 +753,62 @@
     input.value = "";
     const mode = chatMode();
     addMsg("user", message, null, mode);
-    const pending =
+    const pending = addMsg(
+      "agent pending",
       mode === "gemma_raw"
-        ? addMsg("agent pending", "Gemma 2 original generando…", null, mode)
-        : null;
+        ? "Gemma 2 original generando…"
+        : "Campo procesando · decoder interpretando…",
+      null,
+      mode
+    );
+    // Nunca colgar en silencio: aborta tras CHAT_TIMEOUT_MS y muestra error claro.
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), CHAT_TIMEOUT_MS);
+    const started = performance.now();
+    const submitBtn = form.querySelector("button[type=submit], button:not([type])");
+    if (submitBtn) submitBtn.disabled = true;
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ message, mode }),
+        signal: ctrl.signal,
       });
       let r = null;
       try {
         r = await res.json();
       } catch (_) {}
-      if (pending) pending.remove();
+      pending.remove();
       if (!r || (!res.ok && !r.reply)) {
-        throw new Error((r && r.error) || `/api/chat → ${res.status}`);
+        throw new Error((r && r.error) || `/api/chat → HTTP ${res.status}`);
       }
+      const secs = ((performance.now() - started) / 1000).toFixed(1);
       const rMode = r.mode || mode;
       const meta =
         rMode === "gemma_raw"
-          ? `modelo=Gemma 2 original (sin campo) · ${r.decoded || ""}`
-          : `ruta=${r.route} · in=${r.concept_in}→out=${r.concept_out} · líquido=${Number(r.liquid_score).toFixed(3)} · eng=${r.engrams} · decoded=${r.decoded}`;
-      addMsg("agent", r.reply, meta, rMode);
+          ? `modelo=Gemma 2 original (sin campo) · ${r.decoded || ""} · ${secs}s`
+          : `ruta=${r.route} · in=${r.concept_in}→out=${r.concept_out} · líquido=${Number(r.liquid_score).toFixed(3)} · eng=${r.engrams} · decoded=${r.decoded} · ${secs}s`;
+      const el = addMsg("agent", r.reply, meta, rMode);
+      if (!res.ok) el.classList.add("error");
       if (r.route === "train") {
         await reconnectProcesses();
       }
       refreshTelemetry();
       refreshHealth();
     } catch (e) {
-      if (pending) pending.remove();
-      addMsg("agent", "Error: " + e.message, null, mode);
+      pending.remove();
+      const msg =
+        e && e.name === "AbortError"
+          ? `el servidor no respondió en ${Math.round(CHAT_TIMEOUT_MS / 1000)} s (modelo lento o sin memoria). Reintenta o usa respuestas más cortas.`
+          : e && e.message
+            ? e.message
+            : String(e);
+      const el = addMsg("agent", "Error: " + msg, null, mode);
+      el.classList.add("error");
+      refreshHealth();
+    } finally {
+      clearTimeout(timer);
+      if (submitBtn) submitBtn.disabled = false;
     }
   });
 

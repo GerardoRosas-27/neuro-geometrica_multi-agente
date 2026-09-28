@@ -269,14 +269,15 @@ impl ChatMode {
     }
 }
 
-/// Config de generación para chat crudo. Env: `RAW_CHAT_MAX_TOKENS` (def 256),
+fn env_or<T: std::str::FromStr>(k: &str, d: T) -> T {
+    env::var(k).ok().and_then(|v| v.parse().ok()).unwrap_or(d)
+}
+
+/// Config de generación para chat crudo. Env: `RAW_CHAT_MAX_TOKENS` (def 160),
 /// `RAW_CHAT_TEMPERATURE` (def 0.7), `RAW_CHAT_TOP_P` (def 0.9), `RAW_CHAT_CONTEXT` (def 2048).
 pub fn raw_chat_config(seed: u64) -> Gemma2GenerationConfig {
-    fn env_or<T: std::str::FromStr>(k: &str, d: T) -> T {
-        env::var(k).ok().and_then(|v| v.parse().ok()).unwrap_or(d)
-    }
     Gemma2GenerationConfig {
-        max_tokens: env_or("RAW_CHAT_MAX_TOKENS", 256usize).clamp(1, 2048),
+        max_tokens: env_or("RAW_CHAT_MAX_TOKENS", 160usize).clamp(1, 2048),
         context_limit: env_or("RAW_CHAT_CONTEXT", 2048usize).clamp(128, 8192),
         temperature: env_or("RAW_CHAT_TEMPERATURE", 0.7f64).clamp(0.0, 2.0),
         top_p: env_or("RAW_CHAT_TOP_P", 0.9f64).clamp(0.05, 1.0),
@@ -284,19 +285,55 @@ pub fn raw_chat_config(seed: u64) -> Gemma2GenerationConfig {
     }
 }
 
-/// Abre la mejor sonda disponible. **Siempre** OK: fallback a léxico.
+/// Config del decoder del campo (ON). Respuestas cortas y más deterministas.
+/// Env: `FIELD_DECODER_MAX_TOKENS` (def 96), `FIELD_DECODER_TEMPERATURE` (def 0.4).
+pub fn field_decoder_config(seed: u64) -> Gemma2GenerationConfig {
+    Gemma2GenerationConfig {
+        max_tokens: env_or("FIELD_DECODER_MAX_TOKENS", 96usize).clamp(1, 1024),
+        context_limit: 1024,
+        temperature: env_or("FIELD_DECODER_TEMPERATURE", 0.4f64).clamp(0.0, 2.0),
+        top_p: 0.9,
+        seed,
+    }
+}
+
+/// Plazo de generación por mensaje (s). Env `CHAT_TIMEOUT_SECS` (def 75).
+/// Al vencer se corta la generación y se devuelve texto parcial o error claro.
+pub fn chat_timeout() -> std::time::Duration {
+    std::time::Duration::from_secs(env_or("CHAT_TIMEOUT_SECS", 75u64).clamp(5, 600))
+}
+
+/// Intenta abrir Gemma desde una ruta concreta.
+pub fn open_gemma_probe(path: &Path) -> Result<PeripheralProbe, String> {
+    FrozenGemma2Probe::try_open(Some(path)).map(PeripheralProbe::Gemma)
+}
+
+/// Abre la mejor sonda disponible **sin descargar**. **Siempre** OK: fallback a léxico.
+/// Ruta: `GEMMA2_GGUF` o `models/gemma-2-2b-it-Q3_K_L.gguf` (ver `model_fetch`).
+/// En tests solo se usa `GEMMA2_GGUF` explícito (no cargar 1 GB por test).
 pub fn open_best_probe(seed: u64) -> PeripheralProbe {
-    let explicit = env::var("GEMMA2_GGUF").ok();
-    let path_ref = explicit.as_deref().map(Path::new);
-    match FrozenGemma2Probe::try_open(path_ref) {
+    let explicit = env::var("GEMMA2_GGUF")
+        .ok()
+        .filter(|s| !s.trim().is_empty());
+    let path = if cfg!(test) {
+        explicit.map(std::path::PathBuf::from)
+    } else {
+        Some(crate::web::model_fetch::ModelConfig::from_env().path)
+    };
+    let result = match &path {
+        Some(p) if p.is_file() => open_gemma_probe(p),
+        Some(p) => Err(format!("GGUF no encontrado: {}", p.display())),
+        None => Err("GEMMA2_GGUF no definido".into()),
+    };
+    match result {
         Ok(p) => {
             tracing::info!(probe = p.name(), "periferia LLM: Gemma GGUF");
-            PeripheralProbe::Gemma(p)
+            p
         }
         Err(e) => {
             tracing::warn!(
                 error = %e,
-                "GGUF no disponible; periferia = GemmaShapedLexicon (Railway default)"
+                "GGUF no disponible (aún); periferia = GemmaShapedLexicon"
             );
             PeripheralProbe::Lexicon(GemmaShapedLexicon::new(seed))
         }
