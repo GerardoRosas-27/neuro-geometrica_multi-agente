@@ -45,6 +45,12 @@ Usuario (UI web)
 | `CHAT_TIMEOUT_SECS` | No | `75` | Plazo por mensaje; al vencer corta y devuelve texto parcial |
 | `RAW_CHAT_MAX_TOKENS` | No | `160` | Tokens máx. modo OFF (Gemma original) |
 | `FIELD_DECODER_MAX_TOKENS` | No | `96` | Tokens máx. modo ON (decoder del campo) |
+| `LLM_API_BASE` | No | — | API externa OpenAI-compatible fija (p. ej. `https://docker-llm-production.up.railway.app/v1`); aparece como proveedor `env` |
+| `LLM_API_KEY` | No | — | Clave Bearer de esa API (`obk1.…`). Nunca se registra ni se devuelve |
+| `LLM_API_MODEL` | No | — | Modelo (vacío = el primero de `/v1/models`) |
+| `LLM_API_NAME` | No | derivado del host | Nombre visible del proveedor `env` |
+| `LLM_API_ACTIVE` | No | `0` | `1` = arrancar con la API `env` como LLM activo |
+| `LLM_PROVIDERS_FILE` | No | `data/llm_providers.json` | JSON (0600) con las APIs guardadas desde la UI y el LLM activo |
 | `RUST_LOG` | No | `info` | Nivel de tracing |
 
 **Modelo ligero incluido.** El `Dockerfile` descarga en el build Gemma 2 2B-it
@@ -164,3 +170,36 @@ Sin GGUF → periferia léxico; E12 → `SKIPPED_NO_GGUF` (honesto).
 
 El `Dockerfile` usa la imagen `rust:bookworm` (stable reciente).
 No uses `rust:1.85`: `sysinfo` 0.39 pide rustc ≥ 1.95 y `zip` 8.x pide ≥ 1.88.
+
+## Modelos / API (LLM externo OpenAI-compatible)
+
+La pestaña **Modelos / API** (y el botón del mismo nombre en la cabecera) permite
+usar un LLM externo, por ejemplo **docker-llm**, en lugar de Gemma local:
+
+1. En el panel de docker-llm genera una API key y copia el `curl` de un modelo.
+2. Pégalo en «Pega aquí el curl» y pulsa **Auto-configurar**: rellena nombre,
+   URL base (hasta `/v1`), API key (oculta) y modelo. Acepta continuaciones `\`,
+   comillas simples/dobles, `-H/--header`, `-d/--data/--data-raw`, `-N`,
+   `"stream":true`, la ruta por modelo `/v1/models/<id>/chat/completions`,
+   `/v1/models`, `/v1/completions` y líneas `export BASE=…` / `export API_KEY=…`.
+3. **Probar conexión** (`GET /v1/models` + chat mínimo, con latencias) →
+   **Guardar** (o **Guardar y usar**).
+4. Elige el LLM activo en el selector de la cabecera o en la lista.
+
+El LLM activo se usa en: chat OFF (LLM crudo con historial), chat ON (el campo
+decide el estado y el LLM solo lo verbaliza; si la API falla y Gemma está
+cargado responde Gemma como respaldo etiquetado, si no el decoder léxico) y la
+generación de datasets de entrenamiento (el LLM parafrasea el curriculum; la
+etiqueta sigue saliendo del curriculum y el encode al campo lo hace la sonda
+local). Sueño y Pruebas no usan LLM. «Nuevo chat» borra también el contexto que
+se reenvía a la API.
+
+Endpoints: `GET/POST /api/llm/providers`, `DELETE /api/llm/providers/{id}`,
+`POST /api/llm/providers/test`, `GET/POST /api/llm/active` (`{id}`; `gemma_local`
+= local), `POST /api/llm/parse-curl`. Las claves salen enmascaradas en las
+respuestas GET/POST y no se escriben en logs.
+
+**Persistencia.** Lo guardado desde la UI vive en `data/llm_providers.json`
+dentro del contenedor: en Railway **sin volumen** se pierde en cada redeploy.
+Para dejar una API fija usa `LLM_API_BASE` / `LLM_API_KEY` / `LLM_API_MODEL`
+(+ `LLM_API_ACTIVE=1`), o monta un volumen y apunta `LLM_PROVIDERS_FILE` a él.

@@ -6,7 +6,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <title>Neuro-Geométrica · Campo agentico</title>
-  <link rel="stylesheet" href="/styles.css?v=31" />
+  <link rel="stylesheet" href="/styles.css?v=32" />
 </head>
 <body>
   <header class="top">
@@ -15,6 +15,13 @@
       <p class="sub">Chat = decoder del campo (bandera) o Gemma 2 original · Train desacoplado · Sueño optimiza F y simetría · Pruebas evalúan el modelo</p>
     </div>
     <div class="badges">
+      <label class="llm-global" title="LLM que usa toda la app (chat, decoder del campo y datasets de entrenamiento)">
+        <span>LLM activo</span>
+        <select id="llm-select" aria-label="LLM activo de la aplicación">
+          <option value="gemma_local">Gemma local</option>
+        </select>
+      </label>
+      <button type="button" id="btn-open-llm" class="badge badge-btn" title="Añadir o gestionar APIs de LLM (pegar curl)">Modelos / API</button>
       <span id="badge-mode" class="badge">modo…</span>
       <span id="badge-health" class="badge">salud…</span>
       <span id="badge-procs" class="badge badge-procs">procesos idle</span>
@@ -25,6 +32,7 @@
     <button type="button" class="main-tab active" data-main="chat">Chat</button>
     <button type="button" class="main-tab" data-main="train">Entrenamiento <span class="tab-status" id="status-train" data-state="idle" aria-hidden="true"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span></button>
     <button type="button" class="main-tab" data-main="sleep">Sueño <span class="tab-status" id="status-sleep" data-state="idle" aria-hidden="true"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span></button>
+    <button type="button" class="main-tab" data-main="llm">Modelos / API</button>
     <button type="button" class="main-tab" data-main="tests">Pruebas <span class="tab-status" id="status-tests" data-state="idle" aria-hidden="true"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span></button>
   </nav>
 
@@ -38,6 +46,7 @@
           <span class="switch-label">Decoder del campo</span>
         </label>
         <span id="chat-mode-hint" class="chat-mode-hint">Activo · campo líquido/CDT/RQM → Gemma interpreta (decoder-only)</span>
+        <span id="chat-llm" class="llm-chip" title="LLM activo (cámbialo arriba o en Modelos / API)">LLM: Gemma local</span>
         <button type="button" id="btn-new-chat" class="btn-new-chat" title="Borra la conversación en esta pantalla y el historial del servidor (contexto Gemma OFF)">Nuevo chat</button>
       </div>
       <div id="messages" class="messages" aria-live="polite"></div>
@@ -52,7 +61,7 @@
       <div class="panel-grid">
         <div>
           <h2>Entrenamiento en vivo</h2>
-      <p class="hint">Gemma (o curriculum) genera datasets por familia: core / líquido E8–E10 / campo E11–E17 / autonomía E18–E30. Con <strong>Infinito</strong> rota familias indefinidamente; cada lote se guarda en checkpoints/datasets.</p>
+      <p class="hint">El LLM activo (Gemma local o la API elegida en <strong>Modelos / API</strong>) genera datasets por familia: core / líquido E8–E10 / campo E11–E17 / autonomía E18–E30. Con <strong>Infinito</strong> rota familias indefinidamente; cada lote se guarda en checkpoints/datasets.</p>
           <div class="actions">
             <button type="button" id="btn-train">Iniciar</button>
             <label class="chk-infinite" title="Sin tope de lotes; solo Detener">
@@ -66,6 +75,7 @@
           </div>
           <p id="tr-progress-label" class="progress-label">Lote — / —</p>
           <dl class="kv">
+            <dt>LLM activo</dt><dd id="tr-llm">Gemma local</dd>
             <dt>Estado</dt><dd id="tr-status">—</dd>
             <dt>Job</dt><dd id="tr-job">—</dd>
             <dt>Lote · ép/lote</dt><dd id="tr-epochs">—</dd>
@@ -153,6 +163,53 @@
       <pre id="sl-report" class="log tall">{}</pre>
     </section>
 
+
+    <!-- MODELOS / API -->
+    <section id="main-llm" class="main-panel">
+      <h2>Modelos / API</h2>
+      <p class="hint">Añade un LLM externo compatible con OpenAI (por ejemplo <strong>docker-llm</strong>) pegando el <code>curl</code> que te da su panel. El LLM activo se usa en toda la app: chat (Decoder del campo y modo crudo) y generación de datasets de entrenamiento. Sueño y Pruebas no usan LLM.</p>
+      <div class="llm-grid">
+        <div class="llm-card">
+          <h3>1 · Pega aquí el curl</h3>
+          <textarea id="llm-curl" class="llm-curl" rows="8" spellcheck="false" placeholder="curl https://docker-llm-production.up.railway.app/v1/chat/completions \
+  -H &quot;Authorization: Bearer obk1.…&quot; \
+  -H &quot;Content-Type: application/json&quot; \
+  -d '{&quot;model&quot;:&quot;qwen-qwen3.5-2b-q4-k-m&quot;,&quot;messages&quot;:[{&quot;role&quot;:&quot;user&quot;,&quot;content&quot;:&quot;Hola&quot;}]}'"></textarea>
+          <div class="actions">
+            <button type="button" id="btn-llm-parse">Auto-configurar</button>
+            <button type="button" id="btn-llm-clear">Limpiar</button>
+          </div>
+          <ul id="llm-warnings" class="llm-warnings"></ul>
+          <h3>2 · Revisa los datos</h3>
+          <input type="hidden" id="llm-edit-id" />
+          <div class="llm-form">
+            <label>Nombre <input id="llm-name" type="text" placeholder="docker-llm · qwen…" autocomplete="off" /></label>
+            <label>URL base <input id="llm-base" type="url" placeholder="https://…/v1" autocomplete="off" /></label>
+            <label>API key
+              <span class="llm-key-row">
+                <input id="llm-key" type="password" placeholder="obk1.…" autocomplete="off" />
+                <label class="chk-infinite"><input type="checkbox" id="llm-key-show" /> ver</label>
+              </span>
+            </label>
+            <label>Modelo <input id="llm-model" type="text" list="llm-models-list" placeholder="qwen-qwen3.5-2b-q4-k-m" autocomplete="off" /></label>
+            <datalist id="llm-models-list"></datalist>
+          </div>
+          <p id="llm-edit-note" class="hint llm-edit-note"></p>
+          <div class="actions">
+            <button type="button" id="btn-llm-test">Probar conexión</button>
+            <button type="button" id="btn-llm-save">Guardar</button>
+            <button type="button" id="btn-llm-save-activate">Guardar y usar</button>
+          </div>
+          <pre id="llm-test-result" class="log llm-result">—</pre>
+        </div>
+        <div class="llm-card">
+          <h3>3 · Elige el LLM de la aplicación</h3>
+          <div id="llm-list" class="llm-list"></div>
+          <p id="llm-persist" class="hint"></p>
+        </div>
+      </div>
+    </section>
+
     <!-- PRUEBAS -->
     <section id="main-tests" class="main-panel">
       <h2>Pruebas del modelo de campo</h2>
@@ -194,6 +251,6 @@
     </section>
   </main>
 
-  <script src="/app.js?v=31"></script>
+  <script src="/app.js?v=32"></script>
 </body>
 </html>
