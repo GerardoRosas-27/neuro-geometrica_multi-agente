@@ -6,7 +6,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <title>Neuro-Geométrica · Campo agentico</title>
-  <link rel="stylesheet" href="/styles.css?v=32" />
+  <link rel="stylesheet" href="/styles.css?v=33" />
 </head>
 <body>
   <header class="top">
@@ -25,6 +25,8 @@
       <span id="badge-mode" class="badge">modo…</span>
       <span id="badge-health" class="badge">salud…</span>
       <span id="badge-procs" class="badge badge-procs">procesos idle</span>
+      <span id="badge-session" class="badge badge-session" hidden>Sesión activa</span>
+      <button type="button" id="btn-logout" class="badge badge-btn" hidden title="Cierra la sesión en el servidor">Cerrar sesión</button>
     </div>
   </header>
 
@@ -251,6 +253,26 @@
     </section>
   </main>
 
-  <script src="/app.js?v=32"></script>
+  <!-- ACCESO (secreto maestro) -->
+  <div id="auth-overlay" class="auth-overlay" hidden>
+    <div class="auth-card" role="dialog" aria-modal="true" aria-labelledby="auth-title">
+      <h2 id="auth-title">Acceso protegido</h2>
+      <div id="auth-unconfigured" class="auth-warn" hidden>
+        <strong>MASTER_SECRET no configurado en el servidor.</strong>
+        <p>La API está cerrada por seguridad. Define la variable <code>MASTER_SECRET</code> (en Railway: servicio → Variables) con un secreto largo y aleatorio y vuelve a desplegar.</p>
+        <p class="hint">Generar uno: <code>python3 -c "import secrets; print(secrets.token_urlsafe(48))"</code></p>
+      </div>
+      <form id="auth-form" autocomplete="off">
+        <p class="hint">Introduce el secreto maestro (<code>MASTER_SECRET</code>) del servidor. No se guarda en el navegador: solo se guarda una sesión temporal.</p>
+        <p id="auth-note" class="auth-note" hidden></p>
+        <label for="auth-secret">Secreto maestro</label>
+        <input id="auth-secret" name="ngs-master" type="password" autocomplete="off" spellcheck="false" autocapitalize="off" />
+        <p id="auth-error" class="auth-error" role="alert"></p>
+        <button type="submit" id="auth-submit">Entrar</button>
+      </form>
+    </div>
+  </div>
+
+  <script src="/auth.js?v=33"></script>
 </body>
 </html>

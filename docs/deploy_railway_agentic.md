@@ -37,6 +37,9 @@ Usuario (UI web)
 
 | Variable | Obligatoria | Default | Descripción |
 |----------|-------------|---------|-------------|
+| `MASTER_SECRET` | **Sí** | — | Secreto maestro de acceso (UI + `/api/*`). Sin él la API responde 503 `master_secret_not_configured`. Genera uno con `python3 -c "import secrets; print(secrets.token_urlsafe(48))"`. Ver README · «acceso con secreto maestro» |
+| `SESSION_TTL_HOURS` | No | `12` | Duración de la sesión firmada |
+| `AUTH_REVOKED_FILE` | No | `data/revoked_sessions.json` | Sesiones revocadas por «Cerrar sesión» |
 | `PORT` | Railway la pone | `8080` | Puerto HTTP (`0.0.0.0:$PORT`) |
 | `GEMMA2_GGUF` | No | `/app/models/gemma-2-2b-it-Q3_K_L.gguf` (Docker) · `models/gemma-2-2b-it-Q3_K_L.gguf` (local) | Ruta del GGUF |
 | `GEMMA2_GGUF_URL` | No | Q3_K_L de `bartowski/gemma-2-2b-it-GGUF` (commit fijado) | URL pública (sin token) para descargar si falta |
@@ -57,7 +60,7 @@ Usuario (UI web)
 **Q3_K_L** (~1.55 GB, sha256 verificado). Si el archivo no está (build con
 `--build-arg DOWNLOAD_GGUF=0`, o `GEMMA2_GGUF` apuntando a un volumen vacío), el
 binario arranca en léxico, lo descarga en segundo plano con `curl` y hace
-hot-swap a Gemma (`/health` → `model.state`: `downloading` → `loading` → `ready`).
+hot-swap a Gemma (`GET /api/status` con sesión → `model.state`: `downloading` → `loading` → `ready`).
 
 ¿Por qué Q3_K_L? El cargador nativo solo soporta arquitectura `gemma2` y candle
 no soporta cuantizaciones IQ*. Q2_K (~1.23 GB) se probó y degenera (bucles,
@@ -73,9 +76,11 @@ OFF = Gemma 2 original congelado. Ambos comparten los mismos pesos en RAM.
 1. Conecta el repo `neuro-geometrica_multi-agente` en [railway.com](https://railway.com).
 2. Crea un servicio desde el repo; Railway detecta `Dockerfile` / `railway.toml`.
 3. Asegura rama `main` (o la de este PR tras merge) y build con Dockerfile.
-4. Healthcheck: `GET /health` → `{ "ok": true, "llm_mode": "lexicon"|"gemma_gguf", ... }`.
+4. Define `MASTER_SECRET` en **Variables** (sin ella la API queda cerrada).
+   Healthcheck: `GET /health` → `{ "ok": true, "auth": { "master_configured": true, "warnings": [] } }`
+   (público y sin datos internos; el estado detallado está en `GET /api/status`, con sesión).
 5. (Opcional) Para no hornear el GGUF en la imagen: build arg `DOWNLOAD_GGUF=0`, volumen en `/data` y `GEMMA2_GGUF=/data/gemma-2-2b-it-Q3_K_L.gguf` (se descarga una vez al primer arranque).
-6. Abre la URL pública: UI en `/`, API bajo `/api/*`.
+6. Abre la URL pública: UI en `/` (pide el secreto maestro), API bajo `/api/*` (sesión por cookie o `Authorization: Bearer`).
 
 ## Qué hace la UI
 

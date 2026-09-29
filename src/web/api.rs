@@ -1,5 +1,6 @@
 //! REST API JSON + estáticos + SSE de entrenamiento en vivo.
 
+use crate::web::auth::{self, AuthConfig, SharedAuth};
 use crate::web::field_eval::FieldEvalReport;
 use crate::web::process_job::{ProcessesSnapshot, SleepJobSnapshot, TestsJobSnapshot};
 use crate::web::sleep_optimize::{SleepOptimizeOpts, SleepOptimizeReport};
@@ -257,14 +258,29 @@ pub fn spawn_tests_job(state: SharedState) {
     });
 }
 
+/// Router con autenticación leída del entorno (`MASTER_SECRET`, …).
 pub fn router(state: SharedState, static_dir: PathBuf) -> Router {
+    router_with_auth(state, static_dir, Arc::new(AuthConfig::from_env()))
+}
+
+/// Router con una configuración de acceso explícita. **Todo** `/api/*` exige
+/// sesión salvo `/api/auth/{login,logout,status}`; `/health` y los estáticos
+/// son públicos (el middleware envuelve también el fallback).
+pub fn router_with_auth(state: SharedState, static_dir: PathBuf, auth: SharedAuth) -> Router {
     let cors = CorsLayer::new()
         .allow_origin(Any)
         .allow_methods(Any)
         .allow_headers(Any);
 
-    let api = Router::new()
+    let public = Router::new()
         .route("/health", get(health))
+        .route("/api/auth/login", post(auth::login))
+        .route("/api/auth/logout", post(auth::logout))
+        .route("/api/auth/status", get(auth::status))
+        .with_state(auth.clone());
+
+    let api = Router::new()
+        .route("/api/status", get(app_status))
         .route("/api/chat", post(chat))
         .route("/api/train/start", post(train_start))
         .route("/api/train/stop", post(train_stop))
@@ -313,13 +329,34 @@ pub fn router(state: SharedState, static_dir: PathBuf) -> Router {
         .service(ServeDir::new(static_dir).append_index_html_on_directories(true));
 
     Router::new()
+        .merge(public)
         .merge(api)
         .fallback_service(static_svc)
+        .layer(axum::middleware::from_fn_with_state(
+            auth,
+            auth::require_auth,
+        ))
         .layer(cors)
         .layer(TraceLayer::new_for_http())
 }
 
-async fn health(State(st): State<SharedState>) -> impl IntoResponse {
+/// Salud pública: sin datos internos (modelo, rutas, procesos, LLM). Solo si el
+/// proceso responde y el estado del secreto maestro (sin revelarlo).
+async fn health(State(auth): State<SharedAuth>) -> impl IntoResponse {
+    Json(json!({
+        "ok": true,
+        "service": "neuro-geometrica",
+        "auth": {
+            "mode": auth.mode(),
+            "master_configured": auth.configured(),
+            "session_ttl_hours": auth.ttl_secs as f64 / 3600.0,
+            "warnings": auth.warnings(),
+        },
+    }))
+}
+
+/// Estado detallado de la app (antes `/health`); requiere sesión.
+async fn app_status(State(st): State<SharedState>) -> impl IntoResponse {
     let mut g = st.lock().unwrap_or_else(|e| e.into_inner());
     let cfg = g.model_cfg.clone();
     g.model_status.refresh_progress(&cfg);
@@ -1248,9 +1285,27 @@ async fn llm_parse_curl(Json(body): Json<ParseCurlBody>) -> axum::response::Resp
     }
 }
 
-/// Helper de tests: router sin estáticos (ruta inexistente OK).
+/// Helper de tests: router con un secreto de prueba y una sesión válida
+/// inyectada como `Authorization: Bearer` (si la petición no trae otra).
+#[cfg(test)]
 pub fn test_router(state: SharedState) -> Router {
-    router(state, PathBuf::from("web/static"))
+    use axum::body::Body;
+    use axum::http::Request;
+    let auth = Arc::new(AuthConfig::new(
+        Some("test-master-secret-0123456789-abcdefghij".into()),
+        3600,
+    ));
+    let (tok, _) = auth.issue_session().expect("sesión de test");
+    let bearer = HeaderValue::from_str(&format!("Bearer {tok}")).unwrap();
+    router_with_auth(state, PathBuf::from("web/static"), auth).layer(
+        tower::util::MapRequestLayer::new(move |mut req: Request<Body>| {
+            if !req.headers().contains_key(header::AUTHORIZATION) {
+                req.headers_mut()
+                    .insert(header::AUTHORIZATION, bearer.clone());
+            }
+            req
+        }),
+    )
 }
 
 #[cfg(test)]
@@ -1271,13 +1326,406 @@ mod tests {
         Arc::new(Mutex::new(s))
     }
 
+    // ------------------------------------------------------------------
+    // Acceso con MASTER_SECRET
+
+    const SECRET: &str = "secreto-maestro-de-prueba-0123456789abcdef";
+
+    fn auth_cfg(secret: Option<&str>) -> SharedAuth {
+        let mut a = AuthConfig::new(secret.map(String::from), 3600);
+        a.fail_delay = Duration::from_millis(0);
+        Arc::new(a)
+    }
+
+    fn app_with(auth: SharedAuth) -> Router {
+        router_with_auth(lex_state(), PathBuf::from("web/static"), auth)
+    }
+
+    /// Todas las familias protegidas (+ una ruta /api inexistente).
+    const PROTECTED: &[(&str, &str)] = &[
+        ("GET", "/api/status"),
+        ("POST", "/api/chat"),
+        ("GET", "/api/chat/history"),
+        ("POST", "/api/chat/reset"),
+        ("POST", "/api/train/start"),
+        ("POST", "/api/train/stop"),
+        ("GET", "/api/train/status"),
+        ("GET", "/api/train/events?after=0"),
+        ("GET", "/api/train/stream"),
+        ("POST", "/api/sleep"),
+        ("POST", "/api/sleep/start"),
+        ("POST", "/api/sleep/stop"),
+        ("GET", "/api/sleep/status"),
+        ("GET", "/api/sleep/events?after=0"),
+        ("POST", "/api/tests/run"),
+        ("POST", "/api/tests/start"),
+        ("POST", "/api/tests/stop"),
+        ("GET", "/api/tests/last"),
+        ("GET", "/api/tests/status"),
+        ("GET", "/api/tests/events?after=0"),
+        ("GET", "/api/processes"),
+        ("GET", "/api/telemetry"),
+        ("GET", "/api/telemetry/liquid"),
+        ("GET", "/api/telemetry/cdt"),
+        ("GET", "/api/telemetry/rqm"),
+        ("GET", "/api/telemetry/train"),
+        ("GET", "/api/llm/providers"),
+        ("POST", "/api/llm/providers"),
+        ("POST", "/api/llm/providers/test"),
+        ("DELETE", "/api/llm/providers/x"),
+        ("GET", "/api/llm/active"),
+        ("POST", "/api/llm/active"),
+        ("POST", "/api/llm/parse-curl"),
+        ("GET", "/api/no-existe"),
+    ];
+
+    fn req(method: &str, uri: &str, headers: &[(&str, &str)], body: &str) -> Request<Body> {
+        let mut b = Request::builder()
+            .method(method)
+            .uri(uri)
+            .header("host", "app.test")
+            .header("content-type", "application/json");
+        for (k, v) in headers {
+            b = b.header(*k, *v);
+        }
+        b.body(Body::from(body.to_string())).unwrap()
+    }
+
+    async fn send(app: &Router, r: Request<Body>) -> (StatusCode, HeaderMap, serde_json::Value) {
+        let res = app.clone().oneshot(r).await.unwrap();
+        let status = res.status();
+        let headers = res.headers().clone();
+        let is_sse = headers
+            .get("content-type")
+            .and_then(|v| v.to_str().ok())
+            .is_some_and(|v| v.starts_with("text/event-stream"));
+        if is_sse {
+            return (status, headers, serde_json::Value::Null);
+        }
+        let bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let v = serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null);
+        (status, headers, v)
+    }
+
+    async fn login_as(
+        app: &Router,
+        secret: &str,
+        ip: &str,
+    ) -> (StatusCode, HeaderMap, serde_json::Value) {
+        let body = json!({ "secret": secret }).to_string();
+        send(
+            app,
+            req("POST", "/api/auth/login", &[("x-forwarded-for", ip)], &body),
+        )
+        .await
+    }
+
+    fn cookie_of(h: &HeaderMap) -> String {
+        let c = h.get("set-cookie").unwrap().to_str().unwrap();
+        c.split(';').next().unwrap().to_string()
+    }
+
+    use axum::http::HeaderMap;
+
+    #[tokio::test]
+    async fn auth_unauthenticated_every_protected_route_rejected() {
+        let auth = auth_cfg(Some(SECRET));
+        let app = app_with(auth.clone());
+        let other = AuthConfig::new(Some("otro-secreto-distinto-0123456789abcdef".into()), 3600);
+        let (old_secret_tok, _) = other.issue_session().unwrap();
+        let (expired_tok, _) = auth
+            .issue_session_at(crate::web::train_job::now_ms() / 1000 - 7200, 3600)
+            .unwrap();
+        let (good, _) = auth.issue_session().unwrap();
+        let tampered = format!("{}x", &good[..good.len() - 1]);
+        let bad_tokens = [
+            None,
+            Some("ngs1.basura.basura".to_string()),
+            Some(tampered),
+            Some(expired_tok),
+            Some(old_secret_tok),
+        ];
+        for (m, path) in PROTECTED {
+            for tok in &bad_tokens {
+                for via_cookie in [false, true] {
+                    let hv;
+                    let headers: Vec<(&str, &str)> = match tok {
+                        None => vec![],
+                        Some(t) if via_cookie => {
+                            hv = format!("ngs_session={t}");
+                            vec![("cookie", hv.as_str())]
+                        }
+                        Some(t) => {
+                            hv = format!("Bearer {t}");
+                            vec![("authorization", hv.as_str())]
+                        }
+                    };
+                    let (st, h, v) = send(&app, req(m, path, &headers, "{}")).await;
+                    assert_eq!(st, StatusCode::UNAUTHORIZED, "{m} {path} tok={tok:?}");
+                    assert_eq!(v["code"], "unauthorized", "{m} {path}");
+                    assert_eq!(h.get("www-authenticate").unwrap(), "Bearer");
+                }
+            }
+        }
+        // Con sesión válida: la ruta ya no es 401.
+        let bearer = format!("Bearer {good}");
+        for (m, path) in [
+            ("GET", "/api/status"),
+            ("GET", "/api/telemetry"),
+            ("GET", "/api/llm/providers"),
+            ("GET", "/api/train/stream"),
+        ] {
+            let (st, _, _) = send(&app, req(m, path, &[("authorization", &bearer)], "")).await;
+            assert_eq!(st, StatusCode::OK, "{m} {path}");
+        }
+    }
+
+    #[tokio::test]
+    async fn auth_no_secret_fails_closed() {
+        let app = app_with(auth_cfg(None));
+        for (m, path) in PROTECTED {
+            let (st, _, v) = send(&app, req(m, path, &[], "{}")).await;
+            assert_eq!(st, StatusCode::SERVICE_UNAVAILABLE, "{m} {path}");
+            assert_eq!(v["code"], "master_secret_not_configured");
+        }
+        let (st, _, v) = login_as(&app, "", "1.1.1.1").await;
+        assert_eq!(st, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(v["code"], "master_secret_not_configured");
+        let (st, _, v) = send(&app, req("GET", "/health", &[], "")).await;
+        assert_eq!(st, StatusCode::OK);
+        assert_eq!(v["auth"]["master_configured"], false);
+        assert_eq!(v["auth"]["mode"], "unconfigured");
+        assert!(!v["auth"]["warnings"].as_array().unwrap().is_empty());
+        let (st, _, v) = send(&app, req("GET", "/api/auth/status", &[], "")).await;
+        assert_eq!(st, StatusCode::OK);
+        assert_eq!(v["master_configured"], false);
+        // La UI (estáticos) sigue sirviéndose para mostrar el aviso.
+        let res = app.clone().oneshot(req("GET", "/", &[], "")).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn auth_health_is_public_and_minimal() {
+        let app = app_with(auth_cfg(Some("corto")));
+        let (st, _, v) = send(&app, req("GET", "/health", &[], "")).await;
+        assert_eq!(st, StatusCode::OK);
+        assert_eq!(v["ok"], true);
+        for k in [
+            "engrams",
+            "model",
+            "llm_active",
+            "probe",
+            "active_processes",
+            "llm_mode",
+        ] {
+            assert!(v.get(k).is_none(), "/health expone {k}");
+        }
+        let w = v["auth"]["warnings"].to_string();
+        assert!(w.contains("corto"), "{w}");
+        assert!(!v.to_string().contains("\"corto\""));
+        let app = app_with(auth_cfg(Some(SECRET)));
+        let (_, _, v) = send(&app, req("GET", "/health", &[], "")).await;
+        assert!(v["auth"]["warnings"].as_array().unwrap().is_empty());
+        assert!(!v.to_string().contains(SECRET));
+    }
+
+    #[tokio::test]
+    async fn auth_login_ok_cookie_bearer_and_sse() {
+        let app = app_with(auth_cfg(Some(SECRET)));
+        let (st, h, v) = login_as(&app, SECRET, "2.2.2.2").await;
+        assert_eq!(st, StatusCode::OK);
+        assert_eq!(v["ok"], true);
+        assert!(v["expires_at"].as_u64().unwrap() > 0);
+        assert!(!v.to_string().contains(SECRET));
+        let raw = h.get("set-cookie").unwrap().to_str().unwrap().to_string();
+        for part in ["HttpOnly", "SameSite=Strict", "Path=/api", "Max-Age=3600"] {
+            assert!(raw.contains(part), "{raw}");
+        }
+        assert_eq!(h.get("cache-control").unwrap(), "no-store");
+        let cookie = cookie_of(&h);
+        let tok = v["token"].as_str().unwrap().to_string();
+        assert!(tok.starts_with("ngs1."));
+        // Cookie (navegador, incl. EventSource) y Bearer (scripts).
+        let (st, _, v) = send(&app, req("GET", "/api/status", &[("cookie", &cookie)], "")).await;
+        assert_eq!(st, StatusCode::OK);
+        assert!(v["llm_mode"].as_str().is_some());
+        let bearer = format!("Bearer {tok}");
+        let (st, _, _) = send(
+            &app,
+            req("GET", "/api/telemetry", &[("authorization", &bearer)], ""),
+        )
+        .await;
+        assert_eq!(st, StatusCode::OK);
+        let (st, h, _) = send(
+            &app,
+            req("GET", "/api/train/stream", &[("cookie", &cookie)], ""),
+        )
+        .await;
+        assert_eq!(st, StatusCode::OK);
+        assert!(h["content-type"]
+            .to_str()
+            .unwrap()
+            .starts_with("text/event-stream"));
+        let (_, _, v) = send(
+            &app,
+            req("GET", "/api/auth/status", &[("cookie", &cookie)], ""),
+        )
+        .await;
+        assert_eq!(v["authenticated"], true);
+        assert_eq!(v["session"]["via"], "cookie");
+        let (_, _, v) = send(&app, req("GET", "/api/auth/status", &[], "")).await;
+        assert_eq!(v["authenticated"], false);
+        // Secreto con espacios alrededor se acepta (trim), como en docker-llm.
+        let (st, _, _) = login_as(&app, &format!("  {SECRET}\n"), "2.2.2.3").await;
+        assert_eq!(st, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn auth_login_fail_and_lockout() {
+        let app = app_with(auth_cfg(Some(SECRET)));
+        for i in 0..5 {
+            let (st, h, v) = login_as(&app, "incorrecto", "3.3.3.3").await;
+            assert_eq!(st, StatusCode::UNAUTHORIZED, "intento {i}");
+            assert_eq!(v["code"], "invalid_secret");
+            assert!(h.get("set-cookie").is_none());
+        }
+        // Bloqueada: ni el secreto correcto entra desde esa IP.
+        let (st, h, v) = login_as(&app, SECRET, "3.3.3.3").await;
+        assert_eq!(st, StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(v["code"], "rate_limited");
+        let wait: u64 = h["retry-after"].to_str().unwrap().parse().unwrap();
+        assert!((29..=30).contains(&wait), "{wait}");
+        // Otra IP no está bloqueada.
+        let (st, _, _) = login_as(&app, SECRET, "4.4.4.4").await;
+        assert_eq!(st, StatusCode::OK);
+        // Cuerpo sin secreto = fallo normal.
+        let (st, _, _) = send(
+            &app,
+            req(
+                "POST",
+                "/api/auth/login",
+                &[("x-forwarded-for", "5.5.5.5")],
+                "{}",
+            ),
+        )
+        .await;
+        assert_eq!(st, StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn auth_global_cap_limits_distributed_attempts() {
+        let app = app_with(auth_cfg(Some(SECRET)));
+        for i in 0..30 {
+            let (st, _, _) = login_as(&app, "no", &format!("10.0.0.{i}")).await;
+            assert_eq!(st, StatusCode::UNAUTHORIZED);
+        }
+        let (st, _, _) = login_as(&app, "no", "10.0.1.1").await;
+        assert_eq!(st, StatusCode::TOO_MANY_REQUESTS);
+    }
+
+    #[tokio::test]
+    async fn auth_logout_revokes_server_side() {
+        let app = app_with(auth_cfg(Some(SECRET)));
+        let (_, h, v) = login_as(&app, SECRET, "6.6.6.6").await;
+        let cookie = cookie_of(&h);
+        let bearer = format!("Bearer {}", v["token"].as_str().unwrap());
+        let (st, _, _) = send(&app, req("GET", "/api/status", &[("cookie", &cookie)], "")).await;
+        assert_eq!(st, StatusCode::OK);
+        let (st, h, v) = send(
+            &app,
+            req("POST", "/api/auth/logout", &[("cookie", &cookie)], ""),
+        )
+        .await;
+        assert_eq!(st, StatusCode::OK);
+        assert_eq!(v["revoked"], true);
+        assert!(h["set-cookie"].to_str().unwrap().contains("Max-Age=0"));
+        // Ni la cookie ni el mismo token por Bearer sirven ya.
+        let (st, _, _) = send(&app, req("GET", "/api/status", &[("cookie", &cookie)], "")).await;
+        assert_eq!(st, StatusCode::UNAUTHORIZED);
+        let (st, _, _) = send(
+            &app,
+            req("GET", "/api/status", &[("authorization", &bearer)], ""),
+        )
+        .await;
+        assert_eq!(st, StatusCode::UNAUTHORIZED);
+        let (st, _, v) = send(&app, req("POST", "/api/auth/logout", &[], "")).await;
+        assert_eq!(st, StatusCode::OK);
+        assert_eq!(v["revoked"], false);
+    }
+
+    #[tokio::test]
+    async fn auth_rotating_secret_invalidates_sessions() {
+        let a = auth_cfg(Some(SECRET));
+        let app_a = app_with(a.clone());
+        let (_, h, _) = login_as(&app_a, SECRET, "7.7.7.7").await;
+        let cookie = cookie_of(&h);
+        let app_b = app_with(auth_cfg(Some("nuevo-secreto-rotado-0123456789abcdefgh")));
+        let (st, _, _) = send(
+            &app_b,
+            req("GET", "/api/status", &[("cookie", &cookie)], ""),
+        )
+        .await;
+        assert_eq!(st, StatusCode::UNAUTHORIZED);
+        // El secreto antiguo tampoco entra en la app rotada.
+        let (st, _, _) = login_as(&app_b, SECRET, "7.7.7.7").await;
+        assert_eq!(st, StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn auth_cookie_writes_require_same_origin() {
+        let app = app_with(auth_cfg(Some(SECRET)));
+        let (_, h, v) = login_as(&app, SECRET, "8.8.8.8").await;
+        let cookie = cookie_of(&h);
+        let (st, _, v2) = send(
+            &app,
+            req(
+                "POST",
+                "/api/chat/reset",
+                &[("cookie", &cookie), ("origin", "https://evil.example")],
+                "{}",
+            ),
+        )
+        .await;
+        assert_eq!(st, StatusCode::FORBIDDEN);
+        assert_eq!(v2["code"], "cross_origin_rejected");
+        let (st, _, _) = send(
+            &app,
+            req(
+                "POST",
+                "/api/chat/reset",
+                &[("cookie", &cookie), ("origin", "http://app.test")],
+                "{}",
+            ),
+        )
+        .await;
+        assert_eq!(st, StatusCode::OK);
+        // Bearer (scripts) no depende de Origin.
+        let bearer = format!("Bearer {}", v["token"].as_str().unwrap());
+        let (st, _, _) = send(
+            &app,
+            req(
+                "POST",
+                "/api/chat/reset",
+                &[
+                    ("authorization", &bearer),
+                    ("origin", "https://evil.example"),
+                ],
+                "{}",
+            ),
+        )
+        .await;
+        assert_eq!(st, StatusCode::OK);
+    }
+
     #[tokio::test]
     async fn health_ok_lexicon() {
         let app = test_router(lex_state());
         let res = app
             .oneshot(
                 Request::builder()
-                    .uri("/health")
+                    .uri("/api/status")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -1937,7 +2385,7 @@ mod tests {
             .clone()
             .oneshot(
                 Request::builder()
-                    .uri("/health")
+                    .uri("/api/status")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -2177,7 +2625,7 @@ mod tests {
         )
         .await;
         assert_eq!(st, StatusCode::NOT_FOUND);
-        let (_, h) = call_json(app.clone(), "GET", "/health", None).await;
+        let (_, h) = call_json(app.clone(), "GET", "/api/status", None).await;
         assert_eq!(h["llm_active"]["id"], id);
         assert_eq!(h["llm_active"]["kind"], "openai_compatible");
 

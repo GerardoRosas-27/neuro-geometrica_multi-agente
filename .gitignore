@@ -43,3 +43,4 @@ data/checkpoints/datasets/
 models/*.gguf
 
 models/*.box-store-snap-*
+/data/revoked_sessions.json

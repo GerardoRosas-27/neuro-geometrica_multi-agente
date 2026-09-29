@@ -85,6 +85,56 @@ Un binario por rol. El resto está en `src/bin/archive/`.
 | Trainer (gated) | `GEMMA_SPIN_MAX_CYCLES=9 cargo run --release --bin native_gemma2_spin_infinite_trainer` |
 | Visualizador | `cargo run --release --bin native_cognitive_sleep_visualizer` |
 
+## App web (agentic_web) · acceso con secreto maestro
+
+La app web (`cargo run --features web --bin agentic_web`, desplegada en Railway)
+está protegida con un **único secreto maestro**, igual que `docker-llm`.
+Despliegue completo: [`docs/deploy_railway_agentic.md`](docs/deploy_railway_agentic.md).
+
+| Variable | Obligatoria | Default | Descripción |
+|---|---|---|---|
+| `MASTER_SECRET` | **Sí** | — | Secreto para entrar a la UI y a `/api/*`. Sin él la API responde `503 master_secret_not_configured` (fail-closed). `/health` avisa si falta o si tiene < 32 caracteres. |
+| `SESSION_TTL_HOURS` | No | `12` | Duración de la sesión. |
+| `AUTH_REVOKED_FILE` | No | `data/revoked_sessions.json` | Sesiones cerradas con «Cerrar sesión» (revocación en servidor). |
+| `COOKIE_SECURE` | No | auto | `Secure` en la cookie; auto = sí detrás de HTTPS (`X-Forwarded-Proto`). |
+
+Generar un secreto (guárdalo en tu gestor de contraseñas):
+
+```bash
+python3 -c "import secrets; print(secrets.token_urlsafe(48))"
+```
+
+En Railway: servicio → **Variables** → `MASTER_SECRET=<secreto>` → redeploy.
+Luego `GET /health` debe mostrar `"auth": {"master_configured": true, "warnings": []}`.
+
+Cómo funciona:
+
+- `POST /api/auth/login {"secret": "…"}` compara en tiempo constante y devuelve una
+  sesión firmada con HMAC-SHA256 (clave derivada del secreto por HKDF). Cambiar
+  `MASTER_SECRET` invalida **todas** las sesiones. Bloqueo por IP tras 5 fallos
+  (30 s, duplicando hasta 15 min) + tope global de 30 fallos/min.
+- La sesión va en una cookie `HttpOnly; SameSite=Strict; Path=/api` (el navegador
+  la manda también en el `EventSource` de la consola en vivo) o en
+  `Authorization: Bearer ngs1.…` para scripts. Nunca en la URL. El navegador
+  nunca guarda el secreto.
+- `POST /api/auth/logout` revoca la sesión en el servidor; `GET /api/auth/status`
+  informa del estado. Todo lo demás bajo `/api/*` (chat, entrenamiento, sueño,
+  pruebas, procesos, telemetría, SSE, Modelos/API, `/api/status`) exige sesión.
+  Las escrituras con cookie exigen mismo origen (anti-CSRF).
+- Públicos: la UI estática (muestra el login o el aviso) y `/health` (solo
+  `ok` y el estado del secreto, sin datos internos; el estado detallado está en
+  `GET /api/status`).
+
+Desde scripts:
+
+```bash
+BASE=https://neuro-geometricamulti-agente-production.up.railway.app
+TOKEN=$(curl -s -X POST "$BASE/api/auth/login" -H 'Content-Type: application/json' \
+  -d "{\"secret\":\"$MASTER_SECRET\"}" | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])')
+curl -s "$BASE/api/status" -H "Authorization: Bearer $TOKEN"
+curl -s -X POST "$BASE/api/auth/logout" -H "Authorization: Bearer $TOKEN"
+```
+
 ## Infraestructura (no es el resultado)
 
 Chat Gemma 2 (demo de ingeniería, no claim del preprint):
