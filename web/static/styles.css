@@ -306,3 +306,53 @@ body.auth-locked { overflow: hidden; }
   border-radius: 10px; padding: 0.8rem 0.9rem; font-size: 0.88rem;
 }
 .auth-warn p { color: var(--text); margin: 0.5rem 0 0; }
+
+/* ------------------------------------------------------------------ Responsive
+   Los hijos de grid/flex pueden encogerse (min-width: 0) y los textos largos
+   (URLs, JSON, nombres de modelo) se parten dentro de su caja. En escritorio
+   el aspecto no cambia; la maqueta móvil vive en las media queries de abajo. */
+.panel-grid > *, .llm-grid > *, .llm-item > div, .main-panel > * { min-width: 0; }
+.log, .llm-sub, .llm-title, .chat-mode-hint, .hint { overflow-wrap: anywhere; }
+.composer input { min-width: 0; }
+.llm-chip, .mode-badge { max-width: 100%; overflow-wrap: anywhere; }
+
+@media (max-width: 900px) {
+  .panel-grid, .llm-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 720px) {
+  /* Cabecera apilada: título a todo lo ancho, selector a todo lo ancho y chips compactos. */
+  .top { flex-direction: column; align-items: stretch; gap: 0.5rem; padding: 0.7rem 0.9rem 0.6rem; }
+  .top > div:first-child { min-width: 0; }
+  .top h1 { font-size: 1.02rem; line-height: 1.25; }
+  .sub { display: none; }
+  .badges { gap: 0.35rem; min-width: 0; }
+  .llm-global { flex: 1 1 100%; min-width: 0; }
+  .llm-global > span { white-space: nowrap; }
+  .llm-global select { flex: 1 1 auto; min-width: 0; max-width: none; width: 100%; padding: 0.3rem 0.6rem; }
+  .badge { font-size: 0.7rem; padding: 0.2rem 0.55rem; }
+
+  /* Pestañas: se reparten en filas, nunca se cortan. */
+  .main-tabs { flex-wrap: wrap; gap: 0.25rem; padding: 0.4rem 0.6rem; }
+  .main-tab { flex: 1 1 auto; padding: 0.45rem 0.6rem; font-size: 0.85rem; white-space: nowrap; }
+  .tab-status { margin-left: 0.25rem; }
+
+  .main-panel { padding: 0.8rem 0.9rem; }
+  .chat-toolbar { gap: 0.5rem; }
+  .msg { max-width: 100%; }
+  .msg.user { max-width: 94%; }
+  .mode-badge { border-radius: 8px; }
+  .composer button { flex: 0 0 auto; }
+
+  .kv { grid-template-columns: minmax(6.5rem, 42%) minmax(0, 1fr); gap: 0.3rem 0.6rem; }
+  .sliders label { grid-template-columns: minmax(0, 8.5rem) minmax(0, 1fr) 2.6rem; }
+  .log { font-size: 0.72rem; }
+
+  .llm-card { padding: 0.8rem 0.75rem; }
+  .llm-form > label { grid-template-columns: minmax(0, 1fr); gap: 0.25rem; }
+  .llm-item { grid-template-columns: auto minmax(0, 1fr); }
+  .llm-item .llm-btns { grid-column: 1 / -1; justify-content: flex-start; }
+
+  .auth-overlay { padding: 0.75rem; align-items: flex-start; padding-top: max(0.75rem, 12vh); overflow-y: auto; }
+  .auth-card { padding: 1.1rem 1rem; }
+}
