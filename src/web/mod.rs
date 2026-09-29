@@ -10,6 +10,7 @@ pub mod api;
 pub mod experiment_suite;
 pub mod field_eval;
 pub mod llm_periphery;
+pub mod llm_provider;
 pub mod model_fetch;
 pub mod process_job;
 pub mod sleep_optimize;
