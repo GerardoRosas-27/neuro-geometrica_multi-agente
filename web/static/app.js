@@ -204,7 +204,7 @@
 
   async function refreshHealth() {
     try {
-      const h = await api("/health");
+      const h = await api("/api/status");
       badgeMode.textContent = `local: ${h.llm_mode}`;
       if (h.llm_active) setActiveLlm(h.llm_active);
       if (h.model) modelStatus = h.model;
