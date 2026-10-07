@@ -1,5 +1,15 @@
 # Cierre experimental — `exp/field-autonomy-next` (plan v3 / autonomía del campo)
 
+> **Estado en `main` (nota añadida 2026-10-06).** Esta rama **sí se integró a
+> `main`** en el **PR #29** (merge `c59b9fe`, 2026-09-26, tip `35ea65c`), por
+> decisión posterior a este cierre. Las frases «No es un merge a `main`»,
+> «sin merge a `main`», «Decisión de no mergear» y «No merge a `main`» (§§ 1,
+> 3, 6, 7 y 9) son **históricas**: describen la decisión al 2026-09-24. Las
+> cifras, los gaps abiertos y las prohibiciones/no-claims de §7 siguen
+> vigentes; el merge no amplía ningún claim. El módulo
+> `src/field_autonomy_stage2_v2.rs` en `main` es idéntico al de `0b000b1`.
+> Estado consolidado: [`README.md`](../README.md) §2.2.
+
 **Rama:** `exp/field-autonomy-next`  
 **Tip de este cierre (docs):** `44c1910c9df0fb0703cdf92d72aa90466b996c32`  
 **Tip de evidencia (LONG v3.7 + confirmación stamp):** `33a35db0ccb77b429158b757e733e834a38b86df`  
