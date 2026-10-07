@@ -74,3 +74,23 @@ no entra en cada push:
 ```powershell
 cargo test --release --lib --features research
 ```
+
+## Línea B — autonomía del campo, Clean-Room v3.7 (en `main` desde el PR #29)
+
+Segunda línea de resultados; no forma parte del preprint de cuenca ni de su
+tabla principal. Cifras y alcance: `docs/cierre_exp_field_autonomy_next_v3.md`
+y README §2.2.
+
+```bash
+cargo run --example smoke_stage2_v2                                        # smoke 1 seed DEV
+STAGE2_V3_EXTRA_SEEDS=1 cargo run --release --example run_stage2_v3_long   # DEV 0xA300–0xA30F
+cargo run --release --example run_stage2_v3_confirm                        # held-out 0xB300–0xB30F
+```
+
+- Lock: `HyperparamLock::long()` (`enc_epochs=160 dyn_epochs=560
+  dyn_updates=7`, `train_n/dev_n/test_n=80/20/24`); sin retune tras ver `0xB*`.
+- Código de referencia: `0b000b1` (idéntico en `main`). Corrida documentada:
+  ~1145–1148 s por suite.
+- Los examples **sobrescriben** `docs/resultados_etapa_2_v3_*.{md,csv}`; los
+  tests de `liquid_experiments_8_9_10` / `_11_17` hacen lo mismo con
+  `docs/resultados_experimentos_*`. Revisar antes de commitear.

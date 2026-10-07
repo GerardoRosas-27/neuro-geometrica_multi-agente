@@ -1,5 +1,13 @@
 # Resultados — Etapa 2 Clean-Room v2
 
+> **Superado (nota añadida 2026-10-06).** Cifras de Clean-Room v2 de la rama
+> `exp/field-autonomy-stage-2` (llegó a `main` en `e05cef1`, 2026-09-23). Desde
+> el PR #29 el módulo `src/field_autonomy_stage2_v2.rs` contiene las palancas
+> v3.7, así que `run_stage2_v2_dev` ya **no** reproduce estas cifras (y
+> sobrescribiría este archivo). Las seeds de confirmación `0xB300–0xB30F`, aquí
+> «diferidas», se corrieron con v3.7: ver
+> [`resultados_etapa_2_v3_confirm.md`](resultados_etapa_2_v3_confirm.md).
+
 Protocolo: `docs/etapa_2_autonomia_campo_experimentos.md` **§29+** (prevalece).
 Módulo: `src/field_autonomy_stage2_v2.rs` (legacy `field_autonomy_stage2.rs` = histórico / pre-cleanroom).
 Rama: `exp/field-autonomy-stage-2`

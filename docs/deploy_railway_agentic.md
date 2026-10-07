@@ -1,6 +1,10 @@
 # Despliegue en Railway · Chat agentico
 
-**Rama:** `feat/railway-agentic-chat` · **Binario:** `agentic_web` (feature `web`)
+**Estado:** en `main` (PR #18, ampliado por PRs #20–#36; nació en la rama `feat/railway-agentic-chat`) · **Binario:** `agentic_web` (feature `web`)
+
+> Nota (2026-10-06): actualizado para reflejar el interruptor de chat (PR #30),
+> el modelo Q3_K_L horneado (PR #32), el historial persistente (PR #33), los
+> proveedores LLM (PR #34), `MASTER_SECRET` (PR #35) y las 5 pestañas.
 
 ## Arquitectura (texto)
 
@@ -31,7 +35,8 @@ Usuario (UI web)
 - **Líquido** = toda la inferencia rápida  
 - **CDT termo** = memoria durable **después** del sueño  
 - **RQM** = índice/fallback (desde fuse)  
-- **LLM** = **decoder only** del campo (+ dataset gen en periferia)  
+- **LLM** = **decoder only** del campo en chat ON (+ dataset gen en periferia); en chat OFF responde el LLM crudo, sin campo  
+- El chat **no** usa la dinámica Dφ de la Etapa 2 v3.7 (esa línea solo aparece como smoke en Pruebas)  
 
 ## Variables de entorno
 
@@ -84,19 +89,21 @@ OFF = Gemma 2 original congelado. Ambos comparten los mismos pesos en RAM.
 
 ## Qué hace la UI
 
-## UI · 4 pestañas (Chat / Entrenamiento / Sueño / Pruebas)
+## UI · 5 pestañas (Chat / Entrenamiento / Sueño / Modelos / API / Pruebas)
 
-- **Chat**: solo historial + input. El LLM **decodifica** lo que el modelo de campo recuerda (concepto / engramas). No comparte conversación como dataset de train.
+- **Chat**: historial + input, interruptor **«Decoder del campo»** (ON: el campo decide y el LLM **decodifica** lo que recuerda — concepto / engramas; OFF: LLM crudo con historial), chip del LLM activo y botón **«Nuevo chat»** (historial en `localStorage`; borra también `/api/chat/history`). No comparte conversación como dataset de train.
 - **Entrenamiento**: consola en vivo, infinito por defecto, start/stop. Datasets vía `generate_train_batch` en periferia (`source_tag=llm_dataset_decoupled`).
-- **Sueño**: `POST /api/sleep` con intensidades de poda/compactación. Minimiza energía libre, compacta fasores, poda rutas RQM débiles, reporta F/simetría/handshake.
-- **Pruebas**: `POST /api/tests/run` evalúa el fuse/campo **ya entrenado** (identidad, shifted, latencia líquido, recall de engramas, F/simetría del último sueño, histograma de rutas). No lanza train infinito. `GET /api/tests/last` y `/api/tests/status`.
+- **Sueño**: requiere entrenamiento previo. `POST /api/sleep` / `/api/sleep/start` con intensidades de poda/compactación. Minimiza energía libre, compacta fasores, poda rutas RQM débiles, reporta F/simetría/handshake.
+- **Modelos / API**: configurar LLM externos OpenAI-compatible (ver sección final).
+- **Pruebas**: `POST /api/tests/run` / `/api/tests/start` corre la suite de smokes (E8–E10, E13/E15 y Clean-Room v3.7 en 1 seed DEV `0xA300`, `HyperparamLock::smoke()`; no es la confirmación `0xB300`) y evalúa el fuse/campo **ya entrenado** (identidad, shifted, latencia líquido, recall de engramas, F/simetría del último sueño, histograma de rutas). No lanza train infinito. `GET /api/tests/last` y `/api/tests/status`.
 
 
 
-- **Chat** (izquierda): mensajes agenticos; intents `entrena`, `sueño`, `estado`.
-- **Iniciar / Detener entrenamiento**: job async **infinito por defecto** (dataset → líquido → CDT + checkpoint **por dataset**); checkbox Infinito; Detener cancela.
+Detalles comunes (el layout antiguo de chat a la izquierda + paneles a la derecha se sustituyó por pestañas; en móvil la cabecera se apila):
+
+- **Chat**: intents `entrena`, `sueño`, `estado`.
+- **Entrenamiento**: job async **infinito por defecto** (dataset → líquido → CDT + checkpoint **por dataset**); checkbox Infinito; Detener cancela. Paneles Entrenamiento en vivo (barra, eventos, checkpoint, decoder) · Líquido · CDT · RQM.
 - **Sueño / consolidar**: `sleep_consolidate` → engramas CDT + reafirma RQM.
-- **Paneles** (derecha): Entrenamiento en vivo (barra, eventos, checkpoint, decoder) · Líquido · CDT · RQM.
 
 
 
@@ -167,7 +174,7 @@ Sin GGUF → periferia léxico; E12 → `SKIPPED_NO_GGUF` (honesto).
 
 ## Notas
 
-- No se descargan modelos en el build de Docker (binario razonable).
+- El build de Docker **sí** descarga el GGUF Q3_K_L por defecto (`DOWNLOAD_GGUF=1`); usa `--build-arg DOWNLOAD_GGUF=0` para una imagen sin modelo.
 - `cargo test` por defecto (sin `web`) sigue sin depender de Axum.
 - Admin Repositorio puede ayudar con push/merge si los permisos fallan.
 

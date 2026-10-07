@@ -1,5 +1,12 @@
 # Confirmación — Etapa 2 Clean-Room v3 (0xB300–0xB30F)
 
+> **Estado en `main` (nota añadida 2026-10-06).** Resultados generados en la
+> rama `exp/field-autonomy-next`, integrada a `main` en el PR #29 (`c59b9fe`).
+> El código que los produjo es el de `0b000b1` (idéntico en `main`); la columna
+> `commit` del CSV registra `ce282a2` porque era el HEAD al correr (código y
+> resultados se commitearon juntos en `0b000b1`). Re-ejecutar
+> `run_stage2_v3_confirm` **sobrescribe** este archivo.
+
 Rama: `exp/field-autonomy-next`. Commit tip: `0b000b113107325e349611f3db99168fbb418a6b`.
 Hyperparams: same `HyperparamLock::long()` locked on DEV; no retune.
 Wall time: **1145.4s**. Filas: 240.
