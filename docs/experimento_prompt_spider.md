@@ -1,7 +1,8 @@
 # Experimento: Prompt Spider — «cada palabra, un fork»
 
-> **Estado:** experimental (rama `exp/prompt-spider`, sin merge a `main`).
-> Pestaña **Prompt Spider** de la app web (`agentic_web`).
+> **Estado:** experimental, en `main`. Pestaña **Prompt Spider** de la app web
+> (`agentic_web`). Definición de cada métrica/panel de la UI, pipeline y
+> esquema del export: [`prompt_spider_metricas.md`](prompt_spider_metricas.md).
 
 ## 1. Origen
 
@@ -53,11 +54,13 @@ humana, confianza media 0.925. Las nuestras están en §5.
    si `P(aprobación) ≥ 0.5`, la pregunta decisiva es aprobación y
    `p = P(aprobación)`.
 3. `route`: aprobación → `you`; `p ≥ umbral` → `code`; resto → `llm`.
-4. Las palabras `llm` se agrupan en lotes (8 por defecto) y un worker las manda
-   al LLM activo con un *system prompt* fijo que exige JSON
+4. Las palabras `llm` van a un worker que las agrupa según el **perfil del LLM
+   que atiende** (corrida corta/completa, §4b). API externa: lotes de 8 con un
+   *system prompt* fijo que exige JSON
    `{"verdicts":[{"i","relevant","grounded","ambiguous","needs_approval","p","note"}]}`
-   (temperatura 0, plazo `SPIDER_LLM_TIMEOUT_SECS`, 60 s por defecto). El
-   crawler sigue caminando mientras tanto.
+   (temperatura 0). Gemma local: prompt compacto por palabra y lectura de
+   `P(sí)` (sin generar texto, §4b). El crawler sigue caminando mientras tanto;
+   la UI muestra el progreso de cada llamada.
 5. Veredicto: si el LLM **no** pide aprobación, **no** la marca ambigua y su
    `p ≥ piso` (0.70) → resuelta por el LLM. Si no → pendiente para ti. Si el
    LLM falla, no responde a tiempo, devuelve basura o se salta una palabra →
@@ -70,9 +73,9 @@ humana, confianza media 0.925. Las nuestras están en §5.
 | Método | Ruta | Uso |
 |---|---|---|
 | GET | `/api/spider/sample` | prompt de ejemplo + umbral/piso por defecto |
-| POST | `/api/spider/start` | `{prompt?, threshold?, llm_floor?, pace_ms?, batch_size?}` → `run_id`, LLM usado (409 si ya corre) |
+| POST | `/api/spider/start` | `{prompt?, threshold?, llm_floor?, pace_ms?, batch_size?, mode?: auto\|corta\|completa, max_escalations?}` → `run_id`, LLM usado, `mode`, `profile`, `fallback_available` (409 si ya corre) |
 | POST | `/api/spider/stop` | detener (lo escalado sin veredicto queda pendiente) |
-| GET | `/api/spider/status` | corrida completa (tokens, decisiones, llamadas al LLM) + resumen + LLM activo |
+| GET | `/api/spider/status` | corrida completa (tokens, decisiones, llamadas al LLM) + resumen + LLM activo + respaldo + perfiles `corta`/`completa` por defecto |
 | GET | `/api/spider/events?after=N` | eventos por sondeo |
 | GET | `/api/spider/stream?after=N` | SSE (`event: spider`, mismo patrón que la consola de entrenamiento) |
 | POST | `/api/spider/decide` | `{run_id?, index, approve}` — solo palabras pendientes (409 si no) |
@@ -103,6 +106,52 @@ Notas:
 - El umbral solo mueve palabras entre `code` y `llm`; nunca saca algo de
   `you`.
 
+## 4b. Respaldo Gemma local y corridas cortas
+
+**Problema en producción** (Railway, CPU): una corrida con Gemma local mandó
+1 lote de ~11 palabras con el prompt completo (~1000+ tokens de prefill);
+Gemma agotó el plazo de 60 s → 0 resueltas, todo pendiente.
+
+**Respaldo**: si el LLM activo es una API externa (p. ej. docker-llm) y falla
+por conexión, timeout, HTTP 5xx, 401/403/404 o sin modelo, la corrida usa
+**Gemma local (respaldo)** —si el GGUF está cargado— para esa palabra y el
+resto de la corrida. Aviso: «docker-llm no disponible → Gemma local» (evento
+`fallback`, `run.fallback`, `llm_calls[].fallback`). El chat crudo (OFF)
+hace lo mismo (`RAW_CHAT_FALLBACK_RESERVE_SECS`, 30 s reservados para Gemma),
+coherente con el respaldo que ya tenía el decoder del campo (ON). Gemma local
+sigue siendo el proveedor activo por defecto.
+
+**Perfiles** (env por proveedor `SPIDER_LOCAL_*` / `SPIDER_API_*`, genéricas
+`SPIDER_LLM_TIMEOUT_SECS`, `SPIDER_BATCH_SIZE`, `SPIDER_MAX_ESCALATIONS`,
+`SPIDER_LLM_MAX_TOKENS`):
+
+| | lote | plazo/llamada | máx. escaladas | prompt |
+|---|---|---|---|---|
+| Gemma local · **corta** (defecto con Gemma) | 1 | 45 s | 6 | compacto, P(sí) |
+| Gemma local · completa | 2 | 90 s | — | compacto, P(sí) |
+| API · corta | 8 | 60 s | 24 | completo, JSON (max_tokens 1200) |
+| API · completa (defecto con API) | 8 | 60 s | — | completo, JSON |
+
+Lo que excede el límite queda pendiente con «límite de corrida corta»; tras 2
+(corta) o 3 (completa) fallos seguidos, el resto queda pendiente sin consultar.
+
+**Por qué P(sí) y no JSON generado con Gemma 2 2B** (medido en el box, Q3_K_L,
+8 vCPU, prompt de ejemplo, 20 palabras escaladas):
+
+| Variante | Resultado |
+|---|---|
+| Prompt completo + JSON (antes, producción) | lote de ~11 palabras → timeout de 60 s en Railway, 0 resueltas (reporte del usuario; no re-medido) |
+| Compacto, lotes de 2, `p` numérica generada | 16–26 s por lote; `p=0.0` o veredicto ausente → 0 resueltas de 20 |
+| Compacto, pidiendo `p` numérica | ~300 tokens, ~10 s; copia el esquema (`"p":0.0-1.0`) → JSON inválido |
+| Compacto categórico `sí/no/dudo` generado | ~190 tokens, ~5.5 s, 4 tokens generados; responde **«sí» a las 20**, también a la pregunta inversa («¿es vaga?») |
+| `P(sí)` del siguiente token, opciones `<sí\|no>` | P(sí) normalizada 0.82–1.00 en las 20 (sesgo de aquiescencia) |
+| Igual con opciones `<no\|sí>` | 0.09–0.99: cambia mucho con el orden (sesgo de primera opción) |
+
+Decisión: para Gemma local se lee `P(sí)` (un forward, sin generar) con las
+**dos órdenes** de opciones y `p = min(P₁, P₂)`: solo resuelve si el «sí» es
+consistente. Es la probabilidad del propio modelo (no se inventa), con un
+sesgo medido corregido de forma conservadora.
+
 ## 4. UI (pestaña *Prompt Spider*)
 
 Recrea el layout del vídeo con estética de terminal oscura:
@@ -122,8 +171,13 @@ Recrea el layout del vídeo con estética de terminal oscura:
   rejilla de palabras leídas (x/N), esfera de cobertura %, panel «dónde pensó»
   con el lema «el modelo solo piensa donde el código no puede», y la cola de
   aprobación con **Aprobar / Rechazar**.
-- Controles: umbral (slider), ritmo de la animación, Ejecutar / Detener,
-  Editar, Ejemplo, Exportar JSON.
+- Controles: umbral (slider), ritmo de la animación, **corrida**
+  (auto / corta / completa), Ejecutar / Detener, Editar, Ejemplo, Exportar
+  JSON y un **?** con la ayuda de métricas (enlaza a
+  `prompt_spider_metricas.md`).
+- Línea de progreso por llamada al LLM («llamada k → LLM: «palabra» ·
+  escaladas s/cap · plazo» + «esperando… Xs») y aviso amarillo cuando entra
+  el respaldo.
 - Responsive: probado a 360, 412 y 1280 px (sin scroll horizontal; las
   pestañas siguen envolviendo en filas).
 
@@ -145,9 +199,29 @@ las cifras del LLM muestran el *plumbing*, no la calidad de un modelo:
 | confianza media | 0.933 |
 | `ask` | `P(aprobación)=0.544` → pendiente |
 
-Con Gemma local sin GGUF (`GEMMA2_AUTO_DOWNLOAD=0`), las 20 escaladas quedan
+Con Gemma local sin GGUF (`GEMMA2_AUTO_DOWNLOAD=0`), las escaladas quedan
 **pendientes** con «LLM no disponible» (test de integración), en vez de
 inventar un veredicto.
+
+### 5b. Corrida corta real con Gemma local (GGUF Q3_K_L, CPU 8 vCPU del box)
+
+`GEMMA2_GGUF=models/gemma-2-2b-it-Q3_K_L.gguf cargo test --release --features web --lib real_gemma_spider -- --ignored --nocapture`
+(`SPIDER_REAL_MODES=corta`), prompt de ejemplo, umbral 0.95:
+
+| Métrica | Valor |
+|---|---|
+| forks / code | 159 / 129 |
+| escaladas / enviadas / por límite | 20 / 6 / 14 |
+| llamadas / fallidas | 6 / 0 |
+| latencia por llamada (1 palabra = 2 lecturas de P(sí), ~180 tokens de prefill c/u) | 10.4–16.6 s (mediana ≈ 11 s; ~5 s por lectura) |
+| resueltas por Gemma | 2 (`launch-ready` p=0.991, `complete` p=0.717) |
+| «Gemma duda» | 4 (`clear` 0.427, `short` 0.314, `it` 0.239, `Use` 0.091) |
+| tú (final) | 28 |
+| tiempo total | 72.5 s |
+
+Comparación: la versión anterior en el mismo box (prompt completo, lotes de 10)
+tardó 16–26 s por lote y resolvió **0** de 20. En Railway (CPU más lenta; chat
+crudo ON medía 18–23 s) se espera ~2× por llamada, dentro del plazo de 45 s.
 
 ## 6. Limitaciones
 
@@ -157,9 +231,10 @@ inventar un veredicto.
   conservador).
 - Las «probabilidades» no están calibradas estadísticamente: son puntuaciones
   transparentes, no frecuencias observadas.
-- La calidad del veredicto escalado depende del LLM activo; con Gemma 2 2B en
-  CPU puede ser lento (plazo por lote configurable) y su JSON menos fiable; el
-  parser lo tolera, pero lo que no parsea queda pendiente.
+- La calidad del veredicto escalado depende del LLM activo. Gemma 2 2B en CPU
+  es un juez débil (sesgos de aquiescencia y de orden medidos en §4b): el
+  `min` de las dos órdenes es conservador y deja muchas palabras pendientes;
+  para resolver más usa una API externa.
 - Una sola corrida activa a la vez (por servidor). Los eventos se guardan en
   memoria (últimos 4000); la corrida completa sí se persiste en JSON.
 - El ritmo (`pace_ms`) es solo para la animación; con `pace_ms=0` una corrida

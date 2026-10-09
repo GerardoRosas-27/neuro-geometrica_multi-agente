@@ -6,7 +6,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <title>Neuro-Geométrica · Campo agentico</title>
-  <link rel="stylesheet" href="/styles.css?v=35" />
+  <link rel="stylesheet" href="/styles.css?v=36" />
 </head>
 <body>
   <header class="top">
@@ -262,11 +262,11 @@
             <div class="sp-sub">cada palabra recibe una pregunta tipada · el código resuelve lo seguro · <span class="sp-llm-name">LLM</span> lo difícil · tú lo riesgoso</div>
           </div>
           <div class="sp-counters" aria-live="polite">
-            <div><span>palabras</span><b id="sp-c-words">0</b></div>
-            <div><span>forks</span><b id="sp-c-forks" class="sp-pink">0</b></div>
-            <div><span>code</span><b id="sp-c-code" class="sp-green">0</b></div>
-            <div><span class="sp-llm-short">llm</span><b id="sp-c-llm" class="sp-orange">0</b></div>
-            <div><span>tú</span><b id="sp-c-you" class="sp-yellow">0</b></div>
+            <div title="Tokens leídos por el crawler (palabras, números, etiquetas y marcadores)"><span>palabras</span><b id="sp-c-words">0</b></div>
+            <div title="Palabras y números evaluados con las 4 preguntas (puntos de decisión)"><span>forks</span><b id="sp-c-forks" class="sp-pink">0</b></div>
+            <div title="Forks con p ≥ umbral: resueltos por código, sin llamar al modelo"><span>code</span><b id="sp-c-code" class="sp-green">0</b></div>
+            <div title="Forks con p &lt; umbral escalados al LLM (incluye los que luego quedaron para ti)"><span class="sp-llm-short">llm</span><b id="sp-c-llm" class="sp-orange">0</b></div>
+            <div title="Forks cuya ruta final es humana: piden aprobación o el LLM no los resolvió"><span>tú</span><b id="sp-c-you" class="sp-yellow">0</b></div>
           </div>
         </header>
 
@@ -283,6 +283,14 @@
               <option value="140">lento</option>
             </select>
           </label>
+          <label class="sp-pace sp-mode" title="corta: pocas llamadas al LLM (Gemma local: 1 palabra por llamada, máx. 6 escaladas; el resto queda pendiente con «límite de corrida corta»). completa: escala todas las palabras dudosas. auto: corta con Gemma local, completa con API externa.">
+            <span>corrida</span>
+            <select id="sp-mode">
+              <option value="auto" selected>auto</option>
+              <option value="corta">corta</option>
+              <option value="completa">completa</option>
+            </select>
+          </label>
           <div class="sp-btns">
             <button type="button" id="sp-run" class="sp-btn sp-btn-go">Ejecutar</button>
             <button type="button" id="sp-stop" class="sp-btn sp-btn-stop" disabled>Detener</button>
@@ -291,7 +299,19 @@
             <button type="button" id="sp-export" class="sp-btn" disabled>Exportar JSON</button>
           </div>
           <span id="sp-status" class="sp-status">listo</span>
+          <details class="sp-help">
+            <summary title="Qué significa cada métrica">?</summary>
+            <div class="sp-help-body">
+              <p><b>palabras</b>: tokens leídos por el crawler (incluye etiquetas y marcadores). <b>forks</b>: palabras/números evaluados. <b>code</b>: p ≥ umbral, resueltas sin modelo. <b>llm</b>: escaladas al LLM (p &lt; umbral). <b>tú</b>: ruta final humana (pide aprobación o el LLM no resolvió).</p>
+              <p><b>p</b>: confianza heurística de la pregunta más dudosa (o la del LLM si resolvió). <b>media</b>: promedio de la p final de todos los forks.</p>
+              <p><b>cobertura</b>: % del prompt <i>leído</i>, no resuelto. <b>corrida corta</b>: máx. N escaladas; el resto queda pendiente con «límite de corrida corta».</p>
+              <p>Si la API externa (docker-llm) no responde, se usa <b>Gemma local (respaldo)</b>. Un fallo nunca inventa: la palabra queda pendiente con el motivo.</p>
+              <p><a href="https://github.com/GerardoRosas-27/neuro-geometrica_multi-agente/blob/main/docs/prompt_spider_metricas.md" target="_blank" rel="noopener">Documentación completa de métricas →</a></p>
+            </div>
+          </details>
         </div>
+        <div id="sp-llm-prog" class="sp-llm-prog" aria-live="polite" hidden></div>
+        <div id="sp-fallback" class="sp-fallback" hidden></div>
 
         <div class="sp-main">
           <div class="sp-card sp-editor">
@@ -394,6 +414,6 @@
     </div>
   </div>
 
-  <script src="/auth.js?v=35"></script>
+  <script src="/auth.js?v=36"></script>
 </body>
 </html>

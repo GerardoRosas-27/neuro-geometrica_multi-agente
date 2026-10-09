@@ -166,7 +166,12 @@ pub struct DecodeJob {
 /// Backend del chat crudo (OFF).
 pub enum RawBackend {
     Gemma(RawGemmaHandle),
-    External(ProviderConfig),
+    /// API externa; `fallback` = Gemma local si está cargado (respaldo
+    /// etiquetado si la API no está disponible).
+    External {
+        cfg: ProviderConfig,
+        fallback: Option<RawGemmaHandle>,
+    },
 }
 
 /// Dataset pre-generado por la API externa: (seed, lote o error de la API).
@@ -415,7 +420,8 @@ impl AppState {
     /// local) + historial crudo. `Err` si el activo es Gemma y no hay GGUF.
     pub fn raw_chat_backend(&self) -> Result<(RawBackend, Vec<(String, String)>), String> {
         if let Some(cfg) = self.active_external() {
-            return Ok((RawBackend::External(cfg), self.raw_history()));
+            let fallback = self.probe.raw_handle();
+            return Ok((RawBackend::External { cfg, fallback }, self.raw_history()));
         }
         let (h, hist) = self.raw_chat_prepare()?;
         Ok((RawBackend::Gemma(h), hist))
@@ -521,6 +527,38 @@ impl AppState {
             engrams: self.fuse.engram_count(),
             decoded,
         }
+    }
+
+    /// Registra un turno crudo respondido por Gemma local como **respaldo**
+    /// tras fallar la API externa `failed` con `error`. El historial guarda el
+    /// texto limpio; la respuesta lleva la nota «X no disponible → Gemma local».
+    pub fn record_raw_chat_fallback(
+        &mut self,
+        message: &str,
+        result: &Result<RawGemmaReply, String>,
+        failed: &ProviderConfig,
+        error: &str,
+    ) -> ChatResponse {
+        let mut resp = self.record_raw_chat_by(message, result, None);
+        let label = format!("{LOCAL_LABEL} (respaldo)");
+        let note = format!(
+            "{} no disponible → {LOCAL_LABEL} ({})",
+            failed.name,
+            error.chars().take(200).collect::<String>()
+        );
+        if let Some(last) = self
+            .chat_log
+            .iter_mut()
+            .rev()
+            .find(|t| t.role == "agent" && t.mode.as_deref() == Some(RAW_MODE))
+        {
+            last.llm = Some(label.clone());
+        }
+        resp.reply.push_str(&format!("\n\n({note})"));
+        resp.decoded = format!("{} · respaldo: {note}", resp.decoded);
+        resp.llm = label;
+        resp.fallback = true;
+        resp
     }
 
     /// Evidencia de entrenamiento previo para gate de sueño.

@@ -128,6 +128,117 @@ impl RawGemmaHandle {
         self.generate_tokens(t, config, deadline)
     }
 
+    /// Probabilidades del **siguiente token** tras `prompt` (ya renderizado)
+    /// para cada grupo de alternativas (`[["sí","si"],["no"]]`): suma de la
+    /// softmax sobre el primer token de cada alternativa. Un solo forward
+    /// (prefill), sin generar: es la forma barata y honesta de pedir a Gemma
+    /// 2 2B una confianza en CPU. Devuelve (probabilidades por grupo, tokens
+    /// del prompt, segundos).
+    pub fn choice_probs(
+        &self,
+        prompt: &str,
+        groups: &[&[&str]],
+        context_limit: usize,
+        deadline: Option<Instant>,
+    ) -> Result<(Vec<f64>, usize, f64), String> {
+        let started = Instant::now();
+        let mut tokens = vec![self.tokenizer.bos_id];
+        tokens.extend(self.tokenizer.encode(prompt).map_err(|e| e.to_string())?);
+        if tokens.len() + 1 > context_limit {
+            return Err(format!(
+                "el mensaje excede el contexto ({context_limit} tokens)"
+            ));
+        }
+        // Primer token de cada alternativa **en contexto** (el tokenizador
+        // une la alternativa con el final del prompt, p. ej. `"sí`).
+        let base = &tokens[1..];
+        let mut ids: Vec<Vec<u32>> = Vec::with_capacity(groups.len());
+        for g in groups {
+            let mut v = Vec::new();
+            for alt in g.iter() {
+                let enc = self
+                    .tokenizer
+                    .encode(&format!("{prompt}{alt}"))
+                    .map_err(|e| e.to_string())?;
+                let common = base.iter().zip(&enc).take_while(|(a, b)| a == b).count();
+                // Si el último token del prompt se fusiona con la alternativa,
+                // no es «siguiente token»: se descarta esa alternativa.
+                if common == base.len() {
+                    if let Some(&first) = enc.get(common) {
+                        if !v.contains(&first) {
+                            v.push(first);
+                        }
+                    }
+                }
+            }
+            ids.push(v);
+        }
+        let mut model = self.lock_model(deadline)?;
+        let mut session = Gemma2Session::new();
+        let mut captured: Option<Vec<f32>> = None;
+        let config = Gemma2GenerationConfig {
+            max_tokens: 1,
+            context_limit,
+            temperature: 0.0,
+            top_p: 1.0,
+            seed: 0,
+        };
+        let out = session
+            .generate_observed_with_logits(
+                &mut model,
+                &self.tokenizer,
+                &tokens,
+                None,
+                config,
+                |_| {},
+                |_, _| {},
+                |logits, step| {
+                    if step == 0 {
+                        captured = Some(logits.to_dtype(candle_core::DType::F32)?.to_vec1()?);
+                    }
+                    Ok(())
+                },
+                |_| true,
+            )
+            .map_err(|e| e.to_string());
+        model.clear_kv_cache();
+        drop(model);
+        out?;
+        let logits = captured.ok_or("Gemma no devolvió logits")?;
+        let max = logits.iter().copied().fold(f32::NEG_INFINITY, f32::max) as f64;
+        let z: f64 = logits.iter().map(|&x| (x as f64 - max).exp()).sum();
+        let probs = ids
+            .iter()
+            .map(|g| {
+                g.iter()
+                    .filter_map(|&id| logits.get(id as usize))
+                    .map(|&x| (x as f64 - max).exp() / z)
+                    .sum()
+            })
+            .collect();
+        Ok((probs, tokens.len(), started.elapsed().as_secs_f64()))
+    }
+
+    fn lock_model(
+        &self,
+        deadline: Option<Instant>,
+    ) -> Result<std::sync::MutexGuard<'_, QuantizedGemma2>, String> {
+        loop {
+            match self.model.try_lock() {
+                Ok(g) => return Ok(g),
+                Err(std::sync::TryLockError::Poisoned(e)) => return Ok(e.into_inner()),
+                Err(std::sync::TryLockError::WouldBlock) => {
+                    if deadline.is_some_and(|d| Instant::now() >= d) {
+                        return Err(
+                            "modelo ocupado (entrenamiento/pruebas usando Gemma); reintenta".into(),
+                        );
+                    }
+                    std::thread::sleep(Duration::from_millis(20));
+                }
+            }
+        }
+    }
+
     /// Núcleo: espera el lock del modelo como mucho hasta `deadline` y corta la
     /// generación al llegar al plazo (devuelve el texto parcial, nunca cuelga).
     fn generate_tokens(

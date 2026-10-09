@@ -36,6 +36,8 @@
   let dots = [];
   let dirty = true;
   let lastFork = null; // {index, t}
+  let callStart = 0; // performance.now() de la llamada LLM en curso
+  const MODE_KEY = "spider.mode.v1";
   let lines = 1;
 
   // ---------------------------------------------------------------- util
@@ -69,6 +71,7 @@
     $("sp-edit").disabled = on;
     $("sp-sample").disabled = on;
     thr.disabled = on;
+    $("sp-mode").disabled = on;
     const st = $("status-spider");
     if (st) st.dataset.state = on ? "running" : "idle";
   }
@@ -198,7 +201,8 @@
     bump("sp-n-code", c.code, 1);
     bump("sp-n-llm", c.llmEsc, 1);
     bump("sp-n-you", c.you, 1);
-    $("sp-f-llm").textContent = `${llmCalls.length} lotes · ${c.llmRes} resueltas`;
+    const capped = order.filter((i) => dec.get(i).capped).length;
+    $("sp-f-llm").textContent = `${llmCalls.length} llamadas · ${c.llmRes} resueltas` + (capped ? ` · ${capped} por límite` : "");
     $("sp-f-you").textContent = `${c.pending} pendientes · ${c.approved}✓ ${c.rejected}✗`;
     $("sp-routed-n").textContent = order.length;
     $("sp-routed-sub").textContent = `de ${forksTotal} palabras del prompt (${total} tokens)`;
@@ -217,7 +221,11 @@
     $("sp-t-llm").textContent = `${llmCalls.length} llamadas · ${c.llmRes} resueltas` + (failed ? ` · ${failed} fallidas` : "");
     $("sp-t-you").textContent = `${c.you} aprobaciones (${c.pending} pendientes)`;
     $("sp-ln").textContent = "ln " + (run.tokens[Math.max(0, cursor - 1)]?.line + 1 || 0);
-    $("sp-foot-l").textContent = `spider·${llmLabel} · ${run.state || "—"} · umbral ${Number(run.threshold).toFixed(2)}`;
+    const prof = run.profile;
+    const profTxt = prof
+      ? ` · corrida ${run.mode || prof.mode} (lotes de ${prof.batch_size}, plazo ${prof.timeout_secs}s, ${prof.max_escalations == null ? "sin límite" : "máx " + prof.max_escalations})`
+      : "";
+    $("sp-foot-l").textContent = `spider·${llmLabel} · ${run.state || "—"} · umbral ${Number(run.threshold).toFixed(2)}${profTxt}`;
     $("sp-foot-r").textContent = `forks ${order.length} · code ${c.code} · ${llmLabel} ${c.llmRes}/${c.llmEsc} · tú ${c.you} · p̄ ${c.avg == null ? "—" : c.avg.toFixed(3)}`;
     renderStream();
     renderPending();
@@ -503,6 +511,7 @@
       }
       drawSpider(now);
       drawSphere(now);
+      tickProg(now);
     }
     requestAnimationFrame(frame);
   }
@@ -534,7 +543,15 @@
         lastFork = { index: e.index, t: performance.now() };
       } else if (e.kind === "update") {
         applyDecision(e.decision);
+      } else if (e.kind === "llm_progress") {
+        callStart = performance.now();
+        showProg(e.message);
+      } else if (e.kind === "fallback") {
+        showFallback(e.message);
+        refreshCalls();
       } else if (e.kind === "llm_call") {
+        callStart = 0;
+        showProg(e.message);
         setStatus(e.message);
         refreshCalls();
       } else if (e.kind === "done") {
@@ -545,17 +562,40 @@
     }
     dirty = true;
   }
+  function showProg(msg) {
+    const el = $("sp-llm-prog");
+    el.hidden = !msg;
+    el.innerHTML = msg ? `${esc(msg)}<span class="t"></span>` : "";
+  }
+  function showFallback(msg) {
+    const el = $("sp-fallback");
+    el.hidden = !msg;
+    el.textContent = msg ? "⚠ " + msg + " (respaldo; corrida corta si el modo es auto)" : "";
+  }
+  function tickProg(now) {
+    if (!callStart) return;
+    const t = document.querySelector("#sp-llm-prog .t");
+    if (t) t.textContent = `esperando… ${((now - callStart) / 1000).toFixed(0)}s`;
+  }
   async function refreshCalls() {
     try {
       const st = await api("/api/spider/status");
       if (st.run && run && st.run.id === run.id) {
         llmCalls = st.run.llm_calls || [];
         run.state = st.run.state;
+        run.mode = st.run.mode;
+        run.profile = st.run.profile;
+        run.fallback = st.run.fallback;
+        if (run.fallback) {
+          setLlmName(run.fallback.to);
+          showFallback(run.fallback.message);
+        }
         dirty = true;
       }
     } catch (_) {}
   }
   function finish() {
+    callStart = 0;
     setRunning(false);
     closeStream();
     refreshCalls();
@@ -612,7 +652,8 @@
     cursor = run.cursor || 0;
     llmCalls = run.llm_calls || [];
     seq = st.seq || 0;
-    setLlmName(run.llm && run.llm.label);
+    setLlmName(run.fallback ? run.fallback.to : run.llm && run.llm.label);
+    showFallback(run.fallback ? run.fallback.message : "");
     buildView();
     for (const d of run.decisions || []) applyDecision(d);
     for (let i = 0; i < run.tokens.length; i++) paintToken(i);
@@ -629,8 +670,27 @@
       else if (!running) setLlmName(st.llm_active && st.llm_active.label);
       const chip = $("sp-llm-chip");
       if (st.llm_active && st.llm_active.unavailable) chip.title = "No disponible: " + st.llm_active.unavailable;
+      else if (st.llm_fallback) chip.title = "Respaldo si la API no responde: " + st.llm_fallback.label;
+      applyModeDefaults(st);
     } catch (_) {}
   }
+  function applyModeDefaults(st) {
+    const sel = $("sp-mode");
+    const d = st && st.defaults;
+    if (!sel || !d) return;
+    const desc = (p) =>
+      p ? `lotes de ${p.batch_size}, plazo ${p.timeout_secs}s, ${p.max_escalations == null ? "sin límite" : "máx " + p.max_escalations + " escaladas"}` : "";
+    for (const o of sel.options) {
+      if (o.value === "auto") o.textContent = `auto (${d.mode})`;
+      if (o.value === "corta") o.title = desc(d.corta);
+      if (o.value === "completa") o.title = desc(d.completa);
+    }
+  }
+  $("sp-mode").addEventListener("change", () => {
+    try {
+      localStorage.setItem(MODE_KEY, $("sp-mode").value);
+    } catch (_) {}
+  });
   $("sp-run").addEventListener("click", async () => {
     const prompt = ta.hidden && run ? run.prompt : ta.value;
     if (!prompt.trim()) {
@@ -647,10 +707,19 @@
         prompt,
         threshold: Number(thr.value),
         pace_ms: Number($("sp-pace").value),
+        mode: $("sp-mode").value,
       });
+      showProg("");
+      showFallback("");
       const st = await api("/api/spider/status");
       loadRun(st);
-      setStatus(`corriendo · ${r.forks_total} forks · escalado → ${r.llm.label}${r.llm.unavailable ? " (no disponible: quedará pendiente)" : ""}`);
+      const p = r.profile || {};
+      setStatus(
+        `corriendo · corrida ${r.mode} · ${r.forks_total} forks · escalado → ${r.llm.label}` +
+          ` (lotes de ${p.batch_size}, plazo ${p.timeout_secs}s, ${p.max_escalations == null ? "sin límite" : "máx " + p.max_escalations + " escaladas"})` +
+          (r.fallback_available ? " · respaldo Gemma local" : "") +
+          (r.llm.unavailable ? " (no disponible: quedará pendiente)" : "")
+      );
       subscribe();
     } catch (e) {
       setRunning(false);
@@ -701,6 +770,12 @@
   // --------------------------------------------------------------- init
   (async () => {
     syncThr();
+    try {
+      const m = localStorage.getItem(MODE_KEY);
+      if (m && ["auto", "corta", "completa"].includes(m)) {
+        $("sp-mode").value = m;
+      }
+    } catch (_) {}
     let saved = null;
     try {
       saved = localStorage.getItem(PROMPT_KEY);
@@ -708,6 +783,7 @@
     try {
       const st = await api("/api/spider/status");
       setLlmName(st.llm_active && st.llm_active.label);
+      applyModeDefaults(st);
       if (st.run) {
         loadRun(st);
         ta.value = st.run.prompt;

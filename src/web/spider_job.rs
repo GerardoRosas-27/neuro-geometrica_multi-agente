@@ -10,10 +10,11 @@
 
 use crate::field_gemma_probe::RawGemmaHandle;
 use crate::prompt_spider::{
-    clamp_threshold, llm_system_prompt, llm_user_prompt, parse_llm_verdicts, route, score_token,
-    tokenize, verdict_outcome, word_context, Assessment, EscalationItem, LlmVerdict, PromptContext,
-    Question, Route, Scores, Token, VerdictOutcome, DEFAULT_LLM_FLOOR, DEFAULT_THRESHOLD,
-    SAMPLE_PROMPT,
+    clamp_threshold, compact_gemma_prompt, default_mode, gemma_choice_verdict, llm_system_prompt,
+    llm_user_prompt, parse_llm_verdicts, resolve_profile, route, score_token, task_excerpt,
+    tokenize, verdict_outcome, word_context, Assessment, EscalationItem, LlmKind, LlmVerdict,
+    PromptContext, Question, Route, RunMode, RunProfile, Scores, Token, VerdictOutcome,
+    DEFAULT_LLM_FLOOR, DEFAULT_THRESHOLD, SAMPLE_PROMPT,
 };
 use crate::web::api::SharedState;
 use crate::web::llm_provider::{ChatMessage, ExternalGenConfig, OpenAiClient, ProviderConfig};
@@ -26,6 +27,7 @@ use axum::{Json, Router};
 use futures_util::stream::{self, Stream};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::collections::VecDeque;
 use std::convert::Infallible;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -44,11 +46,13 @@ fn now_ms() -> u64 {
         .unwrap_or(0)
 }
 
-fn env_u64(k: &str, d: u64) -> u64 {
-    std::env::var(k)
-        .ok()
-        .and_then(|v| v.trim().parse().ok())
-        .unwrap_or(d)
+fn env_var(k: &str) -> Option<String> {
+    std::env::var(k).ok().filter(|v| !v.trim().is_empty())
+}
+
+/// Perfil efectivo (defaults por proveedor + env) para un tipo de LLM.
+pub fn profile_for(kind: LlmKind, mode: RunMode) -> RunProfile {
+    resolve_profile(kind, mode, &env_var)
 }
 
 /// Directorio de corridas. Env `SPIDER_RUNS_DIR`; si no, `data/spider_runs`.
@@ -57,11 +61,6 @@ pub fn default_runs_dir() -> PathBuf {
         Ok(p) if !p.trim().is_empty() => PathBuf::from(p),
         _ => PathBuf::from("data/spider_runs"),
     }
-}
-
-/// Plazo por lote escalado al LLM. Env `SPIDER_LLM_TIMEOUT_SECS` (def 60).
-pub fn llm_timeout() -> Duration {
-    Duration::from_secs(env_u64("SPIDER_LLM_TIMEOUT_SECS", 60).clamp(2, 600))
 }
 
 /// Estado de una decisión.
@@ -102,6 +101,9 @@ pub struct Decision {
     pub resolved_by: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub note: String,
+    /// No se escaló: se alcanzó el límite de la corrida corta.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub capped: bool,
 }
 
 impl Decision {
@@ -129,6 +131,7 @@ impl Decision {
             verdict: None,
             resolved_by,
             note,
+            capped: false,
         }
     }
 }
@@ -158,6 +161,24 @@ pub struct LlmCall {
     pub model: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    /// Quién atendió la llamada (etiqueta del LLM).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub llm: String,
+    /// La llamada la atendió el respaldo (Gemma local).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub fallback: bool,
+}
+
+/// Cambio a respaldo durante una corrida.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct FallbackInfo {
+    /// Etiqueta del LLM que falló.
+    pub from: String,
+    /// Etiqueta del respaldo.
+    pub to: String,
+    pub reason: String,
+    /// Texto para la UI: «docker-llm no disponible → Gemma local».
+    pub message: String,
 }
 
 /// Resumen numérico de una corrida.
@@ -184,6 +205,12 @@ pub struct SpiderSummary {
     pub coverage: f64,
     pub llm_calls: usize,
     pub llm_failures: usize,
+    /// Palabras enviadas al LLM (en llamadas, incluidas las fallidas).
+    #[serde(default)]
+    pub llm_sent: usize,
+    /// Escaladas no enviadas por el límite de la corrida corta.
+    #[serde(default)]
+    pub llm_capped: usize,
 }
 
 /// Una corrida.
@@ -200,11 +227,24 @@ pub struct SpiderRun {
     pub batch_size: usize,
     pub pace_ms: u64,
     pub llm: LlmInfo,
+    /// `corta` | `completa`.
+    #[serde(default = "default_run_mode")]
+    pub mode: RunMode,
+    /// Perfil efectivo del LLM que atiende (cambia si entra el respaldo).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile: Option<RunProfile>,
+    /// Respaldo activado (API externa caída → Gemma local).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fallback: Option<FallbackInfo>,
     pub tokens: Vec<Token>,
     /// Tokens leídos (cursor del crawler).
     pub cursor: usize,
     pub decisions: Vec<Decision>,
     pub llm_calls: Vec<LlmCall>,
+}
+
+fn default_run_mode() -> RunMode {
+    RunMode::Completa
 }
 
 impl SpiderRun {
@@ -242,6 +282,8 @@ impl SpiderRun {
             },
             llm_calls: self.llm_calls.len(),
             llm_failures: self.llm_calls.iter().filter(|c| !c.ok).count(),
+            llm_sent: self.llm_calls.iter().map(|c| c.words.len()).sum(),
+            llm_capped: c(&|x| x.capped),
         }
     }
 
@@ -254,7 +296,8 @@ impl SpiderRun {
 #[derive(Clone, Debug, Serialize)]
 pub struct SpiderEvent {
     pub seq: u64,
-    /// `start` | `read` | `decision` | `update` | `llm_call` | `done`.
+    /// `start` | `read` | `decision` | `update` | `llm_progress` | `llm_call`
+    /// | `fallback` | `done`.
     pub kind: String,
     pub run_id: String,
     pub cursor: usize,
@@ -275,7 +318,14 @@ pub struct SpiderJobs {
     pub seq: u64,
     /// Directorio de persistencia (None = no persiste; tests).
     pub dir: Option<PathBuf>,
+    /// Sustituto de Gemma local cuando no hay GGUF cargado (solo tests).
+    #[doc(hidden)]
+    pub local_stub: Option<LocalStub>,
 }
+
+/// LLM local sustituto (tests): recibe el prompt compacto renderizado y
+/// devuelve `P(sí)` normalizada, como haría Gemma con sus logits.
+pub type LocalStub = Arc<dyn Fn(&str) -> Result<f64, String> + Send + Sync>;
 
 impl Default for SpiderJobs {
     fn default() -> Self {
@@ -292,6 +342,7 @@ impl SpiderJobs {
             events: Vec::new(),
             seq: 0,
             dir,
+            local_stub: None,
         }
     }
 
@@ -354,78 +405,203 @@ fn valid_id(id: &str) -> bool {
     !id.is_empty() && id.len() <= 64 && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
 }
 
-/// Backend de escalado (resuelto al iniciar la corrida).
+/// Un LLM concreto que puede atender escaladas.
 #[derive(Clone)]
-pub enum SpiderBackend {
+pub enum SpiderLlm {
     External(Box<ProviderConfig>),
     Gemma(RawGemmaHandle),
+    /// Sustituto local (tests).
+    Stub(LocalStub),
     Unavailable(String),
 }
 
-/// Llama al LLM (bloqueante). Devuelve (texto, modelo, segundos).
+impl SpiderLlm {
+    fn kind(&self) -> LlmKind {
+        match self {
+            Self::External(_) => LlmKind::External,
+            _ => LlmKind::Local,
+        }
+    }
+}
+
+/// Backend de escalado (resuelto al iniciar la corrida): el LLM activo y,
+/// si el activo es una API externa, Gemma local como respaldo (si está
+/// cargado).
+#[derive(Clone)]
+pub struct SpiderBackend {
+    pub primary: SpiderLlm,
+    /// Nombre corto del proveedor (p. ej. `docker-llm`) para los avisos.
+    pub name: String,
+    pub info: LlmInfo,
+    pub fallback: Option<(SpiderLlm, LlmInfo)>,
+}
+
+/// Respuesta de una llamada: (veredictos, modelo, segundos).
+type CallResult = Result<(Vec<LlmVerdict>, String, f64), String>;
+
+/// Opciones (primer token) para `P(sí)` / `P(no)` en el prompt compacto.
+const YES_NO: [&[&str]; 2] = [&["sí", "si", "Sí"], &["no", "No"]];
+
+/// Veredicto compacto de un LLM local: `P(sí)` con las dos órdenes de
+/// opciones (`gen(prompt) → P(sí) normalizada`), `p = min` de ambas.
+fn compact_choice(
+    prompt: &str,
+    items: &[EscalationItem],
+    gen: &dyn Fn(&str) -> Result<f64, String>,
+) -> Result<Vec<LlmVerdict>, String> {
+    let task = task_excerpt(prompt, 120);
+    items
+        .iter()
+        .map(|it| {
+            let a = gen(&compact_gemma_prompt(&task, it, true))?;
+            let b = gen(&compact_gemma_prompt(&task, it, false))?;
+            Ok(gemma_choice_verdict(it.index, a, b))
+        })
+        .collect()
+}
+
+/// Llama al LLM (bloqueante) con el perfil dado y parsea los veredictos.
 fn call_llm_blocking(
-    backend: &SpiderBackend,
-    system: &str,
-    user: &str,
-    timeout: Duration,
-) -> Result<(String, String, f64), String> {
-    match backend {
-        SpiderBackend::External(cfg) => {
+    llm: &SpiderLlm,
+    prompt: &str,
+    items: &[EscalationItem],
+    profile: RunProfile,
+) -> CallResult {
+    let idx: Vec<usize> = items.iter().map(|i| i.index).collect();
+    let timeout = Duration::from_secs(profile.timeout_secs);
+    let t0 = Instant::now();
+    match llm {
+        SpiderLlm::External(cfg) => {
             let r = OpenAiClient::new(cfg, timeout).chat(
                 &[
-                    ChatMessage::new("system", system),
-                    ChatMessage::new("user", user),
+                    ChatMessage::new("system", llm_system_prompt()),
+                    ChatMessage::new("user", llm_user_prompt(prompt, items)),
                 ],
                 ExternalGenConfig {
-                    max_tokens: env_u64("SPIDER_LLM_MAX_TOKENS", 1200).clamp(64, 8192) as usize,
+                    max_tokens: profile.max_tokens,
                     temperature: 0.0,
                     top_p: 1.0,
                 },
             )?;
-            Ok((r.text, r.model, r.seconds))
+            parse_llm_verdicts(&r.text, &idx).map(|v| (v, r.model, r.seconds))
         }
-        SpiderBackend::Gemma(h) => {
+        SpiderLlm::Gemma(h) if profile.compact => {
+            let deadline = t0 + timeout;
+            let gen = |rendered: &str| {
+                if Instant::now() >= deadline {
+                    return Err(format!("timeout ({}s)", profile.timeout_secs));
+                }
+                let (pr, _, _) = h.choice_probs(rendered, &YES_NO, 768, Some(deadline))?;
+                let tot = pr[0] + pr[1];
+                if tot < 1e-6 {
+                    return Err("Gemma no puso masa en «sí»/«no»".into());
+                }
+                Ok(pr[0] / tot)
+            };
+            compact_choice(prompt, items, &gen)
+                .map(|v| (v, "gemma2-gguf·P(sí)".into(), t0.elapsed().as_secs_f64()))
+        }
+        SpiderLlm::Gemma(h) => {
             let mut cfg = crate::web::llm_periphery::raw_chat_config(0x5_91DE);
-            cfg.max_tokens = env_u64("SPIDER_LLM_MAX_TOKENS", 512).clamp(64, 2048) as usize;
+            cfg.max_tokens = profile.max_tokens;
             cfg.temperature = 0.0;
+            cfg.top_p = 1.0;
             let r = h.generate_chat(
                 &[],
-                &format!("{system}\n\n{user}"),
+                &format!(
+                    "{}\n\n{}",
+                    llm_system_prompt(),
+                    llm_user_prompt(prompt, items)
+                ),
                 cfg,
-                Some(Instant::now() + timeout),
+                Some(t0 + timeout),
             )?;
-            Ok((r.text, "gemma2-gguf".into(), r.seconds))
+            parse_llm_verdicts(&r.text, &idx).map(|v| (v, "gemma2-gguf".into(), r.seconds))
         }
-        SpiderBackend::Unavailable(why) => Err(format!("LLM no disponible: {why}")),
+        SpiderLlm::Stub(f) => compact_choice(prompt, items, &|r: &str| f(r))
+            .map(|v| (v, "stub-local".into(), t0.elapsed().as_secs_f64())),
+        SpiderLlm::Unavailable(why) => Err(format!("LLM no disponible: {why}")),
     }
 }
 
-fn llm_info_and_backend(g: &crate::web::AppState) -> (LlmInfo, SpiderBackend) {
+/// ¿El error indica que la API externa no está disponible (y conviene el
+/// respaldo local)? Conexión, timeout, 5xx, 401/403/404, sin modelo. Un JSON
+/// malo **no** cuenta: la API respondió.
+pub fn is_unavailable_error(e: &str) -> bool {
+    let l = e.to_lowercase();
+    [
+        "no se pudo conectar",
+        "tiempo de espera",
+        "timeout",
+        "timed out",
+        "401",
+        "403",
+        "404 no encontrado",
+        "http 5",
+        "no disponible",
+        "no lista ningún modelo",
+        "connection",
+        "tarea falló",
+    ]
+    .iter()
+    .any(|k| l.contains(k))
+}
+
+fn local_info(g: &crate::web::AppState) -> LlmInfo {
+    LlmInfo {
+        id: crate::web::llm_provider::LOCAL_ID.into(),
+        label: crate::web::state::LOCAL_LABEL.into(),
+        kind: "local".into(),
+        model: g.probe.name().into(),
+        unavailable: None,
+    }
+}
+
+/// Gemma local (o el sustituto de tests), si está cargado.
+fn local_llm(g: &crate::web::AppState) -> Option<SpiderLlm> {
+    g.probe
+        .raw_handle()
+        .map(SpiderLlm::Gemma)
+        .or_else(|| g.spider.local_stub.clone().map(SpiderLlm::Stub))
+}
+
+fn llm_info_and_backend(g: &crate::web::AppState) -> SpiderBackend {
+    let local = local_llm(g);
     match g.active_external() {
-        Some(p) => (
-            LlmInfo {
+        Some(p) => SpiderBackend {
+            name: p.name.clone(),
+            info: LlmInfo {
                 id: p.id.clone(),
                 label: p.label(),
                 kind: "openai_compatible".into(),
                 model: p.model.clone(),
                 unavailable: None,
             },
-            SpiderBackend::External(Box::new(p)),
-        ),
+            primary: SpiderLlm::External(Box::new(p)),
+            fallback: local.map(|l| {
+                let mut info = local_info(g);
+                info.label = format!("{} (respaldo)", crate::web::state::LOCAL_LABEL);
+                (l, info)
+            }),
+        },
         None => {
-            let mut info = LlmInfo {
-                id: crate::web::llm_provider::LOCAL_ID.into(),
-                label: crate::web::state::LOCAL_LABEL.into(),
-                kind: "local".into(),
-                model: g.probe.name().into(),
-                unavailable: None,
-            };
-            match g.probe.raw_handle() {
-                Some(h) => (info, SpiderBackend::Gemma(h)),
+            let mut info = local_info(g);
+            match local {
+                Some(l) => SpiderBackend {
+                    name: info.label.clone(),
+                    primary: l,
+                    info,
+                    fallback: None,
+                },
                 None => {
                     let why = g.model_unavailable_reason();
                     info.unavailable = Some(why.clone());
-                    (info, SpiderBackend::Unavailable(why))
+                    SpiderBackend {
+                        name: info.label.clone(),
+                        primary: SpiderLlm::Unavailable(why),
+                        info,
+                        fallback: None,
+                    }
                 }
             }
         }
@@ -436,8 +612,9 @@ fn lock(st: &SharedState) -> std::sync::MutexGuard<'_, crate::web::AppState> {
     st.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-/// Pasa un lote a pendiente con una nota (falla del LLM, detenido…).
-fn mark_pending(st: &SharedState, items: &[usize], note: &str) {
+/// Pasa palabras en escalado a pendiente con una nota (falla del LLM,
+/// detenido, límite de corrida corta…). `capped` marca el límite.
+fn mark_pending(st: &SharedState, items: &[usize], note: &str, capped: bool) {
     let mut g = lock(st);
     let mut changed = Vec::new();
     if let Some(run) = g.spider.run.as_mut() {
@@ -447,6 +624,7 @@ fn mark_pending(st: &SharedState, items: &[usize], note: &str) {
                     d.route = Route::You;
                     d.status = Status::Pending;
                     d.note = note.to_string();
+                    d.capped = capped;
                     changed.push(d.clone());
                 }
             }
@@ -458,92 +636,256 @@ fn mark_pending(st: &SharedState, items: &[usize], note: &str) {
     }
 }
 
-async fn llm_worker(
-    st: SharedState,
-    mut rx: tokio::sync::mpsc::UnboundedReceiver<Vec<EscalationItem>>,
-    backend: SpiderBackend,
-    prompt: String,
+/// Aplica los veredictos de una llamada correcta a las decisiones.
+fn apply_verdicts(
+    run: &mut SpiderRun,
+    idx: &[usize],
+    verdicts: &[LlmVerdict],
     floor: f64,
-    label: String,
-    stop: Arc<AtomicBool>,
-) {
-    let system = llm_system_prompt();
-    let mut batch_no = 0usize;
-    while let Some(items) = rx.recv().await {
-        batch_no += 1;
-        let idx: Vec<usize> = items.iter().map(|i| i.index).collect();
-        if stop.load(Ordering::Relaxed) {
-            mark_pending(&st, &idx, "detenido antes del veredicto del LLM");
+    label: &str,
+) -> Vec<Decision> {
+    let mut updates = Vec::new();
+    for &i in idx {
+        let Some(d) = run.decision_mut(i) else {
             continue;
-        }
-        let user = llm_user_prompt(&prompt, &items);
-        let timeout = llm_timeout();
-        let b = backend.clone();
-        let sys = system.clone();
-        let t0 = Instant::now();
-        let call = tokio::task::spawn_blocking(move || call_llm_blocking(&b, &sys, &user, timeout));
-        let res = match tokio::time::timeout(timeout + Duration::from_secs(2), call).await {
-            Ok(Ok(r)) => r,
-            Ok(Err(e)) => Err(format!("tarea falló: {e}")),
-            Err(_) => Err(format!("timeout ({}s)", timeout.as_secs())),
         };
-        let parsed = res.and_then(|(text, model, secs)| {
-            parse_llm_verdicts(&text, &idx).map(|v| (v, model, secs))
-        });
-        let mut g = lock(&st);
-        let mut updates = Vec::new();
-        let call_log = match parsed {
-            Ok((verdicts, model, secs)) => {
-                if let Some(run) = g.spider.run.as_mut() {
-                    for &i in &idx {
-                        let Some(d) = run.decision_mut(i) else {
-                            continue;
+        match verdicts.iter().find(|v| v.index == i) {
+            Some(v) => {
+                d.verdict = Some(v.clone());
+                d.final_p = v.p;
+                match verdict_outcome(v, floor) {
+                    VerdictOutcome::Resolved => {
+                        d.route = Route::Llm;
+                        d.status = Status::Resolved;
+                        d.resolved_by = label.to_string();
+                        d.note = v.note.clone();
+                    }
+                    VerdictOutcome::Pending => {
+                        d.route = Route::You;
+                        d.status = Status::Pending;
+                        d.note = if v.needs_approval {
+                            format!("{label} pide aprobación humana")
+                        } else if v.ambiguous {
+                            format!("{label} la marca ambigua (p={:.3})", v.p)
+                        } else {
+                            format!("{label} duda (p={:.3} < {floor:.2})", v.p)
                         };
-                        match verdicts.iter().find(|v| v.index == i) {
-                            Some(v) => {
-                                d.verdict = Some(v.clone());
-                                d.final_p = v.p;
-                                match verdict_outcome(v, floor) {
-                                    VerdictOutcome::Resolved => {
-                                        d.route = Route::Llm;
-                                        d.status = Status::Resolved;
-                                        d.resolved_by = label.clone();
-                                        d.note = v.note.clone();
-                                    }
-                                    VerdictOutcome::Pending => {
-                                        d.route = Route::You;
-                                        d.status = Status::Pending;
-                                        d.note = if v.needs_approval {
-                                            format!("{label} pide aprobación humana")
-                                        } else if v.ambiguous {
-                                            format!("{label} la marca ambigua (p={:.3})", v.p)
-                                        } else {
-                                            format!("{label} duda (p={:.3} < {floor:.2})", v.p)
-                                        };
-                                    }
-                                }
-                            }
-                            None => {
-                                d.route = Route::You;
-                                d.status = Status::Pending;
-                                d.note = format!("{label} no devolvió veredicto: pendiente");
-                            }
-                        }
-                        updates.push(d.clone());
                     }
                 }
+            }
+            None => {
+                d.route = Route::You;
+                d.status = Status::Pending;
+                d.note = format!("{label} no devolvió veredicto: pendiente");
+            }
+        }
+        updates.push(d.clone());
+    }
+    updates
+}
+
+fn r2(x: f64) -> f64 {
+    (x * 100.0).round() / 100.0
+}
+
+/// Ejecuta una llamada en `spawn_blocking` con plazo externo. Gemma corta la
+/// generación en su propio plazo; el margen extra cubre el prefill (no
+/// interrumpible) para no soltar el lock del modelo a medias.
+async fn run_call(
+    llm: &SpiderLlm,
+    prompt: &str,
+    items: &[EscalationItem],
+    profile: RunProfile,
+) -> CallResult {
+    let slack = match llm.kind() {
+        LlmKind::Local => Duration::from_secs(20),
+        LlmKind::External => Duration::from_secs(2),
+    };
+    let timeout = Duration::from_secs(profile.timeout_secs);
+    let (l, p, it) = (llm.clone(), prompt.to_string(), items.to_vec());
+    let call = tokio::task::spawn_blocking(move || call_llm_blocking(&l, &p, &it, profile));
+    match tokio::time::timeout(timeout + slack, call).await {
+        Ok(Ok(r)) => r,
+        Ok(Err(e)) => Err(format!("tarea falló: {e}")),
+        Err(_) => Err(format!("timeout ({}s)", profile.timeout_secs)),
+    }
+}
+
+/// Worker de escaladas: agrupa según el perfil del LLM que atiende, aplica
+/// el límite de la corrida corta, emite progreso por llamada y, si la API
+/// externa no está disponible, cambia a Gemma local (respaldo etiquetado)
+/// para el resto de la corrida. Fallos → pendiente con motivo (nunca inventa).
+#[allow(clippy::too_many_arguments)]
+async fn llm_worker(
+    st: SharedState,
+    mut rx: tokio::sync::mpsc::UnboundedReceiver<EscalationItem>,
+    backend: SpiderBackend,
+    mode: RunMode,
+    mode_auto: bool,
+    profile: RunProfile,
+    prompt: String,
+    floor: f64,
+    stop: Arc<AtomicBool>,
+) {
+    let mut llm = backend.primary.clone();
+    let mut label = backend.info.label.clone();
+    let mut profile = profile;
+    let mut fallback = backend.fallback.clone();
+    let mut on_fallback = false;
+    let mut queue: VecDeque<EscalationItem> = VecDeque::new();
+    let mut closed = false;
+    let mut call_no = 0usize;
+    let mut sent = 0usize;
+    let mut consecutive_failures = 0usize;
+    let mut gave_up: Option<String> = None;
+    loop {
+        // Llenar la cola hasta un lote (o hasta que el crawler termine).
+        while !closed && queue.len() < profile.batch_size {
+            match rx.recv().await {
+                Some(it) => queue.push_back(it),
+                None => closed = true,
+            }
+            while let Ok(it) = rx.try_recv() {
+                queue.push_back(it);
+            }
+        }
+        if queue.is_empty() {
+            if closed {
+                break;
+            }
+            continue;
+        }
+        let room = profile
+            .max_escalations
+            .map(|c| c.saturating_sub(sent))
+            .unwrap_or(usize::MAX);
+        if room == 0 && !stop.load(Ordering::Relaxed) && gave_up.is_none() {
+            let cap = profile.max_escalations.unwrap_or(0);
+            let over: Vec<usize> = queue.drain(..).map(|i| i.index).collect();
+            mark_pending(
+                &st,
+                &over,
+                &format!(
+                    "límite de corrida corta ({cap} escaladas al LLM); pendiente sin consultar"
+                ),
+                true,
+            );
+            continue;
+        }
+        let take = profile.batch_size.min(queue.len()).min(room.max(1));
+        let items: Vec<EscalationItem> = queue.drain(..take).collect();
+        let idx: Vec<usize> = items.iter().map(|i| i.index).collect();
+        if stop.load(Ordering::Relaxed) {
+            mark_pending(&st, &idx, "detenido antes del veredicto del LLM", false);
+            continue;
+        }
+        if let Some(why) = &gave_up {
+            mark_pending(&st, &idx, why, false);
+            continue;
+        }
+        call_no += 1;
+        sent += idx.len();
+        {
+            let words: Vec<String> = items.iter().map(|i| format!("«{}»", i.word)).collect();
+            let cap = profile
+                .max_escalations
+                .map(|c| format!("{sent}/{c}"))
+                .unwrap_or_else(|| format!("{sent}"));
+            let mut g = lock(&st);
+            g.spider.push(
+                "llm_progress",
+                idx.first().copied(),
+                None,
+                format!(
+                    "llamada {call_no} → {label}: {} · escaladas {cap} · plazo {}s",
+                    words.join(" "),
+                    profile.timeout_secs
+                ),
+            );
+        }
+        let t0 = Instant::now();
+        let res = run_call(&llm, &prompt, &items, profile).await;
+        // API externa caída → respaldo Gemma local para esta y las siguientes.
+        if let Err(e) = &res {
+            if !on_fallback && is_unavailable_error(e) {
+                if let Some((fb, fb_info)) = fallback.take() {
+                    let e: String = e.chars().take(300).collect();
+                    let from = backend.info.label.clone();
+                    let message = format!(
+                        "{} no disponible → {}",
+                        backend.name,
+                        crate::web::state::LOCAL_LABEL
+                    );
+                    let mut g = lock(&st);
+                    if let Some(run) = g.spider.run.as_mut() {
+                        run.llm_calls.push(LlmCall {
+                            batch: call_no,
+                            words: idx.clone(),
+                            ok: false,
+                            seconds: r2(t0.elapsed().as_secs_f64()),
+                            verdicts: 0,
+                            model: String::new(),
+                            error: Some(e.clone()),
+                            llm: label.clone(),
+                            fallback: false,
+                        });
+                        run.fallback = Some(FallbackInfo {
+                            from,
+                            to: fb_info.label.clone(),
+                            reason: e.clone(),
+                            message: message.clone(),
+                        });
+                    }
+                    llm = fb;
+                    label = fb_info.label;
+                    on_fallback = true;
+                    // Modo auto: con Gemma local, corrida corta.
+                    let fb_mode = if mode_auto {
+                        default_mode(llm.kind())
+                    } else {
+                        mode
+                    };
+                    profile = profile_for(llm.kind(), fb_mode);
+                    if let Some(run) = g.spider.run.as_mut() {
+                        run.mode = fb_mode;
+                        run.profile = Some(profile);
+                        run.batch_size = profile.batch_size;
+                    }
+                    g.spider
+                        .push("fallback", None, None, format!("{message} ({e})"));
+                    drop(g);
+                    // Reintenta estas palabras con el respaldo (lotes nuevos).
+                    sent = 0;
+                    for it in items.into_iter().rev() {
+                        queue.push_front(it);
+                    }
+                    continue;
+                }
+            }
+        }
+        let mut g = lock(&st);
+        let mut updates = Vec::new();
+        let call_log = match res {
+            Ok((verdicts, model, secs)) => {
+                consecutive_failures = 0;
+                if let Some(run) = g.spider.run.as_mut() {
+                    updates = apply_verdicts(run, &idx, &verdicts, floor, &label);
+                }
                 LlmCall {
-                    batch: batch_no,
+                    batch: call_no,
                     words: idx.clone(),
                     ok: true,
-                    seconds: (secs * 100.0).round() / 100.0,
+                    seconds: r2(secs),
                     verdicts: verdicts.len(),
                     model,
                     error: None,
+                    llm: label.clone(),
+                    fallback: on_fallback,
                 }
             }
             Err(e) => {
                 let e: String = e.chars().take(300).collect();
+                consecutive_failures += 1;
                 if let Some(run) = g.spider.run.as_mut() {
                     for &i in &idx {
                         if let Some(d) = run.decision_mut(i) {
@@ -555,19 +897,26 @@ async fn llm_worker(
                     }
                 }
                 LlmCall {
-                    batch: batch_no,
+                    batch: call_no,
                     words: idx.clone(),
                     ok: false,
-                    seconds: (t0.elapsed().as_secs_f64() * 100.0).round() / 100.0,
+                    seconds: r2(t0.elapsed().as_secs_f64()),
                     verdicts: 0,
                     model: String::new(),
                     error: Some(e),
+                    llm: label.clone(),
+                    fallback: on_fallback,
                 }
             }
         };
+        if consecutive_failures >= profile.max_consecutive_failures && gave_up.is_none() {
+            gave_up = Some(format!(
+                "{label} falló {consecutive_failures} veces seguidas; pendiente sin consultar (no se inventa)"
+            ));
+        }
         let msg = if call_log.ok {
             format!(
-                "lote {} → {}: {} palabras, {} veredictos, {:.2}s",
+                "llamada {} → {}: {} palabra(s), {} veredicto(s), {:.2}s",
                 call_log.batch,
                 label,
                 call_log.words.len(),
@@ -576,9 +925,10 @@ async fn llm_worker(
             )
         } else {
             format!(
-                "lote {} → {} falló: {}",
+                "llamada {} → {} falló ({:.1}s): {}",
                 call_log.batch,
                 label,
+                call_log.seconds,
                 call_log.error.clone().unwrap_or_default()
             )
         };
@@ -593,33 +943,39 @@ async fn llm_worker(
     }
 }
 
-/// Camina el prompt, decide cada palabra y escala por lotes.
-async fn run_spider(st: SharedState, stop: Arc<AtomicBool>, backend: SpiderBackend) {
-    let (tokens, prompt, pace, batch_size, floor, threshold, label) = {
+/// Camina el prompt, decide cada palabra y pasa las dudosas al worker.
+async fn run_spider(
+    st: SharedState,
+    stop: Arc<AtomicBool>,
+    backend: SpiderBackend,
+    profile: RunProfile,
+    mode_auto: bool,
+) {
+    let (tokens, prompt, pace, floor, threshold, mode) = {
         let g = lock(&st);
         let r = g.spider.run.as_ref().expect("run");
         (
             r.tokens.clone(),
             r.prompt.clone(),
             r.pace_ms,
-            r.batch_size,
             r.llm_floor,
             r.threshold,
-            r.llm.label.clone(),
+            r.mode,
         )
     };
     let ctx = PromptContext::new(&tokens);
-    let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<Vec<EscalationItem>>();
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<EscalationItem>();
     let worker = tokio::spawn(llm_worker(
         st.clone(),
         rx,
         backend,
+        mode,
+        mode_auto,
+        profile,
         prompt,
         floor,
-        label,
         stop.clone(),
     ));
-    let mut batch: Vec<EscalationItem> = Vec::new();
     for (i, tok) in tokens.iter().enumerate() {
         if stop.load(Ordering::Relaxed) {
             break;
@@ -634,7 +990,7 @@ async fn run_spider(st: SharedState, stop: Arc<AtomicBool>, backend: SpiderBacke
                 let r = route(&a, threshold);
                 let d = Decision::new(tok, a, r);
                 if r == Route::Llm {
-                    batch.push(EscalationItem {
+                    let _ = tx.send(EscalationItem {
                         index: tok.index,
                         word: tok.text.clone(),
                         context: word_context(&tokens, i, 6),
@@ -651,15 +1007,9 @@ async fn run_spider(st: SharedState, stop: Arc<AtomicBool>, backend: SpiderBacke
                 g.spider.push("read", Some(tok.index), None, String::new());
             }
         }
-        if batch.len() >= batch_size {
-            let _ = tx.send(std::mem::take(&mut batch));
-        }
         if pace > 0 {
             tokio::time::sleep(Duration::from_millis(pace)).await;
         }
-    }
-    if !batch.is_empty() {
-        let _ = tx.send(std::mem::take(&mut batch));
     }
     drop(tx);
     let _ = worker.await;
@@ -682,20 +1032,33 @@ async fn run_spider(st: SharedState, stop: Arc<AtomicBool>, backend: SpiderBacke
         &st,
         &pending_ids,
         "sin veredicto del LLM (corrida detenida)",
+        false,
     );
     let mut g = lock(&st);
     let msg = if let Some(run) = g.spider.run.as_mut() {
         run.state = if stopped { "stopped" } else { "done" }.into();
         run.finished_ms = Some(now_ms());
         let s = run.summary();
+        let who = match &run.fallback {
+            Some(f) => format!("{} [{}]", f.to, f.message),
+            None => run.llm.label.clone(),
+        };
+        let capped = if s.llm_capped > 0 {
+            format!(" · {} por límite de corrida corta", s.llm_capped)
+        } else {
+            String::new()
+        };
         format!(
-            "{}: {} forks · code {} · {} {} ({} escaladas) · you {} · p̄ {:.3}",
+            "{} ({}): {} forks · code {} · {} {} de {} enviadas ({} escaladas{}) · you {} · p̄ {:.3}",
             run.state,
+            run.mode.as_str(),
             s.forks,
             s.code,
-            run.llm.label,
+            who,
             s.llm_resolved,
+            s.llm_sent,
             s.llm_escalated,
+            capped,
             s.you,
             s.avg_confidence
         )
@@ -740,6 +1103,10 @@ pub struct StartRequest {
     pub llm_floor: Option<f64>,
     pub pace_ms: Option<u64>,
     pub batch_size: Option<usize>,
+    /// `corta` | `completa` (por defecto: corta con Gemma local, completa con API).
+    pub mode: Option<String>,
+    /// Override del límite de escaladas (solo `corta`; 0 = sin límite).
+    pub max_escalations: Option<usize>,
 }
 
 fn bad(status: StatusCode, msg: &str) -> axum::response::Response {
@@ -771,12 +1138,32 @@ async fn start(
         .map(|x| x.clamp(0.0, 1.0))
         .unwrap_or(DEFAULT_LLM_FLOOR);
     let pace = b.pace_ms.unwrap_or(60).min(2000);
-    let batch_size = b.batch_size.unwrap_or(8).clamp(1, 64);
     let mut g = lock(&st);
     if g.spider.running {
         return bad(StatusCode::CONFLICT, "ya hay una corrida en curso");
     }
-    let (info, backend) = llm_info_and_backend(&g);
+    let backend = llm_info_and_backend(&g);
+    let info = backend.info.clone();
+    let kind = backend.primary.kind();
+    let mode_auto = matches!(
+        b.mode.as_deref().map(str::trim),
+        None | Some("") | Some("auto")
+    );
+    let mode = match b.mode.as_deref().map(str::trim).filter(|m| !m.is_empty()) {
+        None | Some("auto") => default_mode(kind),
+        Some(m) => match RunMode::parse(m) {
+            Some(m) => m,
+            None => return bad(StatusCode::BAD_REQUEST, "modo inválido (corta | completa)"),
+        },
+    };
+    let mut profile = profile_for(kind, mode);
+    if let Some(bs) = b.batch_size {
+        profile.batch_size = bs.clamp(1, 64);
+    }
+    if let (RunMode::Corta, Some(n)) = (mode, b.max_escalations) {
+        profile.max_escalations = (n > 0).then_some(n.min(10_000));
+    }
+    let batch_size = profile.batch_size;
     let id = uuid::Uuid::new_v4().to_string();
     let forks = tokens.iter().filter(|t| t.kind.is_fork()).count();
     let total = tokens.len();
@@ -791,6 +1178,9 @@ async fn start(
         batch_size,
         pace_ms: pace,
         llm: info.clone(),
+        mode,
+        profile: Some(profile),
+        fallback: None,
         tokens,
         cursor: 0,
         decisions: Vec::new(),
@@ -801,14 +1191,33 @@ async fn start(
     g.spider.running = true;
     g.spider.run = Some(run);
     g.spider.events.clear();
-    let msg = format!("corrida {id} · umbral {threshold:.2} · LLM {}", info.label);
+    let fb = backend
+        .fallback
+        .as_ref()
+        .map(|(_, i)| format!(" · respaldo {}", i.label))
+        .unwrap_or_default();
+    let cap = profile
+        .max_escalations
+        .map(|c| format!("máx {c} escaladas"))
+        .unwrap_or_else(|| "sin límite".into());
+    let msg = format!(
+        "corrida {} {id} · umbral {threshold:.2} · LLM {}{fb} · lotes de {} · plazo {}s · {cap}",
+        mode.as_str(),
+        info.label,
+        profile.batch_size,
+        profile.timeout_secs
+    );
     g.spider.push("start", None, None, msg);
     let seq = g.spider.seq;
     drop(g);
-    tokio::spawn(run_spider(st.clone(), stop, backend));
+    let has_fallback = backend.fallback.is_some();
+    // El worker arranca con el perfil resuelto aquí (con overrides de la
+    // petición); si entra el respaldo, usa el perfil de Gemma local.
+    tokio::spawn(run_spider(st.clone(), stop, backend, profile, mode_auto));
     Json(json!({
         "ok": true, "run_id": id, "threshold": threshold, "llm_floor": floor,
         "tokens_total": total, "forks_total": forks, "llm": info, "seq": seq,
+        "mode": mode, "profile": profile, "fallback_available": has_fallback,
     }))
     .into_response()
 }
@@ -821,14 +1230,22 @@ async fn stop_run(State(st): State<SharedState>) -> Json<serde_json::Value> {
 
 async fn status(State(st): State<SharedState>) -> Json<serde_json::Value> {
     let g = lock(&st);
-    let (info, _) = llm_info_and_backend(&g);
+    let backend = llm_info_and_backend(&g);
+    let kind = backend.primary.kind();
     Json(json!({
         "running": g.spider.running,
         "seq": g.spider.seq,
         "run": g.spider.run,
         "summary": g.spider.run.as_ref().map(SpiderRun::summary),
-        "llm_active": info,
-        "defaults": { "threshold": DEFAULT_THRESHOLD, "llm_floor": DEFAULT_LLM_FLOOR },
+        "llm_active": backend.info,
+        "llm_fallback": backend.fallback.as_ref().map(|(_, i)| i),
+        "defaults": {
+            "threshold": DEFAULT_THRESHOLD,
+            "llm_floor": DEFAULT_LLM_FLOOR,
+            "mode": default_mode(kind),
+            "corta": profile_for(kind, RunMode::Corta),
+            "completa": profile_for(kind, RunMode::Completa),
+        },
     }))
 }
 
@@ -1012,4 +1429,57 @@ async fn export(
         serde_json::to_string_pretty(&value).unwrap_or_default(),
     )
         .into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Depuración del prompt compacto con el GGUF real (ignorada en CI).
+    #[test]
+    #[ignore]
+    fn real_gemma_compact_raw_outputs() {
+        let path = std::env::var("GEMMA2_GGUF").expect("GEMMA2_GGUF");
+        let probe = crate::web::llm_periphery::open_gemma_probe(Path::new(&path)).unwrap();
+        let h = probe.raw_handle().unwrap();
+        let (toks, dry) = crate::prompt_spider::dry_run(SAMPLE_PROMPT, DEFAULT_THRESHOLD);
+        let items: Vec<EscalationItem> = dry
+            .iter()
+            .filter(|d| d.route == Route::Llm)
+            .take(
+                std::env::var("N")
+                    .ok()
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(4),
+            )
+            .map(|d| EscalationItem {
+                index: d.index,
+                word: d.word.clone(),
+                context: word_context(&toks, d.index, 6),
+                question: d.assessment.question,
+                p: d.assessment.p,
+            })
+            .collect();
+        let gen = |r: &str| {
+            let (pr, ntok, secs) = h.choice_probs(r, &YES_NO, 768, None)?;
+            println!(
+                "  prompt_tok={ntok} {secs:.2}s P(sí)={:.3} P(no)={:.3}",
+                pr[0], pr[1]
+            );
+            Ok(pr[0] / (pr[0] + pr[1]).max(1e-12))
+        };
+        for it in &items {
+            let t0 = Instant::now();
+            let v = compact_choice(SAMPLE_PROMPT, std::slice::from_ref(it), &gen).unwrap();
+            println!(
+                "«{}» {:?} heur_p={:.2} → p={:.3} ({}) {:.2}s",
+                it.word,
+                it.question,
+                it.p,
+                v[0].p,
+                v[0].note,
+                t0.elapsed().as_secs_f64()
+            );
+        }
+    }
 }
