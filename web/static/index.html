@@ -6,7 +6,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <title>Neuro-Geométrica · Campo agentico</title>
-  <link rel="stylesheet" href="/styles.css?v=34" />
+  <link rel="stylesheet" href="/styles.css?v=35" />
 </head>
 <body>
   <header class="top">
@@ -36,6 +36,7 @@
     <button type="button" class="main-tab" data-main="sleep">Sueño <span class="tab-status" id="status-sleep" data-state="idle" aria-hidden="true"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span></button>
     <button type="button" class="main-tab" data-main="llm">Modelos / API</button>
     <button type="button" class="main-tab" data-main="tests">Pruebas <span class="tab-status" id="status-tests" data-state="idle" aria-hidden="true"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span></button>
+    <button type="button" class="main-tab" data-main="spider">Prompt Spider <span class="tab-status" id="status-spider" data-state="idle" aria-hidden="true"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span></button>
   </nav>
 
   <main class="layout-tabs">
@@ -251,6 +252,126 @@
       <h3>Informe JSON completo</h3>
       <pre id="te-report" class="log tall">{}</pre>
     </section>
+
+    <!-- PROMPT SPIDER -->
+    <section id="main-spider" class="main-panel">
+      <div class="sp-root">
+        <header class="sp-top">
+          <div class="sp-title">
+            <div><b>PROMPT SPIDER</b> <span class="sp-pink">// CADA PALABRA, UN FORK</span></div>
+            <div class="sp-sub">cada palabra recibe una pregunta tipada · el código resuelve lo seguro · <span class="sp-llm-name">LLM</span> lo difícil · tú lo riesgoso</div>
+          </div>
+          <div class="sp-counters" aria-live="polite">
+            <div><span>palabras</span><b id="sp-c-words">0</b></div>
+            <div><span>forks</span><b id="sp-c-forks" class="sp-pink">0</b></div>
+            <div><span>code</span><b id="sp-c-code" class="sp-green">0</b></div>
+            <div><span class="sp-llm-short">llm</span><b id="sp-c-llm" class="sp-orange">0</b></div>
+            <div><span>tú</span><b id="sp-c-you" class="sp-yellow">0</b></div>
+          </div>
+        </header>
+
+        <div class="sp-controls">
+          <label class="sp-thr" title="p ≥ umbral → camino determinista (código, sin LLM)">
+            <span>umbral p ≥ <b id="sp-thr-val">0.95</b></span>
+            <input type="range" id="sp-threshold" min="0.80" max="0.99" step="0.01" value="0.95" />
+          </label>
+          <label class="sp-pace" title="Pausa entre palabras (solo para la animación)">
+            <span>ritmo</span>
+            <select id="sp-pace">
+              <option value="20">rápido</option>
+              <option value="60" selected>normal</option>
+              <option value="140">lento</option>
+            </select>
+          </label>
+          <div class="sp-btns">
+            <button type="button" id="sp-run" class="sp-btn sp-btn-go">Ejecutar</button>
+            <button type="button" id="sp-stop" class="sp-btn sp-btn-stop" disabled>Detener</button>
+            <button type="button" id="sp-edit" class="sp-btn">Editar</button>
+            <button type="button" id="sp-sample" class="sp-btn">Ejemplo</button>
+            <button type="button" id="sp-export" class="sp-btn" disabled>Exportar JSON</button>
+          </div>
+          <span id="sp-status" class="sp-status">listo</span>
+        </div>
+
+        <div class="sp-main">
+          <div class="sp-card sp-editor">
+            <div class="sp-card-h"><span class="sp-dots"><i></i><i></i><i></i></span> studio.prompt <span id="sp-ln" class="sp-muted">ln 0</span></div>
+            <textarea id="sp-prompt" spellcheck="false" aria-label="Prompt a rastrear"></textarea>
+            <pre id="sp-view" class="sp-view" hidden></pre>
+          </div>
+          <div class="sp-card sp-web">
+            <canvas id="sp-canvas" aria-label="Visualización de la araña: líneas de cada palabra a su nodo"></canvas>
+            <div id="sp-llm-chip" class="sp-llm-chip">escalado → <b class="sp-llm-name">LLM</b></div>
+          </div>
+          <div class="sp-routes">
+            <div class="sp-route sp-r-code">
+              <div class="sp-route-h">if p ≥ <span class="sp-thr-txt">0.95</span></div>
+              <div class="sp-route-b"><span>→ code</span><b id="sp-n-code">0</b></div>
+              <div class="sp-route-f">sin llamada al modelo</div>
+            </div>
+            <div class="sp-route sp-r-llm">
+              <div class="sp-route-h">p &lt; <span class="sp-thr-txt">0.95</span></div>
+              <div class="sp-route-b"><span>→ <span class="sp-llm-name">LLM</span></span><b id="sp-n-llm">0</b></div>
+              <div class="sp-route-f" id="sp-f-llm">0 lotes · 0 resueltas</div>
+            </div>
+            <div class="sp-route sp-r-you">
+              <div class="sp-route-h">solo aprobación</div>
+              <div class="sp-route-b"><span>→ tú</span><b id="sp-n-you">0</b></div>
+              <div class="sp-route-f" id="sp-f-you">0 pendientes</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="sp-row2">
+          <div class="sp-card sp-stream">
+            <div class="sp-card-h">● decision stream <span class="sp-muted">palabra · pregunta tipada · p · ruta</span></div>
+            <div class="sp-table-wrap">
+              <table class="sp-table"><tbody id="sp-stream"></tbody></table>
+            </div>
+          </div>
+          <div class="sp-card sp-routed">
+            <div class="sp-card-h">● enrutadas en esta sesión</div>
+            <div class="sp-big" id="sp-routed-n">0</div>
+            <div class="sp-muted" id="sp-routed-sub">de 0 palabras del prompt</div>
+            <div class="sp-bars">
+              <div><span>code</span><div class="sp-bar"><i id="sp-bar-code" class="sp-bg-green"></i></div><b id="sp-bar-code-n">0</b></div>
+              <div><span class="sp-llm-name">LLM</span><div class="sp-bar"><i id="sp-bar-llm" class="sp-bg-orange"></i></div><b id="sp-bar-llm-n">0</b></div>
+              <div><span>tú</span><div class="sp-bar"><i id="sp-bar-you" class="sp-bg-yellow"></i></div><b id="sp-bar-you-n">0</b></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="sp-row3">
+          <div class="sp-card">
+            <div class="sp-card-h">● confianza <span class="sp-muted" id="sp-conf-n">— 0</span></div>
+            <canvas id="sp-spark" class="sp-small-canvas"></canvas>
+            <div class="sp-muted">media <b id="sp-avg">—</b></div>
+          </div>
+          <div class="sp-card">
+            <div class="sp-card-h">● palabras leídas <span class="sp-muted" id="sp-read-n">0 / 0</span></div>
+            <div id="sp-dots" class="sp-dots-grid"></div>
+          </div>
+          <div class="sp-card">
+            <div class="sp-card-h">● cobertura del prompt</div>
+            <canvas id="sp-sphere" class="sp-small-canvas"></canvas>
+            <div class="sp-muted"><b id="sp-cov">0%</b> cubierto</div>
+          </div>
+          <div class="sp-card sp-think">
+            <div class="sp-card-h">● dónde pensó</div>
+            <div class="sp-think-l sp-l-code"><b>code</b> <span id="sp-t-code">0 if-statements</span></div>
+            <div class="sp-think-l sp-l-llm"><b class="sp-llm-name">LLM</b> <span id="sp-t-llm">0 llamadas</span></div>
+            <div class="sp-think-l sp-l-you"><b>tú</b> <span id="sp-t-you">0 aprobaciones</span></div>
+            <p class="sp-motto">el modelo solo piensa<br /><span class="sp-pink">donde el código no puede</span></p>
+          </div>
+        </div>
+
+        <div class="sp-card sp-pending">
+          <div class="sp-card-h">● pendientes de aprobación <span class="sp-muted" id="sp-pend-n">0</span></div>
+          <div id="sp-pend-list" class="sp-pend-list"><p class="sp-muted">Nada pendiente.</p></div>
+        </div>
+        <div class="sp-footer"><span id="sp-foot-l">spider · listo</span><span id="sp-foot-r"></span></div>
+      </div>
+    </section>
   </main>
 
   <!-- ACCESO (secreto maestro) -->
@@ -273,6 +394,6 @@
     </div>
   </div>
 
-  <script src="/auth.js?v=34"></script>
+  <script src="/auth.js?v=35"></script>
 </body>
 </html>
