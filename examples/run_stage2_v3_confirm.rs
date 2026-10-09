@@ -40,15 +40,22 @@ fn main() {
         .unwrap_or_else(|| "unknown".into());
     let mut md = String::new();
     md.push_str("# Confirmación — Etapa 2 Clean-Room v3 (0xB300–0xB30F)\n\n");
-    md.push_str(&format!("Rama: `exp/field-autonomy-next`. Commit tip: `{tip}`.\n"));
+    md.push_str(&format!(
+        "Rama: `exp/field-autonomy-next`. Commit tip: `{tip}`.\n"
+    ));
     md.push_str("Hyperparams: same `HyperparamLock::long()` locked on DEV; no retune.\n");
-    md.push_str(&format!("Wall time: **{elapsed:.1}s**. Filas: {}.\n\n", rows.len()));
+    md.push_str(&format!(
+        "Wall time: **{elapsed:.1}s**. Filas: {}.\n\n",
+        rows.len()
+    ));
     md.push_str("## Histogramas\n\n| Experimento | verdict hist |\n|---|---|\n");
     for (exp, vh) in &hist {
         let parts: Vec<String> = vh.iter().map(|(k, v)| format!("{k}:{v}")).collect();
         md.push_str(&format!("| `{exp}` | {} |\n", parts.join(", ")));
     }
-    md.push_str("\nCSV: [`resultados_etapa_2_v3_confirm.csv`](resultados_etapa_2_v3_confirm.csv)\n");
+    md.push_str(
+        "\nCSV: [`resultados_etapa_2_v3_confirm.csv`](resultados_etapa_2_v3_confirm.csv)\n",
+    );
     fs::write("docs/resultados_etapa_2_v3_confirm.md", &md).expect("md");
     println!("wrote docs/resultados_etapa_2_v3_confirm.{{md,csv}} ({elapsed:.1}s)");
     for (exp, vh) in &hist {
