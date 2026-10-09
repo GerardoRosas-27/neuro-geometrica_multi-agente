@@ -78,6 +78,8 @@ pub mod oxicuda_pyrochlore_backend;
 pub mod plasticity_controller;
 /// POC: WavePredictCore vs NativeThermoCdt — latencia/acc núcleo inferencia.
 pub mod poc_liquid_vs_thermo;
+/// Prompt Spider: crawler determinista de prompts (cada palabra, un fork).
+pub mod prompt_spider;
 pub mod pyrochlore_graph_tensor_network;
 pub mod quantum_spin_thermodynamic_engine;
 pub mod relational_field;

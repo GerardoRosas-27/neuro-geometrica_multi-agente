@@ -185,6 +185,7 @@ Es infraestructura / demo de ingeniería: **no** es evidencia de las líneas A o
 | **Sueño** | Requiere entrenamiento previo. Poda rutas RQM débiles, compacta la geometría fasorial y minimiza energía libre; reporta F / simetría / handshake. Infinito por defecto. No usa LLM. |
 | **Modelos / API** | Pegar un `curl` (p. ej. de docker-llm) → auto-configurar → probar → guardar; elegir el LLM activo (Gemma local o API OpenAI-compatible) para chat y datasets. Claves enmascaradas. |
 | **Pruebas** | Suite de smokes (E8–E10, E13/E15, Clean-Room v3.7 en 1 seed DEV) + evaluación del FUSE ya entrenado (identidad, shifted, latencia líquido, recall de engramas, F/simetría, histograma de rutas). No usa LLM. |
+| **Prompt Spider** *(experimental, rama `exp/prompt-spider`)* | Recreación de «PROMPT SPIDER // EVERY WORD, ONE FORK»: un crawler determinista recorre el prompt; cada palabra recibe 4 preguntas tipadas con p heurística; `p ≥ umbral` → código, `p < umbral` → LLM activo (veredicto JSON por lotes), aprobación → cola humana (Aprobar/Rechazar). Si el LLM falla, queda pendiente. Ver [`docs/experimento_prompt_spider.md`](docs/experimento_prompt_spider.md). |
 
 Modelo local: **Gemma 2 2B-it Q3_K_L** (~1,55 GB, sha256 verificado), horneado
 en la imagen Docker o auto-descargado al arrancar; sin GGUF arranca en
@@ -308,6 +309,7 @@ pared no son comparables entre máquinas.
 | Resultados v3.7 LONG / confirmación | [`docs/resultados_etapa_2_v3_long.md`](docs/resultados_etapa_2_v3_long.md) · [`docs/resultados_etapa_2_v3_confirm.md`](docs/resultados_etapa_2_v3_confirm.md) | vigentes |
 | Protocolo Etapa 2 (E18–E30) | [`docs/etapa_2_autonomia_campo_experimentos.md`](docs/etapa_2_autonomia_campo_experimentos.md) | §29+ prevalece |
 | Despliegue app web | [`docs/deploy_railway_agentic.md`](docs/deploy_railway_agentic.md) | vigente |
+| Experimento Prompt Spider (pestaña web) | [`docs/experimento_prompt_spider.md`](docs/experimento_prompt_spider.md) | experimental (rama `exp/prompt-spider`) |
 | FUSE líquido/CDT/RQM | [`docs/hibrido_liquido_cdt_rqm_fuse.md`](docs/hibrido_liquido_cdt_rqm_fuse.md) · [`docs/arquitectura_liquido_cdt_memoria.md`](docs/arquitectura_liquido_cdt_memoria.md) | diseño |
 | Capa lingüística Gemma | [`docs/capa_linguistica_gemma.md`](docs/capa_linguistica_gemma.md) · [`docs/gemma2_runtime_optimization.md`](docs/gemma2_runtime_optimization.md) | diseño |
 | Revisión de alcance | [`docs/revision_proyecto.md`](docs/revision_proyecto.md) | snapshot 30-ago-2026 |

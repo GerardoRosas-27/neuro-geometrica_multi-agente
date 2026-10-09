@@ -138,6 +138,8 @@ pub struct AppState {
     pub model_status: ModelStatus,
     /// Proveedores LLM (Gemma local + APIs externas) y el activo.
     pub llm: ProviderStore,
+    /// Prompt Spider: corrida actual, eventos y cola de aprobación.
+    pub spider: crate::web::spider_job::SpiderJobs,
 }
 
 /// Backend del decoder del campo (ON).
@@ -217,6 +219,11 @@ impl AppState {
             } else {
                 ProviderStore::load_default()
             },
+            spider: crate::web::spider_job::SpiderJobs::new(if cfg!(test) {
+                None
+            } else {
+                Some(crate::web::spider_job::default_runs_dir())
+            }),
         }
     }
 

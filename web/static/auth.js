@@ -6,7 +6,8 @@
 //   muestra el aviso de configuración.
 // - app.js solo se carga cuando hay sesión.
 (() => {
-  const APP_SRC = "/app.js?v=34";
+  const APP_SRC = "/app.js?v=35";
+  const SPIDER_SRC = "/spider.js?v=35";
   const $ = (id) => document.getElementById(id);
   const nativeFetch = window.fetch.bind(window);
   const overlay = $("auth-overlay");
@@ -120,6 +121,9 @@
     const s = document.createElement("script");
     s.src = APP_SRC;
     document.body.appendChild(s);
+    const sp = document.createElement("script");
+    sp.src = SPIDER_SRC;
+    document.body.appendChild(sp);
   }
 
   form.addEventListener("submit", async (ev) => {

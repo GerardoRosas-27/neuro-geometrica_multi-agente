@@ -317,6 +317,7 @@ pub fn router_with_auth(state: SharedState, static_dir: PathBuf, auth: SharedAut
         )
         .route("/api/llm/active", get(llm_active_get).post(llm_active_set))
         .route("/api/llm/parse-curl", post(llm_parse_curl))
+        .merge(crate::web::spider_job::routes())
         .with_state(state);
 
     // Estáticos: no-cache para que index.html siempre pida app.js/css frescos
@@ -1376,6 +1377,15 @@ mod tests {
         ("GET", "/api/llm/active"),
         ("POST", "/api/llm/active"),
         ("POST", "/api/llm/parse-curl"),
+        ("GET", "/api/spider/sample"),
+        ("POST", "/api/spider/start"),
+        ("POST", "/api/spider/stop"),
+        ("GET", "/api/spider/status"),
+        ("GET", "/api/spider/events?after=0"),
+        ("GET", "/api/spider/stream"),
+        ("POST", "/api/spider/decide"),
+        ("GET", "/api/spider/runs"),
+        ("GET", "/api/spider/export"),
         ("GET", "/api/no-existe"),
     ];
 
@@ -2483,6 +2493,34 @@ mod tests {
                     .join("\n")
             } else if sys.contains("decoder de un modelo de campo") {
                 format!("<think>x</think>MOCK-DECODER: {last}")
+            } else if sys.contains(crate::prompt_spider::LLM_SYSTEM_MARK) {
+                // Prompt Spider: veredicto JSON por palabra. «vague» → duda;
+                // «Every» → pide aprobación; prompt con MOCK-GARBAGE → sin JSON.
+                if last.contains("MOCK-GARBAGE") {
+                    "no tengo idea, lo siento".to_string()
+                } else {
+                    let verdicts: Vec<serde_json::Value> = last
+                        .lines()
+                        .filter_map(|l| {
+                            let mut parts = l.split(" | ");
+                            let i: usize = parts.next()?.trim().parse().ok()?;
+                            let w = parts.next()?.trim().to_string();
+                            Some(match w.as_str() {
+                                "vague" => json!({"i": i, "relevant": true, "grounded": true,
+                                    "ambiguous": true, "needs_approval": false, "p": 0.55}),
+                                "Every" => json!({"i": i, "relevant": true, "grounded": false,
+                                    "ambiguous": false, "needs_approval": true, "p": 0.8}),
+                                _ => json!({"i": i, "relevant": true, "grounded": "yes",
+                                    "ambiguous": false, "needs_approval": false, "p": 0.91,
+                                    "note": format!("mock ok {w}")}),
+                            })
+                        })
+                        .collect();
+                    format!(
+                        "<think>pensando</think>```json\n{}\n```",
+                        json!({ "verdicts": verdicts })
+                    )
+                }
             } else {
                 format!("MOCK-RAW({} msgs): {last}", msgs.len())
             };
@@ -2812,5 +2850,191 @@ mod tests {
             .unwrap_err();
         assert!(e.contains("no se pudo conectar"), "{e}");
         assert!(!e.contains(GOOD_KEY));
+    }
+
+    async fn spider_wait_done(app: &Router) -> serde_json::Value {
+        for _ in 0..400 {
+            let (_, v) = call_json(app.clone(), "GET", "/api/spider/status", None).await;
+            if v["running"] == false {
+                return v;
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+        panic!("la corrida del spider no terminó");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn prompt_spider_run_with_mock_llm_escalation_and_approval() {
+        use crate::prompt_spider::{dry_run, Route, DEFAULT_THRESHOLD, SAMPLE_PROMPT};
+        let base = spawn_mock_openai().await;
+        let state = lex_state();
+        let app = test_router(state.clone());
+
+        // 1) Gemma local sin GGUF: las escaladas quedan pendientes (no inventa).
+        let (st, v) = call_json(
+            app.clone(),
+            "POST",
+            "/api/spider/start",
+            Some(json!({ "pace_ms": 0 })),
+        )
+        .await;
+        assert_eq!(st, StatusCode::OK, "{v}");
+        assert_eq!(v["llm"]["kind"], "local");
+        let v = spider_wait_done(&app).await;
+        let s = &v["summary"];
+        let (_, dry) = dry_run(SAMPLE_PROMPT, DEFAULT_THRESHOLD);
+        let n_llm = dry.iter().filter(|d| d.route == Route::Llm).count() as u64;
+        let n_you = dry.iter().filter(|d| d.route == Route::You).count() as u64;
+        let n_code = dry.iter().filter(|d| d.route == Route::Code).count() as u64;
+        assert_eq!(s["forks"].as_u64().unwrap(), dry.len() as u64);
+        assert_eq!(s["code"].as_u64().unwrap(), n_code);
+        assert_eq!(s["llm_escalated"].as_u64().unwrap(), n_llm);
+        assert_eq!(s["llm_resolved"], 0);
+        assert_eq!(s["you"].as_u64().unwrap(), n_llm + n_you);
+        assert_eq!(s["coverage"], 1.0);
+        assert!(s["llm_failures"].as_u64().unwrap() >= 1);
+        let run = &v["run"];
+        assert_eq!(run["state"], "done");
+        assert!(run["llm_calls"][0]["error"]
+            .as_str()
+            .unwrap()
+            .contains("no disponible"));
+
+        // 2) API externa (mock) activa: escaladas resueltas por el LLM.
+        let (st, v) = call_json(
+            app.clone(),
+            "POST",
+            "/api/llm/providers",
+            Some(json!({ "base_url": base, "api_key": GOOD_KEY, "model": "mock-model", "name": "mock" })),
+        )
+        .await;
+        assert_eq!(st, StatusCode::OK, "{v}");
+        let id = v["provider"]["id"].as_str().unwrap().to_string();
+        let (st, _) = call_json(
+            app.clone(),
+            "POST",
+            "/api/llm/active",
+            Some(json!({ "id": id })),
+        )
+        .await;
+        assert_eq!(st, StatusCode::OK);
+        let (st, v) = call_json(
+            app.clone(),
+            "POST",
+            "/api/spider/start",
+            Some(json!({ "pace_ms": 0, "batch_size": 6, "threshold": 0.95 })),
+        )
+        .await;
+        assert_eq!(st, StatusCode::OK, "{v}");
+        assert_eq!(v["llm"]["kind"], "openai_compatible");
+        let run_id = v["run_id"].as_str().unwrap().to_string();
+        // Una segunda corrida simultánea → 409 (o ya terminó → 200).
+        let v = spider_wait_done(&app).await;
+        let s = &v["summary"];
+        assert_eq!(s["llm_escalated"].as_u64().unwrap(), n_llm);
+        // vague (duda) + Every (pide aprobación) quedan para el humano.
+        assert_eq!(s["llm_resolved"].as_u64().unwrap(), n_llm - 2, "{s}");
+        assert_eq!(s["you"].as_u64().unwrap(), n_you + 2);
+        assert_eq!(s["llm_failures"], 0);
+        assert_eq!(
+            s["llm_calls"].as_u64().unwrap(),
+            n_llm.div_ceil(6),
+            "lotes de 6"
+        );
+        let decisions = v["run"]["decisions"].as_array().unwrap();
+        let by_word = |w: &str| decisions.iter().find(|d| d["word"] == w).cloned().unwrap();
+        let vague = by_word("vague");
+        assert_eq!(vague["status"], "pending");
+        assert_eq!(vague["first_route"], "llm");
+        assert!(vague["note"].as_str().unwrap().contains("ambigua"));
+        let resolved = decisions
+            .iter()
+            .find(|d| d["route"] == "llm" && d["status"] == "resolved")
+            .unwrap();
+        assert!(resolved["resolved_by"].as_str().unwrap().contains("mock"));
+        assert_eq!(resolved["final_p"], 0.91);
+        let ask = by_word("ask");
+        assert_eq!(ask["route"], "you");
+        assert_eq!(ask["p"], 0.544);
+
+        // Eventos: start … decision … update … done.
+        let (_, ev) = call_json(app.clone(), "GET", "/api/spider/events?after=0", None).await;
+        let kinds: Vec<&str> = ev["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|e| e["kind"].as_str().unwrap())
+            .collect();
+        assert_eq!(kinds.first(), Some(&"start"));
+        assert_eq!(kinds.last(), Some(&"done"));
+        assert!(kinds.contains(&"update") && kinds.contains(&"llm_call"));
+
+        // Aprobar «ask», rechazar «vague»; repetir → 409.
+        let ask_i = ask["index"].as_u64().unwrap();
+        let (st, v) = call_json(
+            app.clone(),
+            "POST",
+            "/api/spider/decide",
+            Some(json!({ "run_id": run_id, "index": ask_i, "approve": true })),
+        )
+        .await;
+        assert_eq!(st, StatusCode::OK, "{v}");
+        assert_eq!(v["decision"]["status"], "approved");
+        assert_eq!(v["summary"]["approved"], 1);
+        let (st, _) = call_json(
+            app.clone(),
+            "POST",
+            "/api/spider/decide",
+            Some(json!({ "run_id": run_id, "index": ask_i, "approve": false })),
+        )
+        .await;
+        assert_eq!(st, StatusCode::CONFLICT);
+        let (st, v) = call_json(
+            app.clone(),
+            "POST",
+            "/api/spider/decide",
+            Some(json!({ "index": vague["index"], "approve": false })),
+        )
+        .await;
+        assert_eq!(st, StatusCode::OK);
+        assert_eq!(v["summary"]["rejected"], 1);
+
+        // Export JSON de la corrida actual.
+        let (st, v) = call_json(app.clone(), "GET", "/api/spider/export", None).await;
+        assert_eq!(st, StatusCode::OK);
+        assert_eq!(v["run"]["id"], run_id);
+        assert_eq!(v["summary"]["approved"], 1);
+        assert!(!v.to_string().contains(GOOD_KEY));
+        let (st, _) = call_json(app.clone(), "GET", "/api/spider/export?id=../x", None).await;
+        assert_eq!(st, StatusCode::BAD_REQUEST);
+
+        // 3) LLM devuelve basura → pendiente, nunca inventa.
+        let (st, _) = call_json(
+            app.clone(),
+            "POST",
+            "/api/spider/start",
+            Some(json!({ "pace_ms": 0, "prompt": "<objective>Ship MOCK-GARBAGE posts, maybe soon.</objective>" })),
+        )
+        .await;
+        assert_eq!(st, StatusCode::OK);
+        let v = spider_wait_done(&app).await;
+        let s = &v["summary"];
+        assert!(s["llm_escalated"].as_u64().unwrap() >= 2, "{s}");
+        assert_eq!(s["llm_resolved"], 0);
+        assert!(s["llm_failures"].as_u64().unwrap() >= 1);
+        assert!(v["run"]["llm_calls"][0]["error"]
+            .as_str()
+            .unwrap()
+            .contains("JSON"));
+
+        // Validación.
+        let (st, _) = call_json(
+            app.clone(),
+            "POST",
+            "/api/spider/start",
+            Some(json!({ "prompt": "   " })),
+        )
+        .await;
+        assert_eq!(st, StatusCode::BAD_REQUEST);
     }
 }
