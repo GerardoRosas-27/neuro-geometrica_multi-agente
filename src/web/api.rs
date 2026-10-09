@@ -693,17 +693,56 @@ async fn chat_gemma_raw(st: SharedState, message: String) -> axum::response::Res
             .unwrap_or_else(|e| Err(format!("tarea de generación falló: {e}"))),
             None,
         ),
-        crate::web::state::RawBackend::External(p) => {
+        crate::web::state::RawBackend::External { cfg: p, fallback } => {
             use crate::web::llm_provider::{external_raw_config, raw_chat_messages, OpenAiClient};
-            let p2 = p.clone();
+            // Con respaldo local, la API no puede comerse todo el plazo.
+            let reserve = Duration::from_secs(
+                std::env::var("RAW_CHAT_FALLBACK_RESERVE_SECS")
+                    .ok()
+                    .and_then(|v| v.trim().parse().ok())
+                    .unwrap_or(30u64)
+                    .min(300),
+            );
+            let api_budget = if fallback.is_some() {
+                remaining(deadline)
+                    .saturating_sub(reserve)
+                    .max(Duration::from_secs(5))
+            } else {
+                remaining(deadline)
+            };
+            let (p2, hist2, input2) = (p.clone(), history.clone(), input.clone());
             let r = tokio::task::spawn_blocking(move || {
-                OpenAiClient::new(&p2, remaining(deadline))
-                    .chat(&raw_chat_messages(&history, &input), external_raw_config())
+                OpenAiClient::new(&p2, api_budget)
+                    .chat(&raw_chat_messages(&hist2, &input2), external_raw_config())
                     .map(external_to_raw)
             })
             .await
             .unwrap_or_else(|e| Err(format!("tarea de generación falló: {e}")));
-            (r, Some(p))
+            match (r, fallback) {
+                (Err(e), Some(handle))
+                    if crate::web::spider_job::is_unavailable_error(&e)
+                        && remaining(deadline) >= Duration::from_secs(10) =>
+                {
+                    tracing::warn!(provider = %p.name, error = %e, "chat crudo: API externa no disponible; respaldo Gemma local");
+                    let local = tokio::task::spawn_blocking(move || {
+                        handle.generate_chat(&history, &input, cfg, Some(deadline))
+                    })
+                    .await
+                    .unwrap_or_else(|e| Err(format!("tarea de generación falló: {e}")));
+                    let ok = local.is_ok();
+                    let resp = st
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .record_raw_chat_fallback(&msg, &local, &p, &e);
+                    let status = if ok {
+                        StatusCode::OK
+                    } else {
+                        StatusCode::INTERNAL_SERVER_ERROR
+                    };
+                    return (status, Json(resp)).into_response();
+                }
+                (r, _) => (r, Some(p)),
+            }
         }
     };
     let ok = result.is_ok();
@@ -3036,5 +3075,284 @@ mod tests {
         )
         .await;
         assert_eq!(st, StatusCode::BAD_REQUEST);
+    }
+
+    async fn spider_wait_done_secs(app: &Router, secs: u64) -> serde_json::Value {
+        let t0 = std::time::Instant::now();
+        while t0.elapsed() < Duration::from_secs(secs) {
+            let (_, v) = call_json(app.clone(), "GET", "/api/spider/status", None).await;
+            if v["running"] == false {
+                return v;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        panic!("la corrida del spider no terminó en {secs}s");
+    }
+
+    /// Gemma local sustituto: `P(sí)` normalizada por prompt (dos órdenes).
+    fn stub_gemma(calls: Arc<std::sync::atomic::AtomicUsize>) -> crate::web::spider_job::LocalStub {
+        Arc::new(move |prompt: &str| {
+            calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            assert!(prompt.contains(crate::prompt_spider::LLM_SYSTEM_MARK));
+            assert!(prompt.starts_with("<start_of_turn>user\n"));
+            assert!(prompt.ends_with("\"v\":\""), "el modelo continúa el primer");
+            // «vague»: duda solo con «no» primero (sesgo de orden) → pendiente.
+            if prompt.contains("«vague»") && prompt.contains("<no|sí|dudo>") {
+                Ok(0.4)
+            } else {
+                Ok(0.9)
+            }
+        })
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn prompt_spider_external_down_falls_back_to_gemma_local_short_run() {
+        use crate::prompt_spider::{dry_run, Route, DEFAULT_THRESHOLD, SAMPLE_PROMPT};
+        let (_, dry) = dry_run(SAMPLE_PROMPT, DEFAULT_THRESHOLD);
+        let n_llm = dry.iter().filter(|d| d.route == Route::Llm).count();
+        assert!(
+            n_llm > 6,
+            "el ejemplo debe superar el límite corto: {n_llm}"
+        );
+        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let state = lex_state();
+        {
+            let mut g = state.lock().unwrap();
+            g.spider.local_stub = Some(stub_gemma(calls.clone()));
+            let p = g
+                .llm
+                .upsert(crate::web::llm_provider::ProviderInput {
+                    id: None,
+                    name: "docker-llm".into(),
+                    // Puerto discard: conexión rechazada al instante.
+                    base_url: "http://127.0.0.1:9/v1".into(),
+                    api_key: "dk-local-000000000000".into(),
+                    model: "qwen".into(),
+                })
+                .unwrap();
+            g.llm.set_active(&p.id).unwrap();
+        }
+        let app = test_router(state.clone());
+        let (_, st) = call_json(app.clone(), "GET", "/api/spider/status", None).await;
+        assert_eq!(st["llm_active"]["kind"], "openai_compatible");
+        assert!(st["llm_fallback"]["label"]
+            .as_str()
+            .unwrap()
+            .contains("Gemma local"));
+        assert_eq!(st["defaults"]["mode"], "completa");
+
+        // 1) Modo auto: la API cae → Gemma local en corrida corta.
+        let (code, v) = call_json(
+            app.clone(),
+            "POST",
+            "/api/spider/start",
+            Some(json!({ "pace_ms": 0 })),
+        )
+        .await;
+        assert_eq!(code, StatusCode::OK, "{v}");
+        assert_eq!(v["fallback_available"], true);
+        let v = spider_wait_done_secs(&app, 30).await;
+        let run = &v["run"];
+        let s = &v["summary"];
+        let fb = &run["fallback"];
+        assert!(
+            fb["message"]
+                .as_str()
+                .unwrap()
+                .contains("docker-llm no disponible → Gemma local"),
+            "{fb}"
+        );
+        assert!(fb["reason"]
+            .as_str()
+            .unwrap()
+            .contains("no se pudo conectar"));
+        assert_eq!(run["mode"], "corta");
+        let llm_calls = run["llm_calls"].as_array().unwrap();
+        assert_eq!(llm_calls[0]["ok"], false);
+        assert_ne!(llm_calls[0]["fallback"], true);
+        let local: Vec<_> = llm_calls[1..].iter().collect();
+        assert_eq!(local.len(), 6, "corta: máx 6 llamadas de 1 palabra");
+        assert!(local
+            .iter()
+            .all(|c| c["fallback"] == true && c["words"].as_array().unwrap().len() == 1));
+        // Dos lecturas de P(sí) por palabra (sí primero / no primero).
+        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 12);
+        assert_eq!(s["llm_escalated"].as_u64().unwrap() as usize, n_llm);
+        assert_eq!(s["llm_capped"].as_u64().unwrap() as usize, n_llm - 6);
+        assert!(s["llm_resolved"].as_u64().unwrap() >= 4, "{s}");
+        assert_eq!(s["escalating"], 0);
+        let decisions = run["decisions"].as_array().unwrap();
+        let resolved = decisions
+            .iter()
+            .find(|d| d["route"] == "llm" && d["status"] == "resolved")
+            .unwrap();
+        assert!(resolved["resolved_by"]
+            .as_str()
+            .unwrap()
+            .contains("respaldo"));
+        assert_eq!(resolved["final_p"], 0.9);
+        let capped: Vec<_> = decisions.iter().filter(|d| d["capped"] == true).collect();
+        assert_eq!(capped.len(), n_llm - 6);
+        assert!(capped.iter().all(|d| d["status"] == "pending"
+            && d["note"]
+                .as_str()
+                .unwrap()
+                .contains("límite de corrida corta")));
+        let (_, ev) = call_json(app.clone(), "GET", "/api/spider/events?after=0", None).await;
+        let evs = ev["events"].as_array().unwrap();
+        assert!(evs.iter().any(|e| e["kind"] == "fallback"));
+        assert_eq!(
+            evs.iter().filter(|e| e["kind"] == "llm_progress").count(),
+            7,
+            "progreso por llamada (1 API + 6 locales)"
+        );
+
+        // 2) Completa explícita: lotes de 2 en Gemma local, sin límite.
+        calls.store(0, std::sync::atomic::Ordering::SeqCst);
+        let (code, _) = call_json(
+            app.clone(),
+            "POST",
+            "/api/spider/start",
+            Some(json!({ "pace_ms": 0, "mode": "completa" })),
+        )
+        .await;
+        assert_eq!(code, StatusCode::OK);
+        let v = spider_wait_done_secs(&app, 30).await;
+        let s = &v["summary"];
+        assert_eq!(v["run"]["mode"], "completa");
+        assert_eq!(s["llm_capped"], 0);
+        // 1.ª llamada (API, lote de 8, falla) + todas las palabras en Gemma local.
+        assert_eq!(
+            s["llm_sent"].as_u64().unwrap() as usize,
+            n_llm + n_llm.min(8),
+            "{s}"
+        );
+        let local: Vec<_> = v["run"]["llm_calls"].as_array().unwrap()[1..].to_vec();
+        assert_eq!(local.len(), n_llm.div_ceil(2));
+        assert!(local
+            .iter()
+            .all(|c| c["words"].as_array().unwrap().len() <= 2));
+
+        // 3) Modo inválido → 400.
+        let (code, _) = call_json(
+            app.clone(),
+            "POST",
+            "/api/spider/start",
+            Some(json!({ "mode": "eterna" })),
+        )
+        .await;
+        assert_eq!(code, StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn prompt_spider_local_failures_go_pending_and_short_cap_override() {
+        let state = lex_state();
+        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let c2 = calls.clone();
+        state.lock().unwrap().spider.local_stub = Some(Arc::new(move |_p: &str| {
+            c2.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Err("timeout (45s)".to_string())
+        }));
+        let app = test_router(state.clone());
+        let (_, st) = call_json(app.clone(), "GET", "/api/spider/status", None).await;
+        assert_eq!(st["llm_active"]["kind"], "local");
+        assert_eq!(st["defaults"]["mode"], "corta");
+        assert_eq!(st["defaults"]["corta"]["batch_size"], 1);
+        let (code, v) = call_json(
+            app.clone(),
+            "POST",
+            "/api/spider/start",
+            Some(json!({ "pace_ms": 0, "max_escalations": 5 })),
+        )
+        .await;
+        assert_eq!(code, StatusCode::OK, "{v}");
+        assert_eq!(v["mode"], "corta");
+        assert_eq!(v["profile"]["max_escalations"], 5);
+        let v = spider_wait_done_secs(&app, 30).await;
+        let s = &v["summary"];
+        // Dos fallos seguidos → resto pendiente sin consultar (no inventa).
+        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 2);
+        assert_eq!(s["llm_resolved"], 0);
+        assert_eq!(s["llm_failures"], 2);
+        assert_eq!(s["escalating"], 0);
+        let decisions = v["run"]["decisions"].as_array().unwrap();
+        let notes: Vec<&str> = decisions
+            .iter()
+            .filter(|d| d["first_route"] == "llm")
+            .map(|d| d["note"].as_str().unwrap())
+            .collect();
+        assert!(notes
+            .iter()
+            .any(|n| n.contains("falló; pendiente (no se inventa)")));
+        assert!(notes.iter().any(|n| n.contains("veces seguidas")));
+        assert!(decisions
+            .iter()
+            .filter(|d| d["first_route"] == "llm")
+            .all(|d| d["status"] == "pending"));
+    }
+
+    /// Medición real con el GGUF (ignorada en CI):
+    /// `GEMMA2_GGUF=models/gemma-2-2b-it-Q3_K_L.gguf cargo test --release
+    /// --features web --lib real_gemma_spider -- --ignored --nocapture`.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    #[ignore]
+    async fn real_gemma_spider_short_and_full_runs() {
+        let path = std::env::var("GEMMA2_GGUF").expect("GEMMA2_GGUF");
+        let probe = crate::web::llm_periphery::open_gemma_probe(std::path::Path::new(&path))
+            .expect("abrir GGUF");
+        let state = lex_state();
+        state.lock().unwrap().install_probe(probe);
+        let app = test_router(state.clone());
+        let modes = std::env::var("SPIDER_REAL_MODES").unwrap_or_else(|_| "corta,completa".into());
+        for mode in modes.split(',') {
+            let t0 = std::time::Instant::now();
+            let (code, v) = call_json(
+                app.clone(),
+                "POST",
+                "/api/spider/start",
+                Some(json!({ "pace_ms": 0, "mode": mode })),
+            )
+            .await;
+            assert_eq!(code, StatusCode::OK, "{v}");
+            println!("[{mode}] profile {}", v["profile"]);
+            let v = spider_wait_done_secs(&app, 3600).await;
+            let wall = t0.elapsed().as_secs_f64();
+            println!("[{mode}] summary {}", v["summary"]);
+            for c in v["run"]["llm_calls"].as_array().unwrap() {
+                let words: Vec<String> = c["words"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|i| {
+                        v["run"]["tokens"][i.as_u64().unwrap() as usize]["text"]
+                            .as_str()
+                            .unwrap()
+                            .to_string()
+                    })
+                    .collect();
+                println!(
+                    "[{mode}] call {} ok={} {:.2}s words={:?} verdicts={} err={}",
+                    c["batch"],
+                    c["ok"],
+                    c["seconds"].as_f64().unwrap_or(0.0),
+                    words,
+                    c["verdicts"],
+                    c["error"]
+                );
+            }
+            for d in v["run"]["decisions"].as_array().unwrap() {
+                if d["first_route"] == "llm" {
+                    println!(
+                        "[{mode}] «{}» {} p={} final_p={} note={}",
+                        d["word"].as_str().unwrap(),
+                        d["status"],
+                        d["p"],
+                        d["final_p"],
+                        d["note"]
+                    );
+                }
+            }
+            println!("[{mode}] wall {wall:.1}s");
+        }
     }
 }

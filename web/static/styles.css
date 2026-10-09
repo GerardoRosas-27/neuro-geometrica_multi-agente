@@ -402,6 +402,26 @@ body.auth-locked { overflow: hidden; }
 .sp-btn-go { border-color: var(--sp-green); color: var(--sp-green); }
 .sp-btn-stop { border-color: var(--sp-pink); color: var(--sp-pink); }
 .sp-status { color: var(--sp-muted); margin-left: auto; min-width: 0; overflow-wrap: anywhere; }
+.sp-help { position: relative; }
+.sp-help > summary {
+  list-style: none; cursor: pointer; width: 1.4rem; height: 1.4rem; border-radius: 50%; text-align: center;
+  line-height: 1.4rem; border: 1px solid var(--sp-line); color: var(--sp-muted); font-size: 12px;
+}
+.sp-help > summary::-webkit-details-marker { display: none; }
+.sp-help[open] > summary { border-color: var(--sp-pink); color: var(--sp-pink); }
+.sp-help-body {
+  position: absolute; right: 0; top: 1.8rem; z-index: 20; width: min(420px, 86vw); font-size: 11px; line-height: 1.45;
+  background: #0d131a; border: 1px solid var(--sp-line); border-radius: 6px; padding: 0.5rem 0.7rem; color: var(--sp-text);
+}
+.sp-help-body p { margin: 0.25rem 0; }
+.sp-help-body a { color: var(--sp-pink); }
+.sp-llm-prog, .sp-fallback {
+  font-size: 11px; border: 1px solid var(--sp-line); border-radius: 6px; padding: 0.3rem 0.6rem; background: var(--sp-card);
+  overflow-wrap: anywhere;
+}
+.sp-llm-prog { color: var(--sp-orange); }
+.sp-llm-prog .t { color: var(--sp-muted); margin-left: 0.4rem; font-variant-numeric: tabular-nums; }
+.sp-fallback { color: var(--sp-yellow); border-color: rgba(255, 210, 63, 0.4); }
 .sp-card { border: 1px solid var(--sp-line); background: var(--sp-card); border-radius: 6px; padding: 0.5rem 0.6rem; min-width: 0; }
 .sp-card-h { color: var(--sp-text); font-size: 11px; margin-bottom: 0.4rem; display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
 .sp-card-h .sp-muted { margin-left: auto; font-size: 10px; }

@@ -906,7 +906,18 @@ pub fn parse_llm_verdicts(text: &str, expected: &[usize]) -> Result<Vec<LlmVerdi
     match (arr, &v) {
         (Some(a), _) => items.extend(a.into_iter().map(|x| (None, x))),
         (None, Value::Object(o)) => {
-            if o.contains_key("p") || o.contains_key("confidence") {
+            let single = [
+                "p",
+                "confidence",
+                "v",
+                "veredicto",
+                "respuesta",
+                "i",
+                "index",
+            ]
+            .iter()
+            .any(|k| o.contains_key(*k));
+            if single {
                 items.push((None, v.clone()));
             } else {
                 for (k, x) in o {
@@ -933,9 +944,14 @@ pub fn parse_llm_verdicts(text: &str, expected: &[usize]) -> Result<Vec<LlmVerdi
         if out.iter().any(|x| x.index == idx) {
             continue;
         }
+        let cat = ["v", "veredicto", "respuesta", "answer"]
+            .iter()
+            .find_map(|k| o.get(*k).and_then(Value::as_str))
+            .and_then(categorical_verdict);
         let Some(p) = ["p", "confidence", "confianza", "prob"]
             .iter()
             .find_map(|k| o.get(*k).and_then(as_prob))
+            .or(cat.map(|c| c.0))
         else {
             continue;
         };
@@ -948,9 +964,15 @@ pub fn parse_llm_verdicts(text: &str, expected: &[usize]) -> Result<Vec<LlmVerdi
             index: idx,
             relevant: b(&["relevant", "relevante"], true),
             grounded: b(&["grounded", "fundamentada", "sourced"], false),
-            ambiguous: b(&["ambiguous", "ambigua"], false),
+            ambiguous: b(&["ambiguous", "ambigua", "amb"], cat.is_some_and(|c| c.1)),
             needs_approval: b(
-                &["needs_approval", "approval", "requiere_aprobacion"],
+                &[
+                    "needs_approval",
+                    "approval",
+                    "requiere_aprobacion",
+                    "aprob",
+                    "aprobacion",
+                ],
                 false,
             ),
             p: r3(p),
@@ -958,7 +980,15 @@ pub fn parse_llm_verdicts(text: &str, expected: &[usize]) -> Result<Vec<LlmVerdi
                 .get("note")
                 .or_else(|| o.get("reason"))
                 .and_then(Value::as_str)
-                .unwrap_or("")
+                .map(str::to_string)
+                .or_else(|| {
+                    ["v", "veredicto", "respuesta", "answer"]
+                        .iter()
+                        .find_map(|k| o.get(*k).and_then(Value::as_str))
+                        .filter(|_| cat.is_some())
+                        .map(|v| format!("respuesta: {}", v.trim()))
+                })
+                .unwrap_or_default()
                 .chars()
                 .take(160)
                 .collect(),
@@ -1002,6 +1032,263 @@ pub fn dry_run(prompt: &str, threshold: f64) -> (Vec<Token>, Vec<DryDecision>) {
         });
     }
     (tokens, out)
+}
+
+// ---------------------------------------------------------------------------
+// Corridas cortas / completas y prompt compacto (Gemma local en CPU)
+// ---------------------------------------------------------------------------
+
+/// Modo de corrida: `corta` limita las escaladas y usa lotes pequeños (por
+/// defecto con Gemma local en CPU); `completa` escala todas las palabras.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RunMode {
+    #[serde(alias = "short")]
+    Corta,
+    #[serde(alias = "full")]
+    Completa,
+}
+
+impl RunMode {
+    /// Parseo tolerante (`corta`/`short`, `completa`/`full`).
+    pub fn parse(s: &str) -> Option<Self> {
+        match s.trim().to_lowercase().as_str() {
+            "corta" | "short" => Some(Self::Corta),
+            "completa" | "full" => Some(Self::Completa),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Corta => "corta",
+            Self::Completa => "completa",
+        }
+    }
+}
+
+/// Tipo de LLM que atiende las escaladas (determina los valores por defecto).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LlmKind {
+    /// Gemma 2 GGUF local (CPU): lotes de 1-2 palabras, prompt compacto.
+    Local,
+    /// API OpenAI-compatible (docker-llm…): lotes grandes, prompt completo.
+    External,
+}
+
+/// Parámetros efectivos de una corrida para un LLM concreto.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RunProfile {
+    pub mode: RunMode,
+    /// Palabras por llamada al LLM.
+    pub batch_size: usize,
+    /// Plazo por llamada (segundos).
+    pub timeout_secs: u64,
+    /// Tokens máximos de la respuesta.
+    pub max_tokens: usize,
+    /// Máximo de palabras escaladas por corrida (`None` = sin límite).
+    pub max_escalations: Option<usize>,
+    /// Prompt compacto (sin el prompt completo; JSON corto).
+    pub compact: bool,
+    /// Fallos seguidos del LLM tras los que el resto queda pendiente.
+    pub max_consecutive_failures: usize,
+}
+
+/// Valores por defecto (sin env). Gemma local medido en CPU (8 vCPU): ~5 s
+/// por lectura de `P(sí)` (prefill de ~180 tokens), 2 lecturas por palabra
+/// (ver `docs/experimento_prompt_spider.md`). `max_tokens` solo aplica a la
+/// API externa y al modo no compacto (el compacto no genera texto).
+pub fn default_profile(kind: LlmKind, mode: RunMode) -> RunProfile {
+    match (kind, mode) {
+        (LlmKind::Local, RunMode::Corta) => RunProfile {
+            mode,
+            batch_size: 1,
+            timeout_secs: 45,
+            max_tokens: 16,
+            max_escalations: Some(6),
+            compact: true,
+            max_consecutive_failures: 2,
+        },
+        (LlmKind::Local, RunMode::Completa) => RunProfile {
+            mode,
+            batch_size: 2,
+            timeout_secs: 90,
+            max_tokens: 32,
+            max_escalations: None,
+            compact: true,
+            max_consecutive_failures: 3,
+        },
+        (LlmKind::External, RunMode::Corta) => RunProfile {
+            mode,
+            batch_size: 8,
+            timeout_secs: 60,
+            max_tokens: 1200,
+            max_escalations: Some(24),
+            compact: false,
+            max_consecutive_failures: 2,
+        },
+        (LlmKind::External, RunMode::Completa) => RunProfile {
+            mode,
+            batch_size: 8,
+            timeout_secs: 60,
+            max_tokens: 1200,
+            max_escalations: None,
+            compact: false,
+            max_consecutive_failures: 3,
+        },
+    }
+}
+
+/// Modo por defecto según el LLM: `corta` con Gemma local, `completa` con API.
+pub fn default_mode(kind: LlmKind) -> RunMode {
+    match kind {
+        LlmKind::Local => RunMode::Corta,
+        LlmKind::External => RunMode::Completa,
+    }
+}
+
+/// Perfil con overrides de entorno. Orden: `SPIDER_LOCAL_<X>` (Gemma) o
+/// `SPIDER_API_<X>` (externa) → `SPIDER_<X>` → defecto. `X` ∈
+/// `LLM_TIMEOUT_SECS`, `BATCH_SIZE`, `MAX_ESCALATIONS` (0 = sin límite; solo
+/// aplica a `corta`), `LLM_MAX_TOKENS`. `env` se inyecta para poder testear.
+pub fn resolve_profile(
+    kind: LlmKind,
+    mode: RunMode,
+    env: &dyn Fn(&str) -> Option<String>,
+) -> RunProfile {
+    let mut p = default_profile(kind, mode);
+    let prefix = match kind {
+        LlmKind::Local => "SPIDER_LOCAL_",
+        LlmKind::External => "SPIDER_API_",
+    };
+    let get = |name: &str| -> Option<u64> {
+        env(&format!("{prefix}{name}"))
+            .and_then(|v| v.trim().parse().ok())
+            .or_else(|| env(&format!("SPIDER_{name}")).and_then(|v| v.trim().parse().ok()))
+    };
+    if let Some(t) = get("LLM_TIMEOUT_SECS") {
+        p.timeout_secs = t.clamp(2, 600);
+    }
+    if let Some(b) = get("BATCH_SIZE") {
+        p.batch_size = (b as usize).clamp(1, 64);
+    }
+    if let Some(m) = get("LLM_MAX_TOKENS") {
+        p.max_tokens = match kind {
+            LlmKind::Local => (m as usize).clamp(16, 2048),
+            LlmKind::External => (m as usize).clamp(64, 8192),
+        };
+    }
+    if mode == RunMode::Corta {
+        if let Some(n) = get("MAX_ESCALATIONS") {
+            p.max_escalations = (n > 0).then_some(n as usize);
+        }
+    }
+    p
+}
+
+/// Pregunta tipada en lenguaje llano (prompt compacto), formulada para que
+/// «sí» signifique «la palabra está bien» (→ resuelta).
+fn question_text(q: Question, w: &str) -> String {
+    match q {
+        Question::Relevant => format!("¿«{w}» es relevante para la tarea?"),
+        Question::Grounded => format!("¿lo que afirma «{w}» está respaldado por el texto?"),
+        Question::Ambiguous => format!("¿«{w}» es clara y específica aquí (no ambigua)?"),
+        Question::Approval => format!("¿«{w}» se puede ejecutar sin aprobación humana?"),
+    }
+}
+
+/// Confianza fija por respuesta categórica del LLM local (`sí`/`dudo`/`no`).
+/// Gemma 2 2B no da probabilidades calibradas: se le pide una categoría y se
+/// mapea de forma **documentada** (`sí` ≥ piso → resuelta; `dudo`/`no` <
+/// piso → pendiente para ti).
+pub const CATEGORICAL_P_YES: f64 = 0.85;
+pub const CATEGORICAL_P_UNSURE: f64 = 0.5;
+pub const CATEGORICAL_P_NO: f64 = 0.3;
+
+/// `sí`/`dudo`/`no` → (p, ambigua). `None` si no es una categoría.
+pub fn categorical_verdict(s: &str) -> Option<(f64, bool)> {
+    let t = s
+        .trim()
+        .trim_matches(|c: char| !c.is_alphanumeric())
+        .to_lowercase();
+    match t.as_str() {
+        "sí" | "si" | "yes" | "s" | "y" | "true" => Some((CATEGORICAL_P_YES, false)),
+        "dudo" | "duda" | "no sé" | "no se" | "quizá" | "quizás" | "tal vez" | "maybe"
+        | "unsure" => Some((CATEGORICAL_P_UNSURE, true)),
+        "no" | "n" | "false" => Some((CATEGORICAL_P_NO, false)),
+        _ => None,
+    }
+}
+
+/// Extracto corto de la tarea (sin etiquetas) para el prompt compacto.
+pub fn task_excerpt(prompt: &str, max_chars: usize) -> String {
+    let words: Vec<String> = tokenize(prompt)
+        .into_iter()
+        .filter(|t| t.kind != TokenKind::Tag)
+        .map(|t| t.text)
+        .collect();
+    let mut out = String::new();
+    for w in words {
+        if out.chars().count() + w.chars().count() + 1 > max_chars {
+            out.push('…');
+            break;
+        }
+        if !out.is_empty() {
+            out.push(' ');
+        }
+        out.push_str(&w);
+    }
+    out
+}
+
+/// Prompt compacto para Gemma local (plantilla chat Gemma 2 ya renderizada,
+/// terminada en el «primer» `{"i":N,"v":"`): una palabra, su contexto ±6 y la
+/// pregunta tipada (~180 tokens). No se genera texto: se lee la probabilidad
+/// del siguiente token (`sí` vs `no`) con un único forward. `yes_first`
+/// alterna el orden de las opciones (`<sí|no|dudo>` / `<no|sí|dudo>`) porque
+/// Gemma 2 2B tiene un sesgo fuerte hacia la primera opción listada (medido:
+/// ver `docs/experimento_prompt_spider.md`).
+pub fn compact_gemma_prompt(task: &str, item: &EscalationItem, yes_first: bool) -> String {
+    let mut s = String::from("<start_of_turn>user\n");
+    s.push_str(&format!("{LLM_SYSTEM_MARK}."));
+    if !task.is_empty() {
+        s.push_str(&format!(" Tarea: «{task}»"));
+    }
+    s.push('\n');
+    s.push_str(&format!(
+        "i={}: «{}» {}\n",
+        item.index,
+        item.context,
+        question_text(item.question, &item.word)
+    ));
+    let opts = if yes_first {
+        "sí|no|dudo"
+    } else {
+        "no|sí|dudo"
+    };
+    s.push_str(&format!(
+        "Responde solo JSON {{\"i\":<i>,\"v\":\"<{opts}>\"}}. Si no estás seguro, dudo."
+    ));
+    s.push_str("<end_of_turn>\n<start_of_turn>model\n");
+    s.push_str(&format!("{{\"i\":{},\"v\":\"", item.index));
+    s
+}
+
+/// Veredicto de Gemma local a partir de `P(sí)` normalizada (`sí/(sí+no)`)
+/// medida con las dos órdenes de opciones: `p = min(p_sí_primero,
+/// p_no_primero)` (solo resuelve si el modelo dice «sí» de forma consistente
+/// sin depender del orden). Nunca se inventa: `p < piso` → pendiente.
+pub fn gemma_choice_verdict(index: usize, p_yes_first: f64, p_no_first: f64) -> LlmVerdict {
+    let p = r3(p_yes_first.min(p_no_first).clamp(0.0, 1.0));
+    LlmVerdict {
+        index,
+        relevant: true,
+        grounded: true,
+        ambiguous: false,
+        needs_approval: false,
+        p,
+        note: format!("P(sí)={p_yes_first:.3} (sí primero) / {p_no_first:.3} (no primero)"),
+    }
 }
 
 #[cfg(test)]
@@ -1215,5 +1502,92 @@ mod tests {
         let u = llm_user_prompt(SAMPLE_PROMPT, &[item]);
         assert!(u.contains(&format!("{i} | vague |")));
         assert!(llm_system_prompt().contains(LLM_SYSTEM_MARK));
+    }
+
+    #[test]
+    fn run_profiles_defaults_and_env_overrides() {
+        let none = |_: &str| None;
+        let p = resolve_profile(LlmKind::Local, RunMode::Corta, &none);
+        assert_eq!(p, default_profile(LlmKind::Local, RunMode::Corta));
+        assert_eq!(p.batch_size, 1);
+        assert!(p.compact && p.max_tokens <= 64 && p.max_escalations.is_some());
+        let full = resolve_profile(LlmKind::Local, RunMode::Completa, &none);
+        assert_eq!(full.batch_size, 2);
+        assert_eq!(full.max_escalations, None);
+        let api = resolve_profile(LlmKind::External, RunMode::Completa, &none);
+        assert!(api.batch_size >= 8 && !api.compact);
+        assert_eq!(default_mode(LlmKind::Local), RunMode::Corta);
+        assert_eq!(default_mode(LlmKind::External), RunMode::Completa);
+        // Específica del proveedor > genérica > defecto.
+        let env = |k: &str| match k {
+            "SPIDER_LOCAL_LLM_TIMEOUT_SECS" => Some("33".to_string()),
+            "SPIDER_LLM_TIMEOUT_SECS" => Some("90".to_string()),
+            "SPIDER_BATCH_SIZE" => Some("3".to_string()),
+            "SPIDER_MAX_ESCALATIONS" => Some("0".to_string()),
+            "SPIDER_API_MAX_ESCALATIONS" => Some("10".to_string()),
+            "SPIDER_LOCAL_LLM_MAX_TOKENS" => Some("5".to_string()),
+            _ => None,
+        };
+        let l = resolve_profile(LlmKind::Local, RunMode::Corta, &env);
+        assert_eq!(l.timeout_secs, 33);
+        assert_eq!(l.batch_size, 3);
+        assert_eq!(l.max_escalations, None, "0 = sin límite");
+        assert_eq!(l.max_tokens, 16, "clamp");
+        let a = resolve_profile(LlmKind::External, RunMode::Corta, &env);
+        assert_eq!(a.timeout_secs, 90);
+        assert_eq!(a.max_escalations, Some(10));
+        // En completa el límite no aplica.
+        let a = resolve_profile(LlmKind::External, RunMode::Completa, &env);
+        assert_eq!(a.max_escalations, None);
+        assert_eq!(RunMode::parse(" Short "), Some(RunMode::Corta));
+        assert_eq!(RunMode::parse("full"), Some(RunMode::Completa));
+        assert_eq!(RunMode::parse("x"), None);
+    }
+
+    #[test]
+    fn compact_prompt_and_choice_verdict_for_gemma() {
+        let toks = tokenize(SAMPLE_PROMPT);
+        let i = toks.iter().position(|t| t.text == "vague").unwrap();
+        let item = EscalationItem {
+            index: i,
+            word: "vague".into(),
+            context: word_context(&toks, i, 6),
+            question: Question::Ambiguous,
+            p: 0.62,
+        };
+        let task = task_excerpt(SAMPLE_PROMPT, 120);
+        assert!(task.chars().count() <= 121 && !task.contains('<'));
+        let a = compact_gemma_prompt(&task, &item, true);
+        let b = compact_gemma_prompt(&task, &item, false);
+        assert!(a.starts_with("<start_of_turn>user\n"));
+        assert!(a.ends_with(&format!("<start_of_turn>model\n{{\"i\":{i},\"v\":\"")));
+        assert!(a.contains(LLM_SYSTEM_MARK) && a.contains("«vague»") && a.contains("[vague]"));
+        assert!(a.contains("<sí|no|dudo>") && b.contains("<no|sí|dudo>"));
+        assert!(!a.contains("<role>"), "sin el prompt completo");
+        assert!(
+            a.chars().count() < 600,
+            "prompt compacto: {}",
+            a.chars().count()
+        );
+        // Consistente → resuelve; dependiente del orden → pendiente.
+        let v = gemma_choice_verdict(i, 0.991, 0.742);
+        assert_eq!(v.p, 0.742);
+        assert_eq!(
+            verdict_outcome(&v, DEFAULT_LLM_FLOOR),
+            VerdictOutcome::Resolved
+        );
+        let v = gemma_choice_verdict(i, 0.988, 0.228);
+        assert_eq!(v.p, 0.228);
+        assert_eq!(
+            verdict_outcome(&v, DEFAULT_LLM_FLOOR),
+            VerdictOutcome::Pending
+        );
+        assert!(v.note.contains("0.988") && v.note.contains("0.228"));
+        // Categorías en JSON de APIs (`v`) también se aceptan.
+        let v = parse_llm_verdicts(&format!("{{\"i\":{i},\"v\":\"sí\"}}"), &[i]).unwrap();
+        assert_eq!(v[0].p, CATEGORICAL_P_YES);
+        let v = parse_llm_verdicts(&format!("{{\"i\":{i},\"v\":\"dudo\"}}"), &[i]).unwrap();
+        assert!(v[0].ambiguous && v[0].p == CATEGORICAL_P_UNSURE);
+        assert!(parse_llm_verdicts("{\"i\":3,\"v\":\"azul\"}", &[3]).is_err());
     }
 }
