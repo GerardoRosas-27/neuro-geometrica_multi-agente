@@ -328,7 +328,7 @@ impl SpiderFieldState {
         self.job.push(
             "online_sleep",
             format!(
-                "sueño: {} episodio(s) de vigilia consolidados ({:.0} ms)",
+                "sueño: {} episodio(s) de vigilia (cabeza×ejemplo) consolidados ({:.0} ms)",
                 rep.episodes, rep.ms
             ),
             json!(rep),
@@ -715,6 +715,7 @@ async fn train_loop(st: SharedState, stop: Arc<AtomicBool>, opts: TrainOpts) {
             g.spider_field.router.clone()
         };
         let (floor, h1c, h2c, hold_real) = (opts.floor, h1.clone(), h2.clone(), real.hold.clone());
+        let ds_len = ds.len();
         let t0 = Instant::now();
         let res = tokio::task::spawn_blocking(move || {
             let mut r = snapshot;
@@ -790,7 +791,7 @@ async fn train_loop(st: SharedState, stop: Arc<AtomicBool>, opts: TrainOpts) {
             j.push(
             "sleep",
             format!(
-                "dataset {n}: {} episodios → sueño CDT {} clases · RQM {} celdas · repetición {} ({:.1}s)",
+                "dataset {n}: {ds_len} ejemplos ({} episodios cabeza×ejemplo) → sueño CDT {} clases · RQM {} celdas · repetición {} ({:.1}s)",
                 rep.episodes, rep.cdt_classes, rep.rqm_cells, rep.replay, secs
             ),
             json!(rep),
