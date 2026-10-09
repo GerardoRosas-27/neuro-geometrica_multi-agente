@@ -140,6 +140,8 @@ pub struct AppState {
     pub llm: ProviderStore,
     /// Prompt Spider: corrida actual, eventos y cola de aprobación.
     pub spider: crate::web::spider_job::SpiderJobs,
+    /// Decoder del campo del Prompt Spider (router + entrenamiento).
+    pub spider_field: crate::web::spider_field_job::SpiderFieldState,
 }
 
 /// Backend del decoder del campo (ON).
@@ -229,6 +231,14 @@ impl AppState {
             } else {
                 Some(crate::web::spider_job::default_runs_dir())
             }),
+            spider_field: if cfg!(test) {
+                crate::web::spider_field_job::SpiderFieldState::new(None, None)
+            } else {
+                crate::web::spider_field_job::SpiderFieldState::new(
+                    Some(crate::web::spider_field_job::default_field_dir()),
+                    Some(crate::web::spider_field_job::default_ckpt_dir()),
+                )
+            },
         }
     }
 
@@ -1546,6 +1556,24 @@ impl AppState {
             }
         }
         self.sleep_job.last_report = Some(report.clone());
+        // Decoder del campo del Spider: el mismo sueño consolida su vigilia
+        // (decisiones Aprobar / Rechazar) en CDT + RQM y reajusta las cabezas.
+        match self.spider_field.sleep_if_ready() {
+            Some(Ok(rep)) => self.sleep_job.push_event(
+                "spider_field",
+                format!(
+                    "decoder del campo (Spider): {} episodio(s) consolidados",
+                    rep.episodes
+                ),
+                serde_json::json!({ "episodes": rep.episodes, "ms": rep.ms }),
+            ),
+            Some(Err(why)) => self.sleep_job.push_event(
+                "spider_field",
+                format!("decoder del campo (Spider): {why}"),
+                serde_json::json!({}),
+            ),
+            None => {}
+        }
         self.sleep_job.push_event(
             "cycle_done",
             format!(

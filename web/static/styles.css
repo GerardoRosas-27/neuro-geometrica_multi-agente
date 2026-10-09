@@ -556,3 +556,17 @@ body.auth-locked { overflow: hidden; }
   .sp-table td.q { display: none; }
   .sp-pend { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* Prompt Spider · decoder del campo */
+.sp-field-switch .switch-label { font-size: 11px; color: var(--sp-text); }
+.sp-field-switch input:checked ~ .switch-label { color: var(--sp-pink); }
+.sp-field-train { margin-top: 0.6rem; }
+.sp-ft-controls { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; font-size: 11px; margin-bottom: 0.4rem; }
+.sp-chk { display: inline-flex; gap: 0.3rem; align-items: center; color: var(--sp-muted); }
+.sp-ft-grid { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 0.6rem; }
+.sp-ft-metrics td.k { color: var(--sp-muted); }
+.sp-ft-metrics td.n { text-align: right; font-variant-numeric: tabular-nums; }
+.sp-ft-metrics tr.h td { color: var(--sp-pink); border-bottom-color: var(--sp-line); }
+.sp-ft-log { max-height: 220px; overflow: auto; font-size: 10.5px; color: var(--sp-muted); white-space: pre-wrap; overflow-wrap: anywhere; }
+.sp-ft-log div { padding: 0.1rem 0; border-bottom: 1px solid #0f151d; }
+@media (max-width: 760px) { .sp-ft-grid { grid-template-columns: 1fr; } }

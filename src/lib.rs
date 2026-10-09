@@ -87,6 +87,8 @@ pub mod residue_budget;
 pub mod residue_vacuum_bridge;
 pub mod residue_vacuum_fluctuation;
 pub mod simplicial_thermodynamic_engine;
+pub mod spider_field;
+pub mod spider_field_experiment;
 pub mod symmetry_guided_rqm_epr;
 pub mod symmetry_thermodynamic_substrate;
 pub mod thermo_router;

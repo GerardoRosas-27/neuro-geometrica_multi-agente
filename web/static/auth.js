@@ -6,8 +6,8 @@
 //   muestra el aviso de configuración.
 // - app.js solo se carga cuando hay sesión.
 (() => {
-  const APP_SRC = "/app.js?v=36";
-  const SPIDER_SRC = "/spider.js?v=36";
+  const APP_SRC = "/app.js?v=37";
+  const SPIDER_SRC = "/spider.js?v=37";
   const $ = (id) => document.getElementById(id);
   const nativeFetch = window.fetch.bind(window);
   const overlay = $("auth-overlay");

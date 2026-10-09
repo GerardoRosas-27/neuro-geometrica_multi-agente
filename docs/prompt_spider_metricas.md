@@ -210,8 +210,10 @@ palabra, p heurística, pregunta, contexto ±6 y el **motivo**:
 **Aprobar / Rechazar**: `POST /api/spider/decide {run_id, index, approve}`.
 Solo sobre pendientes (409 si no). Cambia `status` a `approved`/`rejected`,
 `resolved_by = "you"`; la ruta sigue siendo `tú`. Actualiza contadores
-(✓/✗, `summary.approved/rejected`) y vuelve a guardar el JSON. No reentrena
-nada ni cambia las heurísticas.
+(✓/✗, `summary.approved/rejected`) y vuelve a guardar el JSON. No cambia
+las heurísticas; sí queda como **episodio de vigilia** del decoder del campo
+(etiqueta `user`), que se consolida en el siguiente sueño (pestaña Sueño o
+«Entrenamiento Prompt Spider»). Ver §7.
 
 ## 5. Export JSON (`GET /api/spider/export?id=`)
 
@@ -250,6 +252,13 @@ nada ni cambia las heurísticas.
 }
 ```
 
+Con el **decoder del campo** activo la corrida añade `run.decider = "campo"`,
+`run.field_model` (nombre, entrenado, ejemplos, sueños, hold-out), en cada
+escalada `decision.field = {probs[5], p_ok, novelty, micros, resolved,
+reason}` (`resolved_by = "campo"` si la resolvió) y en el resumen `decider`,
+`field_escalated`, `field_resolved` y `field_latency_us` (mediana). Las
+corridas con LLM tienen `decider = "llm"` y `field_* = 0`.
+
 Campos opcionales (`verdict`, `note`, `capped`, `fallback`, `error`…) se
 omiten cuando están vacíos. `auto_resolved = code + llm_resolved`;
 `llm_sent` = palabras enviadas en llamadas (incluye las fallidas y la llamada
@@ -278,3 +287,54 @@ Lectura: el 81 % del prompt no necesitó modelo; las palabras dudosas
 exactamente lo que conviene revisar a mano o con un LLM mejor. La corrida
 corta termina en ~1 min con Gemma en CPU sin timeouts; para resolver más,
 usa **completa** (≈ 20 × 11 s) o una API externa (docker-llm).
+
+## 7. Decoder del campo (interruptor en la barra del Spider)
+
+Con **Decoder del campo** activo (se recuerda en el navegador), las palabras
+escaladas (`p < umbral`) **no** van al LLM: las decide el router del campo
+del Spider (líquido + CDT + RQM/EPR) entrenado en **Entrenamiento Prompt
+Spider** (tarjeta al final de la pestaña). Arquitectura, entrenamiento y el
+experimento de sustrato: [`prompt_spider_decoder_campo.md`](prompt_spider_decoder_campo.md).
+
+Cambios en los paneles con el decoder activo:
+
+| Panel | Con LLM | Con decoder del campo |
+|---|---|---|
+| Nombre del escalado (contador, caja, chip, barras, stream) | etiqueta del LLM | `campo` |
+| Pie de la caja `p < umbral` | «N llamadas · M resueltas · K por límite» | «campo · M resueltas · 0 llamadas · X µs» (X = mediana de latencia por decisión) |
+| Dónde pensó | «N llamadas · M resueltas» | «decoder del campo · M resueltas · P a ti · X µs» |
+| `final_p` / sparkline | p del LLM si devolvió veredicto | `P(ok)` calibrada del campo |
+| Línea de progreso del LLM | llamadas en curso | no aparece (no hay llamadas) |
+
+Una escalada se resuelve por el campo (`resolved_by = campo`, ruta final
+`llm`) solo si `P(ok) ≥ piso (0.70)`, `P(aprobación) < 0.5`,
+`P(ambigua) < 0.5` y la **novedad** CDT está dentro de lo visto en
+entrenamiento. Si no, queda **pendiente** con uno de estos motivos:
+
+| Motivo | Significado |
+|---|---|
+| `campo: decoder del campo sin entrenar; pendiente (no se inventa)` | Aún no hay modelo: entrena primero. |
+| `campo: fuera de distribución (novedad a > b); pendiente` | El estado líquido no se parece a ningún engrama CDT consolidado. |
+| `campo: el campo pide aprobación (P=…)` | La cabeza `needs_approval` ≥ 0.5. |
+| `campo: el campo la marca ambigua (P=…)` | La cabeza `ambiguous` ≥ 0.5. |
+| `campo: el campo duda (P(ok)=… < 0.70)` | Confianza calibrada bajo el piso. |
+
+Las palabras de aprobación (ruta inicial `tú`) y las de código no cambian:
+el campo solo sustituye al LLM en las escaladas.
+
+### Tarjeta «Entrenamiento Prompt Spider»
+
+- **datasets** (2 / 6 / 12 / ∞), **prompts/dataset**, **maestro LLM** (0 / 4 /
+  12 escaladas por dataset consultadas en vivo al LLM activo), **corridas
+  guardadas** (usar etiquetas de `data/spider_runs`), **sustrato nuevo**
+  (empezar en blanco).
+- Tabla: en las **escaladas** del hold-out fijo — H1 (vocabulario visto, 24
+  prompts) y H2 (vocabulario nuevo, 24 prompts) — exactitud de `ok`, ECE (10
+  bins), Brier, % resueltas por el campo y precisión de lo resuelto, frente a
+  la heurística (scorer + piso) en las mismas palabras; exactitud / ECE /
+  Brier por pregunta en todas las palabras de H1; latencia mediana; en datos
+  reales, exactitud frente a tus Aprobar/Rechazar y acuerdo con el maestro LLM
+  (1 de cada 5 palabras etiquetadas se reserva para esto).
+- Registro: dataset → vigilia → sueño (clases CDT, celdas RQM, repetición) →
+  evaluación → checkpoint (`data/checkpoints/spider_field/`).
+
