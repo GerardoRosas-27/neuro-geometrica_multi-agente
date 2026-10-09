@@ -67,6 +67,7 @@ pub struct FuseReport {
 }
 
 /// Sistema fusionado: líquido + CDT sueño + índice RQM relacional.
+#[derive(Clone)]
 pub struct FusedLiquidCdt {
     pub liquid: LiquidInfer,
     pub memory: CdtConsolidatedMemory,

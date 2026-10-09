@@ -38,6 +38,9 @@
   let lastFork = null; // {index, t}
   let callStart = 0; // performance.now() de la llamada LLM en curso
   const MODE_KEY = "spider.mode.v1";
+  const FIELD_KEY = "spider.fieldDecoder.v1";
+  const fieldChk = $("sp-field-decoder");
+  const fieldOn = () => !!(fieldChk && fieldChk.checked);
   let lines = 1;
 
   // ---------------------------------------------------------------- util
@@ -202,7 +205,12 @@
     bump("sp-n-llm", c.llmEsc, 1);
     bump("sp-n-you", c.you, 1);
     const capped = order.filter((i) => dec.get(i).capped).length;
-    $("sp-f-llm").textContent = `${llmCalls.length} llamadas · ${c.llmRes} resueltas` + (capped ? ` · ${capped} por límite` : "");
+    const isField = run.decider === "campo";
+    const fieldUs = order.map((i) => dec.get(i).field).filter(Boolean).map((f) => f.micros).sort((a, b) => a - b);
+    const fieldLat = fieldUs.length ? ` · ${fieldUs[fieldUs.length >> 1].toFixed(0)} µs` : "";
+    $("sp-f-llm").textContent = isField
+      ? `campo · ${c.llmRes} resueltas · 0 llamadas${fieldLat}`
+      : `${llmCalls.length} llamadas · ${c.llmRes} resueltas` + (capped ? ` · ${capped} por límite` : "");
     $("sp-f-you").textContent = `${c.pending} pendientes · ${c.approved}✓ ${c.rejected}✗`;
     $("sp-routed-n").textContent = order.length;
     $("sp-routed-sub").textContent = `de ${forksTotal} palabras del prompt (${total} tokens)`;
@@ -218,11 +226,15 @@
     $("sp-cov").textContent = cov + "%";
     $("sp-t-code").textContent = `${c.code} if-statements`;
     const failed = llmCalls.filter((x) => !x.ok).length;
-    $("sp-t-llm").textContent = `${llmCalls.length} llamadas · ${c.llmRes} resueltas` + (failed ? ` · ${failed} fallidas` : "");
+    $("sp-t-llm").textContent = isField
+      ? `decoder del campo · ${c.llmRes} resueltas · ${c.llmEsc - c.llmRes} a ti${fieldLat}`
+      : `${llmCalls.length} llamadas · ${c.llmRes} resueltas` + (failed ? ` · ${failed} fallidas` : "");
     $("sp-t-you").textContent = `${c.you} aprobaciones (${c.pending} pendientes)`;
     $("sp-ln").textContent = "ln " + (run.tokens[Math.max(0, cursor - 1)]?.line + 1 || 0);
     const prof = run.profile;
-    const profTxt = prof
+    const profTxt = isField
+      ? " · escaladas → decoder del campo"
+      : prof
       ? ` · corrida ${run.mode || prof.mode} (lotes de ${prof.batch_size}, plazo ${prof.timeout_secs}s, ${prof.max_escalations == null ? "sin límite" : "máx " + prof.max_escalations})`
       : "";
     $("sp-foot-l").textContent = `spider·${llmLabel} · ${run.state || "—"} · umbral ${Number(run.threshold).toFixed(2)}${profTxt}`;
@@ -666,8 +678,7 @@
     if (running) return;
     try {
       const st = await api("/api/spider/status");
-      if (!run) setLlmName(st.llm_active && st.llm_active.label);
-      else if (!running) setLlmName(st.llm_active && st.llm_active.label);
+      if (!running) setLlmName(fieldOn() ? "campo" : st.llm_active && st.llm_active.label);
       const chip = $("sp-llm-chip");
       if (st.llm_active && st.llm_active.unavailable) chip.title = "No disponible: " + st.llm_active.unavailable;
       else if (st.llm_fallback) chip.title = "Respaldo si la API no responde: " + st.llm_fallback.label;
@@ -708,12 +719,21 @@
         threshold: Number(thr.value),
         pace_ms: Number($("sp-pace").value),
         mode: $("sp-mode").value,
+        field_decoder: fieldOn(),
       });
       showProg("");
       showFallback("");
       const st = await api("/api/spider/status");
       loadRun(st);
       const p = r.profile || {};
+      if (r.decider === "campo") {
+        setStatus(
+          `corriendo · ${r.forks_total} forks · escalado → decoder del campo (${r.llm.model})` +
+            (r.llm.unavailable ? ` · ${r.llm.unavailable}` : " · sin llamadas al LLM")
+        );
+        subscribe();
+        return;
+      }
       setStatus(
         `corriendo · corrida ${r.mode} · ${r.forks_total} forks · escalado → ${r.llm.label}` +
           ` (lotes de ${p.batch_size}, plazo ${p.timeout_secs}s, ${p.max_escalations == null ? "sin límite" : "máx " + p.max_escalations + " escaladas"})` +
@@ -767,9 +787,124 @@
     }
   });
 
+  // ------------------------------------------- decoder del campo (Spider)
+  if (fieldChk)
+    fieldChk.addEventListener("change", () => {
+      try {
+        localStorage.setItem(FIELD_KEY, fieldChk.checked ? "1" : "0");
+      } catch (_) {}
+      if (!running) {
+        if (fieldChk.checked) setLlmName("campo");
+        else refreshLlm();
+      }
+    });
+  let ftSeq = 0;
+  let ftTimer = null;
+  const pct = (x) => (typeof x === "number" ? x.toFixed(1) + "%" : "—");
+  function metricRow(name, m) {
+    if (!m || !m.escalated) return `<tr><td class="k">${esc(name)}</td><td class="n" colspan="6">—</td></tr>`;
+    return (
+      `<tr><td class="k">${esc(name)}</td><td class="n">${m.escalated}</td><td class="n">${fmt(m.ok.accuracy)}</td>` +
+      `<td class="n">${fmt(m.ok.ece)}</td><td class="n">${fmt(m.ok.brier)}</td><td class="n">${pct(m.resolved_pct)}</td>` +
+      `<td class="n">${fmt(m.resolved_precision)}</td></tr>`
+    );
+  }
+  function renderField(f) {
+    if (!f) return;
+    $("sp-ft-model").textContent =
+      `${f.name} · ${f.trained ? "entrenado" : "sin entrenar"} · ${f.examples_seen} ejemplos · ${f.sleeps} sueños` +
+      (f.wake ? ` · vigilia ${f.wake}` : "");
+    const ho = f.holdout && f.holdout.synthetic;
+    const j = f.job || {};
+    const tb = $("sp-ft-metrics");
+    if (ho) {
+      const heads = ["relevant", "grounded", "ambiguous", "needs_approval", "ok"];
+      const real = (f.holdout && f.holdout.real) || {};
+      tb.innerHTML =
+        `<tr class="h"><td>escaladas (hold-out)</td><td class="n">n</td><td class="n">exact. ok</td><td class="n">ECE</td><td class="n">Brier</td><td class="n">resueltas</td><td class="n">precisión</td></tr>` +
+        metricRow("campo · H1 (vocab. visto)", ho.router_h1) +
+        metricRow("campo · H2 (vocab. nuevo)", ho.router_h2) +
+        metricRow("heurística · H1", ho.heuristic_h1) +
+        metricRow("heurística · H2", ho.heuristic_h2) +
+        `<tr class="h"><td>por pregunta (H1, todas)</td><td class="n">n</td><td class="n">exact.</td><td class="n">ECE</td><td class="n">Brier</td><td colspan="2"></td></tr>` +
+        (ho.heads_h1 || [])
+          .map(
+            (m, i) =>
+              `<tr><td class="k">${heads[i]}</td><td class="n">${m.n}</td><td class="n">${fmt(m.accuracy)}</td><td class="n">${fmt(m.ece)}</td><td class="n">${fmt(m.brier)}</td><td colspan="2"></td></tr>`
+          )
+          .join("") +
+        `<tr><td class="k">latencia mediana</td><td class="n" colspan="6">${ho.latency_us ? ho.latency_us.toFixed(1) + " µs / decisión" : "—"}</td></tr>` +
+        `<tr><td class="k">real: tus decisiones</td><td class="n" colspan="6">${real.user_n ? fmt(real.user_ok_accuracy) + " (n=" + real.user_n + ")" : "sin hold-out"}</td></tr>` +
+        `<tr><td class="k">real: acuerdo con maestro LLM</td><td class="n" colspan="6">${real.teacher_n ? fmt(real.teacher_agreement) + " (n=" + real.teacher_n + ")" : "sin hold-out"}</td></tr>`;
+    }
+    const total = j.opts ? (j.opts.datasets === 0 ? "∞" : j.opts.datasets) : "—";
+    $("sp-ft-status").textContent = j.running
+      ? `entrenando · dataset ${j.current + 1}/${total} · ${j.phase}`
+      : j.phase
+      ? `${j.phase} · ${j.current} dataset(s)` + (j.last_checkpoint ? " · checkpoint guardado" : "")
+      : "listo";
+    $("sp-ft-start").disabled = !!j.running;
+    $("sp-ft-stop").disabled = !j.running;
+    if (j.running) ftPoll();
+  }
+  function ftLog(evs) {
+    const box = $("sp-ft-log");
+    for (const e of evs) {
+      const d = document.createElement("div");
+      d.textContent = `${new Date(e.ts_ms).toLocaleTimeString()} · ${e.message}`;
+      box.appendChild(d);
+      ftSeq = Math.max(ftSeq, e.seq);
+    }
+    while (box.children.length > 200) box.removeChild(box.firstChild);
+    box.scrollTop = box.scrollHeight;
+  }
+  async function ftRefresh() {
+    try {
+      const r = await api("/api/spider/field/events?after=" + ftSeq);
+      ftLog(r.events || []);
+      const st = await api("/api/spider/field/status");
+      renderField(st);
+      if (!st.job.running && ftTimer) {
+        clearInterval(ftTimer);
+        ftTimer = null;
+      }
+    } catch (_) {}
+  }
+  function ftPoll() {
+    if (!ftTimer) ftTimer = setInterval(ftRefresh, 1000);
+  }
+  $("sp-ft-start").addEventListener("click", async () => {
+    try {
+      await post("/api/spider/field/train", {
+        datasets: Number($("sp-ft-datasets").value),
+        prompts_per_dataset: Number($("sp-ft-ppd").value),
+        teacher_live: Number($("sp-ft-teacher").value),
+        include_runs: $("sp-ft-runs").checked,
+        reset: $("sp-ft-reset").checked,
+      });
+      $("sp-ft-reset").checked = false;
+      ftPoll();
+      ftRefresh();
+    } catch (e) {
+      $("sp-ft-status").textContent = "error: " + e.message;
+    }
+  });
+  $("sp-ft-stop").addEventListener("click", async () => {
+    try {
+      await post("/api/spider/field/stop", {});
+      $("sp-ft-status").textContent = "deteniendo…";
+    } catch (e) {
+      $("sp-ft-status").textContent = "error: " + e.message;
+    }
+  });
+  ftRefresh();
+
   // --------------------------------------------------------------- init
   (async () => {
     syncThr();
+    try {
+      if (fieldChk) fieldChk.checked = localStorage.getItem(FIELD_KEY) === "1";
+    } catch (_) {}
     try {
       const m = localStorage.getItem(MODE_KEY);
       if (m && ["auto", "corta", "completa"].includes(m)) {
@@ -782,8 +917,9 @@
     } catch (_) {}
     try {
       const st = await api("/api/spider/status");
-      setLlmName(st.llm_active && st.llm_active.label);
+      setLlmName(fieldOn() ? "campo" : st.llm_active && st.llm_active.label);
       applyModeDefaults(st);
+      renderField(st.field);
       if (st.run) {
         loadRun(st);
         ta.value = st.run.prompt;

@@ -15,6 +15,7 @@ pub mod llm_provider;
 pub mod model_fetch;
 pub mod process_job;
 pub mod sleep_optimize;
+pub mod spider_field_job;
 pub mod spider_job;
 pub mod state;
 pub mod telemetry;

@@ -34,6 +34,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+/// Etiqueta de quien resuelve cuando decide el decoder del campo.
+pub const FIELD_DECIDER: &str = "campo";
+
 /// Máximo de caracteres del prompt.
 pub const MAX_PROMPT_CHARS: usize = 20_000;
 /// Eventos retenidos en memoria.
@@ -104,6 +107,23 @@ pub struct Decision {
     /// No se escaló: se alcanzó el límite de la corrida corta.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub capped: bool,
+    /// Lectura del decoder del campo (solo si decidió el campo).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub field: Option<FieldReading>,
+}
+
+/// Lo que leyó el decoder del campo para una escalada.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct FieldReading {
+    /// `P(sí)` calibrada por cabeza: relevant, grounded, ambiguous,
+    /// needs_approval, ok.
+    pub probs: [f64; 5],
+    pub p_ok: f64,
+    pub novelty: f64,
+    /// Latencia de la decisión (µs).
+    pub micros: f64,
+    pub resolved: bool,
+    pub reason: String,
 }
 
 impl Decision {
@@ -132,6 +152,7 @@ impl Decision {
             resolved_by,
             note,
             capped: false,
+            field: None,
         }
     }
 }
@@ -211,6 +232,18 @@ pub struct SpiderSummary {
     /// Escaladas no enviadas por el límite de la corrida corta.
     #[serde(default)]
     pub llm_capped: usize,
+    /// Quién decidió las escaladas: `llm` | `campo`.
+    #[serde(default)]
+    pub decider: String,
+    /// Escaladas que leyó el decoder del campo.
+    #[serde(default)]
+    pub field_escalated: usize,
+    /// Resueltas por el decoder del campo (`resolved_by = campo`).
+    #[serde(default)]
+    pub field_resolved: usize,
+    /// Latencia mediana del campo por escalada (µs).
+    #[serde(default)]
+    pub field_latency_us: f64,
 }
 
 /// Una corrida.
@@ -241,6 +274,16 @@ pub struct SpiderRun {
     pub cursor: usize,
     pub decisions: Vec<Decision>,
     pub llm_calls: Vec<LlmCall>,
+    /// Quién decide las escaladas: `llm` (por defecto) | `campo`.
+    #[serde(default = "default_decider")]
+    pub decider: String,
+    /// Modelo del decoder del campo al iniciar (si `decider = campo`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub field_model: Option<serde_json::Value>,
+}
+
+fn default_decider() -> String {
+    "llm".into()
 }
 
 fn default_run_mode() -> RunMode {
@@ -260,6 +303,11 @@ impl SpiderRun {
             d.iter().map(|x| x.final_p).sum::<f64>() / forks as f64
         };
         let total = self.tokens.len();
+        let mut lat: Vec<f64> = d
+            .iter()
+            .filter_map(|x| x.field.as_ref().map(|f| f.micros))
+            .collect();
+        lat.sort_by(|a, b| a.total_cmp(b));
         SpiderSummary {
             tokens_total: total,
             words_read: self.cursor.min(total),
@@ -284,6 +332,14 @@ impl SpiderRun {
             llm_failures: self.llm_calls.iter().filter(|c| !c.ok).count(),
             llm_sent: self.llm_calls.iter().map(|c| c.words.len()).sum(),
             llm_capped: c(&|x| x.capped),
+            decider: self.decider.clone(),
+            field_escalated: lat.len(),
+            field_resolved: c(&|x| x.resolved_by == FIELD_DECIDER && x.status == Status::Resolved),
+            field_latency_us: if lat.is_empty() {
+                0.0
+            } else {
+                (lat[lat.len() / 2] * 10.0).round() / 10.0
+            },
         }
     }
 
@@ -711,6 +767,59 @@ async fn run_call(
     }
 }
 
+/// Maestro LLM para «Entrenamiento Prompt Spider»: consulta el LLM activo
+/// (y su respaldo si la API externa no responde) sobre `items` de `prompt`.
+/// Devuelve (veredictos, etiqueta del LLM, compacto = solo `P(sí)`).
+pub(crate) async fn teacher_call(
+    st: &SharedState,
+    prompt: &str,
+    items: &[EscalationItem],
+) -> Result<(Vec<LlmVerdict>, String, bool), String> {
+    let backend = {
+        let g = lock(st);
+        llm_info_and_backend(&g)
+    };
+    let mut tries = vec![(backend.primary.clone(), backend.info.label.clone())];
+    if let Some((fb, info)) = backend.fallback.clone() {
+        tries.push((fb, info.label));
+    }
+    let mut last = String::from("sin LLM");
+    for (llm, label) in tries {
+        let profile = profile_for(llm.kind(), RunMode::Completa);
+        let compact = llm.kind() == LlmKind::Local;
+        match run_call(&llm, prompt, items, profile).await {
+            Ok((v, _, _)) => return Ok((v, label, compact)),
+            Err(e) => last = e,
+        }
+    }
+    Err(last)
+}
+
+/// Aplica la decisión del decoder del campo a una escalada: resuelve con
+/// `resolved_by = campo` o la deja pendiente con el motivo (no inventa).
+fn apply_field_decision(d: &mut Decision, fd: &crate::spider_field::FieldDecision) {
+    d.verdict = Some(fd.verdict.clone());
+    d.final_p = fd.verdict.p;
+    d.field = Some(FieldReading {
+        probs: fd.prediction.probs.map(|x| (x * 1000.0).round() / 1000.0),
+        p_ok: fd.verdict.p,
+        novelty: (fd.prediction.novelty * 1000.0).round() / 1000.0,
+        micros: (fd.micros * 10.0).round() / 10.0,
+        resolved: fd.resolve,
+        reason: fd.reason.clone(),
+    });
+    if fd.resolve {
+        d.route = Route::Llm;
+        d.status = Status::Resolved;
+        d.resolved_by = FIELD_DECIDER.into();
+        d.note = format!("campo: {}", fd.reason);
+    } else {
+        d.route = Route::You;
+        d.status = Status::Pending;
+        d.note = format!("campo: {}; pendiente (no se inventa)", fd.reason);
+    }
+}
+
 /// Worker de escaladas: agrupa según el perfil del LLM que atiende, aplica
 /// el límite de la corrida corta, emite progreso por llamada y, si la API
 /// externa no está disponible, cambia a Gemma local (respaldo etiquetado)
@@ -950,6 +1059,7 @@ async fn run_spider(
     backend: SpiderBackend,
     profile: RunProfile,
     mode_auto: bool,
+    field: Option<Arc<crate::spider_field::SpiderFieldRouter>>,
 ) {
     let (tokens, prompt, pace, floor, threshold, mode) = {
         let g = lock(&st);
@@ -964,6 +1074,12 @@ async fn run_spider(
         )
     };
     let ctx = PromptContext::new(&tokens);
+    // Decoder del campo: el prompt se analiza una vez (mismas rutas que el
+    // scorer) y cada escalada se codifica por su posición.
+    let analyzed = field.as_ref().map(|_| {
+        crate::spider_field::AnalyzedPrompt::from_tokens(&prompt, tokens.clone(), threshold)
+    });
+    let group = crate::spider_field::text_group(&prompt);
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<EscalationItem>();
     let worker = tokio::spawn(llm_worker(
         st.clone(),
@@ -988,8 +1104,23 @@ async fn run_spider(
             if tok.kind.is_fork() {
                 let a = score_token(tok, &ctx, i.checked_sub(1).map(|j| &tokens[j]));
                 let r = route(&a, threshold);
-                let d = Decision::new(tok, a, r);
-                if r == Route::Llm {
+                let mut d = Decision::new(tok, a, r);
+                if let (Route::Llm, Some(router), Some(ap)) = (r, &field, &analyzed) {
+                    let ex = ap.encode(
+                        i,
+                        [None; crate::spider_field::HEADS],
+                        crate::spider_field::LabelSource::Teacher,
+                        group,
+                    );
+                    match ex {
+                        Some(ex) => apply_field_decision(&mut d, &router.decide(&ex, floor)),
+                        None => {
+                            d.route = Route::You;
+                            d.status = Status::Pending;
+                            d.note = "campo: no se pudo codificar; pendiente".into();
+                        }
+                    }
+                } else if r == Route::Llm {
                     let _ = tx.send(EscalationItem {
                         index: tok.index,
                         word: tok.text.clone(),
@@ -1043,13 +1174,21 @@ async fn run_spider(
             Some(f) => format!("{} [{}]", f.to, f.message),
             None => run.llm.label.clone(),
         };
+        let field_txt = if run.decider == FIELD_DECIDER {
+            format!(
+                " · campo {}/{} resueltas · mediana {:.0} µs",
+                s.field_resolved, s.field_escalated, s.field_latency_us
+            )
+        } else {
+            String::new()
+        };
         let capped = if s.llm_capped > 0 {
             format!(" · {} por límite de corrida corta", s.llm_capped)
         } else {
             String::new()
         };
         format!(
-            "{} ({}): {} forks · code {} · {} {} de {} enviadas ({} escaladas{}) · you {} · p̄ {:.3}",
+            "{} ({}): {} forks · code {} · {} {} de {} enviadas ({} escaladas{}) · you {} · p̄ {:.3}{}",
             run.state,
             run.mode.as_str(),
             s.forks,
@@ -1060,7 +1199,8 @@ async fn run_spider(
             s.llm_escalated,
             capped,
             s.you,
-            s.avg_confidence
+            s.avg_confidence,
+            field_txt
         )
     } else {
         String::new()
@@ -1107,6 +1247,9 @@ pub struct StartRequest {
     pub mode: Option<String>,
     /// Override del límite de escaladas (solo `corta`; 0 = sin límite).
     pub max_escalations: Option<usize>,
+    /// «Decoder del campo»: las escaladas las decide el campo entrenado en
+    /// vez del LLM (por debajo de la confianza → pendiente).
+    pub field_decoder: Option<bool>,
 }
 
 fn bad(status: StatusCode, msg: &str) -> axum::response::Response {
@@ -1142,8 +1285,22 @@ async fn start(
     if g.spider.running {
         return bad(StatusCode::CONFLICT, "ya hay una corrida en curso");
     }
+    let use_field = b.field_decoder.unwrap_or(false);
     let backend = llm_info_and_backend(&g);
-    let info = backend.info.clone();
+    let field = use_field.then(|| Arc::new(g.spider_field.router.clone()));
+    let field_model = field.as_ref().map(|r| g.spider_field.model_summary(r));
+    let info = if use_field {
+        LlmInfo {
+            id: FIELD_DECIDER.into(),
+            label: FIELD_DECIDER.into(),
+            kind: "field".into(),
+            model: crate::web::spider_field_job::model_name(&g.spider_field.router),
+            unavailable: (!g.spider_field.router.is_trained())
+                .then(|| "decoder del campo sin entrenar: las escaladas quedan pendientes".into()),
+        }
+    } else {
+        backend.info.clone()
+    };
     let kind = backend.primary.kind();
     let mode_auto = matches!(
         b.mode.as_deref().map(str::trim),
@@ -1185,6 +1342,8 @@ async fn start(
         cursor: 0,
         decisions: Vec::new(),
         llm_calls: Vec::new(),
+        decider: if use_field { FIELD_DECIDER } else { "llm" }.into(),
+        field_model,
     };
     let stop = Arc::new(AtomicBool::new(false));
     g.spider.stop = stop.clone();
@@ -1200,24 +1359,44 @@ async fn start(
         .max_escalations
         .map(|c| format!("máx {c} escaladas"))
         .unwrap_or_else(|| "sin límite".into());
-    let msg = format!(
-        "corrida {} {id} · umbral {threshold:.2} · LLM {}{fb} · lotes de {} · plazo {}s · {cap}",
-        mode.as_str(),
-        info.label,
-        profile.batch_size,
-        profile.timeout_secs
-    );
+    let msg = if use_field {
+        format!(
+            "corrida {} {id} · umbral {threshold:.2} · escaladas → decoder del campo ({}){}",
+            mode.as_str(),
+            info.model,
+            info.unavailable
+                .as_ref()
+                .map(|u| format!(" · {u}"))
+                .unwrap_or_default()
+        )
+    } else {
+        format!(
+            "corrida {} {id} · umbral {threshold:.2} · LLM {}{fb} · lotes de {} · plazo {}s · {cap}",
+            mode.as_str(),
+            info.label,
+            profile.batch_size,
+            profile.timeout_secs
+        )
+    };
     g.spider.push("start", None, None, msg);
     let seq = g.spider.seq;
     drop(g);
     let has_fallback = backend.fallback.is_some();
     // El worker arranca con el perfil resuelto aquí (con overrides de la
     // petición); si entra el respaldo, usa el perfil de Gemma local.
-    tokio::spawn(run_spider(st.clone(), stop, backend, profile, mode_auto));
+    tokio::spawn(run_spider(
+        st.clone(),
+        stop,
+        backend,
+        profile,
+        mode_auto,
+        field,
+    ));
     Json(json!({
         "ok": true, "run_id": id, "threshold": threshold, "llm_floor": floor,
         "tokens_total": total, "forks_total": forks, "llm": info, "seq": seq,
         "mode": mode, "profile": profile, "fallback_available": has_fallback,
+        "decider": if use_field { FIELD_DECIDER } else { "llm" },
     }))
     .into_response()
 }
@@ -1239,6 +1418,7 @@ async fn status(State(st): State<SharedState>) -> Json<serde_json::Value> {
         "summary": g.spider.run.as_ref().map(SpiderRun::summary),
         "llm_active": backend.info,
         "llm_fallback": backend.fallback.as_ref().map(|(_, i)| i),
+        "field": g.spider_field.status_value(),
         "defaults": {
             "threshold": DEFAULT_THRESHOLD,
             "llm_floor": DEFAULT_LLM_FLOOR,
@@ -1334,6 +1514,12 @@ async fn decide(
     d.resolved_by = "you".into();
     let d = d.clone();
     let summary = run.summary();
+    // Vigilia del decoder del campo: la decisión humana queda como episodio
+    // etiquetado; se consolida en el siguiente sueño (Sueño o entrenamiento).
+    let example = crate::web::spider_field_job::user_example(run, &d, b.approve);
+    if let Some(ex) = example {
+        g.spider_field.observe_online(ex);
+    }
     let word = d.word.clone();
     g.spider.push(
         "update",
@@ -1434,6 +1620,77 @@ async fn export(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Etiquetas de maestro con Gemma local (P(sí) en ambas órdenes) para el
+    /// experimento del decoder del campo: escaladas del prompt de ejemplo +
+    /// escaladas del hold-out H1. Ignorada en CI.
+    /// `GEMMA2_GGUF=… N=60 OUT=docs/data/spider_field_teacher_gemma.json`.
+    #[test]
+    #[ignore]
+    fn real_gemma_teacher_labels() {
+        use crate::spider_field_experiment::{holdout_seed, TeacherFile, TeacherItem};
+        let path = std::env::var("GEMMA2_GGUF").expect("GEMMA2_GGUF");
+        let n_max: usize = std::env::var("N")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(60);
+        let probe = crate::web::llm_periphery::open_gemma_probe(Path::new(&path)).unwrap();
+        let h = probe.raw_handle().unwrap();
+        let gen = |r: &str| -> f64 {
+            let (pr, _, _) = h.choice_probs(r, &YES_NO, 768, None).unwrap();
+            pr[0] / (pr[0] + pr[1]).max(1e-12)
+        };
+        let mut prompts: Vec<(String, u64, String)> =
+            vec![("sample".into(), 0, SAMPLE_PROMPT.to_string())];
+        for k in 0..40 {
+            let sp = crate::spider_field::synth_prompt(
+                holdout_seed(k),
+                &crate::spider_field::VOCAB_TRAIN,
+            );
+            prompts.push(("holdout".into(), sp.seed, sp.text));
+        }
+        let mut out = TeacherFile {
+            model: Path::new(&path)
+                .file_name()
+                .map(|f| f.to_string_lossy().to_string())
+                .unwrap_or_default(),
+            floor: DEFAULT_LLM_FLOOR,
+            items: Vec::new(),
+        };
+        'outer: for (set, seed, text) in prompts {
+            let (toks, dry) = crate::prompt_spider::dry_run(&text, DEFAULT_THRESHOLD);
+            for d in dry.iter().filter(|d| d.route == Route::Llm) {
+                if out.items.len() >= n_max {
+                    break 'outer;
+                }
+                let it = EscalationItem {
+                    index: d.index,
+                    word: d.word.clone(),
+                    context: word_context(&toks, d.index, 6),
+                    question: d.assessment.question,
+                    p: d.assessment.p,
+                };
+                let task = task_excerpt(&text, 120);
+                let t0 = Instant::now();
+                let a = gen(&compact_gemma_prompt(&task, &it, true));
+                let b = gen(&compact_gemma_prompt(&task, &it, false));
+                let v = gemma_choice_verdict(it.index, a, b);
+                println!("{set} {seed} «{}» p={:.3}", it.word, v.p);
+                out.items.push(TeacherItem {
+                    set: set.clone(),
+                    seed,
+                    index: it.index,
+                    word: it.word,
+                    p_yes_first: a,
+                    p_no_first: b,
+                    p: v.p,
+                    seconds: t0.elapsed().as_secs_f64(),
+                });
+            }
+        }
+        let dst = std::env::var("OUT").unwrap_or_else(|_| "spider_teacher.json".into());
+        std::fs::write(&dst, serde_json::to_string_pretty(&out).unwrap()).unwrap();
+    }
 
     /// Depuración del prompt compacto con el GGUF real (ignorada en CI).
     #[test]

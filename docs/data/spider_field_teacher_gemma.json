@@ -1,0 +1,706 @@
+{
+  "model": "gemma-2-2b-it-Q3_K_L.gguf",
+  "floor": 0.7,
+  "items": [
+    {
+      "set": "sample",
+      "seed": 0,
+      "index": 25,
+      "word": "launch-ready",
+      "p_yes_first": 0.9991960759324205,
+      "p_no_first": 0.9912239065854471,
+      "p": 0.991,
+      "seconds": 10.987221649
+    },
+    {
+      "set": "sample",
+      "seed": 0,
+      "index": 28,
+      "word": "clear",
+      "p_yes_first": 0.9936168540022727,
+      "p_no_first": 0.42680172667863414,
+      "p": 0.427,
+      "seconds": 10.415705413
+    },
+    {
+      "set": "sample",
+      "seed": 0,
+      "index": 41,
+      "word": "complete",
+      "p_yes_first": 0.9909718103784942,
+      "p_no_first": 0.7165116458292099,
+      "p": 0.717,
+      "seconds": 9.557804058
+    },
+    {
+      "set": "sample",
+      "seed": 0,
+      "index": 44,
+      "word": "short",
+      "p_yes_first": 0.9480425774791897,
+      "p_no_first": 0.3142238171161695,
+      "p": 0.314,
+      "seconds": 9.783898765
+    },
+    {
+      "set": "sample",
+      "seed": 0,
+      "index": 66,
+      "word": "it",
+      "p_yes_first": 0.9641813417947006,
+      "p_no_first": 0.2394740942862418,
+      "p": 0.239,
+      "seconds": 9.996912707
+    },
+    {
+      "set": "sample",
+      "seed": 0,
+      "index": 69,
+      "word": "Use",
+      "p_yes_first": 0.8162324111562205,
+      "p_no_first": 0.09147711401315478,
+      "p": 0.091,
+      "seconds": 8.946300451
+    },
+    {
+      "set": "sample",
+      "seed": 0,
+      "index": 85,
+      "word": "Every",
+      "p_yes_first": 0.9934894966937368,
+      "p_no_first": 0.7421260989174767,
+      "p": 0.742,
+      "seconds": 9.56461492
+    },
+    {
+      "set": "sample",
+      "seed": 0,
+      "index": 88,
+      "word": "cite",
+      "p_yes_first": 0.9762541049469704,
+      "p_no_first": 0.3343991992582523,
+      "p": 0.334,
+      "seconds": 12.759623602
+    },
+    {
+      "set": "sample",
+      "seed": 0,
+      "index": 117,
+      "word": "cut",
+      "p_yes_first": 0.9310518617366861,
+      "p_no_first": 0.23220839014807304,
+      "p": 0.232,
+      "seconds": 15.016790789
+    },
+    {
+      "set": "sample",
+      "seed": 0,
+      "index": 120,
+      "word": "flag",
+      "p_yes_first": 0.8635110901044553,
+      "p_no_first": 0.10949619180236056,
+      "p": 0.109,
+      "seconds": 10.717900262
+    },
+    {
+      "set": "sample",
+      "seed": 0,
+      "index": 121,
+      "word": "anything",
+      "p_yes_first": 0.9883583758665315,
+      "p_no_first": 0.6622898014918697,
+      "p": 0.662,
+      "seconds": 10.763096041
+    },
+    {
+      "set": "sample",
+      "seed": 0,
+      "index": 122,
+      "word": "vague",
+      "p_yes_first": 0.882949462445115,
+      "p_no_first": 0.32863147249775787,
+      "p": 0.329,
+      "seconds": 10.481644176
+    },
+    {
+      "set": "sample",
+      "seed": 0,
+      "index": 140,
+      "word": "anything",
+      "p_yes_first": 0.9915294311864575,
+      "p_no_first": 0.2282453744039323,
+      "p": 0.228,
+      "seconds": 22.939805218
+    },
+    {
+      "set": "sample",
+      "seed": 0,
+      "index": 143,
+      "word": "Never",
+      "p_yes_first": 0.9750420398986033,
+      "p_no_first": 0.7870464419453777,
+      "p": 0.787,
+      "seconds": 11.770024945
+    },
+    {
+      "set": "sample",
+      "seed": 0,
+      "index": 147,
+      "word": "something",
+      "p_yes_first": 0.975410881480151,
+      "p_no_first": 0.2561749642622825,
+      "p": 0.256,
+      "seconds": 10.701251976
+    },
+    {
+      "set": "sample",
+      "seed": 0,
+      "index": 148,
+      "word": "seems",
+      "p_yes_first": 0.9517843630918925,
+      "p_no_first": 0.23102415231292772,
+      "p": 0.231,
+      "seconds": 10.863405494
+    },
+    {
+      "set": "sample",
+      "seed": 0,
+      "index": 150,
+      "word": "mark",
+      "p_yes_first": 0.9668502249617119,
+      "p_no_first": 0.5432338415044144,
+      "p": 0.543,
+      "seconds": 9.610530923
+    },
+    {
+      "set": "sample",
+      "seed": 0,
+      "index": 151,
+      "word": "it",
+      "p_yes_first": 0.9895549649865301,
+      "p_no_first": 0.46411173743148054,
+      "p": 0.464,
+      "seconds": 10.504429392
+    },
+    {
+      "set": "sample",
+      "seed": 0,
+      "index": 165,
+      "word": "This",
+      "p_yes_first": 0.9929320276866078,
+      "p_no_first": 0.4110283751395614,
+      "p": 0.411,
+      "seconds": 12.163811756
+    },
+    {
+      "set": "sample",
+      "seed": 0,
+      "index": 169,
+      "word": "best",
+      "p_yes_first": 0.9629861997056491,
+      "p_no_first": 0.11522538469826674,
+      "p": 0.115,
+      "seconds": 16.206482127
+    },
+    {
+      "set": "holdout",
+      "seed": 1000000,
+      "index": 26,
+      "word": "due",
+      "p_yes_first": 0.9948857661818066,
+      "p_no_first": 0.6285029633496609,
+      "p": 0.629,
+      "seconds": 9.032534808
+    },
+    {
+      "set": "holdout",
+      "seed": 1000000,
+      "index": 29,
+      "word": "March",
+      "p_yes_first": 0.9948681646023879,
+      "p_no_first": 0.8716748980717152,
+      "p": 0.872,
+      "seconds": 9.138149303
+    },
+    {
+      "set": "holdout",
+      "seed": 1000000,
+      "index": 33,
+      "word": "Tag",
+      "p_yes_first": 0.9322039023744197,
+      "p_no_first": 0.21019793765434808,
+      "p": 0.21,
+      "seconds": 9.855260858
+    },
+    {
+      "set": "holdout",
+      "seed": 1000000,
+      "index": 40,
+      "word": "short",
+      "p_yes_first": 0.9886450358611119,
+      "p_no_first": 0.28849706249320506,
+      "p": 0.288,
+      "seconds": 18.54088732
+    },
+    {
+      "set": "holdout",
+      "seed": 1000000,
+      "index": 59,
+      "word": "mark",
+      "p_yes_first": 0.888987546981218,
+      "p_no_first": 0.2053619899989853,
+      "p": 0.205,
+      "seconds": 30.816461719
+    },
+    {
+      "set": "holdout",
+      "seed": 1000000,
+      "index": 63,
+      "word": "Copy",
+      "p_yes_first": 0.6724780797661101,
+      "p_no_first": 0.07463328196849014,
+      "p": 0.075,
+      "seconds": 25.27987593
+    },
+    {
+      "set": "holdout",
+      "seed": 1000000,
+      "index": 69,
+      "word": "complete",
+      "p_yes_first": 0.8475977198194311,
+      "p_no_first": 0.12845051653245657,
+      "p": 0.128,
+      "seconds": 66.28014919
+    },
+    {
+      "set": "holdout",
+      "seed": 1000000,
+      "index": 75,
+      "word": "soon",
+      "p_yes_first": 0.8953321889669739,
+      "p_no_first": 0.18737692618432625,
+      "p": 0.187,
+      "seconds": 36.842002537
+    },
+    {
+      "set": "holdout",
+      "seed": 1000000,
+      "index": 77,
+      "word": "November",
+      "p_yes_first": 0.9909566090002767,
+      "p_no_first": 0.6917019560091581,
+      "p": 0.692,
+      "seconds": 38.817389641
+    },
+    {
+      "set": "holdout",
+      "seed": 1000000,
+      "index": 81,
+      "word": "Never",
+      "p_yes_first": 0.877241407538051,
+      "p_no_first": 0.6177817852777621,
+      "p": 0.618,
+      "seconds": 33.021883848
+    },
+    {
+      "set": "holdout",
+      "seed": 1000000,
+      "index": 88,
+      "word": "list",
+      "p_yes_first": 0.6085793098180963,
+      "p_no_first": 0.06989195835135396,
+      "p": 0.07,
+      "seconds": 33.925008943
+    },
+    {
+      "set": "holdout",
+      "seed": 1000001,
+      "index": 26,
+      "word": "due",
+      "p_yes_first": 0.9913375213227574,
+      "p_no_first": 0.5240378677127665,
+      "p": 0.524,
+      "seconds": 36.870651713
+    },
+    {
+      "set": "holdout",
+      "seed": 1000001,
+      "index": 29,
+      "word": "March",
+      "p_yes_first": 0.9850465515781199,
+      "p_no_first": 0.5441267894700098,
+      "p": 0.544,
+      "seconds": 23.571848835
+    },
+    {
+      "set": "holdout",
+      "seed": 1000001,
+      "index": 33,
+      "word": "Trim",
+      "p_yes_first": 0.9061308899155489,
+      "p_no_first": 0.19435371618575215,
+      "p": 0.194,
+      "seconds": 11.458191575
+    },
+    {
+      "set": "holdout",
+      "seed": 1000001,
+      "index": 39,
+      "word": "fastest",
+      "p_yes_first": 0.9083092062035514,
+      "p_no_first": 0.2851807261148862,
+      "p": 0.285,
+      "seconds": 11.305406763
+    },
+    {
+      "set": "holdout",
+      "seed": 1000001,
+      "index": 42,
+      "word": "never",
+      "p_yes_first": 0.7605712805613298,
+      "p_no_first": 0.22690561204995816,
+      "p": 0.227,
+      "seconds": 12.042662164
+    },
+    {
+      "set": "holdout",
+      "seed": 1000001,
+      "index": 53,
+      "word": "Flag",
+      "p_yes_first": 0.9283451107421866,
+      "p_no_first": 0.3460200241032406,
+      "p": 0.346,
+      "seconds": 19.725751632
+    },
+    {
+      "set": "holdout",
+      "seed": 1000001,
+      "index": 61,
+      "word": "Tremont",
+      "p_yes_first": 0.8615583551777224,
+      "p_no_first": 0.11799855735653468,
+      "p": 0.118,
+      "seconds": 31.494447989
+    },
+    {
+      "set": "holdout",
+      "seed": 1000001,
+      "index": 65,
+      "word": "Tag",
+      "p_yes_first": 0.6543083358080845,
+      "p_no_first": 0.04490565664354025,
+      "p": 0.045,
+      "seconds": 26.985190218
+    },
+    {
+      "set": "holdout",
+      "seed": 1000001,
+      "index": 70,
+      "word": "this",
+      "p_yes_first": 0.9131953589557693,
+      "p_no_first": 0.1530787850554499,
+      "p": 0.153,
+      "seconds": 17.060983139
+    },
+    {
+      "set": "holdout",
+      "seed": 1000001,
+      "index": 74,
+      "word": "Never",
+      "p_yes_first": 0.8597705049810821,
+      "p_no_first": 0.26739366270449993,
+      "p": 0.267,
+      "seconds": 10.778657699
+    },
+    {
+      "set": "holdout",
+      "seed": 1000001,
+      "index": 85,
+      "word": "Halvo",
+      "p_yes_first": 0.8708765264572594,
+      "p_no_first": 0.14788913182444852,
+      "p": 0.148,
+      "seconds": 10.28708719
+    },
+    {
+      "set": "holdout",
+      "seed": 1000001,
+      "index": 87,
+      "word": "host",
+      "p_yes_first": 0.7183823952219553,
+      "p_no_first": 0.11169091547576349,
+      "p": 0.112,
+      "seconds": 9.635988244
+    },
+    {
+      "set": "holdout",
+      "seed": 1000002,
+      "index": 26,
+      "word": "Trim",
+      "p_yes_first": 0.9768150809992662,
+      "p_no_first": 0.5963305223140968,
+      "p": 0.596,
+      "seconds": 10.928088194
+    },
+    {
+      "set": "holdout",
+      "seed": 1000002,
+      "index": 31,
+      "word": "it",
+      "p_yes_first": 0.9787868730008646,
+      "p_no_first": 0.22075129848931244,
+      "p": 0.221,
+      "seconds": 10.780102452
+    },
+    {
+      "set": "holdout",
+      "seed": 1000002,
+      "index": 33,
+      "word": "Cut",
+      "p_yes_first": 0.9892797887154529,
+      "p_no_first": 0.22661853373201418,
+      "p": 0.227,
+      "seconds": 10.333210512
+    },
+    {
+      "set": "holdout",
+      "seed": 1000002,
+      "index": 37,
+      "word": "keep",
+      "p_yes_first": 0.8210050960905159,
+      "p_no_first": 0.2549236136248211,
+      "p": 0.255,
+      "seconds": 10.078524518
+    },
+    {
+      "set": "holdout",
+      "seed": 1000002,
+      "index": 40,
+      "word": "several",
+      "p_yes_first": 0.9727416511125846,
+      "p_no_first": 0.2853197031632479,
+      "p": 0.285,
+      "seconds": 11.435164158
+    },
+    {
+      "set": "holdout",
+      "seed": 1000002,
+      "index": 42,
+      "word": "know",
+      "p_yes_first": 0.9078713705198761,
+      "p_no_first": 0.24300233699030563,
+      "p": 0.243,
+      "seconds": 10.304256618
+    },
+    {
+      "set": "holdout",
+      "seed": 1000002,
+      "index": 44,
+      "word": "Plan",
+      "p_yes_first": 0.9605063550125477,
+      "p_no_first": 0.14270823496576054,
+      "p": 0.143,
+      "seconds": 9.878953651
+    },
+    {
+      "set": "holdout",
+      "seed": 1000002,
+      "index": 52,
+      "word": "Tremont",
+      "p_yes_first": 0.9727072477713602,
+      "p_no_first": 0.5277148767965049,
+      "p": 0.528,
+      "seconds": 11.798489695
+    },
+    {
+      "set": "holdout",
+      "seed": 1000002,
+      "index": 54,
+      "word": "Copy",
+      "p_yes_first": 0.7701777893046784,
+      "p_no_first": 0.09960082393808263,
+      "p": 0.1,
+      "seconds": 17.521318536
+    },
+    {
+      "set": "holdout",
+      "seed": 1000002,
+      "index": 59,
+      "word": "flag",
+      "p_yes_first": 0.6980560100079921,
+      "p_no_first": 0.06792755318938837,
+      "p": 0.068,
+      "seconds": 9.938198104
+    },
+    {
+      "set": "holdout",
+      "seed": 1000002,
+      "index": 64,
+      "word": "Never",
+      "p_yes_first": 0.9673102930287227,
+      "p_no_first": 0.42778602419171113,
+      "p": 0.428,
+      "seconds": 9.844392034
+    },
+    {
+      "set": "holdout",
+      "seed": 1000002,
+      "index": 72,
+      "word": "mark",
+      "p_yes_first": 0.9814754486410644,
+      "p_no_first": 0.5572079407526557,
+      "p": 0.557,
+      "seconds": 9.728256356
+    },
+    {
+      "set": "holdout",
+      "seed": 1000003,
+      "index": 26,
+      "word": "Cut",
+      "p_yes_first": 0.9436110481166703,
+      "p_no_first": 0.6399653743752719,
+      "p": 0.64,
+      "seconds": 10.032838986
+    },
+    {
+      "set": "holdout",
+      "seed": 1000003,
+      "index": 33,
+      "word": "soon",
+      "p_yes_first": 0.9922438148890195,
+      "p_no_first": 0.6734512779297556,
+      "p": 0.673,
+      "seconds": 10.823963529
+    },
+    {
+      "set": "holdout",
+      "seed": 1000003,
+      "index": 35,
+      "word": "November",
+      "p_yes_first": 0.9982946544447903,
+      "p_no_first": 0.9372440898170973,
+      "p": 0.937,
+      "seconds": 11.733433456
+    },
+    {
+      "set": "holdout",
+      "seed": 1000003,
+      "index": 38,
+      "word": "flag",
+      "p_yes_first": 0.838609770353954,
+      "p_no_first": 0.29763851557464127,
+      "p": 0.298,
+      "seconds": 10.474066191
+    },
+    {
+      "set": "holdout",
+      "seed": 1000003,
+      "index": 42,
+      "word": "Map",
+      "p_yes_first": 0.9259445548222719,
+      "p_no_first": 0.1868647412352823,
+      "p": 0.187,
+      "seconds": 10.67601461
+    },
+    {
+      "set": "holdout",
+      "seed": 1000003,
+      "index": 46,
+      "word": "always",
+      "p_yes_first": 0.7759158867667759,
+      "p_no_first": 0.2519362619507251,
+      "p": 0.252,
+      "seconds": 10.983559207
+    },
+    {
+      "set": "holdout",
+      "seed": 1000003,
+      "index": 47,
+      "word": "skip",
+      "p_yes_first": 0.8593314695280291,
+      "p_no_first": 0.306129696376927,
+      "p": 0.306,
+      "seconds": 10.700763578
+    },
+    {
+      "set": "holdout",
+      "seed": 1000003,
+      "index": 51,
+      "word": "crop",
+      "p_yes_first": 0.6321101299996745,
+      "p_no_first": 0.12899337202991518,
+      "p": 0.129,
+      "seconds": 10.639056273
+    },
+    {
+      "set": "holdout",
+      "seed": 1000003,
+      "index": 55,
+      "word": "Edit",
+      "p_yes_first": 0.9537430204718104,
+      "p_no_first": 0.21282735889448545,
+      "p": 0.213,
+      "seconds": 13.591004414
+    },
+    {
+      "set": "holdout",
+      "seed": 1000003,
+      "index": 63,
+      "word": "Nimbra",
+      "p_yes_first": 0.8273863898621664,
+      "p_no_first": 0.22677326294279795,
+      "p": 0.227,
+      "seconds": 13.700354739
+    },
+    {
+      "set": "holdout",
+      "seed": 1000003,
+      "index": 68,
+      "word": "few",
+      "p_yes_first": 0.9883410782069646,
+      "p_no_first": 0.5288672488966292,
+      "p": 0.529,
+      "seconds": 10.606123282
+    },
+    {
+      "set": "holdout",
+      "seed": 1000003,
+      "index": 76,
+      "word": "Note",
+      "p_yes_first": 0.9581979024770567,
+      "p_no_first": 0.5750854355423387,
+      "p": 0.575,
+      "seconds": 10.59819542
+    },
+    {
+      "set": "holdout",
+      "seed": 1000003,
+      "index": 93,
+      "word": "Ilvane",
+      "p_yes_first": 0.7988404264812995,
+      "p_no_first": 0.08872075914884696,
+      "p": 0.089,
+      "seconds": 11.44007723
+    },
+    {
+      "set": "holdout",
+      "seed": 1000003,
+      "index": 105,
+      "word": "sort",
+      "p_yes_first": 0.7850989954599819,
+      "p_no_first": 0.06640197689410748,
+      "p": 0.066,
+      "seconds": 10.295429941
+    },
+    {
+      "set": "holdout",
+      "seed": 1000003,
+      "index": 110,
+      "word": "Never",
+      "p_yes_first": 0.9588125048468488,
+      "p_no_first": 0.31916737838036585,
+      "p": 0.319,
+      "seconds": 10.983530619
+    }
+  ]
+}

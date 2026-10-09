@@ -6,7 +6,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <title>Neuro-Geométrica · Campo agentico</title>
-  <link rel="stylesheet" href="/styles.css?v=36" />
+  <link rel="stylesheet" href="/styles.css?v=37" />
 </head>
 <body>
   <header class="top">
@@ -291,6 +291,11 @@
               <option value="completa">completa</option>
             </select>
           </label>
+          <label class="switch sp-field-switch" title="Activo: las palabras escaladas (p &lt; umbral) las decide el decoder del campo (líquido + CDT + RQM/EPR entrenado en «Entrenamiento Prompt Spider») en vez del LLM, sin llamadas al modelo. Si la confianza calibrada no alcanza el piso, o pide aprobación / es ambigua / fuera de distribución → pendiente (no inventa).">
+            <input type="checkbox" id="sp-field-decoder" />
+            <span class="slider" aria-hidden="true"></span>
+            <span class="switch-label">Decoder del campo</span>
+          </label>
           <div class="sp-btns">
             <button type="button" id="sp-run" class="sp-btn sp-btn-go">Ejecutar</button>
             <button type="button" id="sp-stop" class="sp-btn sp-btn-stop" disabled>Detener</button>
@@ -389,6 +394,32 @@
           <div class="sp-card-h">● pendientes de aprobación <span class="sp-muted" id="sp-pend-n">0</span></div>
           <div id="sp-pend-list" class="sp-pend-list"><p class="sp-muted">Nada pendiente.</p></div>
         </div>
+
+        <div class="sp-card sp-field-train" id="sp-field-train">
+          <div class="sp-card-h">● entrenamiento prompt spider <span class="sp-pink">decoder del campo</span> <span class="sp-muted" id="sp-ft-model">—</span></div>
+          <div class="sp-ft-controls">
+            <label class="sp-pace" title="Datasets (cada uno: vigilia → sueño CDT + RQM → evaluación hold-out → checkpoint). ∞ = hasta Detener.">datasets
+              <select id="sp-ft-datasets"><option value="2">2</option><option value="6" selected>6</option><option value="12">12</option><option value="0">∞</option></select>
+            </label>
+            <label class="sp-pace" title="Prompts sintéticos con verdad por construcción por dataset">prompts/dataset
+              <select id="sp-ft-ppd"><option value="20">20</option><option value="40" selected>40</option><option value="80">80</option></select>
+            </label>
+            <label class="sp-pace" title="Palabras escaladas por dataset que se consultan en vivo al LLM activo (Gemma local / API) como maestro">maestro LLM
+              <select id="sp-ft-teacher"><option value="0" selected>no</option><option value="4">4</option><option value="12">12</option></select>
+            </label>
+            <label class="sp-chk" title="Etiquetas de las corridas guardadas: scorer (code/tú), tus Aprobar/Rechazar y veredictos de LLM (nunca los del propio campo)"><input type="checkbox" id="sp-ft-runs" checked /> corridas guardadas</label>
+            <label class="sp-chk" title="Empieza desde un sustrato en blanco nuevo"><input type="checkbox" id="sp-ft-reset" /> sustrato nuevo</label>
+            <div class="sp-btns">
+              <button type="button" id="sp-ft-start" class="sp-btn sp-btn-go">Entrenar</button>
+              <button type="button" id="sp-ft-stop" class="sp-btn sp-btn-stop" disabled>Detener</button>
+            </div>
+            <span id="sp-ft-status" class="sp-status">—</span>
+          </div>
+          <div class="sp-ft-grid">
+            <div class="sp-table-wrap"><table class="sp-table sp-ft-metrics"><tbody id="sp-ft-metrics"><tr><td class="sp-muted">Sin entrenar: con el decoder activo, las escaladas quedan pendientes.</td></tr></tbody></table></div>
+            <div class="sp-ft-log" id="sp-ft-log" aria-live="polite"></div>
+          </div>
+        </div>
         <div class="sp-footer"><span id="sp-foot-l">spider · listo</span><span id="sp-foot-r"></span></div>
       </div>
     </section>
@@ -414,6 +445,6 @@
     </div>
   </div>
 
-  <script src="/auth.js?v=36"></script>
+  <script src="/auth.js?v=37"></script>
 </body>
 </html>

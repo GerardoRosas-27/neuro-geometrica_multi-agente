@@ -318,6 +318,7 @@ pub fn router_with_auth(state: SharedState, static_dir: PathBuf, auth: SharedAut
         .route("/api/llm/active", get(llm_active_get).post(llm_active_set))
         .route("/api/llm/parse-curl", post(llm_parse_curl))
         .merge(crate::web::spider_job::routes())
+        .merge(crate::web::spider_field_job::routes())
         .with_state(state);
 
     // Estáticos: no-cache para que index.html siempre pida app.js/css frescos
@@ -1425,6 +1426,10 @@ mod tests {
         ("POST", "/api/spider/decide"),
         ("GET", "/api/spider/runs"),
         ("GET", "/api/spider/export"),
+        ("GET", "/api/spider/field/status"),
+        ("POST", "/api/spider/field/train"),
+        ("POST", "/api/spider/field/stop"),
+        ("GET", "/api/spider/field/events?after=0"),
         ("GET", "/api/no-existe"),
     ];
 
@@ -3075,6 +3080,180 @@ mod tests {
         )
         .await;
         assert_eq!(st, StatusCode::BAD_REQUEST);
+    }
+
+    async fn field_train_wait(app: &Router, secs: u64) -> serde_json::Value {
+        let t0 = std::time::Instant::now();
+        while t0.elapsed() < Duration::from_secs(secs) {
+            let (_, v) = call_json(app.clone(), "GET", "/api/spider/field/status", None).await;
+            if v["job"]["running"] == false {
+                return v;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        panic!("el entrenamiento del decoder del campo no terminó en {secs}s");
+    }
+
+    /// Decoder del campo en el Spider: sin entrenar → pendientes (no
+    /// inventa, sin LLM); «Entrenamiento Prompt Spider» (sintéticos + scorer +
+    /// maestro local sustituto) → las escaladas las resuelve `campo` sin
+    /// llamar al LLM; Aprobar alimenta la vigilia que consolida el sueño.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn prompt_spider_field_decoder_untrained_pending_then_trained_resolves() {
+        use crate::prompt_spider::{
+            dry_run, Route, DEFAULT_LLM_FLOOR, DEFAULT_THRESHOLD, SAMPLE_PROMPT,
+        };
+        let (_, dry) = dry_run(SAMPLE_PROMPT, DEFAULT_THRESHOLD);
+        let n_llm = dry.iter().filter(|d| d.route == Route::Llm).count() as u64;
+        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let state = lex_state();
+        state.lock().unwrap().spider.local_stub = Some(stub_gemma(calls.clone()));
+        let app = test_router(state.clone());
+
+        // 1) Sin entrenar: todas las escaladas pendientes, ninguna llamada.
+        let (code, v) = call_json(
+            app.clone(),
+            "POST",
+            "/api/spider/start",
+            Some(json!({ "pace_ms": 0, "field_decoder": true })),
+        )
+        .await;
+        assert_eq!(code, StatusCode::OK, "{v}");
+        assert_eq!(v["decider"], "campo");
+        assert_eq!(v["llm"]["label"], "campo");
+        assert!(v["llm"]["unavailable"]
+            .as_str()
+            .unwrap()
+            .contains("sin entrenar"));
+        let v = spider_wait_done_secs(&app, 30).await;
+        let s = &v["summary"];
+        assert_eq!(s["decider"], "campo");
+        assert_eq!(s["llm_calls"], 0);
+        assert_eq!(s["field_escalated"].as_u64().unwrap(), n_llm);
+        assert_eq!(s["field_resolved"], 0);
+        assert_eq!(s["llm_resolved"], 0);
+        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 0);
+        let decisions = v["run"]["decisions"].as_array().unwrap();
+        let esc: Vec<_> = decisions
+            .iter()
+            .filter(|d| d["first_route"] == "llm")
+            .collect();
+        assert!(esc
+            .iter()
+            .all(|d| d["status"] == "pending"
+                && d["note"].as_str().unwrap().contains("sin entrenar")));
+
+        // 2) Entrenamiento Prompt Spider (2 datasets + maestro sustituto).
+        let (code, v) = call_json(
+            app.clone(),
+            "POST",
+            "/api/spider/field/train",
+            Some(json!({ "datasets": 2, "prompts_per_dataset": 30, "teacher_live": 3, "seed": 5 })),
+        )
+        .await;
+        assert_eq!(code, StatusCode::OK, "{v}");
+        let (code, _) = call_json(
+            app.clone(),
+            "POST",
+            "/api/spider/field/train",
+            Some(json!({ "datasets": 1 })),
+        )
+        .await;
+        assert_eq!(code, StatusCode::CONFLICT);
+        let st = field_train_wait(&app, 240).await;
+        assert_eq!(st["trained"], true, "{st}");
+        assert_eq!(st["job"]["phase"], "done", "{st}");
+        assert_eq!(st["job"]["current"], 2);
+        assert!(st["job"]["sources"]["synthetic"].as_u64().unwrap() > 100);
+        assert!(st["job"]["sources"]["scorer"].as_u64().unwrap() > 0);
+        assert!(
+            st["job"]["sources"]["teacher"].as_u64().unwrap_or(0) >= 1,
+            "{st}"
+        );
+        let ev = &st["holdout"]["synthetic"];
+        assert!(
+            ev["router_h1"]["ok"]["accuracy"].as_f64().unwrap() > 0.75,
+            "{ev}"
+        );
+        assert!(ev["router_h1"]["escalated"].as_u64().unwrap() > 20);
+        let teacher_calls = calls.load(std::sync::atomic::Ordering::SeqCst);
+        assert!(teacher_calls >= 2, "maestro consultado: {teacher_calls}");
+        let (_, evs) =
+            call_json(app.clone(), "GET", "/api/spider/field/events?after=0", None).await;
+        let kinds: Vec<&str> = evs["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|e| e["kind"].as_str().unwrap())
+            .collect();
+        for k in ["start", "teacher", "sleep", "eval", "done"] {
+            assert!(kinds.contains(&k), "{kinds:?}");
+        }
+
+        // 3) Entrenado: el campo resuelve escaladas sin llamar al LLM.
+        let (code, v) = call_json(
+            app.clone(),
+            "POST",
+            "/api/spider/start",
+            Some(json!({ "pace_ms": 0, "field_decoder": true })),
+        )
+        .await;
+        assert_eq!(code, StatusCode::OK, "{v}");
+        assert!(v["llm"].get("unavailable").is_none() || v["llm"]["unavailable"].is_null());
+        let v = spider_wait_done_secs(&app, 30).await;
+        let s = &v["summary"];
+        assert_eq!(s["llm_calls"], 0);
+        assert_eq!(
+            calls.load(std::sync::atomic::Ordering::SeqCst),
+            teacher_calls
+        );
+        let fr = s["field_resolved"].as_u64().unwrap();
+        assert!(fr > 0 && fr < n_llm, "campo resolvió {fr} de {n_llm}");
+        assert_eq!(s["llm_resolved"].as_u64().unwrap(), fr);
+        assert!(s["field_latency_us"].as_f64().unwrap() > 0.0);
+        let run = &v["run"];
+        assert_eq!(run["decider"], "campo");
+        let decisions = run["decisions"].as_array().unwrap();
+        for d in decisions.iter().filter(|d| d["first_route"] == "llm") {
+            let f = &d["field"];
+            assert!(f.is_object(), "{d}");
+            if d["status"] == "resolved" {
+                assert_eq!(d["resolved_by"], "campo");
+                assert!(f["p_ok"].as_f64().unwrap() >= DEFAULT_LLM_FLOOR);
+            } else {
+                assert_eq!(d["status"], "pending");
+                assert!(d["note"].as_str().unwrap().starts_with("campo:"), "{d}");
+            }
+        }
+        // Las palabras de aprobación siguen siendo del humano.
+        assert!(decisions
+            .iter()
+            .filter(|d| d["first_route"] == "you")
+            .all(|d| d["status"] == "pending" && d.get("field").is_none()));
+
+        // 4) Aprobar → vigilia del campo → sueño la consolida.
+        let pend = decisions
+            .iter()
+            .find(|d| d["first_route"] == "llm" && d["status"] == "pending")
+            .expect("alguna escalada pendiente");
+        let (code, v) = call_json(
+            app.clone(),
+            "POST",
+            "/api/spider/decide",
+            Some(json!({ "index": pend["index"], "approve": true })),
+        )
+        .await;
+        assert_eq!(code, StatusCode::OK, "{v}");
+        let (_, st) = call_json(app.clone(), "GET", "/api/spider/field/status", None).await;
+        assert_eq!(st["online_observed"], 1);
+        assert!(st["wake"].as_u64().unwrap() >= 1);
+        let rep = state.lock().unwrap().spider_field.sleep_if_ready();
+        let rep = rep.expect("hay vigilia").expect("sueño hecho");
+        assert!(rep.episodes >= 1);
+        assert_eq!(state.lock().unwrap().spider_field.router.wake_len(), 0);
+        // El estado del spider expone el modelo del campo.
+        let (_, st) = call_json(app.clone(), "GET", "/api/spider/status", None).await;
+        assert_eq!(st["field"]["trained"], true);
     }
 
     async fn spider_wait_done_secs(app: &Router, secs: u64) -> serde_json::Value {
