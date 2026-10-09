@@ -1,5 +1,11 @@
 # Hallazgos E13 / E15 (endurecimiento WIP)
 
+> **Estado en `main` (nota añadida 2026-10-06).** Este endurecimiento se
+> integró a `main` en `e05cef1` (2026-09-23, «integra experimentos E8–E30 a
+> main»). Las líneas «No merge a main», «Push: solo …» y «`main` no se toca»
+> son históricas. El estado de la re-corrida de 8 semillas se explica en la
+> nota inicial de [`resultados_experimentos_11_17.md`](resultados_experimentos_11_17.md).
+
 Rama: `exp/liquid-inference-experiments-8-9-10`  
 Fecha: 2026-09-23 (America/Mexico_City)  
 Base previa: `afe03e2` (E12 GGUF sellado)  

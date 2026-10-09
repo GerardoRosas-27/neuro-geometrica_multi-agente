@@ -1,5 +1,10 @@
 # Resultados — Etapa 2 autonomía de campo
 
+> **Histórico / pre-cleanroom (nota añadida 2026-10-06).** Seeds `0xE1800..`,
+> módulo legacy `src/field_autonomy_stage2.rs` (en `main` desde `e05cef1`).
+> No mezclar con Clean-Room v2/v3; el resultado vigente de la línea es v3.7
+> ([`cierre_exp_field_autonomy_next_v3.md`](cierre_exp_field_autonomy_next_v3.md)).
+
 Protocolo: `docs/etapa_2_autonomia_campo_experimentos.md`
 Módulo: `src/field_autonomy_stage2.rs`
 Rama: `exp/field-autonomy-stage-2`

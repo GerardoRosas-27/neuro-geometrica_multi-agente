@@ -1,5 +1,6 @@
 # Local: docker compose up --build
-# GGUF opcional: monta ./models y exporta GEMMA2_GGUF (mismo patrón que main).
+# La imagen ya trae el GGUF ligero (Q3_K_L). Para otro modelo: monta ./models y
+# exporta GEMMA2_GGUF=/models/<archivo>.gguf (o GEMMA2_GGUF_URL para descargarlo).
 services:
   agentic_web:
     build: .
@@ -8,6 +9,5 @@ services:
     environment:
       PORT: "8080"
       RUST_LOG: info
-      GEMMA2_GGUF: /models/gemma-2-2b-it-Q4_K_M.gguf
     volumes:
       - ./models:/models:ro

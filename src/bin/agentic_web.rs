@@ -6,7 +6,10 @@
 //!
 //! Escucha `0.0.0.0:$PORT` (default 8080). UI en `/`. GGUF opcional vía `GEMMA2_GGUF`.
 
-use cdt_rqm_epr::web::{router, AppState};
+use cdt_rqm_epr::web::api::router_with_auth;
+use cdt_rqm_epr::web::api::spawn_model_bootstrap;
+use cdt_rqm_epr::web::auth::AuthConfig;
+use cdt_rqm_epr::web::AppState;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -38,13 +41,33 @@ async fn main() {
         );
     }
 
-    let app = router(state, static_dir);
+    // El secreto nunca se registra; solo si está configurado.
+    let auth = Arc::new(AuthConfig::from_env());
+    if auth.configured() {
+        tracing::info!(
+            session_ttl_hours = auth.ttl_secs as f64 / 3600.0,
+            "MASTER_SECRET configurado: /api/* exige sesión"
+        );
+        for w in auth.warnings() {
+            tracing::warn!("{w}");
+        }
+    } else {
+        tracing::warn!("MASTER_SECRET no configurado: /api/* responde 503 (fail-closed)");
+    }
+
+    spawn_model_bootstrap(state.clone());
+    let app = router_with_auth(state, static_dir, auth);
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     tracing::info!(%addr, "agentic_web escuchando");
     let listener = tokio::net::TcpListener::bind(addr)
         .await
         .expect("bind PORT");
-    axum::serve(listener, app).await.expect("serve");
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await
+    .expect("serve");
 }
 
 fn resolve_static_dir() -> PathBuf {

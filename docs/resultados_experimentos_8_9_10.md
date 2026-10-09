@@ -1,5 +1,14 @@
 # Resultados experimentos 8/9/10 — inferencia líquida
 
+> **Aviso de procedencia (nota añadida 2026-10-06).** Este archivo lo escribe
+> automáticamente un test de `src/liquid_experiments_8_9_10.rs`. Se
+> **regeneró sin querer** en el commit `7619728` (PR #30, 2026-09-26): los
+> veredictos coinciden con la corrida original, pero las latencias son de otra
+> máquina (≈3–7× mayores), la etiqueta `periphery: gemma-gguf` contradice las
+> notas de E8 (léxico) y se perdieron las secciones de hardware, mejoras de
+> arquitectura y controles. La versión original (commit al correr `58b2603`,
+> periferia léxico) está en `git show 7619728^:docs/resultados_experimentos_8_9_10.md`.
+
 Rama: `exp/liquid-inference-experiments-8-9-10`
 
 Hardware: ver ejecución (`uname -a`, `rustc -V`).

@@ -1,6 +1,10 @@
 # Despliegue en Railway · Chat agentico
 
-**Rama:** `feat/railway-agentic-chat` · **Binario:** `agentic_web` (feature `web`)
+**Estado:** en `main` (PR #18, ampliado por PRs #20–#36; nació en la rama `feat/railway-agentic-chat`) · **Binario:** `agentic_web` (feature `web`)
+
+> Nota (2026-10-06): actualizado para reflejar el interruptor de chat (PR #30),
+> el modelo Q3_K_L horneado (PR #32), el historial persistente (PR #33), los
+> proveedores LLM (PR #34), `MASTER_SECRET` (PR #35) y las 5 pestañas.
 
 ## Arquitectura (texto)
 
@@ -31,42 +35,75 @@ Usuario (UI web)
 - **Líquido** = toda la inferencia rápida  
 - **CDT termo** = memoria durable **después** del sueño  
 - **RQM** = índice/fallback (desde fuse)  
-- **LLM** = **decoder only** del campo (+ dataset gen en periferia)  
+- **LLM** = **decoder only** del campo en chat ON (+ dataset gen en periferia); en chat OFF responde el LLM crudo, sin campo  
+- El chat **no** usa la dinámica Dφ de la Etapa 2 v3.7 (esa línea solo aparece como smoke en Pruebas)  
 
 ## Variables de entorno
 
 | Variable | Obligatoria | Default | Descripción |
 |----------|-------------|---------|-------------|
+| `MASTER_SECRET` | **Sí** | — | Secreto maestro de acceso (UI + `/api/*`). Sin él la API responde 503 `master_secret_not_configured`. Genera uno con `python3 -c "import secrets; print(secrets.token_urlsafe(48))"`. Ver README · «acceso con secreto maestro» |
+| `SESSION_TTL_HOURS` | No | `12` | Duración de la sesión firmada |
+| `AUTH_REVOKED_FILE` | No | `data/revoked_sessions.json` | Sesiones revocadas por «Cerrar sesión» |
 | `PORT` | Railway la pone | `8080` | Puerto HTTP (`0.0.0.0:$PORT`) |
-| `GEMMA2_GGUF` | No | — | Ruta al modelo GGUF (volumen). Sin ella → modo `lexicon` |
+| `GEMMA2_GGUF` | No | `/app/models/gemma-2-2b-it-Q3_K_L.gguf` (Docker) · `models/gemma-2-2b-it-Q3_K_L.gguf` (local) | Ruta del GGUF |
+| `GEMMA2_GGUF_URL` | No | Q3_K_L de `bartowski/gemma-2-2b-it-GGUF` (commit fijado) | URL pública (sin token) para descargar si falta |
+| `GEMMA2_GGUF_SHA256` | No | sha256 del Q3_K_L | Verificación; vacío = no verificar |
+| `GEMMA2_AUTO_DOWNLOAD` | No | `1` | `0` = no descargar en arranque |
+| `CHAT_TIMEOUT_SECS` | No | `75` | Plazo por mensaje; al vencer corta y devuelve texto parcial |
+| `RAW_CHAT_MAX_TOKENS` | No | `160` | Tokens máx. modo OFF (Gemma original) |
+| `FIELD_DECODER_MAX_TOKENS` | No | `96` | Tokens máx. modo ON (decoder del campo) |
+| `LLM_API_BASE` | No | — | API externa OpenAI-compatible fija (p. ej. `https://docker-llm-production.up.railway.app/v1`); aparece como proveedor `env` |
+| `LLM_API_KEY` | No | — | Clave Bearer de esa API (`obk1.…`). Nunca se registra ni se devuelve |
+| `LLM_API_MODEL` | No | — | Modelo (vacío = el primero de `/v1/models`) |
+| `LLM_API_NAME` | No | derivado del host | Nombre visible del proveedor `env` |
+| `LLM_API_ACTIVE` | No | `0` | `1` = arrancar con la API `env` como LLM activo |
+| `LLM_PROVIDERS_FILE` | No | `data/llm_providers.json` | JSON (0600) con las APIs guardadas desde la UI y el LLM activo |
 | `RUST_LOG` | No | `info` | Nivel de tracing |
 
-**El GGUF es opcional.** El deploy por defecto en Railway arranca en modo léxico sin descargar pesos.
+**Modelo ligero incluido.** El `Dockerfile` descarga en el build Gemma 2 2B-it
+**Q3_K_L** (~1.55 GB, sha256 verificado). Si el archivo no está (build con
+`--build-arg DOWNLOAD_GGUF=0`, o `GEMMA2_GGUF` apuntando a un volumen vacío), el
+binario arranca en léxico, lo descarga en segundo plano con `curl` y hace
+hot-swap a Gemma (`GET /api/status` con sesión → `model.state`: `downloading` → `loading` → `ready`).
+
+¿Por qué Q3_K_L? El cargador nativo solo soporta arquitectura `gemma2` y candle
+no soporta cuantizaciones IQ*. Q2_K (~1.23 GB) se probó y degenera (bucles,
+texto incoherente). Q3_K_L es la opción más ligera usable. RAM: ~1.8 GB estable
+(`MALLOC_ARENA_MAX=2`), picos ~2.3 GB → usa un plan Railway con **≥ 3 GB de RAM**.
+
+Chat: ON («Decoder del campo») = campo (líquido/CDT/RQM) decide el estado y
+Gemma lo verbaliza (con fallback al decoder léxico si Gemma no está o falla);
+OFF = Gemma 2 original congelado. Ambos comparten los mismos pesos en RAM.
 
 ## Cómo desplegar en railway.com
 
 1. Conecta el repo `neuro-geometrica_multi-agente` en [railway.com](https://railway.com).
 2. Crea un servicio desde el repo; Railway detecta `Dockerfile` / `railway.toml`.
 3. Asegura rama `main` (o la de este PR tras merge) y build con Dockerfile.
-4. Healthcheck: `GET /health` → `{ "ok": true, "llm_mode": "lexicon"|"gemma_gguf", ... }`.
-5. (Opcional) Monta un volumen con el GGUF y define `GEMMA2_GGUF=/data/model.gguf`.
-6. Abre la URL pública: UI en `/`, API bajo `/api/*`.
+4. Define `MASTER_SECRET` en **Variables** (sin ella la API queda cerrada).
+   Healthcheck: `GET /health` → `{ "ok": true, "auth": { "master_configured": true, "warnings": [] } }`
+   (público y sin datos internos; el estado detallado está en `GET /api/status`, con sesión).
+5. (Opcional) Para no hornear el GGUF en la imagen: build arg `DOWNLOAD_GGUF=0`, volumen en `/data` y `GEMMA2_GGUF=/data/gemma-2-2b-it-Q3_K_L.gguf` (se descarga una vez al primer arranque).
+6. Abre la URL pública: UI en `/` (pide el secreto maestro), API bajo `/api/*` (sesión por cookie o `Authorization: Bearer`).
 
 ## Qué hace la UI
 
-## UI · 4 pestañas (Chat / Entrenamiento / Sueño / Pruebas)
+## UI · 5 pestañas (Chat / Entrenamiento / Sueño / Modelos / API / Pruebas)
 
-- **Chat**: solo historial + input. El LLM **decodifica** lo que el modelo de campo recuerda (concepto / engramas). No comparte conversación como dataset de train.
+- **Chat**: historial + input, interruptor **«Decoder del campo»** (ON: el campo decide y el LLM **decodifica** lo que recuerda — concepto / engramas; OFF: LLM crudo con historial), chip del LLM activo y botón **«Nuevo chat»** (historial en `localStorage`; borra también `/api/chat/history`). No comparte conversación como dataset de train.
 - **Entrenamiento**: consola en vivo, infinito por defecto, start/stop. Datasets vía `generate_train_batch` en periferia (`source_tag=llm_dataset_decoupled`).
-- **Sueño**: `POST /api/sleep` con intensidades de poda/compactación. Minimiza energía libre, compacta fasores, poda rutas RQM débiles, reporta F/simetría/handshake.
-- **Pruebas**: `POST /api/tests/run` evalúa el fuse/campo **ya entrenado** (identidad, shifted, latencia líquido, recall de engramas, F/simetría del último sueño, histograma de rutas). No lanza train infinito. `GET /api/tests/last` y `/api/tests/status`.
+- **Sueño**: requiere entrenamiento previo. `POST /api/sleep` / `/api/sleep/start` con intensidades de poda/compactación. Minimiza energía libre, compacta fasores, poda rutas RQM débiles, reporta F/simetría/handshake.
+- **Modelos / API**: configurar LLM externos OpenAI-compatible (ver sección final).
+- **Pruebas**: `POST /api/tests/run` / `/api/tests/start` corre la suite de smokes (E8–E10, E13/E15 y Clean-Room v3.7 en 1 seed DEV `0xA300`, `HyperparamLock::smoke()`; no es la confirmación `0xB300`) y evalúa el fuse/campo **ya entrenado** (identidad, shifted, latencia líquido, recall de engramas, F/simetría del último sueño, histograma de rutas). No lanza train infinito. `GET /api/tests/last` y `/api/tests/status`.
 
 
 
-- **Chat** (izquierda): mensajes agenticos; intents `entrena`, `sueño`, `estado`.
-- **Iniciar / Detener entrenamiento**: job async **infinito por defecto** (dataset → líquido → CDT + checkpoint **por dataset**); checkbox Infinito; Detener cancela.
+Detalles comunes (el layout antiguo de chat a la izquierda + paneles a la derecha se sustituyó por pestañas; en móvil la cabecera se apila):
+
+- **Chat**: intents `entrena`, `sueño`, `estado`.
+- **Entrenamiento**: job async **infinito por defecto** (dataset → líquido → CDT + checkpoint **por dataset**); checkbox Infinito; Detener cancela. Paneles Entrenamiento en vivo (barra, eventos, checkpoint, decoder) · Líquido · CDT · RQM.
 - **Sueño / consolidar**: `sleep_consolidate` → engramas CDT + reafirma RQM.
-- **Paneles** (derecha): Entrenamiento en vivo (barra, eventos, checkpoint, decoder) · Líquido · CDT · RQM.
 
 
 
@@ -121,26 +158,23 @@ docker compose up --build
 
 ## GGUF local (Docker compose / experimentos)
 
-El `Dockerfile` **no** descarga pesos. Para Gemma 2 real:
+El `Dockerfile` ya trae el GGUF ligero. Fuera de Docker, el binario lo descarga
+solo a `models/gemma-2-2b-it-Q3_K_L.gguf` al arrancar. Manual:
 
-1. Descarga el GGUF público (~1.7 GB) a `models/`:
-   ```bash
-   mkdir -p models
-   curl -L --retry 5 -C - -o models/gemma-2-2b-it-Q4_K_M.gguf \
-     "https://huggingface.co/bartowski/gemma-2-2b-it-GGUF/resolve/main/gemma-2-2b-it-Q4_K_M.gguf"
-   ```
-2. `docker-compose.yml` monta `./models:/models:ro` y define
-   `GEMMA2_GGUF=/models/gemma-2-2b-it-Q4_K_M.gguf`.
-3. Fuera de Docker (tests E12 / `FrozenGemma2Probe`):
-   ```bash
-   export GEMMA2_GGUF=/workspace/neuro-geometrica_multi-agente/models/gemma-2-2b-it-Q4_K_M.gguf
-   cargo test --release --lib field_gemma_probe -- --nocapture
-   ```
+```bash
+mkdir -p models
+curl -L --retry 5 -C - -o models/gemma-2-2b-it-Q3_K_L.gguf \
+  "https://huggingface.co/bartowski/gemma-2-2b-it-GGUF/resolve/855f67caed130e1befc571b52bd181be2e858883/gemma-2-2b-it-Q3_K_L.gguf"
+# Experimentos E12 / FrozenGemma2Probe:
+export GEMMA2_GGUF=$PWD/models/gemma-2-2b-it-Q3_K_L.gguf
+cargo test --release --lib field_gemma_probe -- --nocapture
+```
+(El Q4_K_M anterior sigue funcionando vía `GEMMA2_GGUF` si prefieres calidad.)
 Sin GGUF → periferia léxico; E12 → `SKIPPED_NO_GGUF` (honesto).
 
 ## Notas
 
-- No se descargan modelos en el build de Docker (binario razonable).
+- El build de Docker **sí** descarga el GGUF Q3_K_L por defecto (`DOWNLOAD_GGUF=1`); usa `--build-arg DOWNLOAD_GGUF=0` para una imagen sin modelo.
 - `cargo test` por defecto (sin `web`) sigue sin depender de Axum.
 - Admin Repositorio puede ayudar con push/merge si los permisos fallan.
 
@@ -148,3 +182,36 @@ Sin GGUF → periferia léxico; E12 → `SKIPPED_NO_GGUF` (honesto).
 
 El `Dockerfile` usa la imagen `rust:bookworm` (stable reciente).
 No uses `rust:1.85`: `sysinfo` 0.39 pide rustc ≥ 1.95 y `zip` 8.x pide ≥ 1.88.
+
+## Modelos / API (LLM externo OpenAI-compatible)
+
+La pestaña **Modelos / API** (y el botón del mismo nombre en la cabecera) permite
+usar un LLM externo, por ejemplo **docker-llm**, en lugar de Gemma local:
+
+1. En el panel de docker-llm genera una API key y copia el `curl` de un modelo.
+2. Pégalo en «Pega aquí el curl» y pulsa **Auto-configurar**: rellena nombre,
+   URL base (hasta `/v1`), API key (oculta) y modelo. Acepta continuaciones `\`,
+   comillas simples/dobles, `-H/--header`, `-d/--data/--data-raw`, `-N`,
+   `"stream":true`, la ruta por modelo `/v1/models/<id>/chat/completions`,
+   `/v1/models`, `/v1/completions` y líneas `export BASE=…` / `export API_KEY=…`.
+3. **Probar conexión** (`GET /v1/models` + chat mínimo, con latencias) →
+   **Guardar** (o **Guardar y usar**).
+4. Elige el LLM activo en el selector de la cabecera o en la lista.
+
+El LLM activo se usa en: chat OFF (LLM crudo con historial), chat ON (el campo
+decide el estado y el LLM solo lo verbaliza; si la API falla y Gemma está
+cargado responde Gemma como respaldo etiquetado, si no el decoder léxico) y la
+generación de datasets de entrenamiento (el LLM parafrasea el curriculum; la
+etiqueta sigue saliendo del curriculum y el encode al campo lo hace la sonda
+local). Sueño y Pruebas no usan LLM. «Nuevo chat» borra también el contexto que
+se reenvía a la API.
+
+Endpoints: `GET/POST /api/llm/providers`, `DELETE /api/llm/providers/{id}`,
+`POST /api/llm/providers/test`, `GET/POST /api/llm/active` (`{id}`; `gemma_local`
+= local), `POST /api/llm/parse-curl`. Las claves salen enmascaradas en las
+respuestas GET/POST y no se escriben en logs.
+
+**Persistencia.** Lo guardado desde la UI vive en `data/llm_providers.json`
+dentro del contenedor: en Railway **sin volumen** se pierde en cada redeploy.
+Para dejar una API fija usa `LLM_API_BASE` / `LLM_API_KEY` / `LLM_API_MODEL`
+(+ `LLM_API_ACTIVE=1`), o monta un volumen y apunta `LLM_PROVIDERS_FILE` a él.

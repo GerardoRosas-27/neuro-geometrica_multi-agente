@@ -1,5 +1,6 @@
 //! REST API JSON + estáticos + SSE de entrenamiento en vivo.
 
+use crate::web::auth::{self, AuthConfig, SharedAuth};
 use crate::web::field_eval::FieldEvalReport;
 use crate::web::process_job::{ProcessesSnapshot, SleepJobSnapshot, TestsJobSnapshot};
 use crate::web::sleep_optimize::{SleepOptimizeOpts, SleepOptimizeReport};
@@ -41,6 +42,37 @@ pub struct HealthResponse {
     /// True si el Gemma 2 original (GGUF) está cargado → chat crudo disponible.
     pub raw_gemma_available: bool,
     pub raw_chat_calls: u64,
+    /// Estado del GGUF: ready | downloading | loading | missing | error | disabled.
+    pub model: crate::web::model_fetch::ModelStatus,
+    /// LLM activo de la app (Gemma local o API externa).
+    pub llm_active: LlmActive,
+}
+
+/// LLM activo (para badges de la UI).
+#[derive(Clone, Debug, Serialize)]
+pub struct LlmActive {
+    pub id: String,
+    pub label: String,
+    /// `local` | `openai_compatible`.
+    pub kind: String,
+    pub model: String,
+}
+
+fn llm_active_of(g: &AppState) -> LlmActive {
+    match g.active_external() {
+        Some(p) => LlmActive {
+            id: p.id.clone(),
+            label: p.label(),
+            kind: "openai_compatible".into(),
+            model: p.model.clone(),
+        },
+        None => LlmActive {
+            id: crate::web::llm_provider::LOCAL_ID.into(),
+            label: crate::web::state::LOCAL_LABEL.into(),
+            kind: "local".into(),
+            model: g.probe.name().into(),
+        },
+    }
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -109,8 +141,23 @@ pub fn spawn_live_train_loop(state: SharedState) {
             let cont = {
                 let st = state.clone();
                 match tokio::task::spawn_blocking(move || {
-                    let mut g = st.lock().unwrap();
-                    g.run_one_live_batch()
+                    // API externa activa: el dataset se genera por HTTP **sin**
+                    // sostener el lock (chat/telemetría siguen respondiendo).
+                    let plan = st
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .external_dataset_plan();
+                    let pre = plan.map(|(cfg, batch_size, seed)| {
+                        let r = crate::web::llm_periphery::generate_train_batch_external(
+                            &cfg,
+                            batch_size,
+                            seed,
+                            crate::web::llm_periphery::chat_timeout(),
+                        );
+                        (seed, r)
+                    });
+                    let mut g = st.lock().unwrap_or_else(|e| e.into_inner());
+                    g.run_one_live_batch_with(pre)
                 })
                 .await
                 {
@@ -211,14 +258,29 @@ pub fn spawn_tests_job(state: SharedState) {
     });
 }
 
+/// Router con autenticación leída del entorno (`MASTER_SECRET`, …).
 pub fn router(state: SharedState, static_dir: PathBuf) -> Router {
+    router_with_auth(state, static_dir, Arc::new(AuthConfig::from_env()))
+}
+
+/// Router con una configuración de acceso explícita. **Todo** `/api/*` exige
+/// sesión salvo `/api/auth/{login,logout,status}`; `/health` y los estáticos
+/// son públicos (el middleware envuelve también el fallback).
+pub fn router_with_auth(state: SharedState, static_dir: PathBuf, auth: SharedAuth) -> Router {
     let cors = CorsLayer::new()
         .allow_origin(Any)
         .allow_methods(Any)
         .allow_headers(Any);
 
-    let api = Router::new()
+    let public = Router::new()
         .route("/health", get(health))
+        .route("/api/auth/login", post(auth::login))
+        .route("/api/auth/logout", post(auth::logout))
+        .route("/api/auth/status", get(auth::status))
+        .with_state(auth.clone());
+
+    let api = Router::new()
+        .route("/api/status", get(app_status))
         .route("/api/chat", post(chat))
         .route("/api/train/start", post(train_start))
         .route("/api/train/stop", post(train_stop))
@@ -243,6 +305,18 @@ pub fn router(state: SharedState, static_dir: PathBuf) -> Router {
         .route("/api/telemetry/rqm", get(telemetry_rqm))
         .route("/api/telemetry/train", get(telemetry_train))
         .route("/api/chat/history", get(chat_history))
+        .route("/api/chat/reset", post(chat_reset))
+        .route(
+            "/api/llm/providers",
+            get(llm_providers_list).post(llm_providers_save),
+        )
+        .route("/api/llm/providers/test", post(llm_providers_test))
+        .route(
+            "/api/llm/providers/{id}",
+            axum::routing::delete(llm_providers_delete),
+        )
+        .route("/api/llm/active", get(llm_active_get).post(llm_active_set))
+        .route("/api/llm/parse-curl", post(llm_parse_curl))
         .with_state(state);
 
     // Estáticos: no-cache para que index.html siempre pida app.js/css frescos
@@ -255,14 +329,37 @@ pub fn router(state: SharedState, static_dir: PathBuf) -> Router {
         .service(ServeDir::new(static_dir).append_index_html_on_directories(true));
 
     Router::new()
+        .merge(public)
         .merge(api)
         .fallback_service(static_svc)
+        .layer(axum::middleware::from_fn_with_state(
+            auth,
+            auth::require_auth,
+        ))
         .layer(cors)
         .layer(TraceLayer::new_for_http())
 }
 
-async fn health(State(st): State<SharedState>) -> impl IntoResponse {
-    let g = st.lock().unwrap();
+/// Salud pública: sin datos internos (modelo, rutas, procesos, LLM). Solo si el
+/// proceso responde y el estado del secreto maestro (sin revelarlo).
+async fn health(State(auth): State<SharedAuth>) -> impl IntoResponse {
+    Json(json!({
+        "ok": true,
+        "service": "neuro-geometrica",
+        "auth": {
+            "mode": auth.mode(),
+            "master_configured": auth.configured(),
+            "session_ttl_hours": auth.ttl_secs as f64 / 3600.0,
+            "warnings": auth.warnings(),
+        },
+    }))
+}
+
+/// Estado detallado de la app (antes `/health`); requiere sesión.
+async fn app_status(State(st): State<SharedState>) -> impl IntoResponse {
+    let mut g = st.lock().unwrap_or_else(|e| e.into_inner());
+    let cfg = g.model_cfg.clone();
+    g.model_status.refresh_progress(&cfg);
     let procs = g.processes_snapshot();
     Json(HealthResponse {
         ok: true,
@@ -276,7 +373,61 @@ async fn health(State(st): State<SharedState>) -> impl IntoResponse {
         probe: g.probe.name().into(),
         raw_gemma_available: g.probe.raw_handle().is_some(),
         raw_chat_calls: g.raw_chat_calls,
+        model: g.model_status.clone(),
+        llm_active: llm_active_of(&g),
     })
+}
+
+/// Arranque del modelo: si falta el GGUF y la descarga automática está activa,
+/// lo descarga en segundo plano (curl) y hace hot-swap de la sonda a Gemma.
+/// El servidor sigue sirviendo (léxico) mientras tanto.
+pub fn spawn_model_bootstrap(state: SharedState) {
+    let (cfg, needs) = {
+        let g = state.lock().unwrap_or_else(|e| e.into_inner());
+        (
+            g.model_cfg.clone(),
+            g.probe.raw_handle().is_none() && g.model_status.state == "missing",
+        )
+    };
+    if !needs {
+        return;
+    }
+    tokio::spawn(async move {
+        use crate::web::model_fetch::{download_gguf, ModelStatus};
+        if !cfg.path.is_file() {
+            state.lock().unwrap_or_else(|e| e.into_inner()).model_status =
+                ModelStatus::new("downloading", &cfg, "descargando GGUF");
+            let c = cfg.clone();
+            let r = tokio::task::spawn_blocking(move || download_gguf(&c))
+                .await
+                .unwrap_or_else(|e| Err(format!("tarea de descarga falló: {e}")));
+            if let Err(e) = r {
+                tracing::error!(error = %e, "descarga GGUF falló");
+                state.lock().unwrap_or_else(|e| e.into_inner()).model_status =
+                    ModelStatus::new("error", &cfg, e);
+                return;
+            }
+        }
+        state.lock().unwrap_or_else(|e| e.into_inner()).model_status =
+            ModelStatus::new("loading", &cfg, "cargando GGUF");
+        let c = cfg.clone();
+        let r = tokio::task::spawn_blocking(move || {
+            crate::web::llm_periphery::open_gemma_probe(&c.path)
+        })
+        .await
+        .unwrap_or_else(|e| Err(format!("tarea de carga falló: {e}")));
+        let mut g = state.lock().unwrap_or_else(|e| e.into_inner());
+        match r {
+            Ok(probe) => {
+                tracing::info!(path = %cfg.path.display(), "Gemma cargado (hot-swap)");
+                g.install_probe(probe);
+            }
+            Err(e) => {
+                tracing::error!(error = %e, "carga GGUF falló");
+                g.model_status = ModelStatus::new("error", &cfg, e);
+            }
+        }
+    });
 }
 
 async fn chat(
@@ -296,27 +447,208 @@ async fn chat(
         }
     };
     match mode {
-        ChatMode::FieldDecoder => {
-            let (resp, should_spawn) = {
-                let mut g = st.lock().unwrap();
-                let was_running = g.train_job.running;
-                let resp = g.handle_chat(&body.message);
-                let should_spawn = resp.route == "train" && g.train_job.running && !was_running;
-                (resp, should_spawn)
-            };
-            if should_spawn {
-                spawn_live_train_loop(st);
-            }
-            Json(resp).into_response()
-        }
+        ChatMode::FieldDecoder => chat_field_decoder(st, body.message).await,
         ChatMode::GemmaRaw => chat_gemma_raw(st, body.message).await,
+    }
+}
+
+/// ON: campo (líquido/CDT/RQM) produce el estado bajo el lock (en hilo
+/// bloqueante, no en el event loop); Gemma lo **decodifica** a texto fuera del
+/// lock con plazo. Si Gemma no está o falla → decoder léxico. Siempre responde.
+async fn chat_field_decoder(st: SharedState, message: String) -> axum::response::Response {
+    use crate::web::llm_periphery::{chat_timeout, field_decoder_config};
+    use axum::http::StatusCode;
+    if message.trim().is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "ok": false, "mode": "field_decoder", "error": "mensaje vacío" })),
+        )
+            .into_response();
+    }
+    let deadline = std::time::Instant::now() + chat_timeout();
+    let t0 = std::time::Instant::now();
+    let st2 = st.clone();
+    let msg = message.clone();
+    let field = tokio::task::spawn_blocking(move || {
+        let mut g = st2.lock().unwrap_or_else(|e| e.into_inner());
+        let was_running = g.train_job.running;
+        let resp = g.handle_chat(&msg);
+        let should_spawn = resp.route == "train" && g.train_job.running && !was_running;
+        let job = g.field_decode_job(&msg, &resp);
+        let pending_note = (job.is_none()
+            && matches!(resp.route.as_str(), "Liquid" | "RqmFallback")
+            && g.model_status.state != "ready")
+            .then(|| g.model_unavailable_reason());
+        (resp, should_spawn, job, pending_note)
+    })
+    .await;
+    let (mut resp, should_spawn, job, pending_note) = match field {
+        Ok(v) => v,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "ok": false, "mode": "field_decoder",
+                              "error": format!("pipeline de campo falló: {e}") })),
+            )
+                .into_response();
+        }
+    };
+    let field_secs = t0.elapsed().as_secs_f64();
+    if should_spawn {
+        spawn_live_train_loop(st.clone());
+    }
+    if let Some(job) = job {
+        let seed = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos() as u64)
+            .unwrap_or(0xDEC0);
+        let cfg = field_decoder_config(seed);
+        let outcome = tokio::task::spawn_blocking(move || run_decode_job(job, cfg, deadline))
+            .await
+            .unwrap_or_else(|e| DecodeOutcome {
+                result: Err(format!("tarea del decoder falló: {e}")),
+                who: "decoder".into(),
+                llm_id: String::new(),
+                llm: "decoder".into(),
+                note: None,
+                fallback: false,
+            });
+        tracing::info!(
+            field_secs,
+            decoder_secs = t0.elapsed().as_secs_f64() - field_secs,
+            ok = outcome.result.is_ok(),
+            llm = %outcome.llm,
+            fallback = outcome.fallback,
+            "chat field_decoder"
+        );
+        resp = st
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .apply_field_decoded_by(
+                resp,
+                outcome.result,
+                &outcome.who,
+                &outcome.llm_id,
+                &outcome.llm,
+                outcome.note,
+            );
+        resp.fallback = outcome.fallback;
+    } else if let Some(note) = pending_note {
+        resp.reply.push_str(&format!(
+            "\n\n(decoder Gemma aún no disponible: {note}; respuesta del decoder léxico)"
+        ));
+    }
+    if resp.llm.is_empty() && matches!(resp.route.as_str(), "Liquid" | "RqmFallback") {
+        resp.llm = "decoder léxico".into();
+        resp.llm_id = "lexicon".into();
+    }
+    Json(resp).into_response()
+}
+
+/// Resultado del decoder (quién respondió + nota de respaldo).
+struct DecodeOutcome {
+    result: Result<crate::field_gemma_probe::RawGemmaReply, String>,
+    who: String,
+    llm_id: String,
+    llm: String,
+    note: Option<String>,
+    fallback: bool,
+}
+
+fn remaining(deadline: std::time::Instant) -> Duration {
+    deadline
+        .saturating_duration_since(std::time::Instant::now())
+        .max(Duration::from_secs(1))
+}
+
+fn external_to_raw(
+    r: crate::web::llm_provider::ExternalReply,
+) -> crate::field_gemma_probe::RawGemmaReply {
+    crate::field_gemma_probe::RawGemmaReply {
+        text: r.text,
+        prompt_tokens: r.prompt_tokens,
+        generated_tokens: r.completion_tokens,
+        seconds: r.seconds,
+    }
+}
+
+/// Ejecuta el decoder (bloqueante). API externa → si falla y Gemma local está
+/// cargado y queda plazo (≥ 10 s), respaldo local **etiquetado**.
+fn run_decode_job(
+    job: crate::web::state::DecodeJob,
+    cfg: crate::native_gemma2_runtime::Gemma2GenerationConfig,
+    deadline: std::time::Instant,
+) -> DecodeOutcome {
+    use crate::web::llm_provider::{external_decoder_config, field_decoder_messages, OpenAiClient};
+    use crate::web::state::{DecodeBackend, LOCAL_LABEL};
+    let local = |handle: crate::field_gemma_probe::RawGemmaHandle| {
+        handle.generate_prompt(&job.gemma_prompt, cfg, Some(deadline))
+    };
+    match job.backend {
+        DecodeBackend::Gemma(handle) => DecodeOutcome {
+            result: local(handle),
+            who: "gemma2 decoder".into(),
+            llm_id: crate::web::llm_provider::LOCAL_ID.into(),
+            llm: LOCAL_LABEL.into(),
+            note: None,
+            fallback: false,
+        },
+        DecodeBackend::External { cfg: p, fallback } => {
+            let client = OpenAiClient::new(&p, remaining(deadline));
+            let r = client
+                .chat(
+                    &field_decoder_messages(&job.user_msg, &job.field_state),
+                    external_decoder_config(),
+                )
+                .map(external_to_raw);
+            let who = format!(
+                "api decoder·{}",
+                if p.model.is_empty() {
+                    &p.name
+                } else {
+                    &p.model
+                }
+            );
+            match (r, fallback) {
+                (Ok(reply), _) => DecodeOutcome {
+                    result: Ok(reply),
+                    who,
+                    llm_id: p.id.clone(),
+                    llm: p.label(),
+                    note: None,
+                    fallback: false,
+                },
+                (Err(e), Some(handle)) if remaining(deadline) >= Duration::from_secs(10) => {
+                    tracing::warn!(provider = %p.name, error = %e, "API externa falló; respaldo Gemma local");
+                    DecodeOutcome {
+                        result: local(handle),
+                        who: "gemma2 decoder (respaldo)".into(),
+                        llm_id: crate::web::llm_provider::LOCAL_ID.into(),
+                        llm: format!("{LOCAL_LABEL} (respaldo)"),
+                        note: Some(format!(
+                            "{} falló: {e} · respondió Gemma local como respaldo",
+                            p.label()
+                        )),
+                        fallback: true,
+                    }
+                }
+                (Err(e), _) => DecodeOutcome {
+                    result: Err(e),
+                    who,
+                    llm_id: p.id.clone(),
+                    llm: p.label(),
+                    note: None,
+                    fallback: false,
+                },
+            }
+        }
     }
 }
 
 /// OFF: Gemma 2 congelado original como LLM plano. Nunca cae al campo.
 /// La generación corre en `spawn_blocking` sin sostener el lock de AppState.
 async fn chat_gemma_raw(st: SharedState, message: String) -> axum::response::Response {
-    use crate::web::llm_periphery::raw_chat_config;
+    use crate::web::llm_periphery::{chat_timeout, raw_chat_config};
     use axum::http::StatusCode;
     let msg = message.trim().to_string();
     if msg.is_empty() {
@@ -326,11 +658,22 @@ async fn chat_gemma_raw(st: SharedState, message: String) -> axum::response::Res
         )
             .into_response();
     }
-    let prepared = st.lock().unwrap().raw_chat_prepare();
-    let (handle, history) = match prepared {
+    let deadline = std::time::Instant::now() + chat_timeout();
+    let st2 = st.clone();
+    let prepared = tokio::task::spawn_blocking(move || {
+        st2.lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .raw_chat_backend()
+    })
+    .await
+    .unwrap_or_else(|e| Err(format!("tarea falló: {e}")));
+    let (backend, history) = match prepared {
         Ok(v) => v,
         Err(e) => {
-            let resp = st.lock().unwrap().record_raw_chat(&msg, &Err(e));
+            let resp = st
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .record_raw_chat(&msg, &Err(e));
             return (StatusCode::SERVICE_UNAVAILABLE, Json(resp)).into_response();
         }
     };
@@ -340,15 +683,40 @@ async fn chat_gemma_raw(st: SharedState, message: String) -> axum::response::Res
         .unwrap_or(0x6E33A);
     let cfg = raw_chat_config(seed);
     let input = msg.clone();
-    let result = tokio::task::spawn_blocking(move || handle.generate_chat(&history, &input, cfg))
-        .await
-        .unwrap_or_else(|e| Err(format!("tarea de generación falló: {e}")));
+    let (result, external) = match backend {
+        crate::web::state::RawBackend::Gemma(handle) => (
+            tokio::task::spawn_blocking(move || {
+                handle.generate_chat(&history, &input, cfg, Some(deadline))
+            })
+            .await
+            .unwrap_or_else(|e| Err(format!("tarea de generación falló: {e}"))),
+            None,
+        ),
+        crate::web::state::RawBackend::External(p) => {
+            use crate::web::llm_provider::{external_raw_config, raw_chat_messages, OpenAiClient};
+            let p2 = p.clone();
+            let r = tokio::task::spawn_blocking(move || {
+                OpenAiClient::new(&p2, remaining(deadline))
+                    .chat(&raw_chat_messages(&history, &input), external_raw_config())
+                    .map(external_to_raw)
+            })
+            .await
+            .unwrap_or_else(|e| Err(format!("tarea de generación falló: {e}")));
+            (r, Some(p))
+        }
+    };
     let ok = result.is_ok();
-    let resp = st.lock().unwrap().record_raw_chat(&msg, &result);
-    let status = if ok {
-        StatusCode::OK
-    } else {
-        StatusCode::INTERNAL_SERVER_ERROR
+    if let (Err(e), Some(p)) = (&result, &external) {
+        tracing::warn!(provider = %p.name, error = %e, "chat crudo: API externa falló");
+    }
+    let resp = st
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .record_raw_chat_by(&msg, &result, external.as_ref());
+    let status = match (ok, external.is_some()) {
+        (true, _) => StatusCode::OK,
+        (false, true) => StatusCode::BAD_GATEWAY,
+        (false, false) => StatusCode::INTERNAL_SERVER_ERROR,
     };
     (status, Json(resp)).into_response()
 }
@@ -658,14 +1026,286 @@ async fn telemetry_train(State(st): State<SharedState>) -> impl IntoResponse {
     Json(build_full(&g).train)
 }
 
+/// «Nuevo chat»: vacía el historial del servidor (y el contexto crudo de OFF).
+async fn chat_reset(State(st): State<SharedState>) -> impl IntoResponse {
+    let cleared = st.lock().unwrap_or_else(|e| e.into_inner()).reset_chat();
+    Json(json!({ "ok": true, "cleared": cleared }))
+}
+
 async fn chat_history(State(st): State<SharedState>) -> impl IntoResponse {
     let g = st.lock().unwrap();
     Json(json!({ "turns": g.chat_log }))
 }
 
-/// Helper de tests: router sin estáticos (ruta inexistente OK).
+// ------------------------------------------------------------ proveedores LLM
+
+fn llm_bad(status: axum::http::StatusCode, e: impl Into<String>) -> axum::response::Response {
+    (status, Json(json!({ "ok": false, "error": e.into() }))).into_response()
+}
+
+fn llm_list_json(g: &AppState) -> serde_json::Value {
+    let active = llm_active_of(g);
+    json!({
+        "ok": true,
+        "active": active.id,
+        "active_label": active.label,
+        "active_info": active,
+        "local": {
+            "id": crate::web::llm_provider::LOCAL_ID,
+            "name": crate::web::state::LOCAL_LABEL,
+            "kind": "local",
+            "available": g.probe.raw_handle().is_some(),
+            "probe": g.probe.name(),
+            "model_state": g.model_status.state,
+        },
+        "providers": g.llm.public_list(),
+        "persisted_to": g.llm.path.as_ref().map(|p| p.display().to_string()),
+    })
+}
+
+async fn llm_providers_list(State(st): State<SharedState>) -> impl IntoResponse {
+    let g = st.lock().unwrap_or_else(|e| e.into_inner());
+    Json(llm_list_json(&g))
+}
+
+/// Cuerpo de guardar/probar: campos manuales y/o `curl` pegado.
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct LlmProviderBody {
+    #[serde(default)]
+    pub id: Option<String>,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub base_url: Option<String>,
+    #[serde(default)]
+    pub api_key: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub curl: Option<String>,
+    /// Guardar y activar en un paso.
+    #[serde(default)]
+    pub activate: Option<bool>,
+}
+
+fn non_empty(v: &Option<String>) -> Option<String> {
+    v.as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+}
+
+/// Combina: guardado (si `id`) ← curl ← campos manuales (los manuales ganan).
+fn resolve_provider_body(
+    g: &AppState,
+    body: &LlmProviderBody,
+) -> Result<crate::web::llm_provider::ProviderInput, String> {
+    use crate::web::llm_provider::{parse_curl, ProviderInput};
+    let mut out = ProviderInput {
+        id: non_empty(&body.id),
+        ..Default::default()
+    };
+    if let Some(id) = &out.id {
+        if let Some(p) = g.llm.get(id) {
+            out.name = p.name.clone();
+            out.base_url = p.base_url.clone();
+            out.api_key = p.api_key.clone();
+            out.model = p.model.clone();
+        }
+    }
+    if let Some(c) = non_empty(&body.curl) {
+        let parsed = parse_curl(&c)?;
+        if !parsed.base_url.is_empty() {
+            out.base_url = parsed.base_url;
+        }
+        if !parsed.api_key.is_empty() && !parsed.api_key.contains('$') {
+            out.api_key = parsed.api_key;
+        }
+        if !parsed.model.is_empty() {
+            out.model = parsed.model;
+        }
+        if out.name.is_empty() {
+            out.name = parsed.name;
+        }
+    }
+    if let Some(v) = non_empty(&body.name) {
+        out.name = v;
+    }
+    if let Some(v) = non_empty(&body.base_url) {
+        out.base_url = v;
+    }
+    if let Some(v) = non_empty(&body.api_key) {
+        out.api_key = v;
+    }
+    if let Some(v) = non_empty(&body.model) {
+        out.model = v;
+    }
+    Ok(out)
+}
+
+async fn llm_providers_save(
+    State(st): State<SharedState>,
+    Json(body): Json<LlmProviderBody>,
+) -> axum::response::Response {
+    use axum::http::StatusCode;
+    let mut g = st.lock().unwrap_or_else(|e| e.into_inner());
+    let mut input = match resolve_provider_body(&g, &body) {
+        Ok(v) => v,
+        Err(e) => return llm_bad(StatusCode::BAD_REQUEST, e),
+    };
+    // Al editar, `upsert` conserva la clave si viene vacía: no reenviar la guardada.
+    if input.id.is_some() && non_empty(&body.api_key).is_none() && non_empty(&body.curl).is_none() {
+        input.api_key.clear();
+    }
+    let saved = match g.llm.upsert(input) {
+        Ok(p) => p,
+        Err(e) => return llm_bad(StatusCode::BAD_REQUEST, e),
+    };
+    tracing::info!(id = %saved.id, name = %saved.name, base = %saved.base_url, model = %saved.model, "proveedor LLM guardado");
+    if body.activate == Some(true) {
+        if let Err(e) = g.llm.set_active(&saved.id) {
+            return llm_bad(StatusCode::INTERNAL_SERVER_ERROR, e);
+        }
+    }
+    let mut v = llm_list_json(&g);
+    v["provider"] = serde_json::to_value(saved.public()).unwrap_or_default();
+    Json(v).into_response()
+}
+
+async fn llm_providers_delete(
+    State(st): State<SharedState>,
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> axum::response::Response {
+    use axum::http::StatusCode;
+    let mut g = st.lock().unwrap_or_else(|e| e.into_inner());
+    match g.llm.remove(&id) {
+        Ok(true) => {
+            tracing::info!(id = %id, "proveedor LLM borrado");
+            let mut v = llm_list_json(&g);
+            v["removed"] = json!(true);
+            Json(v).into_response()
+        }
+        Ok(false) => llm_bad(
+            StatusCode::NOT_FOUND,
+            format!("no existe el proveedor «{id}»"),
+        ),
+        Err(e) => llm_bad(StatusCode::BAD_REQUEST, e),
+    }
+}
+
+async fn llm_providers_test(
+    State(st): State<SharedState>,
+    Json(body): Json<LlmProviderBody>,
+) -> axum::response::Response {
+    use crate::web::llm_provider::{normalize_base_url, test_provider, ProviderConfig};
+    use axum::http::StatusCode;
+    let input = {
+        let g = st.lock().unwrap_or_else(|e| e.into_inner());
+        match resolve_provider_body(&g, &body) {
+            Ok(v) => v,
+            Err(e) => return llm_bad(StatusCode::BAD_REQUEST, e),
+        }
+    };
+    let base_url = match normalize_base_url(&input.base_url) {
+        Ok(b) => b,
+        Err(e) => return llm_bad(StatusCode::BAD_REQUEST, e),
+    };
+    let cfg = ProviderConfig {
+        id: input.id.clone().unwrap_or_else(|| "test".into()),
+        name: input.name.clone(),
+        base_url,
+        api_key: input.api_key.clone(),
+        model: input.model.clone(),
+        created_ms: 0,
+        source: "test".into(),
+    };
+    let timeout = crate::web::llm_periphery::chat_timeout();
+    let rep = tokio::task::spawn_blocking(move || test_provider(&cfg, timeout))
+        .await
+        .map_err(|e| e.to_string());
+    match rep {
+        Ok(r) => {
+            tracing::info!(ok = r.ok, base = %r.base_url, models_ms = r.models_ms, chat_ms = r.chat_ms, "prueba proveedor LLM");
+            Json(r).into_response()
+        }
+        Err(e) => llm_bad(StatusCode::INTERNAL_SERVER_ERROR, e),
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct LlmActiveBody {
+    pub id: String,
+}
+
+async fn llm_active_get(State(st): State<SharedState>) -> impl IntoResponse {
+    let g = st.lock().unwrap_or_else(|e| e.into_inner());
+    Json(llm_active_of(&g))
+}
+
+async fn llm_active_set(
+    State(st): State<SharedState>,
+    Json(body): Json<LlmActiveBody>,
+) -> axum::response::Response {
+    use axum::http::StatusCode;
+    let mut g = st.lock().unwrap_or_else(|e| e.into_inner());
+    match g.llm.set_active(&body.id) {
+        Ok(()) => {
+            let a = llm_active_of(&g);
+            tracing::info!(active = %a.id, label = %a.label, "LLM activo cambiado");
+            let mut v = llm_list_json(&g);
+            v["ok"] = json!(true);
+            Json(v).into_response()
+        }
+        Err(e) => {
+            let code = if e.starts_with("no existe") {
+                StatusCode::NOT_FOUND
+            } else {
+                StatusCode::INTERNAL_SERVER_ERROR
+            };
+            llm_bad(code, e)
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct ParseCurlBody {
+    pub curl: String,
+}
+
+/// Interpreta un curl pegado. Devuelve la clave tal cual (viene en la propia
+/// petición del usuario) para rellenar el formulario; no se guarda ni se registra.
+async fn llm_parse_curl(Json(body): Json<ParseCurlBody>) -> axum::response::Response {
+    use axum::http::StatusCode;
+    match crate::web::llm_provider::parse_curl(&body.curl) {
+        Ok(p) => {
+            let masked = crate::web::llm_provider::mask_key(&p.api_key);
+            Json(json!({ "ok": true, "parsed": p, "api_key_masked": masked })).into_response()
+        }
+        Err(e) => llm_bad(StatusCode::BAD_REQUEST, e),
+    }
+}
+
+/// Helper de tests: router con un secreto de prueba y una sesión válida
+/// inyectada como `Authorization: Bearer` (si la petición no trae otra).
+#[cfg(test)]
 pub fn test_router(state: SharedState) -> Router {
-    router(state, PathBuf::from("web/static"))
+    use axum::body::Body;
+    use axum::http::Request;
+    let auth = Arc::new(AuthConfig::new(
+        Some("test-master-secret-0123456789-abcdefghij".into()),
+        3600,
+    ));
+    let (tok, _) = auth.issue_session().expect("sesión de test");
+    let bearer = HeaderValue::from_str(&format!("Bearer {tok}")).unwrap();
+    router_with_auth(state, PathBuf::from("web/static"), auth).layer(
+        tower::util::MapRequestLayer::new(move |mut req: Request<Body>| {
+            if !req.headers().contains_key(header::AUTHORIZATION) {
+                req.headers_mut()
+                    .insert(header::AUTHORIZATION, bearer.clone());
+            }
+            req
+        }),
+    )
 }
 
 #[cfg(test)]
@@ -686,13 +1326,406 @@ mod tests {
         Arc::new(Mutex::new(s))
     }
 
+    // ------------------------------------------------------------------
+    // Acceso con MASTER_SECRET
+
+    const SECRET: &str = "secreto-maestro-de-prueba-0123456789abcdef";
+
+    fn auth_cfg(secret: Option<&str>) -> SharedAuth {
+        let mut a = AuthConfig::new(secret.map(String::from), 3600);
+        a.fail_delay = Duration::from_millis(0);
+        Arc::new(a)
+    }
+
+    fn app_with(auth: SharedAuth) -> Router {
+        router_with_auth(lex_state(), PathBuf::from("web/static"), auth)
+    }
+
+    /// Todas las familias protegidas (+ una ruta /api inexistente).
+    const PROTECTED: &[(&str, &str)] = &[
+        ("GET", "/api/status"),
+        ("POST", "/api/chat"),
+        ("GET", "/api/chat/history"),
+        ("POST", "/api/chat/reset"),
+        ("POST", "/api/train/start"),
+        ("POST", "/api/train/stop"),
+        ("GET", "/api/train/status"),
+        ("GET", "/api/train/events?after=0"),
+        ("GET", "/api/train/stream"),
+        ("POST", "/api/sleep"),
+        ("POST", "/api/sleep/start"),
+        ("POST", "/api/sleep/stop"),
+        ("GET", "/api/sleep/status"),
+        ("GET", "/api/sleep/events?after=0"),
+        ("POST", "/api/tests/run"),
+        ("POST", "/api/tests/start"),
+        ("POST", "/api/tests/stop"),
+        ("GET", "/api/tests/last"),
+        ("GET", "/api/tests/status"),
+        ("GET", "/api/tests/events?after=0"),
+        ("GET", "/api/processes"),
+        ("GET", "/api/telemetry"),
+        ("GET", "/api/telemetry/liquid"),
+        ("GET", "/api/telemetry/cdt"),
+        ("GET", "/api/telemetry/rqm"),
+        ("GET", "/api/telemetry/train"),
+        ("GET", "/api/llm/providers"),
+        ("POST", "/api/llm/providers"),
+        ("POST", "/api/llm/providers/test"),
+        ("DELETE", "/api/llm/providers/x"),
+        ("GET", "/api/llm/active"),
+        ("POST", "/api/llm/active"),
+        ("POST", "/api/llm/parse-curl"),
+        ("GET", "/api/no-existe"),
+    ];
+
+    fn req(method: &str, uri: &str, headers: &[(&str, &str)], body: &str) -> Request<Body> {
+        let mut b = Request::builder()
+            .method(method)
+            .uri(uri)
+            .header("host", "app.test")
+            .header("content-type", "application/json");
+        for (k, v) in headers {
+            b = b.header(*k, *v);
+        }
+        b.body(Body::from(body.to_string())).unwrap()
+    }
+
+    async fn send(app: &Router, r: Request<Body>) -> (StatusCode, HeaderMap, serde_json::Value) {
+        let res = app.clone().oneshot(r).await.unwrap();
+        let status = res.status();
+        let headers = res.headers().clone();
+        let is_sse = headers
+            .get("content-type")
+            .and_then(|v| v.to_str().ok())
+            .is_some_and(|v| v.starts_with("text/event-stream"));
+        if is_sse {
+            return (status, headers, serde_json::Value::Null);
+        }
+        let bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let v = serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null);
+        (status, headers, v)
+    }
+
+    async fn login_as(
+        app: &Router,
+        secret: &str,
+        ip: &str,
+    ) -> (StatusCode, HeaderMap, serde_json::Value) {
+        let body = json!({ "secret": secret }).to_string();
+        send(
+            app,
+            req("POST", "/api/auth/login", &[("x-forwarded-for", ip)], &body),
+        )
+        .await
+    }
+
+    fn cookie_of(h: &HeaderMap) -> String {
+        let c = h.get("set-cookie").unwrap().to_str().unwrap();
+        c.split(';').next().unwrap().to_string()
+    }
+
+    use axum::http::HeaderMap;
+
+    #[tokio::test]
+    async fn auth_unauthenticated_every_protected_route_rejected() {
+        let auth = auth_cfg(Some(SECRET));
+        let app = app_with(auth.clone());
+        let other = AuthConfig::new(Some("otro-secreto-distinto-0123456789abcdef".into()), 3600);
+        let (old_secret_tok, _) = other.issue_session().unwrap();
+        let (expired_tok, _) = auth
+            .issue_session_at(crate::web::train_job::now_ms() / 1000 - 7200, 3600)
+            .unwrap();
+        let (good, _) = auth.issue_session().unwrap();
+        let tampered = format!("{}x", &good[..good.len() - 1]);
+        let bad_tokens = [
+            None,
+            Some("ngs1.basura.basura".to_string()),
+            Some(tampered),
+            Some(expired_tok),
+            Some(old_secret_tok),
+        ];
+        for (m, path) in PROTECTED {
+            for tok in &bad_tokens {
+                for via_cookie in [false, true] {
+                    let hv;
+                    let headers: Vec<(&str, &str)> = match tok {
+                        None => vec![],
+                        Some(t) if via_cookie => {
+                            hv = format!("ngs_session={t}");
+                            vec![("cookie", hv.as_str())]
+                        }
+                        Some(t) => {
+                            hv = format!("Bearer {t}");
+                            vec![("authorization", hv.as_str())]
+                        }
+                    };
+                    let (st, h, v) = send(&app, req(m, path, &headers, "{}")).await;
+                    assert_eq!(st, StatusCode::UNAUTHORIZED, "{m} {path} tok={tok:?}");
+                    assert_eq!(v["code"], "unauthorized", "{m} {path}");
+                    assert_eq!(h.get("www-authenticate").unwrap(), "Bearer");
+                }
+            }
+        }
+        // Con sesión válida: la ruta ya no es 401.
+        let bearer = format!("Bearer {good}");
+        for (m, path) in [
+            ("GET", "/api/status"),
+            ("GET", "/api/telemetry"),
+            ("GET", "/api/llm/providers"),
+            ("GET", "/api/train/stream"),
+        ] {
+            let (st, _, _) = send(&app, req(m, path, &[("authorization", &bearer)], "")).await;
+            assert_eq!(st, StatusCode::OK, "{m} {path}");
+        }
+    }
+
+    #[tokio::test]
+    async fn auth_no_secret_fails_closed() {
+        let app = app_with(auth_cfg(None));
+        for (m, path) in PROTECTED {
+            let (st, _, v) = send(&app, req(m, path, &[], "{}")).await;
+            assert_eq!(st, StatusCode::SERVICE_UNAVAILABLE, "{m} {path}");
+            assert_eq!(v["code"], "master_secret_not_configured");
+        }
+        let (st, _, v) = login_as(&app, "", "1.1.1.1").await;
+        assert_eq!(st, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(v["code"], "master_secret_not_configured");
+        let (st, _, v) = send(&app, req("GET", "/health", &[], "")).await;
+        assert_eq!(st, StatusCode::OK);
+        assert_eq!(v["auth"]["master_configured"], false);
+        assert_eq!(v["auth"]["mode"], "unconfigured");
+        assert!(!v["auth"]["warnings"].as_array().unwrap().is_empty());
+        let (st, _, v) = send(&app, req("GET", "/api/auth/status", &[], "")).await;
+        assert_eq!(st, StatusCode::OK);
+        assert_eq!(v["master_configured"], false);
+        // La UI (estáticos) sigue sirviéndose para mostrar el aviso.
+        let res = app.clone().oneshot(req("GET", "/", &[], "")).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn auth_health_is_public_and_minimal() {
+        let app = app_with(auth_cfg(Some("corto")));
+        let (st, _, v) = send(&app, req("GET", "/health", &[], "")).await;
+        assert_eq!(st, StatusCode::OK);
+        assert_eq!(v["ok"], true);
+        for k in [
+            "engrams",
+            "model",
+            "llm_active",
+            "probe",
+            "active_processes",
+            "llm_mode",
+        ] {
+            assert!(v.get(k).is_none(), "/health expone {k}");
+        }
+        let w = v["auth"]["warnings"].to_string();
+        assert!(w.contains("corto"), "{w}");
+        assert!(!v.to_string().contains("\"corto\""));
+        let app = app_with(auth_cfg(Some(SECRET)));
+        let (_, _, v) = send(&app, req("GET", "/health", &[], "")).await;
+        assert!(v["auth"]["warnings"].as_array().unwrap().is_empty());
+        assert!(!v.to_string().contains(SECRET));
+    }
+
+    #[tokio::test]
+    async fn auth_login_ok_cookie_bearer_and_sse() {
+        let app = app_with(auth_cfg(Some(SECRET)));
+        let (st, h, v) = login_as(&app, SECRET, "2.2.2.2").await;
+        assert_eq!(st, StatusCode::OK);
+        assert_eq!(v["ok"], true);
+        assert!(v["expires_at"].as_u64().unwrap() > 0);
+        assert!(!v.to_string().contains(SECRET));
+        let raw = h.get("set-cookie").unwrap().to_str().unwrap().to_string();
+        for part in ["HttpOnly", "SameSite=Strict", "Path=/api", "Max-Age=3600"] {
+            assert!(raw.contains(part), "{raw}");
+        }
+        assert_eq!(h.get("cache-control").unwrap(), "no-store");
+        let cookie = cookie_of(&h);
+        let tok = v["token"].as_str().unwrap().to_string();
+        assert!(tok.starts_with("ngs1."));
+        // Cookie (navegador, incl. EventSource) y Bearer (scripts).
+        let (st, _, v) = send(&app, req("GET", "/api/status", &[("cookie", &cookie)], "")).await;
+        assert_eq!(st, StatusCode::OK);
+        assert!(v["llm_mode"].as_str().is_some());
+        let bearer = format!("Bearer {tok}");
+        let (st, _, _) = send(
+            &app,
+            req("GET", "/api/telemetry", &[("authorization", &bearer)], ""),
+        )
+        .await;
+        assert_eq!(st, StatusCode::OK);
+        let (st, h, _) = send(
+            &app,
+            req("GET", "/api/train/stream", &[("cookie", &cookie)], ""),
+        )
+        .await;
+        assert_eq!(st, StatusCode::OK);
+        assert!(h["content-type"]
+            .to_str()
+            .unwrap()
+            .starts_with("text/event-stream"));
+        let (_, _, v) = send(
+            &app,
+            req("GET", "/api/auth/status", &[("cookie", &cookie)], ""),
+        )
+        .await;
+        assert_eq!(v["authenticated"], true);
+        assert_eq!(v["session"]["via"], "cookie");
+        let (_, _, v) = send(&app, req("GET", "/api/auth/status", &[], "")).await;
+        assert_eq!(v["authenticated"], false);
+        // Secreto con espacios alrededor se acepta (trim), como en docker-llm.
+        let (st, _, _) = login_as(&app, &format!("  {SECRET}\n"), "2.2.2.3").await;
+        assert_eq!(st, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn auth_login_fail_and_lockout() {
+        let app = app_with(auth_cfg(Some(SECRET)));
+        for i in 0..5 {
+            let (st, h, v) = login_as(&app, "incorrecto", "3.3.3.3").await;
+            assert_eq!(st, StatusCode::UNAUTHORIZED, "intento {i}");
+            assert_eq!(v["code"], "invalid_secret");
+            assert!(h.get("set-cookie").is_none());
+        }
+        // Bloqueada: ni el secreto correcto entra desde esa IP.
+        let (st, h, v) = login_as(&app, SECRET, "3.3.3.3").await;
+        assert_eq!(st, StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(v["code"], "rate_limited");
+        let wait: u64 = h["retry-after"].to_str().unwrap().parse().unwrap();
+        assert!((29..=30).contains(&wait), "{wait}");
+        // Otra IP no está bloqueada.
+        let (st, _, _) = login_as(&app, SECRET, "4.4.4.4").await;
+        assert_eq!(st, StatusCode::OK);
+        // Cuerpo sin secreto = fallo normal.
+        let (st, _, _) = send(
+            &app,
+            req(
+                "POST",
+                "/api/auth/login",
+                &[("x-forwarded-for", "5.5.5.5")],
+                "{}",
+            ),
+        )
+        .await;
+        assert_eq!(st, StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn auth_global_cap_limits_distributed_attempts() {
+        let app = app_with(auth_cfg(Some(SECRET)));
+        for i in 0..30 {
+            let (st, _, _) = login_as(&app, "no", &format!("10.0.0.{i}")).await;
+            assert_eq!(st, StatusCode::UNAUTHORIZED);
+        }
+        let (st, _, _) = login_as(&app, "no", "10.0.1.1").await;
+        assert_eq!(st, StatusCode::TOO_MANY_REQUESTS);
+    }
+
+    #[tokio::test]
+    async fn auth_logout_revokes_server_side() {
+        let app = app_with(auth_cfg(Some(SECRET)));
+        let (_, h, v) = login_as(&app, SECRET, "6.6.6.6").await;
+        let cookie = cookie_of(&h);
+        let bearer = format!("Bearer {}", v["token"].as_str().unwrap());
+        let (st, _, _) = send(&app, req("GET", "/api/status", &[("cookie", &cookie)], "")).await;
+        assert_eq!(st, StatusCode::OK);
+        let (st, h, v) = send(
+            &app,
+            req("POST", "/api/auth/logout", &[("cookie", &cookie)], ""),
+        )
+        .await;
+        assert_eq!(st, StatusCode::OK);
+        assert_eq!(v["revoked"], true);
+        assert!(h["set-cookie"].to_str().unwrap().contains("Max-Age=0"));
+        // Ni la cookie ni el mismo token por Bearer sirven ya.
+        let (st, _, _) = send(&app, req("GET", "/api/status", &[("cookie", &cookie)], "")).await;
+        assert_eq!(st, StatusCode::UNAUTHORIZED);
+        let (st, _, _) = send(
+            &app,
+            req("GET", "/api/status", &[("authorization", &bearer)], ""),
+        )
+        .await;
+        assert_eq!(st, StatusCode::UNAUTHORIZED);
+        let (st, _, v) = send(&app, req("POST", "/api/auth/logout", &[], "")).await;
+        assert_eq!(st, StatusCode::OK);
+        assert_eq!(v["revoked"], false);
+    }
+
+    #[tokio::test]
+    async fn auth_rotating_secret_invalidates_sessions() {
+        let a = auth_cfg(Some(SECRET));
+        let app_a = app_with(a.clone());
+        let (_, h, _) = login_as(&app_a, SECRET, "7.7.7.7").await;
+        let cookie = cookie_of(&h);
+        let app_b = app_with(auth_cfg(Some("nuevo-secreto-rotado-0123456789abcdefgh")));
+        let (st, _, _) = send(
+            &app_b,
+            req("GET", "/api/status", &[("cookie", &cookie)], ""),
+        )
+        .await;
+        assert_eq!(st, StatusCode::UNAUTHORIZED);
+        // El secreto antiguo tampoco entra en la app rotada.
+        let (st, _, _) = login_as(&app_b, SECRET, "7.7.7.7").await;
+        assert_eq!(st, StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn auth_cookie_writes_require_same_origin() {
+        let app = app_with(auth_cfg(Some(SECRET)));
+        let (_, h, v) = login_as(&app, SECRET, "8.8.8.8").await;
+        let cookie = cookie_of(&h);
+        let (st, _, v2) = send(
+            &app,
+            req(
+                "POST",
+                "/api/chat/reset",
+                &[("cookie", &cookie), ("origin", "https://evil.example")],
+                "{}",
+            ),
+        )
+        .await;
+        assert_eq!(st, StatusCode::FORBIDDEN);
+        assert_eq!(v2["code"], "cross_origin_rejected");
+        let (st, _, _) = send(
+            &app,
+            req(
+                "POST",
+                "/api/chat/reset",
+                &[("cookie", &cookie), ("origin", "http://app.test")],
+                "{}",
+            ),
+        )
+        .await;
+        assert_eq!(st, StatusCode::OK);
+        // Bearer (scripts) no depende de Origin.
+        let bearer = format!("Bearer {}", v["token"].as_str().unwrap());
+        let (st, _, _) = send(
+            &app,
+            req(
+                "POST",
+                "/api/chat/reset",
+                &[
+                    ("authorization", &bearer),
+                    ("origin", "https://evil.example"),
+                ],
+                "{}",
+            ),
+        )
+        .await;
+        assert_eq!(st, StatusCode::OK);
+    }
+
     #[tokio::test]
     async fn health_ok_lexicon() {
         let app = test_router(lex_state());
         let res = app
             .oneshot(
                 Request::builder()
-                    .uri("/health")
+                    .uri("/api/status")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -767,6 +1800,47 @@ mod tests {
             .chat_log
             .iter()
             .all(|t| t.mode.as_deref() == Some("gemma_raw")));
+    }
+
+    #[tokio::test]
+    async fn chat_reset_clears_history_and_raw_context() {
+        let st = lex_state();
+        let app = test_router(st.clone());
+        let _ = post_chat(app.clone(), r#"{"message":"hola campo"}"#).await;
+        {
+            let mut g = st.lock().unwrap();
+            // Simula un par crudo previo (contexto que OFF reenvía).
+            let ok = Ok(crate::field_gemma_probe::RawGemmaReply {
+                text: "¡Hola!".into(),
+                prompt_tokens: 3,
+                generated_tokens: 2,
+                seconds: 0.1,
+            });
+            g.record_raw_chat("hola", &ok);
+            assert_eq!(g.raw_history().len(), 1);
+            assert!(g.chat_log.len() >= 4);
+        }
+        let res = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/chat/reset")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["ok"], true);
+        assert!(v["cleared"].as_u64().unwrap() >= 4);
+        let g = st.lock().unwrap();
+        assert!(g.chat_log.is_empty());
+        assert!(g.raw_history().is_empty());
     }
 
     #[tokio::test]
@@ -1311,7 +2385,7 @@ mod tests {
             .clone()
             .oneshot(
                 Request::builder()
-                    .uri("/health")
+                    .uri("/api/status")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -1352,5 +2426,391 @@ mod tests {
             message: "ok".into(),
             infinite: Some(true),
         };
+    }
+
+    // ------------------------------------------------ proveedores LLM (mock OpenAI)
+
+    const GOOD_KEY: &str = "obk1.mockKEY0123456789abcdef";
+
+    /// Servidor OpenAI-compatible mínimo en 127.0.0.1:<libre>. Devuelve la base `/v1`.
+    async fn spawn_mock_openai() -> String {
+        use axum::http::HeaderMap;
+        async fn authed(h: &HeaderMap) -> bool {
+            h.get("authorization").and_then(|v| v.to_str().ok())
+                == Some(&format!("Bearer {GOOD_KEY}"))
+        }
+        fn unauthorized() -> axum::response::Response {
+            (
+                StatusCode::UNAUTHORIZED,
+                Json(json!({"error": {"code": "invalid_api_key", "message": "API key inválida"}})),
+            )
+                .into_response()
+        }
+        async fn models(h: HeaderMap) -> axum::response::Response {
+            if !authed(&h).await {
+                return unauthorized();
+            }
+            Json(json!({"object": "list", "data": [{"id": "mock-model", "object": "model"}]}))
+                .into_response()
+        }
+        async fn chat(h: HeaderMap, Json(b): Json<serde_json::Value>) -> axum::response::Response {
+            if !authed(&h).await {
+                return unauthorized();
+            }
+            let msgs = b["messages"].as_array().cloned().unwrap_or_default();
+            let sys = msgs
+                .iter()
+                .find(|m| m["role"] == "system")
+                .and_then(|m| m["content"].as_str())
+                .unwrap_or("")
+                .to_string();
+            let last = msgs
+                .last()
+                .and_then(|m| m["content"].as_str())
+                .unwrap_or("")
+                .to_string();
+            if last.contains("lento") {
+                tokio::time::sleep(Duration::from_secs(3)).await;
+            }
+            let content = if sys.contains("Generas datos") {
+                let n = last
+                    .lines()
+                    .filter(|l| l.chars().next().is_some_and(|c| c.is_ascii_digit()))
+                    .count();
+                (1..=n)
+                    .map(|i| format!("{i}. frase externa {i}"))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            } else if sys.contains("decoder de un modelo de campo") {
+                format!("<think>x</think>MOCK-DECODER: {last}")
+            } else {
+                format!("MOCK-RAW({} msgs): {last}", msgs.len())
+            };
+            Json(json!({
+                "id": "c1", "object": "chat.completion", "model": b["model"],
+                "choices": [{"index": 0, "message": {"role": "assistant", "content": content}, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 5, "completion_tokens": 7, "total_tokens": 12}
+            }))
+            .into_response()
+        }
+        let app = Router::new()
+            .route("/v1/models", get(models))
+            .route("/v1/chat/completions", post(chat));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        format!("http://{addr}/v1")
+    }
+
+    async fn call_json(
+        app: Router,
+        method: &str,
+        uri: &str,
+        body: Option<serde_json::Value>,
+    ) -> (StatusCode, serde_json::Value) {
+        let req = Request::builder()
+            .method(method)
+            .uri(uri)
+            .header("content-type", "application/json")
+            .body(match body {
+                Some(b) => Body::from(b.to_string()),
+                None => Body::empty(),
+            })
+            .unwrap();
+        let res = app.oneshot(req).await.unwrap();
+        let status = res.status();
+        let bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        (
+            status,
+            serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null),
+        )
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn llm_provider_crud_test_select_chat_and_train_via_mock() {
+        let base = spawn_mock_openai().await;
+        let state = lex_state();
+        let app = test_router(state.clone());
+
+        // Default: Gemma local.
+        let (st, v) = call_json(app.clone(), "GET", "/api/llm/providers", None).await;
+        assert_eq!(st, StatusCode::OK);
+        assert_eq!(v["active"], "gemma_local");
+        assert_eq!(v["providers"].as_array().unwrap().len(), 0);
+
+        // Parse curl (docker-llm, con export).
+        let curl = format!(
+            "export BASE={}\nexport API_KEY=\"{GOOD_KEY}\"\ncurl $BASE/v1/chat/completions \\\n  -H \"Authorization: Bearer $API_KEY\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{{\"model\":\"mock-model\",\"messages\":[{{\"role\":\"user\",\"content\":\"Hola\"}}]}}'",
+            base.trim_end_matches("/v1")
+        );
+        let (st, v) = call_json(
+            app.clone(),
+            "POST",
+            "/api/llm/parse-curl",
+            Some(json!({ "curl": curl })),
+        )
+        .await;
+        assert_eq!(st, StatusCode::OK, "{v}");
+        assert_eq!(v["parsed"]["base_url"], base);
+        assert_eq!(v["parsed"]["model"], "mock-model");
+        assert_eq!(v["parsed"]["api_key"], GOOD_KEY);
+
+        // Probar conexión (sin guardar) OK y con clave mala → 401 claro.
+        let (st, v) = call_json(
+            app.clone(),
+            "POST",
+            "/api/llm/providers/test",
+            Some(json!({ "curl": curl })),
+        )
+        .await;
+        assert_eq!(st, StatusCode::OK);
+        assert_eq!(v["ok"], true, "{v}");
+        assert_eq!(v["model_listed"], true);
+        assert!(v["reply_preview"].as_str().unwrap().contains("MOCK-RAW"));
+        let (_, v) = call_json(
+            app.clone(),
+            "POST",
+            "/api/llm/providers/test",
+            Some(json!({ "base_url": base, "api_key": "obk1.bogus-key-000000000", "model": "mock-model" })),
+        )
+        .await;
+        assert_eq!(v["ok"], false);
+        let err = v["error"].as_str().unwrap();
+        assert!(err.contains("401") && err.contains("API key"), "{err}");
+        assert!(!err.contains("bogus-key"));
+
+        // Guardar desde curl + nombre manual; la respuesta no trae la clave.
+        let (st, v) = call_json(
+            app.clone(),
+            "POST",
+            "/api/llm/providers",
+            Some(json!({ "curl": curl, "name": "mock" })),
+        )
+        .await;
+        assert_eq!(st, StatusCode::OK, "{v}");
+        assert!(!v.to_string().contains(GOOD_KEY));
+        let id = v["provider"]["id"].as_str().unwrap().to_string();
+        assert_eq!(v["provider"]["name"], "mock");
+        assert_eq!(v["active"], "gemma_local");
+
+        // Probar guardado por id.
+        let (_, v) = call_json(
+            app.clone(),
+            "POST",
+            "/api/llm/providers/test",
+            Some(json!({ "id": id })),
+        )
+        .await;
+        assert_eq!(v["ok"], true, "{v}");
+
+        // Activar.
+        let (st, v) = call_json(
+            app.clone(),
+            "POST",
+            "/api/llm/active",
+            Some(json!({ "id": id })),
+        )
+        .await;
+        assert_eq!(st, StatusCode::OK);
+        assert_eq!(v["active"], id);
+        let (st, _) = call_json(
+            app.clone(),
+            "POST",
+            "/api/llm/active",
+            Some(json!({ "id": "nope" })),
+        )
+        .await;
+        assert_eq!(st, StatusCode::NOT_FOUND);
+        let (_, h) = call_json(app.clone(), "GET", "/api/status", None).await;
+        assert_eq!(h["llm_active"]["id"], id);
+        assert_eq!(h["llm_active"]["kind"], "openai_compatible");
+
+        // Chat crudo (OFF) → API externa, con historial.
+        let (st, v) = post_chat(app.clone(), r#"{"message":"hola api","mode":"gemma_raw"}"#).await;
+        assert_eq!(st, StatusCode::OK, "{v}");
+        assert_eq!(v["mode"], "gemma_raw");
+        assert!(v["reply"]
+            .as_str()
+            .unwrap()
+            .starts_with("MOCK-RAW(1 msgs): hola api"));
+        assert_eq!(v["llm_id"], id);
+        assert!(v["llm"].as_str().unwrap().contains("mock"));
+        let (_, v) = post_chat(app.clone(), r#"{"message":"segunda","mode":"gemma_raw"}"#).await;
+        assert!(
+            v["reply"].as_str().unwrap().starts_with("MOCK-RAW(3 msgs)"),
+            "{v}"
+        );
+
+        // Chat ON (decoder del campo) → el campo decide y la API verbaliza.
+        let (liq0, _) = {
+            let g = state.lock().unwrap();
+            (g.metrics.liquid_queries, 0)
+        };
+        let (st, v) = post_chat(
+            app.clone(),
+            r#"{"message":"hola campo","mode":"field_decoder"}"#,
+        )
+        .await;
+        assert_eq!(st, StatusCode::OK);
+        let reply = v["reply"].as_str().unwrap();
+        assert!(reply.starts_with("MOCK-DECODER: hola campo"), "{reply}");
+        assert!(reply.contains("Estado del campo") && reply.contains("[campo] ruta="));
+        assert!(!reply.contains("<think>"));
+        assert!(v["decoded"]
+            .as_str()
+            .unwrap()
+            .starts_with("api decoder·mock-model"));
+        assert!(state.lock().unwrap().metrics.liquid_queries > liq0);
+
+        // Entrenamiento: dataset generado por la API externa.
+        let (st, v) = call_json(
+            app.clone(),
+            "POST",
+            "/api/train/start",
+            Some(json!({ "batches": 1, "batch_size": 4, "epochs": 1 })),
+        )
+        .await;
+        assert_eq!(st, StatusCode::OK);
+        assert_eq!(v["ok"], true);
+        for _ in 0..400 {
+            tokio::time::sleep(Duration::from_millis(25)).await;
+            if !state.lock().unwrap().train_job.running {
+                break;
+            }
+        }
+        {
+            let g = state.lock().unwrap();
+            assert_eq!(g.train_job.dataset_source.as_deref(), Some("api:mock"));
+            assert!(g
+                .train_job
+                .events
+                .iter()
+                .any(|e| e.kind == "dataset" && e.message.contains("source=api:mock")));
+        }
+
+        // Nuevo chat limpia el contexto que se reenvía a la API.
+        let (st, _) = call_json(app.clone(), "POST", "/api/chat/reset", Some(json!({}))).await;
+        assert_eq!(st, StatusCode::OK);
+        let (_, v) = post_chat(
+            app.clone(),
+            r#"{"message":"tras reset","mode":"gemma_raw"}"#,
+        )
+        .await;
+        assert!(
+            v["reply"].as_str().unwrap().starts_with("MOCK-RAW(1 msgs)"),
+            "{v}"
+        );
+
+        // Borrar el activo → vuelve a Gemma local.
+        let (st, v) = call_json(
+            app.clone(),
+            "DELETE",
+            &format!("/api/llm/providers/{id}"),
+            None,
+        )
+        .await;
+        assert_eq!(st, StatusCode::OK);
+        assert_eq!(v["active"], "gemma_local");
+        let (st, _) = call_json(
+            app.clone(),
+            "DELETE",
+            &format!("/api/llm/providers/{id}"),
+            None,
+        )
+        .await;
+        assert_eq!(st, StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn llm_external_failure_is_clear_error_and_field_mode_falls_back() {
+        let base = spawn_mock_openai().await;
+        let state = lex_state();
+        {
+            let mut g = state.lock().unwrap();
+            let p = g
+                .llm
+                .upsert(crate::web::llm_provider::ProviderInput {
+                    id: None,
+                    name: "mala".into(),
+                    base_url: base.clone(),
+                    api_key: "obk1.revocada-000000000000".into(),
+                    model: "mock-model".into(),
+                })
+                .unwrap();
+            g.llm.set_active(&p.id).unwrap();
+        }
+        let app = test_router(state.clone());
+        let (st, v) = post_chat(app.clone(), r#"{"message":"hola","mode":"gemma_raw"}"#).await;
+        assert_eq!(st, StatusCode::BAD_GATEWAY);
+        assert_eq!(v["route"], "gemma_raw_error");
+        let r = v["reply"].as_str().unwrap();
+        assert!(r.contains("401") && r.contains("API · mala"), "{r}");
+        // Error no entra al historial reenviado.
+        assert!(state.lock().unwrap().raw_history().is_empty());
+        // ON: sin Gemma local → decoder léxico con el motivo.
+        let (st, v) = post_chat(
+            app.clone(),
+            r#"{"message":"hola campo","mode":"field_decoder"}"#,
+        )
+        .await;
+        assert_eq!(st, StatusCode::OK);
+        let r = v["reply"].as_str().unwrap();
+        assert!(r.contains("no respondió") && r.contains("401"), "{r}");
+        assert_eq!(v["llm"], "decoder léxico");
+    }
+
+    #[test]
+    fn openai_client_timeout_and_connection_errors_are_clear() {
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(1)
+            .enable_all()
+            .build()
+            .unwrap();
+        let base = rt.block_on(spawn_mock_openai());
+        let cfg = crate::web::llm_provider::ProviderConfig {
+            id: "t".into(),
+            name: "t".into(),
+            base_url: base,
+            api_key: GOOD_KEY.into(),
+            model: "mock-model".into(),
+            created_ms: 0,
+            source: "test".into(),
+        };
+        let c = crate::web::llm_provider::OpenAiClient::new(&cfg, Duration::from_secs(1));
+        let gen = crate::web::llm_provider::ExternalGenConfig {
+            max_tokens: 8,
+            temperature: 0.0,
+            top_p: 1.0,
+        };
+        let e = c
+            .chat(
+                &[crate::web::llm_provider::ChatMessage::new("user", "lento")],
+                gen,
+            )
+            .unwrap_err();
+        assert!(e.contains("tiempo de espera"), "{e}");
+        assert_eq!(c.list_models().unwrap(), vec!["mock-model".to_string()]);
+        // Modelo vacío → usa el primero de /v1/models.
+        let mut no_model = cfg.clone();
+        no_model.model.clear();
+        let r = crate::web::llm_provider::OpenAiClient::new(&no_model, Duration::from_secs(5))
+            .chat(
+                &[crate::web::llm_provider::ChatMessage::new("user", "x")],
+                gen,
+            )
+            .unwrap();
+        assert_eq!(r.model, "mock-model");
+        assert_eq!(r.completion_tokens, 7);
+        let mut down = cfg;
+        down.base_url = "http://127.0.0.1:9/v1".into();
+        let e = crate::web::llm_provider::OpenAiClient::new(&down, Duration::from_secs(2))
+            .list_models()
+            .unwrap_err();
+        assert!(e.contains("no se pudo conectar"), "{e}");
+        assert!(!e.contains(GOOD_KEY));
     }
 }

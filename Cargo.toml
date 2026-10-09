@@ -25,6 +25,7 @@ web = [
     "dep:uuid",
     "dep:tower",
     "dep:futures-util",
+    "dep:ureq",
 ]
 
 [[bin]]
@@ -57,4 +58,6 @@ tracing-subscriber = { version = "0.3", optional = true, features = ["env-filter
 uuid = { version = "1", optional = true, features = ["v4", "serde"] }
 tower = { version = "0.5", optional = true, features = ["util"] }
 futures-util = { version = "0.3", optional = true }
+# Cliente HTTP bloqueante para proveedores LLM externos (OpenAI-compatible).
+ureq = { version = "2.12", optional = true, features = ["json"] }
 sha2 = "0.10"

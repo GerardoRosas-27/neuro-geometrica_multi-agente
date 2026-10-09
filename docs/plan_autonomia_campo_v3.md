@@ -1,5 +1,12 @@
 # Plan de cierre experimental — autonomía del campo v3
 
+> **Estado en `main` (nota añadida 2026-10-06).** La rama
+> `exp/field-autonomy-next` se integró a `main` en el **PR #29** (`c59b9fe`,
+> 2026-09-26). La mención «sin merge a main» de abajo es histórica. Este plan
+> sigue siendo la especificación; resultados y alcance en
+> [`cierre_exp_field_autonomy_next_v3.md`](cierre_exp_field_autonomy_next_v3.md)
+> y [`README.md`](../README.md) §2.2.
+
 Rama: `exp/field-autonomy-next`
 Base: `main`
 Fecha: 2026-09-23

@@ -1,5 +1,17 @@
 # Resultados experimentos 11–17 — campo entrenable
 
+> **Aviso de procedencia (nota añadida 2026-10-06).** Este archivo lo escribe
+> automáticamente un test de `src/liquid_experiments_11_17.rs`. Se
+> **regeneró sin querer** en el commit `7619728` (PR #30, chat toggle,
+> 2026-09-26) en una máquina donde la sonda GGUF no cargó: E12 quedó en
+> `SKIPPED_NO_GGUF` ×8 aunque la cabecera diga «GGUF: disponible», y se
+> perdieron las secciones de resumen y la tabla E12. La corrida **sellada con
+> GGUF** (E12 PASS×8, `field_margin` ≈ 0,69–0,75, raw margin −0,272) está en
+> `git show 7619728^:docs/resultados_experimentos_11_17.md` (commits
+> `092d60e`/`afe03e2`). La tabla de abajo sí incluye E13/E15 endurecidos en 8
+> semillas (E13 PASS×8; E15 PASS×6, PARTIAL×2), pero esa re-corrida no fue
+> una ejecución documentada intencionalmente: tratarla como provisional.
+
 Rama: `exp/liquid-inference-experiments-8-9-10`
 
 Protocolo: `docs/experimentos_11_17_campo_entrenable.md`

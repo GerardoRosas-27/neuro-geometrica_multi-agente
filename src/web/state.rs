@@ -8,8 +8,10 @@ use crate::web::experiment_suite::{run_ui_experiment_suite, ExperimentSuiteRepor
 use crate::web::field_eval::{run_field_eval_with_progress, FieldEvalReport, FieldEvalStatus};
 use crate::web::llm_periphery::{
     generate_train_batch, open_best_probe, ChatMode, ConceptDecoder, LlmMode, PeripheralProbe,
-    NUM_CONCEPTS,
+    TrainBatchMeta, TrainExample, NUM_CONCEPTS,
 };
+use crate::web::llm_provider::{ProviderConfig, ProviderStore, LOCAL_ID};
+use crate::web::model_fetch::{ModelConfig, ModelStatus};
 use crate::web::process_job::{
     ProcessesSnapshot, SleepJob, SleepStartResponse, TestsJob, TestsStartResponse,
 };
@@ -46,6 +48,9 @@ pub struct ChatTurn {
     pub route: Option<String>,
     pub concept_in: Option<usize>,
     pub concept_out: Option<usize>,
+    /// LLM que generó el texto (Gemma local / API externa). `None` = campo/léxico.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub llm: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -61,6 +66,13 @@ pub struct ChatResponse {
     pub engrams: usize,
     /// Texto del **LLM decoder only** (concepto de campo → texto).
     pub decoded: String,
+    /// LLM que produjo el texto: `Gemma local`, `API · nombre (modelo)` o
+    /// `decoder léxico`. Vacío en intents sin LLM (train/sleep…).
+    pub llm: String,
+    /// Id del proveedor que respondió (`gemma_local` o id de API).
+    pub llm_id: String,
+    /// True si la API externa falló y respondió el respaldo local.
+    pub fallback: bool,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -121,10 +133,49 @@ pub struct AppState {
     pub last_experiment_suite: Option<ExperimentSuiteReport>,
     /// Llamadas al chat crudo Gemma (no cuentan como infer líquido/RQM).
     pub raw_chat_calls: u64,
+    /// Config del GGUF (ruta/URL/sha) y estado de descarga/carga.
+    pub model_cfg: ModelConfig,
+    pub model_status: ModelStatus,
+    /// Proveedores LLM (Gemma local + APIs externas) y el activo.
+    pub llm: ProviderStore,
 }
+
+/// Backend del decoder del campo (ON).
+pub enum DecodeBackend {
+    /// Gemma 2 local (GGUF).
+    Gemma(RawGemmaHandle),
+    /// API externa OpenAI-compatible; `fallback` = Gemma local si está cargado.
+    External {
+        cfg: ProviderConfig,
+        fallback: Option<RawGemmaHandle>,
+    },
+}
+
+/// Trabajo de decodificación preparado bajo el lock y ejecutado fuera.
+pub struct DecodeJob {
+    pub backend: DecodeBackend,
+    /// Prompt con plantilla Gemma (backend local / respaldo).
+    pub gemma_prompt: String,
+    pub user_msg: String,
+    /// Estado del campo ya decidido (texto) para el decoder externo.
+    pub field_state: String,
+}
+
+/// Backend del chat crudo (OFF).
+pub enum RawBackend {
+    Gemma(RawGemmaHandle),
+    External(ProviderConfig),
+}
+
+/// Dataset pre-generado por la API externa: (seed, lote o error de la API).
+pub type PreGeneratedDataset = Option<(u64, Result<(Vec<TrainExample>, TrainBatchMeta), String>)>;
+
+/// Etiqueta del LLM local.
+pub const LOCAL_LABEL: &str = "Gemma local";
 
 impl AppState {
     pub fn new() -> Self {
+        let model_cfg = ModelConfig::from_env();
         let probe = open_best_probe(0x0A6E_471C);
         let mode = probe.mode();
         let fuse = FusedLiquidCdt::new(NUM_CONCEPTS);
@@ -149,19 +200,218 @@ impl AppState {
             ever_trained: false,
             last_experiment_suite: None,
             raw_chat_calls: 0,
+            model_status: if matches!(mode, LlmMode::GemmaGguf) {
+                ModelStatus::new("ready", &model_cfg, "GGUF cargado")
+            } else if model_cfg.auto_download {
+                ModelStatus::new("missing", &model_cfg, "GGUF ausente; se descargará")
+            } else {
+                ModelStatus::new(
+                    "disabled",
+                    &model_cfg,
+                    "GGUF ausente y GEMMA2_AUTO_DOWNLOAD=0",
+                )
+            },
+            model_cfg,
+            llm: if cfg!(test) {
+                ProviderStore::in_memory()
+            } else {
+                ProviderStore::load_default()
+            },
         }
+    }
+
+    /// Proveedor externo activo (None = Gemma local).
+    pub fn active_external(&self) -> Option<ProviderConfig> {
+        self.llm.active_external()
+    }
+
+    /// (id, etiqueta) del LLM activo para UI/respuestas.
+    pub fn active_llm_label(&self) -> (String, String) {
+        match self.active_external() {
+            Some(p) => (p.id.clone(), p.label()),
+            None => (LOCAL_ID.into(), LOCAL_LABEL.into()),
+        }
+    }
+
+    /// «Nuevo chat»: borra el historial del servidor (incluye los pares crudos
+    /// que el modo OFF reenvía como contexto). No toca campo/engramas/train.
+    pub fn reset_chat(&mut self) -> usize {
+        let n = self.chat_log.len();
+        self.chat_log.clear();
+        n
+    }
+
+    /// Hot-swap: instala la sonda Gemma recién descargada/cargada.
+    pub fn install_probe(&mut self, probe: PeripheralProbe) {
+        let mode = probe.mode();
+        self.probe = probe;
+        self.decoder = ConceptDecoder::new(mode);
+        self.model_status = ModelStatus::new("ready", &self.model_cfg, "GGUF cargado");
+    }
+
+    /// Texto explicativo cuando el LLM aún no está disponible.
+    pub fn model_unavailable_reason(&self) -> String {
+        let st = &self.model_status;
+        match st.state.as_str() {
+            "downloading" => {
+                let done = std::fs::metadata(self.model_cfg.part_path())
+                    .map(|m| m.len())
+                    .unwrap_or(st.downloaded_bytes);
+                let mb = done as f64 / 1e6;
+                match st.total_bytes {
+                    Some(t) if t > 0 => format!(
+                        "el modelo se está descargando ({mb:.0}/{:.0} MB, {:.0}%); reintenta en un momento",
+                        t as f64 / 1e6,
+                        100.0 * done as f64 / t as f64
+                    ),
+                    _ => format!("el modelo se está descargando ({mb:.0} MB); reintenta en un momento"),
+                }
+            }
+            "loading" => "el modelo se está cargando en memoria; reintenta en unos segundos".into(),
+            "error" => format!("no se pudo preparar el modelo: {}", st.detail),
+            "disabled" => format!(
+                "no hay GGUF en {} y la descarga automática está desactivada (GEMMA2_AUTO_DOWNLOAD=0)",
+                st.path
+            ),
+            _ => format!("no se encontró el GGUF ({})", st.path),
+        }
+    }
+
+    /// ON: si la respuesta viene del campo (Liquid/RQM) y hay LLM disponible
+    /// (API externa activa o Gemma cargado), prepara el trabajo de decodificación.
+    pub fn field_decode_job(&self, message: &str, resp: &ChatResponse) -> Option<DecodeJob> {
+        if !matches!(resp.route.as_str(), "Liquid" | "RqmFallback") {
+            return None;
+        }
+        let local = self.probe.raw_handle();
+        let backend = match self.active_external() {
+            Some(cfg) => DecodeBackend::External {
+                cfg,
+                fallback: local,
+            },
+            None => DecodeBackend::Gemma(local?),
+        };
+        let rqm = resp
+            .rqm_score
+            .map(|r| format!(", RQM {r:.3}"))
+            .unwrap_or_default();
+        let state = format!(
+            "concepto {}→{} («{}»), ruta {}, líquido {:.3}{rqm}, engramas {}",
+            resp.concept_in,
+            resp.concept_out,
+            self.decoder.decode(resp.concept_out),
+            resp.route,
+            resp.liquid_score,
+            resp.engrams,
+        );
+        Some(DecodeJob {
+            backend,
+            gemma_prompt: crate::field_gemma_probe::render_field_decoder_prompt(
+                message.trim(),
+                &state,
+            ),
+            user_msg: message.trim().to_string(),
+            field_state: state,
+        })
+    }
+
+    /// Aplica el texto de Gemma (decoder) a la respuesta de campo ya registrada.
+    /// Si Gemma falló, conserva la respuesta del decoder léxico y anota el motivo:
+    /// ON **siempre** responde.
+    pub fn apply_field_decoded(
+        &mut self,
+        resp: ChatResponse,
+        result: Result<RawGemmaReply, String>,
+    ) -> ChatResponse {
+        self.apply_field_decoded_by(resp, result, "gemma2 decoder", LOCAL_ID, LOCAL_LABEL, None)
+    }
+
+    /// Igual que [`Self::apply_field_decoded`] indicando quién decodificó
+    /// (`who` = prefijo de `decoded`, `llm_id`/`llm` = proveedor) y una nota
+    /// opcional (p. ej. respaldo local tras fallo de la API externa).
+    pub fn apply_field_decoded_by(
+        &mut self,
+        mut resp: ChatResponse,
+        result: Result<RawGemmaReply, String>,
+        who: &str,
+        llm_id: &str,
+        llm: &str,
+        note: Option<String>,
+    ) -> ChatResponse {
+        let ok_text = matches!(&result, Ok(r) if !r.text.trim().is_empty());
+        match result {
+            Ok(r) if !r.text.trim().is_empty() => {
+                resp.reply = format!(
+                    "{}\n\n[campo] ruta={} · {}→{} · líquido={:.3} · engramas={}",
+                    r.text.trim(),
+                    resp.route,
+                    resp.concept_in,
+                    resp.concept_out,
+                    resp.liquid_score,
+                    resp.engrams
+                );
+                resp.decoded = format!(
+                    "{who} · «{}» · {} tok · {:.1}s",
+                    self.decoder.decode(resp.concept_out),
+                    r.generated_tokens,
+                    r.seconds
+                );
+            }
+            Ok(_) => {
+                resp.reply.push_str(&format!(
+                    "\n\n(decoder {llm} devolvió texto vacío; se muestra el decoder léxico)"
+                ));
+            }
+            Err(e) => {
+                resp.reply.push_str(&format!(
+                    "\n\n(decoder {llm} no respondió: {e}; se muestra el decoder léxico)"
+                ));
+            }
+        }
+        if let Some(n) = note {
+            resp.reply.push_str(&format!("\n\n({n})"));
+        }
+        if ok_text {
+            resp.llm = llm.to_string();
+            resp.llm_id = llm_id.to_string();
+        } else {
+            resp.llm = "decoder léxico".into();
+            resp.llm_id = "lexicon".into();
+        }
+        let turn_llm = resp.llm.clone();
+        if let Some(last) = self
+            .chat_log
+            .iter_mut()
+            .rev()
+            .find(|t| t.role == "agent" && t.mode.as_deref() == Some(FIELD_MODE))
+        {
+            last.text = resp.reply.clone();
+            last.llm = Some(turn_llm);
+        }
+        resp
     }
 
     /// Prepara chat crudo (OFF): handle al Gemma original + historial crudo.
     /// `Err` si no hay GGUF. No toca fuse/campo/telemetría líquida.
     pub fn raw_chat_prepare(&self) -> Result<(RawGemmaHandle, Vec<(String, String)>), String> {
         let handle = self.probe.raw_handle().ok_or_else(|| {
-            "Gemma 2 original no disponible: no se encontró el GGUF \
-             (models/gemma-2-2b-it-Q4_K_M.gguf o env GEMMA2_GGUF). \
-             Activa «Decoder del campo» o instala el modelo en el servidor."
-                .to_string()
+            format!(
+                "Gemma 2 original no disponible: {}. \
+                 Mientras tanto puedes usar «Decoder del campo».",
+                self.model_unavailable_reason()
+            )
         })?;
         Ok((handle, self.raw_history()))
+    }
+
+    /// Backend del chat crudo según el proveedor activo (API externa o Gemma
+    /// local) + historial crudo. `Err` si el activo es Gemma y no hay GGUF.
+    pub fn raw_chat_backend(&self) -> Result<(RawBackend, Vec<(String, String)>), String> {
+        if let Some(cfg) = self.active_external() {
+            return Ok((RawBackend::External(cfg), self.raw_history()));
+        }
+        let (h, hist) = self.raw_chat_prepare()?;
+        Ok((RawBackend::Gemma(h), hist))
     }
 
     /// Últimos pares (user, model) del chat crudo exitoso.
@@ -194,10 +444,25 @@ impl AppState {
         message: &str,
         result: &Result<RawGemmaReply, String>,
     ) -> ChatResponse {
+        self.record_raw_chat_by(message, result, None)
+    }
+
+    /// Registra un turno crudo indicando el proveedor externo (None = Gemma local).
+    pub fn record_raw_chat_by(
+        &mut self,
+        message: &str,
+        result: &Result<RawGemmaReply, String>,
+        external: Option<&ProviderConfig>,
+    ) -> ChatResponse {
         self.raw_chat_calls = self.raw_chat_calls.wrapping_add(1);
-        let (reply, route) = match result {
-            Ok(r) => (r.text.clone(), RAW_MODE),
-            Err(e) => (format!("Error Gemma 2 original: {e}"), "gemma_raw_error"),
+        let (llm_id, llm) = match external {
+            Some(p) => (p.id.clone(), p.label()),
+            None => (LOCAL_ID.to_string(), LOCAL_LABEL.to_string()),
+        };
+        let (reply, route) = match (result, external) {
+            (Ok(r), _) => (r.text.clone(), RAW_MODE),
+            (Err(e), None) => (format!("Error Gemma 2 original: {e}"), "gemma_raw_error"),
+            (Err(e), Some(_)) => (format!("Error {llm}: {e}"), "gemma_raw_error"),
         };
         for (role, text, route) in [
             ("user", message.trim().to_string(), None),
@@ -210,20 +475,35 @@ impl AppState {
                 route,
                 concept_in: None,
                 concept_out: None,
+                llm: (role == "agent").then(|| llm.clone()),
             });
         }
         if self.chat_log.len() > 200 {
             let drain = self.chat_log.len() - 200;
             self.chat_log.drain(0..drain);
         }
+        let who = match external {
+            Some(p) => format!(
+                "api·{}",
+                if p.model.is_empty() {
+                    &p.name
+                } else {
+                    &p.model
+                }
+            ),
+            None => "gemma2-original".into(),
+        };
         let decoded = match result {
             Ok(r) => format!(
-                "gemma2-original · {} tok prompt · {} tok gen · {:.1}s",
+                "{who} · {} tok prompt · {} tok gen · {:.1}s",
                 r.prompt_tokens, r.generated_tokens, r.seconds
             ),
-            Err(_) => "gemma2-original · error".into(),
+            Err(_) => format!("{who} · error"),
         };
         ChatResponse {
+            llm,
+            llm_id,
+            fallback: false,
             mode: RAW_MODE.into(),
             reply,
             route: route.into(),
@@ -288,6 +568,7 @@ impl AppState {
                 route: None,
                 concept_in: None,
                 concept_out: None,
+                llm: None,
             });
             self.chat_log.push(ChatTurn {
                 mode: Some(FIELD_MODE.into()),
@@ -296,8 +577,12 @@ impl AppState {
                 route: Some("train".into()),
                 concept_in: None,
                 concept_out: None,
+                llm: None,
             });
             return ChatResponse {
+                llm: String::new(),
+                llm_id: String::new(),
+                fallback: false,
                 mode: FIELD_MODE.into(),
                 reply,
                 route: "train".into(),
@@ -320,6 +605,7 @@ impl AppState {
                     route: None,
                     concept_in: None,
                     concept_out: None,
+                    llm: None,
                 });
                 self.chat_log.push(ChatTurn {
                     mode: Some(FIELD_MODE.into()),
@@ -328,8 +614,12 @@ impl AppState {
                     route: Some("sleep".into()),
                     concept_in: None,
                     concept_out: None,
+                    llm: None,
                 });
                 return ChatResponse {
+                    llm: String::new(),
+                    llm_id: String::new(),
+                    fallback: false,
                     mode: FIELD_MODE.into(),
                     reply,
                     route: "sleep".into(),
@@ -356,6 +646,7 @@ impl AppState {
                 route: None,
                 concept_in: None,
                 concept_out: None,
+                llm: None,
             });
             self.chat_log.push(ChatTurn {
                 mode: Some(FIELD_MODE.into()),
@@ -364,8 +655,12 @@ impl AppState {
                 route: Some("sleep".into()),
                 concept_in: None,
                 concept_out: None,
+                llm: None,
             });
             return ChatResponse {
+                llm: String::new(),
+                llm_id: String::new(),
+                fallback: false,
                 mode: FIELD_MODE.into(),
                 reply,
                 route: "sleep".into(),
@@ -402,6 +697,7 @@ impl AppState {
                 route: None,
                 concept_in: None,
                 concept_out: None,
+                llm: None,
             });
             self.chat_log.push(ChatTurn {
                 mode: Some(FIELD_MODE.into()),
@@ -410,8 +706,12 @@ impl AppState {
                 route: Some("status".into()),
                 concept_in: None,
                 concept_out: None,
+                llm: None,
             });
             return ChatResponse {
+                llm: String::new(),
+                llm_id: String::new(),
+                fallback: false,
                 mode: FIELD_MODE.into(),
                 reply,
                 route: "status".into(),
@@ -466,6 +766,7 @@ impl AppState {
             route: None,
             concept_in: Some(concept_in),
             concept_out: None,
+            llm: None,
         });
         self.chat_log.push(ChatTurn {
             mode: Some(FIELD_MODE.into()),
@@ -474,6 +775,7 @@ impl AppState {
             route: Some(route.into()),
             concept_in: Some(concept_in),
             concept_out: Some(report.predicted),
+            llm: None,
         });
         if self.chat_log.len() > 200 {
             let drain = self.chat_log.len() - 200;
@@ -481,6 +783,9 @@ impl AppState {
         }
 
         ChatResponse {
+            llm: String::new(),
+            llm_id: String::new(),
+            fallback: false,
             mode: FIELD_MODE.into(),
             reply,
             route: route.into(),
@@ -607,6 +912,25 @@ impl AppState {
     /// Devuelve `false` solo si cancelado o (modo finito) se alcanzó el tope.
     /// En modo infinito nunca termina por conteo de lotes.
     pub fn run_one_live_batch(&mut self) -> bool {
+        self.run_one_live_batch_with(None)
+    }
+
+    /// Si hay job de train activo y el proveedor activo es una API externa,
+    /// devuelve (proveedor, batch_size, seed) para generar el dataset **fuera
+    /// del lock** con [`crate::web::llm_periphery::generate_train_batch_external`].
+    pub fn external_dataset_plan(&self) -> Option<(ProviderConfig, usize, u64)> {
+        if !self.train_job.running || self.train_job.cancelled {
+            return None;
+        }
+        let cfg = self.active_external()?;
+        let batch = self.train_job.current_batch;
+        let seed = now_ms().wrapping_add(batch as u64 * 17);
+        Some((cfg, self.train_job.batch_size, seed))
+    }
+
+    /// Un lote con dataset opcional pre-generado por la API externa
+    /// (`Some(Err)` = la API falló → se anota y se genera en local).
+    pub fn run_one_live_batch_with(&mut self, pre: PreGeneratedDataset) -> bool {
         if !self.train_job.running || self.train_job.cancelled {
             self.finish_live_train(self.train_job.cancelled);
             return false;
@@ -624,7 +948,10 @@ impl AppState {
         let batch_size = self.train_job.batch_size;
         let epochs = self.train_job.epochs;
         let gemma = matches!(self.probe.mode(), LlmMode::GemmaGguf);
-        let seed = now_ms().wrapping_add(batch as u64 * 17);
+        let seed = pre
+            .as_ref()
+            .map(|(s, _)| *s)
+            .unwrap_or_else(|| now_ms().wrapping_add(batch as u64 * 17));
         let engrams_before = self.fuse.engram_count();
 
         let batch_label = if self.train_job.infinite {
@@ -640,8 +967,22 @@ impl AppState {
             json!({ "infinite": self.train_job.infinite }),
         );
 
-        let (examples, meta) = generate_train_batch(batch_size, seed, gemma);
-        let source = meta.source;
+        let (examples, meta) = match pre {
+            Some((_, Ok(v))) => v,
+            Some((_, Err(e))) => {
+                let (_, label) = self.active_llm_label();
+                self.train_job.push_event(
+                    "error",
+                    format!("{label} no generó el dataset ({e}); se usa generación local"),
+                    Some(batch),
+                    Some(engrams_before),
+                    json!({ "llm_error": e, "fallback": "local" }),
+                );
+                generate_train_batch(batch_size, seed, gemma)
+            }
+            None => generate_train_batch(batch_size, seed, gemma),
+        };
+        let source: &str = &meta.source;
         let family = meta.dataset_family;
         let exp_ids: Vec<String> = meta
             .experiment_ids
@@ -1708,6 +2049,44 @@ mod tests {
         let cont = s.run_one_live_batch();
         assert!(!cont, "tras cancel el siguiente lote debe devolver false");
         assert!(!s.train_job.running);
+    }
+
+    #[test]
+    fn field_decoder_reply_always_present_and_gemma_text_applied() {
+        let mut s = AppState::new();
+        s.probe =
+            PeripheralProbe::Lexicon(crate::field_linguistic_layer::GemmaShapedLexicon::new(1));
+        s.decoder = ConceptDecoder::new(LlmMode::Lexicon);
+        let resp = s.handle_chat("hola campo");
+        // Sin Gemma no hay job: responde el decoder léxico.
+        assert!(s.field_decode_job("hola campo", &resp).is_none());
+        assert!(!resp.reply.is_empty());
+        // Éxito Gemma: reemplaza reply y el turno del log.
+        let ok = s.apply_field_decoded(
+            resp.clone(),
+            Ok(RawGemmaReply {
+                text: "Hola, el campo lo leyó como épsilon.".into(),
+                prompt_tokens: 10,
+                generated_tokens: 9,
+                seconds: 0.5,
+            }),
+        );
+        assert!(ok.reply.starts_with("Hola, el campo"));
+        assert!(ok.decoded.starts_with("gemma2 decoder"));
+        assert_eq!(s.chat_log.last().unwrap().text, ok.reply);
+        // Error Gemma: conserva el léxico y anota el motivo.
+        let err = s.apply_field_decoded(resp.clone(), Err("timeout".into()));
+        assert!(err.reply.starts_with(&resp.reply));
+        assert!(err.reply.contains("timeout"));
+    }
+
+    #[test]
+    fn field_decoder_prompt_embeds_state_and_message() {
+        let p = crate::field_gemma_probe::render_field_decoder_prompt("hola", "ruta Liquid");
+        assert!(p.starts_with("<start_of_turn>user\n"));
+        assert!(p.starts_with("<start_of_turn>user\nhola"));
+        assert!(p.contains("ruta Liquid"));
+        assert!(p.ends_with("<end_of_turn>\n<start_of_turn>model\n"));
     }
 
     #[test]

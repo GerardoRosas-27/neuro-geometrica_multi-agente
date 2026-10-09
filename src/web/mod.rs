@@ -7,9 +7,12 @@
 //! Los token_ids **nunca** entran a FieldState.
 
 pub mod api;
+pub mod auth;
 pub mod experiment_suite;
 pub mod field_eval;
 pub mod llm_periphery;
+pub mod llm_provider;
+pub mod model_fetch;
 pub mod process_job;
 pub mod sleep_optimize;
 pub mod state;

@@ -1,5 +1,12 @@
 # Resultados — Etapa 2 Clean-Room v3 LONG
 
+> **Estado en `main` (nota añadida 2026-10-06).** Resultados generados en la
+> rama `exp/field-autonomy-next`, integrada a `main` en el PR #29 (`c59b9fe`).
+> El código que los produjo es el de `0b000b1` (idéntico en `main`); la columna
+> `commit` del CSV registra `ce282a2` porque era el HEAD al correr (código y
+> resultados se commitearon juntos en `0b000b1`). Re-ejecutar
+> `run_stage2_v3_long` **sobrescribe** este archivo.
+
 Protocolo: `docs/plan_autonomia_campo_v3.md` + `docs/etapa_2_autonomia_campo_experimentos.md` §29+.
 Módulo: `src/field_autonomy_stage2_v2.rs`.
 Rama: `exp/field-autonomy-next`.

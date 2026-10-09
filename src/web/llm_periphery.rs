@@ -70,7 +70,8 @@ impl DatasetFamily {
 /// Meta de un lote generado (familia + experimentos + fuente).
 #[derive(Clone, Debug, serde::Serialize)]
 pub struct TrainBatchMeta {
-    pub source: &'static str,
+    /// `gemma` | `lexicon_synth` | `api:<nombre>` (proveedor externo activo).
+    pub source: String,
     pub dataset_family: &'static str,
     pub experiment_ids: Vec<&'static str>,
 }
@@ -269,14 +270,15 @@ impl ChatMode {
     }
 }
 
-/// Config de generación para chat crudo. Env: `RAW_CHAT_MAX_TOKENS` (def 256),
+fn env_or<T: std::str::FromStr>(k: &str, d: T) -> T {
+    env::var(k).ok().and_then(|v| v.parse().ok()).unwrap_or(d)
+}
+
+/// Config de generación para chat crudo. Env: `RAW_CHAT_MAX_TOKENS` (def 160),
 /// `RAW_CHAT_TEMPERATURE` (def 0.7), `RAW_CHAT_TOP_P` (def 0.9), `RAW_CHAT_CONTEXT` (def 2048).
 pub fn raw_chat_config(seed: u64) -> Gemma2GenerationConfig {
-    fn env_or<T: std::str::FromStr>(k: &str, d: T) -> T {
-        env::var(k).ok().and_then(|v| v.parse().ok()).unwrap_or(d)
-    }
     Gemma2GenerationConfig {
-        max_tokens: env_or("RAW_CHAT_MAX_TOKENS", 256usize).clamp(1, 2048),
+        max_tokens: env_or("RAW_CHAT_MAX_TOKENS", 160usize).clamp(1, 2048),
         context_limit: env_or("RAW_CHAT_CONTEXT", 2048usize).clamp(128, 8192),
         temperature: env_or("RAW_CHAT_TEMPERATURE", 0.7f64).clamp(0.0, 2.0),
         top_p: env_or("RAW_CHAT_TOP_P", 0.9f64).clamp(0.05, 1.0),
@@ -284,19 +286,55 @@ pub fn raw_chat_config(seed: u64) -> Gemma2GenerationConfig {
     }
 }
 
-/// Abre la mejor sonda disponible. **Siempre** OK: fallback a léxico.
+/// Config del decoder del campo (ON). Respuestas cortas y más deterministas.
+/// Env: `FIELD_DECODER_MAX_TOKENS` (def 96), `FIELD_DECODER_TEMPERATURE` (def 0.4).
+pub fn field_decoder_config(seed: u64) -> Gemma2GenerationConfig {
+    Gemma2GenerationConfig {
+        max_tokens: env_or("FIELD_DECODER_MAX_TOKENS", 96usize).clamp(1, 1024),
+        context_limit: 1024,
+        temperature: env_or("FIELD_DECODER_TEMPERATURE", 0.4f64).clamp(0.0, 2.0),
+        top_p: 0.9,
+        seed,
+    }
+}
+
+/// Plazo de generación por mensaje (s). Env `CHAT_TIMEOUT_SECS` (def 75).
+/// Al vencer se corta la generación y se devuelve texto parcial o error claro.
+pub fn chat_timeout() -> std::time::Duration {
+    std::time::Duration::from_secs(env_or("CHAT_TIMEOUT_SECS", 75u64).clamp(5, 600))
+}
+
+/// Intenta abrir Gemma desde una ruta concreta.
+pub fn open_gemma_probe(path: &Path) -> Result<PeripheralProbe, String> {
+    FrozenGemma2Probe::try_open(Some(path)).map(PeripheralProbe::Gemma)
+}
+
+/// Abre la mejor sonda disponible **sin descargar**. **Siempre** OK: fallback a léxico.
+/// Ruta: `GEMMA2_GGUF` o `models/gemma-2-2b-it-Q3_K_L.gguf` (ver `model_fetch`).
+/// En tests solo se usa `GEMMA2_GGUF` explícito (no cargar 1 GB por test).
 pub fn open_best_probe(seed: u64) -> PeripheralProbe {
-    let explicit = env::var("GEMMA2_GGUF").ok();
-    let path_ref = explicit.as_deref().map(Path::new);
-    match FrozenGemma2Probe::try_open(path_ref) {
+    let explicit = env::var("GEMMA2_GGUF")
+        .ok()
+        .filter(|s| !s.trim().is_empty());
+    let path = if cfg!(test) {
+        explicit.map(std::path::PathBuf::from)
+    } else {
+        Some(crate::web::model_fetch::ModelConfig::from_env().path)
+    };
+    let result = match &path {
+        Some(p) if p.is_file() => open_gemma_probe(p),
+        Some(p) => Err(format!("GGUF no encontrado: {}", p.display())),
+        None => Err("GEMMA2_GGUF no definido".into()),
+    };
+    match result {
         Ok(p) => {
             tracing::info!(probe = p.name(), "periferia LLM: Gemma GGUF");
-            PeripheralProbe::Gemma(p)
+            p
         }
         Err(e) => {
             tracing::warn!(
                 error = %e,
-                "GGUF no disponible; periferia = GemmaShapedLexicon (Railway default)"
+                "GGUF no disponible (aún); periferia = GemmaShapedLexicon"
             );
             PeripheralProbe::Lexicon(GemmaShapedLexicon::new(seed))
         }
@@ -366,11 +404,123 @@ pub fn generate_train_batch_family(
         });
     }
     let meta = TrainBatchMeta {
-        source,
+        source: source.to_string(),
         dataset_family: family.as_str(),
         experiment_ids: family.experiment_ids().to_vec(),
     };
     (out, meta)
+}
+
+/// Elementos de curriculum que tocarían al lote `seed` (mismo índice que la
+/// generación local): (texto base, concepto).
+pub fn curriculum_plan(
+    batch_size: usize,
+    seed: u64,
+    family: DatasetFamily,
+) -> Vec<(&'static str, usize)> {
+    let n = batch_size.clamp(1, 64);
+    let curriculum = curriculum_for(family);
+    let len = curriculum.len().max(1);
+    (0..n)
+        .map(|i| curriculum[((seed as usize).wrapping_add(i).wrapping_mul(7)) % len])
+        .collect()
+}
+
+/// Prompt de generación de dataset para un LLM externo (una paráfrasis por frase).
+pub fn external_dataset_messages(
+    plan: &[(&str, usize)],
+    family: DatasetFamily,
+) -> Vec<crate::web::llm_provider::ChatMessage> {
+    use crate::web::llm_provider::ChatMessage;
+    let mut list = String::new();
+    for (i, (base, _)) in plan.iter().enumerate() {
+        list.push_str(&format!("{}. {}\n", i + 1, base));
+    }
+    vec![
+        ChatMessage::new(
+            "system",
+            "Generas datos de entrenamiento en español. Respondes solo con la lista pedida, \
+             sin explicaciones ni texto extra.",
+        ),
+        ChatMessage::new(
+            "user",
+            format!(
+                "Familia experimental: {}. Reescribe cada frase como una variante breve en \
+                 español (3-12 palabras) que conserve su significado. Devuelve exactamente {} \
+                 líneas con el formato «número. texto».\n\n{list}",
+                family.as_str(),
+                plan.len()
+            ),
+        ),
+    ]
+}
+
+/// Interpreta la lista numerada devuelta por el LLM. Líneas ausentes → `None`.
+pub fn parse_numbered_lines(text: &str, n: usize) -> Vec<Option<String>> {
+    let mut out = vec![None; n];
+    for line in crate::web::llm_provider::strip_think(text).lines() {
+        let t = line.trim().trim_start_matches(['-', '*', '•']).trim();
+        let digits: String = t.chars().take_while(|c| c.is_ascii_digit()).collect();
+        if digits.is_empty() {
+            continue;
+        }
+        let rest = t[digits.len()..]
+            .trim_start_matches(['.', ')', ':', '-', ' '])
+            .trim()
+            .trim_matches(['"', '«', '»', '*'])
+            .trim();
+        let Ok(k) = digits.parse::<usize>() else {
+            continue;
+        };
+        if k >= 1 && k <= n && !rest.is_empty() && out[k - 1].is_none() {
+            out[k - 1] = Some(rest.chars().take(200).collect());
+        }
+    }
+    out
+}
+
+/// Genera un lote con el **proveedor LLM externo activo** (bloqueante: llamar
+/// fuera del lock de AppState). Las etiquetas (concepto) salen del curriculum;
+/// el LLM solo aporta el texto. Nunca escribe tokens ni FieldState.
+pub fn generate_train_batch_external(
+    cfg: &crate::web::llm_provider::ProviderConfig,
+    batch_size: usize,
+    seed: u64,
+    timeout: std::time::Duration,
+) -> Result<(Vec<TrainExample>, TrainBatchMeta), String> {
+    use crate::web::llm_provider::{ExternalGenConfig, OpenAiClient};
+    let family = DatasetFamily::from_seed(seed);
+    let plan = curriculum_plan(batch_size, seed, family);
+    let client = OpenAiClient::new(cfg, timeout);
+    let reply = client.chat(
+        &external_dataset_messages(&plan, family),
+        ExternalGenConfig {
+            max_tokens: (plan.len() * 32).clamp(64, 1024),
+            temperature: 0.9,
+            top_p: 0.95,
+        },
+    )?;
+    let lines = parse_numbered_lines(&reply.text, plan.len());
+    let got = lines.iter().filter(|l| l.is_some()).count();
+    if got == 0 {
+        return Err("la API no devolvió frases utilizables para el dataset".into());
+    }
+    let examples = plan
+        .iter()
+        .zip(lines)
+        .map(|((base, concept), line)| TrainExample {
+            text: line.unwrap_or_else(|| (*base).to_string()),
+            concept: concept % NUM_CONCEPTS,
+        })
+        .collect();
+    Ok((
+        examples,
+        TrainBatchMeta {
+            source: format!("api:{}", cfg.name),
+            dataset_family: family.as_str(),
+            experiment_ids: family.experiment_ids().to_vec(),
+        },
+    ))
 }
 
 /// Decodificador periférico (concepto → texto). **Solo decoder** del modelo de campo.
@@ -572,6 +722,27 @@ mod tests {
             assert_eq!(meta.dataset_family, f.as_str());
             assert!(!items[0].text.is_empty());
         }
+    }
+
+    #[test]
+    fn numbered_lines_parse_and_plan_matches_local() {
+        let v = parse_numbered_lines(
+            "<think>x</think>\n1. hola campo\n2) «sueño breve»\n- 4: cuatro\nbasura\n9. fuera",
+            4,
+        );
+        assert_eq!(v[0].as_deref(), Some("hola campo"));
+        assert_eq!(v[1].as_deref(), Some("sueño breve"));
+        assert!(v[2].is_none());
+        assert_eq!(v[3].as_deref(), Some("cuatro"));
+        let fam = DatasetFamily::from_seed(5);
+        let plan = curriculum_plan(4, 5, fam);
+        let (local, _) = generate_train_batch_family(4, 5, false, fam);
+        for (p, l) in plan.iter().zip(local.iter()) {
+            assert_eq!(p.0, l.text);
+            assert_eq!(p.1 % NUM_CONCEPTS, l.concept);
+        }
+        let msgs = external_dataset_messages(&plan, fam);
+        assert!(msgs[1].content.contains("exactamente 4 líneas"));
     }
 
     #[test]
