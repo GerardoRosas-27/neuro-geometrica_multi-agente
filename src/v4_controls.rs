@@ -209,11 +209,26 @@ impl Dphi {
     }
 
     pub fn mlp_direct(zdim: usize, cdim: usize, seed: u64) -> Self {
+        Self::mlp_direct_h(zdim, cdim, HIDDEN, seed)
+    }
+
+    /// Residual Dφ with a chosen hidden width (`with_hidden(.., HIDDEN, ..)`
+    /// is bit-identical to `new`). Used by the V4 distillation capacity sweep.
+    pub fn with_hidden(zdim: usize, cdim: usize, hidden: usize, seed: u64) -> Self {
+        Self {
+            label: format!("DPHI_H{hidden}"),
+            residual: true,
+            zdim,
+            net: Mlp::new(PD + cdim, hidden, PD, 0.1, seed),
+        }
+    }
+
+    pub fn mlp_direct_h(zdim: usize, cdim: usize, hidden: usize, seed: u64) -> Self {
         Self {
             label: "MLP_DIRECT".into(),
             residual: false,
             zdim,
-            net: Mlp::new(PD + cdim, HIDDEN, PD, 0.1, seed),
+            net: Mlp::new(PD + cdim, hidden, PD, 0.1, seed),
         }
     }
 

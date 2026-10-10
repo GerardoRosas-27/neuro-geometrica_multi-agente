@@ -89,3 +89,16 @@ Gates (por seed; experimento PASS si ≥9/16 en DEV y CONFIRM):
 - **Gate E43** por seed: acc Dφ_A ≥ max(STATIC, Dφ_R) + 0.05 en ≥2 de {en, fr, ja}. Experimento PASS si ≥9/16 en DEV y CONFIRM.
 - **Gate E44** por seed: Dφ entrenado con A; en test la entrada pasa por B (o R) alineado al espacio PCA de A con ridge sobre 96 palabras ancla (disjuntas de la tarea, λ=1e-3·traza/n). PASS si acc_B ≥ acc_R + 0.05 y acc_B ≥ 0.5·acc_A (pares novedosos, todos los idiomas). Experimento PASS si ≥9/16 en DEV y CONFIRM.
 - Seeds DEV 0xA400–0xA40F, CONFIRM 0xB400–0xB40F (varían split y init). Sin tuning.
+
+## 12. Plan Dφ/teacher distillation — Fase A: techo de destilación (pre-registrado antes de correr)
+
+Plan: `docs/plan_v4_dphi_teacher_distillation.md` (commit `7a996b4`). Código: `src/v4_distill.rs`, `--exps DIST_A`.
+
+- Dataset, seeds (DEV `0xA400–0xA40F`, CONFIRM `0xB400–0xB40F`), presupuesto (8000×16, Adam 3e-3), init (`seed^0xD0`), Dφ-962 y teacher (`consolidate(Full)`, regla) idénticos al protocolo v4. Sin cambio de arquitectura de inferencia.
+- Condiciones: `A_train_only` (Dφ sólo TRAIN), `B_consolidation_route` (ruta existente E35-B: 50 % TRAIN real + 50 % replay del teacher), `D1_teacher_distill` (Dφ aprende **sólo** la salida del teacher: 50 % estados de replay generativo + 50 % entradas TRAIN reetiquetadas por el teacher; nunca ve el ground truth), `M1_mlp_direct_distill` (control MLP no residual, misma capacidad 962, misma destilación), `D4_teacher_distill_4xsteps` (diagnóstico de optimización: 4× pasos, no gate), `T_teacher_direct` (teacher como predictor, post-hoc, lado auditor).
+- Todas las etiquetas del teacher pasan por el auditor (hash canónico + bola 5 % contra TEST). Teacher y CDT se destruyen antes de TEST. Diagnóstico teacher→modelo (rel. err.) y σ_max(J) mediano se calculan después de TEST con un teacher re-consolidado del lado del auditor.
+- D1 se guarda como checkpoint y se re-evalúa en **proceso nuevo** (`eval-checkpoint P0`).
+- **Gate por seed:** acc(D1) ≥ acc(B) + 0.05, leakage=0 y queries=0 en todas las condiciones, y proceso nuevo bit-exacto (|Δ|<1e-12, queries=0).
+- **Gate de fase (plan §4):** media pareada D1−B > 0 con IC95 bootstrap (4000 remuestreos, semilla 0xB007) con límite inferior > 0 **en DEV y en CONFIRM**, más leakage=0, queries=0 y proceso nuevo OK en 32/32. Objetivo fuerte (no gate): D1 ≥ 0.70.
+- Lectura (plan §5) pre-fijada: (i) D1 alto (≥0.70) y B bajo → el cuello es la consolidación/señal; (ii) D1 ≈ B y lejos del teacher con teacher→Dφ alto → cuello de representación/capacidad → la Fase B (barrido de capacidad) es exactamente la prueba que el plan prescribe, así que se ejecuta aunque el gate A falle **sólo** en este caso, documentándolo; (iii) cualquier leakage/queries>0 o fallo de proceso nuevo → STOP.
+- DEV primero, luego CONFIRM sin retune. Smoke (`0x5A00`) sólo para comprobar que corre.

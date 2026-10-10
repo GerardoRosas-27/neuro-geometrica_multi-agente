@@ -245,7 +245,7 @@ pub struct Experience {
 
 /// CDT experience store. Every read is counted as a CDT query.
 pub struct CdtStore {
-    exps: Vec<Experience>,
+    pub(crate) exps: Vec<Experience>,
 }
 
 impl CdtStore {
@@ -1001,6 +1001,16 @@ pub fn run_seed(seed: u64, opts: &RunOpts) -> SeedOut {
 
     if opts.exps.len() == 1 && opts.on("E33S") {
         rows.extend(crate::v4_stability::run(seed));
+        return SeedOut {
+            rows,
+            provenance: prov,
+            manifest_json,
+            e32_trace: trace,
+        };
+    }
+    if opts.exps.len() == 1 && opts.exps.iter().any(|e| e.starts_with("DIST_")) {
+        let e = opts.exps.iter().next().cloned().unwrap_or_default();
+        rows.extend(crate::v4_distill::run(seed, &e, opts));
         return SeedOut {
             rows,
             provenance: prov,
