@@ -2,68 +2,64 @@
 
 **Branch:** `exp/field-autonomy-v4`  
 **Base:** `main`  
-**Created:** 2026-10-06
+**Updated:** 2026-10-09
 
-## Estado inicial
+## Estado
 
-Esta rama fue creada directamente desde `main` para evitar contaminar el nuevo ciclo con pesos/datasets de ramas experimentales previas.
+Esta rama contiene únicamente la especificación v4. Fue creada directamente desde `main` para iniciar un ciclo limpio. El Clean-Room v3.7 ya está integrado en `main` mediante PR #29; no asumir que los textos históricos que dicen «no mergeado» reflejan el estado actual.
 
-Documentación inicial:
+Documentación principal:
 
-- `docs/plan_autonomia_campo_v4.md`
-- `docs/protocolo_v4_agente.md`
-- `docs/handoff_field_autonomy_v4.md`
+- `docs/plan_autonomia_campo_v4.md` — diseño científico detallado.
+- `docs/protocolo_v4_agente.md` — protocolo operativo para implementación.
+- `docs/handoff_field_autonomy_v4.md` — este documento.
 
-## Qué dejó v3
+## Qué debe resolver v4
 
-La confirmación v3 cerró en mayoría POS+STRONG los gates E18/E21/E22/E24, pero dejó abiertos E23 y especialmente la cadena experiencia→CDT→Dφ, además de forgetting, causalidad, persistencia y transferencia. El cierre v3 explícitamente no fue mergeado a `main`.
+V3 ya aportó evidencia de que Dφ puede aprender reglas/composición bajo FIELD_ONLY, pero E23 fue débil y la cadena central experiencia→CDT→Dφ quedó abierta.
 
-Por tanto v4 no debe comenzar suponiendo que existe autonomía del campo.
-
-## Objetivo de esta rama
-
-Obtener evidencia causal y limpia de esta cadena:
+La pregunta prioritaria es:
 
 ```text
-experiencias
-    ↓
-consolidación CDT
-    ↓
-regularidad / learning signal
-    ↓
-adaptación de Dφ
-    ↓
-CDT/RQM/RAM eliminados
-    ↓
-X_new
-    ↓
-Dφ
-    ↓
-Y_new nunca almacenado
+experiencias TRAIN
+      ↓
+CDT consolidation
+      ↓
+learning signal
+      ↓
+adaptación Dφ
+      ↓
+DELETE CDT/RAM/RQM/retrieval
+      ↓
+X_new → Dφ → Y_new nunca almacenado
 ```
 
-El punto crítico es que CDT debe influir en **cómo aprende la dinámica**, no convertirse en un diccionario `X_new→Y_new`.
+No confundir con:
 
-## Prioridad absoluta
+```text
+X_new → CDT → Y_new
+```
+
+La segunda es lookup/memoria como respuesta y no demuestra la hipótesis arquitectónica.
+
+## Prioridad
 
 ### P0 — E31–E34
 
-Antes de tocar E35, implementar:
+Implementar primero:
 
-- dataset generator limpio;
-- manifest/hash;
-- provenance;
+- generador limpio TRAIN/DEV/TEST;
+- manifest y hashes canónicos;
+- auditoría de provenance;
 - controles paired;
 - free-run;
 - diagnóstico Jacobiano.
 
-La razón es que E35 no puede interpretarse si no sabemos si Dφ ya generaliza por sí mismo o si simplemente tenemos un baseline dinámico débil/fuerte.
+La razón es que E35 no puede interpretarse si no sabemos cuánto generaliza Dφ sin experiencia consolidada.
 
 ### P1 — E35–E38
 
-Estos experimentos responden la pregunta central:
-
-> ¿Puede una experiencia consolidada producir una modificación persistente de la dinámica que luego resuelva un estado nuevo sin consultar la experiencia durante la inferencia?
+Este es el núcleo científico: determinar si CDT produce aprendizaje persistente en Dφ, no recuperación.
 
 ### P2 — E39–E41
 
@@ -71,11 +67,50 @@ Transferencia, continual learning y causalidad.
 
 ### P3 — E42–E44
 
-Scaling, lenguaje y cambio de LLM.
+Escala, lenguaje y cambio de LLM.
+
+## E35 — diseño recomendado
+
+Dos sistemas idénticos y paired:
+
+### A — control
+
+```text
+TRAIN → Dφ_A
+```
+
+### B — tratamiento
+
+```text
+TRAIN experiences
+→ CDT consolidation
+→ learning_signal
+→ Dφ_B adaptation
+→ DELETE CDT/RAM/RQM/indexes
+```
+
+Mismo TEST sellado para A y B.
+
+La evidencia buscada es:
+
+```text
+performance(B) > performance(A)
+```
+
+simultáneamente con:
+
+```text
+CDT queries = 0
+RQM queries = 0
+lookup queries = 0
+leakage = 0
+```
+
+Si B no supera A, se reporta como resultado negativo; no se retoca hasta obtener PASS sin documentar el cambio de protocolo.
 
 ## Gate de seguridad contra leakage
 
-No ejecutar una suite científica si el auditor no puede contestar, por cada predicción:
+Cada predicción debe poder responder:
 
 ```text
 target_seen_training
@@ -95,119 +130,33 @@ direct_memory_queries
 decoder_lookup
 ```
 
-Una sola ruta directa al target debe marcar la corrida `LEAKED`.
-
-## Diseño recomendado de E35
-
-Usar dos modelos idénticos:
-
-### Control A — no experience
-
-```text
-TRAIN → Dφ_A
-```
-
-### Tratamiento B — consolidated experience
-
-```text
-TRAIN experiences
-→ CDT consolidation
-→ learning signal
-→ Dφ_B adaptation
-→ DELETE CDT/RAM/RQM
-```
-
-Ambos deben recibir el mismo TEST sellado.
-
-El resultado interesante sería:
-
-```text
-performance(B) > performance(A)
-```
-
-mientras:
-
-```text
-CDT queries = 0
-RQM queries = 0
-lookup queries = 0
-```
-
-y el target no exista en ninguna memoria.
-
-Si B no supera A, la hipótesis central queda sin evidencia positiva bajo ese protocolo. Eso es un resultado válido y debe documentarse.
-
-## Error conceptual que v4 debe evitar
-
-No confundir:
-
-### Memoria como respuesta
-
-```text
-X_new → CDT → Y_new
-```
-
-con:
-
-### Memoria como experiencia
-
-```text
-E_train → CDT → regularidad → Dφ adaptado
-X_new → Dφ → Y_new
-```
-
-Solo la segunda respalda la hipótesis arquitectónica.
+Una sola ruta directa al target marca `LEAKED`.
 
 ## Diagnóstico E23
 
-No intentar simplemente aumentar `dyn_epochs` o `dyn_updates` para arreglar h32/h64.
-
-Primero medir:
+No subir epochs/dyn_updates a ciegas. Medir primero:
 
 - Jacobian spectral norm;
 - norm drift;
 - manifold drift;
 - error por step;
-- sensibilidad a perturbación.
+- sensibilidad a perturbaciones;
+- energía.
 
-Después decidir si conviene:
+Después decidir si procede regularización, residual parameterization, spectral constraint, learned step size o energy shaping.
 
-- regularización de estabilidad;
-- residual parameterization;
-- spectral constraint;
-- learned step size;
-- attractor/energy shaping.
+## Reglas de implementación
 
-La elección debe salir de los datos, no al revés.
+- No copiar pesos/datasets/checkpoints de E11–E17/v3.
+- No añadir rutas RQM ocultas para rescatar E22/E35.
+- No consultar CDT durante TEST y llamarlo «memoria como experiencia».
+- No seleccionar seeds favorables.
+- No eliminar seeds fallidas sin causa registrada.
+- No cambiar decoder después de observar TEST.
+- No confundir SMOKE con evidencia científica.
+- No cerrar un gate solo por accuracy 100 %.
 
-## Criterio para cerrar v4
-
-No cerrar la rama porque un experimento aislado dé 100%.
-
-Cerrar únicamente con una tabla explícita:
-
-| Gate | Estado | Evidencia | Limitación |
-|---|---|---|---|
-| E31 rule learning | NOT_RUN | — | — |
-| E32 stability | NOT_RUN | — | — |
-| E33 long rollout | NOT_RUN | — | — |
-| E34 static/dynamic | NOT_RUN | — | — |
-| E35 CDT experience | NOT_RUN | — | — |
-| E36 consolidation ablation | NOT_RUN | — | — |
-| E37 delete-after-learning | NOT_RUN | — | — |
-| E38 persistence | NOT_RUN | — | — |
-| E39 transfer | NOT_RUN | — | — |
-| E40 continual | NOT_RUN | — | — |
-| E41 causal | NOT_RUN | — | — |
-| E42 scaling | NOT_RUN | — | — |
-| E43 language | NOT_RUN | — | — |
-| E44 LLM swap | NOT_RUN | — | — |
-
-El siguiente agente debe actualizar esta tabla solo con resultados realmente ejecutados.
-
-## Primer comando recomendado
-
-Inspeccionar el repo y después implementar la infraestructura, no los experimentos finales.
+## Primer trabajo del agente
 
 ```bash
 git status
@@ -215,8 +164,12 @@ git log --oneline -20
 cargo test --all-targets
 ```
 
-Después crear primero el generador de datasets/manifests y el auditor de provenance.
+Después implementar infraestructura de dataset + manifest + provenance antes de E31/E35.
 
-## Regla final
+## Criterio de cierre
 
-**La prioridad de v4 no es hacer que el campo “acierte más”. Es hacer imposible confundir recuperación, interpolación trivial o memorización con aprendizaje dinámico persistente.**
+Mantener una tabla explícita para E31–E44 con `NOT_RUN`, `SMOKE_ONLY`, `PASS`, `PARTIAL`, `FAIL`, `LEAKED` o `DATASET_INVALID`.
+
+Solo cambiar de estado con resultados realmente ejecutados y artefactos reproducibles.
+
+**Regla final:** v4 no busca simplemente que el campo acierte más. Busca demostrar que la experiencia consolidada cambia la dinámica de forma persistente y que esa dinámica genera respuestas nuevas después de que la memoria de experiencias ha sido retirada.
