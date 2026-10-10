@@ -31,6 +31,7 @@ for e in exps:
     g = [r for r in rows if r["experiment"] == e and r["condition"] == "GATE"]
     print(f"  leakage={leak} queries={q} gate_seeds_PASS={sum(r['status']=='PASS' for r in g)}/{len(g)}")
     pairs = {"DIST_A": [("B_consolidation_route", "D1_teacher_distill"), ("A_train_only", "D1_teacher_distill"), ("M1_mlp_direct_distill", "D1_teacher_distill"), ("D1_teacher_distill", "D4_teacher_distill_4xsteps")],
+             "DIST_C": [("C0_lock_budget", "C1_onestep_recipe"), ("M1_mlp_onestep_recipe", "C1_onestep_recipe")],
              "DIST_B": [("DPHI_H64", f"DPHI_H{h}") for h in (136, 272, 544)] + [(f"MLP_H{h}", f"DPHI_H{h}") for h in (64, 136, 272, 544)]}.get(e, [])
     for a, b in pairs:
         d, lo, hi, w, n = paired(col(e, a), col(e, b))
@@ -40,3 +41,19 @@ for e in exps:
         d1 = col(e, "D1_teacher_distill")
         ok = sum(1 for r, m in zip(g, fr) if m and abs(float(m.group(1)) - d1[r["seed"]]) < 1e-9 and float(m.group(2)) == 0)
         print(f"  fresh-process OK {ok}/{len(g)}")
+    if e == "DIST_C":
+        for c in ["C1_onestep_recipe", "M1_mlp_onestep_recipe"]:
+            re_ = list(col(e, c, "stability").values())
+            random.seed(0xB007)
+            ms = sorted(st.mean(random.choices(re_, k=len(re_))) for _ in range(4000))
+            print(f"  {c} rel_err1 mean={st.mean(re_):.4f} CI95=[{ms[100]:.4f},{ms[3899]:.4f}] seeds<0.05: {sum(x<0.05 for x in re_)}/{len(re_)}")
+        names = ["translate","rotate","reflect","scale","shear","affine","compose_rot_scale","radial_warp","in_dist","interp_hole"]
+        for c in ["C0_lock_budget", "C1_onestep_recipe"]:
+            print(f"  breakdown {c}:")
+            for nm in names:
+                vals = {k: [] for k in ["rel","abs","cos","manif"]}
+                for r in rows:
+                    if r["experiment"] == e and r["condition"] == c:
+                        m = re.search(re.escape(nm) + r"(?:\(n=\d+\))?:rel=([0-9.]+),abs=([0-9.]+),cos=([-0-9.]+),manif=([0-9.]+)", r["notes"])
+                        for k, v in zip(vals, m.groups()): vals[k].append(float(v))
+                print(f"    {nm:<18} " + " ".join(f"{k}={st.mean(v):.4f}" for k, v in vals.items()))

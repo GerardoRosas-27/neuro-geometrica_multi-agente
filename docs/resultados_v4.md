@@ -256,3 +256,21 @@ Corrido en `03335f9` (git_dirty=false). Ruta D1, presupuesto fijo 8000×16, mism
 Pareadas vs H64: H136 **DEV +0.065 [+0.0005, +0.126]**, **CONF +0.046 [−0.024, +0.112]**; H272 +0.029 / −0.026 (IC incluye 0); H544 −0.011 / −0.048. Dφ vs MLP de igual H: todas las diferencias con IC que incluye 0 (−0.018…+0.033). Leakage=0, queries=0.
 
 **Gate Fase B: FAIL.** H* = 136 se eligió en DEV (único con IC>0, apenas), pero CONFIRM no reproduce (IC incluye 0). Con presupuesto fijo, más capacidad no ayuda de forma reproducible y H≥272 empeora (más lento de optimizar con los mismos 8000 pasos); el error teacher→Dφ se queda en 6–7 % en todas las H. Ninguna ventaja de la dinámica residual frente al MLP de igual capacidad. Conclusión: con este presupuesto el cuello no es el número de parámetros sino la optimización (coherente con D4 de la Fase A). Según lo pre-registrado (§13), la Fase C se aplica a H=64.
+
+## Fase C — optimización explícita de un paso (`DIST_C`, H=64)
+
+Corrido en `5d08d64` (git_dirty=false). Receta única pre-registrada: etiquetas de la ruta de consolidación (TRAIN real + replay del teacher auditado), 32000 pasos × batch 32 (8× cómputo del lock), Adam 3e-3 → 3e-5 coseno, pérdida relativa.
+
+| Condición | DEV acc | DEV rel_err₁ (IC95) | CONF acc | CONF rel_err₁ (IC95) | teacher→modelo | σ_max med | seeds rel<5 % |
+|---|---|---|---|---|---|---|---|
+| C0 lock (referencia) | 0.339 | 0.0705 | 0.377 | 0.0690 | 0.066/0.064 | 1.10 | 0/16 |
+| **C1 Dφ receta one-step** | **0.808** | **0.0374** [0.0358, 0.0390] | **0.814** | **0.0367** [0.0356, 0.0378] | 0.030/0.029 | 1.06 | **16/16, 16/16** |
+| M1 MLP igual capacidad, misma receta | 0.808 | 0.0369 | 0.812 | 0.0364 | 0.030/0.029 | 1.06 | 16/16 |
+
+C1−C0: +0.469 [+0.423, +0.514] / +0.436 [+0.394, +0.481] (16/16). C1−M1: −0.000 [−0.007, +0.007] / +0.001 [−0.006, +0.008]. Teacher 0.829/0.831 → captura de Dφ ≈ 97–98 % (objetivo fuerte del plan ≥0.70: alcanzado). Leakage=0, queries=0, proceso nuevo bit-exacto 32/32.
+
+Desglose rel_err₁ C1 (DEV; CONF casi idéntico): translate 0.020, rotate 0.021, **reflect 0.101**, scale 0.022, shear 0.023, affine 0.023, compose 0.028, **radial_warp 0.061**; in_dist 0.039, interp_hole 0.036. Coseno del desplazamiento ≥0.94 salvo radial_warp (0.73). Distancia al manifold (órbita de similitud) alta en reflect (0.98: la métrica no incluye espejo) y en scale/shear (no son similitudes).
+
+**Gate Fase C: PASS** (rel_err₁ medio < 5 % en DEV y CONFIRM, 16/16 seeds cada una, sin lookup ni memoria).
+
+Lectura honesta: (1) la mejora viene de optimización (8× pasos, LR decreciente, pérdida relativa), no de capacidad ni de la ruta; cuesta 8× cómputo (~16 s por modelo). (2) El MLP no residual de igual capacidad logra lo mismo: no hay ventaja atribuible a la "dinámica". (3) Dos familias siguen por encima del 5 % (reflect 10 %, radial_warp 6 %); el promedio pasa por las otras seis. (4) Sigue siendo destilación de un teacher con clase de hipótesis diseñada (no emergente).
