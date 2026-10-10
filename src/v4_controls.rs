@@ -308,6 +308,64 @@ impl Dphi {
         last
     }
 
+    /// Plan V4 Fase C: explicit one-step optimisation. Same as `train_with`
+    /// but with cosine learning-rate decay `lr → lr_final` and, if `rel_loss`,
+    /// a per-example relative loss ‖ŷ−y‖²/‖y‖² (matches `rel_err_1step`).
+    pub fn train_onestep<F>(
+        &mut self,
+        budget: TrainBudget,
+        seed: u64,
+        lr_final: f64,
+        rel_loss: bool,
+        mut sampler: F,
+    ) -> f64
+    where
+        F: FnMut(&mut Xoshiro256StarStar) -> Triple,
+    {
+        let mut rng = Xoshiro256StarStar::seed_from_u64(seed);
+        let n = self.net.n_params();
+        let mut opt = Adam::new(n, budget.lr);
+        let mut p = self.net.flat();
+        let mut last = 0.0;
+        for step in 0..budget.steps {
+            let t = step as f64 / budget.steps.max(1) as f64;
+            opt.lr =
+                lr_final + 0.5 * (budget.lr - lr_final) * (1.0 + (std::f64::consts::PI * t).cos());
+            let mut g = vec![0.0; n];
+            let mut loss = 0.0;
+            for _ in 0..budget.batch {
+                let (x, c, y) = sampler(&mut rng);
+                let scale = if rel_loss {
+                    1.0 / y.iter().map(|v| v * v).sum::<f64>().max(1e-6)
+                } else {
+                    1.0 / x.len() as f64
+                };
+                for pt in 0..x.len() / PD {
+                    let q = &x[pt * PD..(pt + 1) * PD];
+                    let inp = Self::input(q, &c);
+                    let (h, mut o) = self.net.forward(&inp);
+                    if self.residual {
+                        for i in 0..PD {
+                            o[i] += q[i];
+                        }
+                    }
+                    let d: Vec<f64> = (0..PD)
+                        .map(|i| 2.0 * (o[i] - y[pt * PD + i]) * scale / budget.batch as f64)
+                        .collect();
+                    loss += (0..PD)
+                        .map(|i| (o[i] - y[pt * PD + i]).powi(2))
+                        .sum::<f64>()
+                        * scale;
+                    self.net.backward(&inp, &h, &d, &mut g);
+                }
+            }
+            opt.step(&mut p, &g);
+            self.net.set_flat(&p);
+            last = loss / budget.batch as f64;
+        }
+        last
+    }
+
     /// E45-L1: predictive-error-gated plasticity. Examples whose one-step
     /// prediction is already within `tau` relative error produce no gradient.
     /// Returns the number of examples that actually updated the weights.

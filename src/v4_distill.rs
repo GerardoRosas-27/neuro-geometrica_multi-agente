@@ -394,8 +394,167 @@ pub fn run(seed: u64, exp: &str, opts: &RunOpts) -> Vec<Row> {
                 ),
             ));
         }
+        "DIST_C" => rows.extend(run_c(seed, &s, &aud, opts)),
         _ => rows.push(gate_row(exp, seed, false, "UNKNOWN_EXP".into())),
     }
     let _ = HIDDEN;
+    rows
+}
+
+/// Fase C pre-registered recipe (preregistro §14).
+pub fn onestep_budget() -> TrainBudget {
+    TrainBudget {
+        steps: 32000,
+        batch: 32,
+        lr: 3e-3,
+    }
+}
+pub const ONESTEP_LR_FINAL: f64 = 3e-5;
+
+pub fn phase_hidden() -> usize {
+    std::env::var("V4_DPHI_H")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(HIDDEN)
+}
+
+/// Consolidation-route labels (TRAIN ground truth ∪ teacher replay), trained
+/// with the explicit one-step recipe. Teacher/CDT dropped before return.
+pub fn train_onestep_route(d: &mut Dphi, s: &Sealed, seed: u64, aud: &Auditor) -> AuditFlags {
+    let k = K_POINTS;
+    let tr = triples(&s.ds.train);
+    let n = tr.len();
+    let mut flags = AuditFlags::default();
+    let cdt = collect_experience(&s.ds.train, ExpMode::Real, seed);
+    flags.cdt_canon = cdt.canonical_targets();
+    let sig = consolidate(&cdt, ConsolidateMode::Full);
+    let mut hits: Vec<u64> = vec![];
+    d.train_onestep(onestep_budget(), seed ^ 0x7A, ONESTEP_LR_FINAL, true, |r| {
+        if r.gen::<f64>() < REPLAY_FRACTION {
+            let t = replay_sample(&sig, r, k);
+            hits.extend(aud.hits(&t.2));
+            t
+        } else {
+            tr[r.gen_range(0..n)].clone()
+        }
+    });
+    drop(sig);
+    drop(cdt);
+    for h in hits {
+        if h == u64::MAX {
+            flags.any_equiv_global = true;
+        } else {
+            flags.equiv_hits.insert(h);
+        }
+    }
+    flags
+}
+
+/// Per-family / per-region one-step metrics on TEST (after evaluation).
+pub fn onestep_breakdown(d: &dyn Predictor, test: &[Example]) -> String {
+    let mut parts = vec![];
+    let stat = |xs: &[&Example]| -> (f64, f64, f64, f64, usize) {
+        let (mut re, mut ab, mut co, mut md) = (vec![], vec![], vec![], vec![]);
+        for e in xs {
+            let z = d.predict(&e.input, &e.context);
+            re.push(m::rel_err(&z, &e.expected).min(10.0));
+            ab.push(crate::v4_dataset::l2(&z, &e.expected));
+            co.push(m::disp_cosine(&e.input, &z, &e.expected));
+            md.push(m::manifold_distance(&e.input, &z));
+        }
+        (
+            m::mean(&re),
+            m::mean(&ab),
+            m::mean(&co),
+            m::mean(&md),
+            xs.len(),
+        )
+    };
+    for f in 0..N_FAM {
+        let xs: Vec<&Example> = test.iter().filter(|e| e.family_id == f).collect();
+        let (r, a, c, md, _) = stat(&xs);
+        parts.push(format!(
+            "{}:rel={r:.4},abs={a:.4},cos={c:.3},manif={md:.4}",
+            crate::v4_dataset::FAMILIES[f]
+        ));
+    }
+    for reg in ["in_dist", "interp_hole"] {
+        let xs: Vec<&Example> = test.iter().filter(|e| e.subset == reg).collect();
+        let (r, a, c, md, n) = stat(&xs);
+        parts.push(format!(
+            "{reg}(n={n}):rel={r:.4},abs={a:.4},cos={c:.3},manif={md:.4}"
+        ));
+    }
+    parts.join(" ")
+}
+
+fn run_c(seed: u64, s: &Sealed, aud: &Auditor, opts: &RunOpts) -> Vec<Row> {
+    let h = phase_hidden();
+    let b1 = TrainBudget::lock();
+    let cb = onestep_budget();
+    let mut rows = vec![];
+    // C0: reference at H (lock budget, consolidation route)
+    let (c0, ev0, _) = train_route(
+        "consol",
+        Dphi::with_hidden(2 * K_POINTS, CTX_DIM, h, seed ^ 0xD0),
+        s,
+        seed,
+        b1,
+        aud,
+    );
+    let mut models: Vec<(&str, Dphi, EvalOut, f64)> = vec![("C0_lock_budget", c0, ev0, 0.0)];
+    for (name, init) in [
+        (
+            "C1_onestep_recipe",
+            Dphi::with_hidden(2 * K_POINTS, CTX_DIM, h, seed ^ 0xD0),
+        ),
+        (
+            "M1_mlp_onestep_recipe",
+            Dphi::mlp_direct_h(2 * K_POINTS, CTX_DIM, h, seed ^ 0xD0),
+        ),
+    ] {
+        let mut d = init;
+        let t0 = std::time::Instant::now();
+        let flags = train_onestep_route(&mut d, s, seed, aud);
+        let w = t0.elapsed().as_secs_f64();
+        s.verify_test().expect("TEST sealed");
+        let ev = evaluate(&d, &s.ds.test, 1, Some((aud, &flags)), None);
+        models.push((name, d, ev, w));
+    }
+    let (fp_acc, fp_q, _) = fresh_eval(opts, s, seed, &models[1].1, "DIST_C_C1");
+    let sig = posthoc_teacher(s, seed);
+    let mut all_clean = true;
+    for (name, d, ev, w) in &models {
+        let (te, sg) = diag(d, &sig, &s.ds.test);
+        all_clean &= clean(ev);
+        let comp = if *name == "C0_lock_budget" {
+            b1.examples_seen()
+        } else {
+            cb.examples_seen()
+        };
+        rows.push(mk_row(
+            "DIST_C",
+            seed,
+            name,
+            ev,
+            d.params(),
+            comp,
+            format!(
+                "H={h} wall_s={w:.2} teacher_to_model_rel={te:.4} sigma_med={sg:.4} {}",
+                onestep_breakdown(d, &s.ds.test)
+            ),
+        ));
+    }
+    let c1 = &models[1].2;
+    let fresh_ok = (fp_acc - c1.acc).abs() < 1e-12 && fp_q == 0.0;
+    rows.push(gate_row(
+        "DIST_C",
+        seed,
+        c1.rel_err < 0.05 && all_clean && fresh_ok,
+        format!(
+            "H={h} rel_err1 C0={:.4} C1={:.4} M1={:.4} acc C0={:.4} C1={:.4} M1={:.4} fresh_C1={fp_acc:.4}(q={fp_q}) clean={all_clean}",
+            models[0].2.rel_err, c1.rel_err, models[2].2.rel_err, models[0].2.acc, c1.acc, models[2].2.acc
+        ),
+    ));
     rows
 }

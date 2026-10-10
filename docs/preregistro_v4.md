@@ -110,3 +110,12 @@ Plan: `docs/plan_v4_dphi_teacher_distillation.md` (commit `7a996b4`). Código: `
 - **Gate de fase:** H* = la H más pequeña > 64 cuya diferencia pareada acc(H) − acc(H64) tenga media ≥ +0.05 e IC95 inferior > 0 en DEV; CONFIRM debe reproducir el mismo criterio **para la misma H*** (sin re-elegir). Leakage=0 y queries=0 en todas las condiciones. Si ninguna H lo cumple → FAIL.
 - Separación capacidad vs consolidación vs estabilidad: este barrido sólo varía capacidad (la ruta de consolidación queda fija y la estabilidad sólo se mide).
 - Paso siguiente pre-fijado: la Fase C se aplica "a la mejor capacidad" (plan §2). Si B pasa, H*; si B falla, H=64 (no hay mejor capacidad demostrada), documentándolo. Una mejora de Dφ que también obtenga el MLP de igual H no se atribuye a la dinámica.
+
+## 14. Fase C — optimización explícita de un paso (pre-registrado antes de correr; tras FAIL de la Fase B)
+
+- `--exps DIST_C`, H = 64 (Fase B no demostró una capacidad mejor; `V4_DPHI_H` sin fijar → 64, registrado en las notas).
+- Objetivo de entrenamiento: error de un paso frente a teacher/operador verdadero = etiquetas de la ruta de consolidación (50 % TRAIN real, 50 % replay del teacher, auditado). Receta única fijada a priori, sin búsqueda: 32000 pasos, batch 32, Adam lr 3e-3 con decaimiento coseno a 3e-5, pérdida relativa por ejemplo ‖ŷ−y‖²/‖y‖² (coincide con la métrica). Cómputo 8× el lock (se reporta).
+- Condiciones: `C0_lock_budget` (referencia, ruta de consolidación con el lock), `C1_onestep_recipe` (Dφ), `M1_mlp_onestep_recipe` (control MLP igual capacidad y receta).
+- Métricas en TEST por familia y por región (`in_dist` / `interp_hole`): rel_err₁, error absoluto, coseno del desplazamiento con el target, distancia al manifold, σ_max(J) mediano, error teacher→Dφ (post-hoc). C1 re-evaluado en proceso nuevo.
+- **Gate (meta del plan):** media sobre seeds de rel_err₁ (TEST, recortado a 10) de C1 < 0.05 en DEV **y** CONFIRM, sin lookup ni memoria (leakage=0, queries=0, proceso nuevo bit-exacto). Gate por seed: rel_err₁(C1) < 0.05 + limpio.
+- Si falla: STOP antes de la Fase D (el plan exige cumplir la meta de un paso antes de estabilidad/reproyección/E33) y por tanto antes de Ψ64/Gemma E43/E44.
