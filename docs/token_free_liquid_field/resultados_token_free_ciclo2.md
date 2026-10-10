@@ -1,6 +1,6 @@
 # Resultados Token-Free — ciclo 2: E46b (Gemma real, tarea no lineal), E47, E48 y H2H vs v4
 
-Pre-registro: `preregistro_ciclo2.md` (commit anterior a toda ejecución de este ciclo). DEV → confirmación sin retune. Artefactos crudos en `artifacts/token_free/` (`e46b_*`, `e46b_parity.json`, `h2h_*`, `speedup.json`, `gemma_v2.sha256`).
+Pre-registro: `preregistro_ciclo2.md` (commit anterior a toda ejecución de este ciclo). DEV → confirmación sin retune. Artefactos crudos en `artifacts/token_free/` (`e46b_*`, `e46b_parity.json`, `h2h_*`, `speedup.json`, `gemma_v2.sha256`, `e47_48_*`). Caché pesada (3.3 GB: corpus, dumps, encoders `.npz`, Ψ) fuera del repo en `/workspace/ngm-tokenfree-cache` del box; manifiesto SHA-256 completo en `artifacts/token_free/cache_manifest.sha256`, logs copiados en `artifacts/token_free/cache_logs/`.
 
 ## 1. Herramientas y speedup
 
@@ -46,7 +46,51 @@ Confirmación (semillas 3-5; eje 1 = media(OOD h4, COMP h4, LONG h16)):
 
 ## 3. E47 / E48
 
-`PENDIENTE` (en ejecución; se actualizará esta sección con DEV y confirmación).
+Artefactos: `artifacts/token_free/e47_48_dev.json` (semillas 0-2), `e47_48_conf.json` (semillas 3-5), logs `cache_logs/e4748_{dev,conf}.log`. Modelos E46b congelados, sin reentrenar. Medias de 3 semillas; latencia = Rust µs/paso p50 (incluye selección top-k). Paridad Rust: decisiones discretas 100 % idénticas en paso 1 y 16 en todas las ejecuciones.
+
+### E47 — sparse top-k (|Ψ|)
+
+DEV (eje 1 = media(DEV h4, LONG h16)):
+
+| k | mlp eje 1 | mlp µs | liquid_ss eje 1 | liquid_ss µs |
+|---|---|---|---|---|
+| 1 | 0.008 | 3.2 | 0.008 | 6.0 |
+| 2 | 0.008 | 3.4 | 0.008 | 6.4 |
+| 4 | 0.006 | 3.7 | 0.007 | 7.7 |
+| 7 | 0.007 | 4.2 | 0.007 | 9.6 |
+| 13 | 0.005 | 5.4 | 0.006 | 13.2 |
+| 32 | 0.018 | 7.9 | 0.007 | 25.8 |
+| **64 (denso)** | **0.340** | 9.4 | **0.209** | 43.1 |
+
+Confirmación (eje 1 = media(OOD h4, COMP h4, LONG h16)):
+
+| k | mlp eje 1 (OOD/COMP/LONG) | mlp µs | liquid_ss eje 1 (OOD/COMP/LONG) | liquid_ss µs |
+|---|---|---|---|---|
+| 1 | 0.016 (0.031/0.018/0.000) | 3.5 | 0.016 (0.030/0.017/0.000) | 6.2 |
+| 4 | 0.014 (0.023/0.017/0.001) | 3.8 | 0.014 (0.025/0.016/0.001) | 7.7 |
+| 13 | 0.009 (0.015/0.013/0.001) | 5.2 | 0.009 (0.015/0.010/0.001) | 14.1 |
+| 32 | 0.027 (0.039/0.039/0.002) | 7.4 | 0.011 (0.017/0.015/0.001) | 25.8 |
+| **64 (denso)** | **0.298** (0.291/0.473/0.130) | 10.9 | **0.181** (0.188/0.307/0.048) | 42.1 |
+
+Cualquier k<64 colapsa el eje 1 a ≈0.01-0.03 (caídas de 27-32 pp en mlp y 17-20 pp en liquid_ss). k\* = 64 (denso) para ambos modelos ⇒ no hay ahorro de latencia posible. **E47: FAIL** (Ψ de 64 dims no es esparsificable por magnitud sin reentrenar; consistente con E45: las 64 dims son todas necesarias).
+
+### E48 — parada adaptativa (liquid_ss)
+
+| Config | DEV eje 1 | DEV sub-pasos/op | CONF eje 1 | CONF OOD h4 | CONF COMP h4 | CONF sub-pasos/op | µs/op p50 (CONF) |
+|---|---|---|---|---|---|---|---|
+| K=1 | 0.002 | 1 | 0.001 | 0.001 | 0.001 | 1 | 11.1 |
+| K=2 | 0.071 | 2 | 0.069 | 0.069 | 0.128 | 2 | 20.3 |
+| **K=4 (entrenado)** | **0.209** | 4 | **0.181** | **0.188** | **0.307** | 4 | 41.6 |
+| K=8 | 0.165 | 8 | 0.159 | 0.173 | 0.269 | 8 | 81.2 |
+| K=16 | 0.142 | 16 | 0.141 | 0.161 | 0.238 | 16 | 164.9 |
+| K=32 | 0.131 | 32 | 0.134 | 0.155 | 0.224 | 32 | 321.5 |
+| K=64 | 0.125 | 64 | 0.131 | 0.153 | 0.218 | 64 | 645.6 |
+| adapt. ε=0.1 | 0.148 | 20.2 | 0.147 | 0.165 | 0.248 | 19.7 | 164.9 |
+| adapt. ε=0.03 | 0.131 | 46.3 | 0.136 | 0.154 | 0.227 | 44.2 | 514.2 |
+| adapt. ε=0.01 | 0.126 | 97.4 | 0.132 | 0.152 | 0.220 | 91.7 | 1278.4 |
+| adapt. ε=0.003 | 0.125 | 123.2 | 0.131 | 0.152 | 0.218 | 122.4 | 1290.8 |
+
+El modelo es mejor exactamente en el K de entrenamiento: refinar la integración (K>4) *empeora* la calidad (no es un ODE convergente sino un mapa discreto aprendido a dt=0.25). Ningún ε queda a ≤1 pp de K=4 en DEV (el mejor, ε=0.1, a −6.1 pp con 5× el coste) ⇒ sin ε seleccionado; en confirmación todas las variantes adaptativas son más lentas (≥4×) y peores (−3.4 a −5 pp). **E48: FAIL** (sin candidato; la confirmación se ejecutó y lo corrobora).
 
 ## 4. H2H token-free vs v4 (tarea sellada de v4, E35-style)
 
@@ -81,9 +125,13 @@ Lectura honesta:
 |---|---|
 | E46b liquid_ss | FAIL |
 | E46b paridad | PASS (v4res, liquid, linear); PORT_PARITY_FAIL a h16 (mlp, ssm, liquid_ss), discreto 100 % |
-| E47, E48 | pendiente |
+| E47 sparse top-k | FAIL (k*=64 denso; k<64 colapsa eje 1 a ≤0.03) |
+| E48 parada adaptativa | FAIL (sin ε a ≤1 pp de K=4; adaptativo más lento y peor) |
 | H2H vs v4 | v4 gana (token-free FAIL) |
 
 ## 6. Recomendación
 
-No mergear. La línea "liquid" falla en las dos tareas (sintética lineal y Gemma no lineal) y token-free pierde contra v4 en su propia tarea. Lo único positivo replicado es E45 (bottleneck de 64 dims) y la infraestructura (core Rust sin tokens, paridad, exportación).
+No mergear. La línea "liquid" falla en las dos tareas (sintética lineal y Gemma no lineal) y token-free pierde contra v4 en su propia tarea. E47 y E48 también fallan (ni esparsidad ni parada adaptativa dan ahorro sin pérdida). Lo único positivo replicado es E45 (bottleneck de 64 dims) y la infraestructura (core Rust sin tokens, paridad, exportación).
+
+
+Decisión de continuación: ver `docs/comparativa_v4_vs_token_free.md` (continuar en v4; conservar de esta rama el core Rust sin tokens, la infraestructura de paridad/exportación y el bottleneck de 64 dims de E45; la línea liquid queda como control).
