@@ -72,3 +72,24 @@ Hallazgos: (1) el error de un paso en la trayectoria verdadera es minúsculo (�
 ## 6. Criterio de éxito del handoff
 
 "Experiencia consolidada cambia la dinámica de forma persistente y esa dinámica genera respuestas nuevas tras retirar la memoria": **cumplido operativamente** bajo este protocolo (E35/E37/E38 PASS en DEV y CONFIRM, leakage 0, contadores 0, proceso nuevo) **pero con la salvedad de §3**: el contenido de la consolidación es una regresión diseñada a mano que coincide con el generador, Dφ por sí solo no supera a un MLP de igual capacidad (E34) y no es estable en horizontes largos (E33). E42 no alcanza el gate estricto. E43/E44 sin ejecutar. No se reclama nada más allá de este benchmark sintético.
+
+## 7. E45 — Liquid vs Thermo (pre-registrado en plan §24 / preregistro §7)
+
+Gate (max(L1,L2) ≥ T1−0.05, queries=0): **FAIL** — DEV 0/16, CONFIRM 0/16. Leakage y queries = 0 para los cuatro cerebros; rollback L2 exacto 32/32. L3 y composición A→B→C: NOT_RUN.
+
+## dev
+| brain | acc TEST | set1 tras p2 | olvido | set2 | retención episodios borrados | consolidación ms | params cambiados | bytes | latencia µs | updates | queries |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| L1_liquid_gated | 0.067 | 0.000 | 0.086 | 0.133 | 0.437 | 2137.4 | 962 | 7696 | 9.45 | 78213 | 0 |
+| L2_liquid_lowrank | 0.000 | 0.000 | 0.086 | 0.001 | 0.003 | 1827.0 | 972 | 9824 | 10.04 | 64000 | 0 |
+| T1_thermo_cdt | 0.808 | 0.788 | 0.000 | 0.828 | 0.891 | 0.5 | 384 | 3072 | 0.12 | 96 | 0 |
+| H_liquid_inf_cdt_cons | 0.213 | 0.236 | 0.150 | 0.190 | 0.344 | 1841.4 | 962 | 7696 | 9.44 | 128000 | 0 |
+## confirm
+| brain | acc TEST | set1 tras p2 | olvido | set2 | retención episodios borrados | consolidación ms | params cambiados | bytes | latencia µs | updates | queries |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| L1_liquid_gated | 0.061 | 0.000 | 0.070 | 0.122 | 0.461 | 2151.4 | 962 | 7696 | 9.41 | 79972 | 0 |
+| L2_liquid_lowrank | 0.001 | 0.000 | 0.070 | 0.003 | 0.003 | 1830.1 | 972 | 9824 | 10.39 | 64000 | 0 |
+| T1_thermo_cdt | 0.802 | 0.795 | 0.000 | 0.808 | 0.891 | 0.6 | 384 | 3072 | 0.12 | 96 | 0 |
+| H_liquid_inf_cdt_cons | 0.238 | 0.246 | 0.082 | 0.230 | 0.355 | 1826.3 | 962 | 7696 | 9.63 | 128000 | 0 |
+
+Lectura: con 96 experiencias y presupuesto igual de updates, el sustrato líquido puro (L1 gated, L2 low-rank) no consolida: L1 0.06–0.07 y olvida set1 por completo tras fase 2; la memoria rápida L2 (UVᵀ en capa de salida, sin gating por contexto) destruye set1 y no aprende set2 (rollback la revierte exactamente). T1 (regla CDT consolidada) gana en todo: accuracy 0.80, olvido 0, ~4000× menos tiempo de consolidación, 0.12 µs/query, 384 números. El híbrido (inferencia líquida + consolidación CDT) queda en medio (0.21–0.24). Misma salvedad que §3: la consolidación CDT es una regresión cuya clase de hipótesis coincide con el generador, así que la comparación favorece estructuralmente a T1; no es prueba general de que lo termodinámico supere a lo líquido. Analogía cognitiva: en este benchmark el "largo plazo" útil vive en la regla consolidada, no en la dinámica.

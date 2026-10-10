@@ -194,5 +194,6 @@ Ver `docs/resultados_v4.md` (DEV `0xA400–0xA40F` + CONFIRM `0xB400–0xB40F`, 
 | E42 | FAIL/PARTIAL (4/16, 5/16) por gate estricto |
 | E43 | NOT_RUN |
 | E44 | NOT_RUN |
+| E45 | FAIL (0/16, 0/16): T1 CDT 0.80 >> L1 0.06, L2 0.00, H 0.22 |
 
 Pendiente: consolidación menos diseñada a mano (aprendida/genérica), estabilidad multi-paso (E33), E43/E44 con periferia LLM.
