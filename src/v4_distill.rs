@@ -397,16 +397,30 @@ pub fn run(seed: u64, exp: &str, opts: &RunOpts) -> Vec<Row> {
         }
         "DIST_C" => rows.extend(run_c(seed, &s, &aud, opts)),
         "DIST_D" => rows.extend(run_d(seed, &s, &aud)),
+        "DIST_E" => rows.extend(run_e(seed, &s, &aud, opts)),
         _ => rows.push(gate_row(exp, seed, false, "UNKNOWN_EXP".into())),
     }
     let _ = HIDDEN;
     rows
 }
 
-/// Fase C pre-registered recipe (preregistro §14).
-pub fn onestep_budget() -> TrainBudget {
+/// Fase C recipe without any env override (used by §16).
+pub fn onestep_budget_base() -> TrainBudget {
     TrainBudget {
         steps: 32000,
+        batch: 32,
+        lr: 3e-3,
+    }
+}
+
+/// Fase C pre-registered recipe (preregistro §14).
+pub fn onestep_budget() -> TrainBudget {
+    let mult = std::env::var("V4_ONESTEP_MULT")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .unwrap_or(1);
+    TrainBudget {
+        steps: 32000 * mult,
         batch: 32,
         lr: 3e-3,
     }
@@ -423,6 +437,16 @@ pub fn phase_hidden() -> usize {
 /// Consolidation-route labels (TRAIN ground truth ∪ teacher replay), trained
 /// with the explicit one-step recipe. Teacher/CDT dropped before return.
 pub fn train_onestep_route(d: &mut Dphi, s: &Sealed, seed: u64, aud: &Auditor) -> AuditFlags {
+    train_onestep_route_b(d, s, seed, aud, onestep_budget())
+}
+
+pub fn train_onestep_route_b(
+    d: &mut Dphi,
+    s: &Sealed,
+    seed: u64,
+    aud: &Auditor,
+    budget: TrainBudget,
+) -> AuditFlags {
     let k = K_POINTS;
     let tr = triples(&s.ds.train);
     let n = tr.len();
@@ -431,7 +455,7 @@ pub fn train_onestep_route(d: &mut Dphi, s: &Sealed, seed: u64, aud: &Auditor) -
     flags.cdt_canon = cdt.canonical_targets();
     let sig = consolidate(&cdt, ConsolidateMode::Full);
     let mut hits: Vec<u64> = vec![];
-    d.train_onestep(onestep_budget(), seed ^ 0x7A, ONESTEP_LR_FINAL, true, |r| {
+    d.train_onestep(budget, seed ^ 0x7A, ONESTEP_LR_FINAL, true, |r| {
         if r.gen::<f64>() < REPLAY_FRACTION {
             let t = replay_sample(&sig, r, k);
             hits.extend(aud.hits(&t.2));
@@ -680,6 +704,298 @@ fn run_d(seed: u64, s: &Sealed, aud: &Auditor) -> Vec<Row> {
                 region >= 8 && all_clean,
                 format!("{label} region={region} sigma_med={:.4} rel_err1_all={:.4}/{:.4}/{:.4} clean={all_clean} {}", m::median(&sig_all), ev1.rel_err, ev2.rel_err, ev_c0.rel_err, notes.join(" ")),
             )
+        });
+    }
+    rows
+}
+
+/// §16: per-family consolidation fit residual (in-sample, computed at
+/// consolidation time from the CDT experiences — never from DEV/TEST).
+pub fn family_fit_residual(
+    sig: &LearningSignal,
+    exps: &[crate::field_autonomy_v4::Experience],
+) -> Vec<f64> {
+    let mut v = vec![vec![]; N_FAM];
+    for e in exps {
+        if let Some(y) = sig.predict(e.fam, e.params, &e.x) {
+            v[e.fam].push(m::rel_err(&y, &e.y));
+        }
+    }
+    v.iter()
+        .map(|x| {
+            if x.is_empty() {
+                f64::INFINITY
+            } else {
+                m::mean(x)
+            }
+        })
+        .collect()
+}
+
+pub const TRUST_TAU: f64 = 0.01;
+
+/// §16 trusted-replay route: TRAIN ground truth (prob 1-REPLAY_FRACTION) +
+/// teacher replay restricted to families whose consolidation fit residual
+/// < `tau`. Returns flags and the trusted mask.
+pub fn train_onestep_trusted(
+    d: &mut Dphi,
+    s: &Sealed,
+    seed: u64,
+    aud: &Auditor,
+    tau: f64,
+) -> (AuditFlags, Vec<bool>) {
+    train_onestep_trusted_b(d, s, seed, aud, tau, onestep_budget())
+}
+
+pub fn train_onestep_trusted_b(
+    d: &mut Dphi,
+    s: &Sealed,
+    seed: u64,
+    aud: &Auditor,
+    tau: f64,
+    budget: TrainBudget,
+) -> (AuditFlags, Vec<bool>) {
+    let k = K_POINTS;
+    let tr = triples(&s.ds.train);
+    let n = tr.len();
+    let mut flags = AuditFlags::default();
+    let cdt = collect_experience(&s.ds.train, ExpMode::Real, seed);
+    flags.cdt_canon = cdt.canonical_targets();
+    let sig = consolidate(&cdt, ConsolidateMode::Full);
+    let res = family_fit_residual(&sig, cdt.read_all());
+    let trusted: Vec<bool> = res.iter().map(|r| *r < tau).collect();
+    let any = trusted.iter().any(|t| *t);
+    let mut hits: Vec<u64> = vec![];
+    d.train_onestep(budget, seed ^ 0x7A, ONESTEP_LR_FINAL, true, |r| {
+        if any && r.gen::<f64>() < REPLAY_FRACTION {
+            loop {
+                let t = replay_sample(&sig, r, k);
+                if trusted[fam_params(&t.1).0] {
+                    hits.extend(aud.hits(&t.2));
+                    return t;
+                }
+            }
+        }
+        tr[r.gen_range(0..n)].clone()
+    });
+    drop(sig);
+    drop(cdt);
+    for h in hits {
+        if h == u64::MAX {
+            flags.any_equiv_global = true;
+        } else {
+            flags.equiv_hits.insert(h);
+        }
+    }
+    (flags, trusted)
+}
+
+/// §16 pre-registered constants.
+pub const E_HIDDEN: usize = 136;
+pub const E_MULT: usize = 8;
+
+/// E33-protocol rollout (rotate+reflect TEST, free-run) for one variant.
+/// Returns (region, per-horizon rows, notes).
+fn e33_rollout(
+    exp: &str,
+    seed: u64,
+    label: &str,
+    d: &Dphi,
+    vi: usize,
+    iter_ex: &[&Example],
+    deltas: &[Vec<f64>],
+) -> (usize, Vec<Row>, String) {
+    use crate::field_autonomy_v4::{target_h, HORIZONS};
+    let mut zs: Vec<Vec<f64>> = iter_ex.iter().map(|e| e.input.clone()).collect();
+    let mut zp: Vec<Vec<f64>> = iter_ex
+        .iter()
+        .zip(deltas)
+        .map(|(e, dl)| e.input.iter().zip(dl).map(|(a, b)| a + b).collect())
+        .collect();
+    let (mut region, mut contiguous) = (0usize, true);
+    let (mut rows, mut notes, mut sig_all) = (vec![], vec![], vec![]);
+    for t in 1..=*HORIZONS.last().unwrap() {
+        for (i, e) in iter_ex.iter().enumerate() {
+            let (z, sg) = crate::v4_stability::step_variant(d, &zs[i], &e.context, &e.input, vi);
+            zs[i] = z;
+            sig_all.push(sg);
+            zp[i] = crate::v4_stability::step_variant(d, &zp[i], &e.context, &e.input, vi).0;
+        }
+        if HORIZONS.contains(&t) {
+            let (mut ok, mut re, mut dr, mut md, mut en, mut pg) =
+                (0usize, vec![], vec![], vec![], vec![], vec![]);
+            let mut fam_ok = [0usize; 2];
+            let mut fam_n = [0usize; 2];
+            for (i, e) in iter_ex.iter().enumerate() {
+                let y = target_h(e, t);
+                let c = m::correct(&zs[i], &y);
+                ok += c as usize;
+                let fi = if e.family_id == 1 { 0 } else { 1 };
+                fam_n[fi] += 1;
+                fam_ok[fi] += c as usize;
+                re.push(m::rel_err(&zs[i], &y).min(10.0));
+                dr.push(m::norm(&zs[i]) / m::norm(&y).max(1e-12));
+                en.push(m::energy(&zs[i]) / m::energy(&y).max(1e-12));
+                md.push(m::manifold_distance(&e.input, &zs[i]));
+                pg.push(crate::v4_dataset::l2(&zp[i], &zs[i]) / m::norm(&deltas[i]).max(1e-12));
+            }
+            let acc = ok as f64 / iter_ex.len() as f64;
+            if contiguous && acc >= 0.5 {
+                region = t;
+            } else {
+                contiguous = false;
+            }
+            notes.push(format!(
+                "h{t}:acc={acc:.3}(rot={:.2},refl={:.2}),rel={:.3},norm={:.3},pert={:.3}",
+                fam_ok[0] as f64 / fam_n[0].max(1) as f64,
+                fam_ok[1] as f64 / fam_n[1].max(1) as f64,
+                m::mean(&re),
+                m::median(&dr),
+                m::median(&pg)
+            ));
+            rows.push(Row {
+                experiment: exp.into(),
+                seed,
+                condition: format!("{label}_h{t}"),
+                partition: "TEST_iterable".into(),
+                n_examples: iter_ex.len(),
+                params: d.params(),
+                compute: 0,
+                accuracy: acc,
+                cosine: m::median(&pg),
+                energy: m::median(&en),
+                manifold_distance: m::median(&md),
+                stability: m::mean(&re),
+                leakage: 0,
+                q: QueryCounters::default(),
+                status: "CLEAN".into(),
+                notes: format!(
+                    "norm_ratio={:.4} pert_growth={:.4} acc_rot={:.4} acc_refl={:.4}",
+                    m::median(&dr),
+                    m::median(&pg),
+                    fam_ok[0] as f64 / fam_n[0].max(1) as f64,
+                    fam_ok[1] as f64 / fam_n[1].max(1) as f64
+                ),
+            });
+        }
+    }
+    (
+        region,
+        rows,
+        format!("sigma_med={:.4} {}", m::median(&sig_all), notes.join(" ")),
+    )
+}
+
+fn run_e(seed: u64, s: &Sealed, aud: &Auditor, opts: &RunOpts) -> Vec<Row> {
+    use crate::field_autonomy_v4::ITERABLE_FAMS;
+    let z = 2 * K_POINTS;
+    let mut rows = vec![];
+    let mut models: Vec<(&str, Dphi, EvalOut, String)> = vec![];
+    // E0: Fase C model (reference)
+    {
+        let mut d = Dphi::new(z, CTX_DIM, seed ^ 0xD0);
+        let f = train_onestep_route_b(&mut d, s, seed, aud, onestep_budget_base());
+        s.verify_test().expect("TEST sealed");
+        let ev = evaluate(&d, &s.ds.test, 1, Some((aud, &f)), None);
+        models.push(("E0_faseC_H64", d, ev, "route=consol mult=1".into()));
+    }
+    let specs: [(&str, Dphi, bool); 4] = [
+        (
+            "E1_plain_trusted",
+            Dphi::with_hidden(z, CTX_DIM, E_HIDDEN, seed ^ 0xD0),
+            true,
+        ),
+        (
+            "E2_gated_consol",
+            Dphi::gated_h(z, CTX_DIM, E_HIDDEN, true, seed ^ 0xD0),
+            false,
+        ),
+        (
+            "E3_gated_trusted",
+            Dphi::gated_h(z, CTX_DIM, E_HIDDEN, true, seed ^ 0xD0),
+            true,
+        ),
+        (
+            "M3_mlp_gated_trusted",
+            Dphi::gated_h(z, CTX_DIM, E_HIDDEN, false, seed ^ 0xD0),
+            true,
+        ),
+    ];
+    for (name, mut d, trusted) in specs {
+        let eb = TrainBudget {
+            steps: onestep_budget_base().steps * E_MULT,
+            ..onestep_budget_base()
+        };
+        let (f, note) = {
+            if trusted {
+                let (f, t) = train_onestep_trusted_b(&mut d, s, seed, aud, TRUST_TAU, eb);
+                let ts: String = t.iter().map(|b| if *b { '1' } else { '0' }).collect();
+                (f, format!("route=trusted mask={ts} mult={E_MULT}"))
+            } else {
+                (
+                    train_onestep_route_b(&mut d, s, seed, aud, eb),
+                    format!("route=consol mult={E_MULT}"),
+                )
+            }
+        };
+        s.verify_test().expect("TEST sealed");
+        let ev = evaluate(&d, &s.ds.test, 1, Some((aud, &f)), None);
+        models.push((name, d, ev, note));
+    }
+    let e3i = 3;
+    let (fp_acc, fp_q, _) = fresh_eval(opts, s, seed, &models[e3i].1, "DIST_E_E3");
+    let sig = posthoc_teacher(s, seed);
+    let all_clean = models.iter().all(|m| clean(&m.2));
+    for (name, d, ev, note) in &models {
+        let (te, sg) = diag(d, &sig, &s.ds.test);
+        rows.push(mk_row(
+            "DIST_E",
+            seed,
+            name,
+            ev,
+            d.params(),
+            0,
+            format!(
+                "{note} teacher_to_model_rel={te:.4} sigma_med={sg:.4} {}",
+                onestep_breakdown(d, &s.ds.test)
+            ),
+        ));
+    }
+    let iter_ex: Vec<&Example> =
+        s.ds.test
+            .iter()
+            .filter(|e| ITERABLE_FAMS.contains(&e.family_id))
+            .collect();
+    let mut rng =
+        <rand_xoshiro::Xoshiro256StarStar as rand_xoshiro::rand_core::SeedableRng>::seed_from_u64(
+            seed ^ 0xD33,
+        );
+    let deltas: Vec<Vec<f64>> = iter_ex
+        .iter()
+        .map(|e| {
+            let v: Vec<f64> = e.input.iter().map(|_| rng.gen_range(-1.0..1.0)).collect();
+            let nv = m::norm(&v).max(1e-12);
+            v.iter()
+                .map(|x| x / nv * 0.01 * m::norm(&e.input))
+                .collect()
+        })
+        .collect();
+    let fresh_ok = (fp_acc - models[e3i].2.acc).abs() < 1e-12 && fp_q == 0.0;
+    for (mi, vi, label) in [
+        (0usize, 0usize, "R_E0_V0"),
+        (1, 0, "R_E1_V0"),
+        (2, 0, "R_E2_V0"),
+        (3, 0, "R_E3_V0_pure"),
+        (3, 1, "R_E3_V1_reproj"),
+        (4, 0, "R_M3_V0"),
+    ] {
+        let (region, rr, notes) =
+            e33_rollout("DIST_E", seed, label, &models[mi].1, vi, &iter_ex, &deltas);
+        rows.extend(rr);
+        let extra = if mi == e3i { fresh_ok } else { true };
+        rows.push(Row {
+            partition: label.into(),
+            ..gate_row("DIST_E", seed, region >= 8 && all_clean && extra, format!("{label} region={region} rel_err1={:.4} clean={all_clean} fresh_E3={fp_acc:.4}(q={fp_q}) {notes}", models[mi].2.rel_err))
         });
     }
     rows

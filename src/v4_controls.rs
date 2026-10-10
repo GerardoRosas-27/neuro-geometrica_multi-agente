@@ -241,6 +241,53 @@ impl Dphi {
         }
     }
 
+    /// Gated "local-linear" field (dout = 6): Δ(q) = M(q,c)·q + b(q,c), with
+    /// M (2×2) and b produced by the same MLP. Generic multiplicative unit;
+    /// knows nothing about which transformation families exist.
+    pub fn gated_h(zdim: usize, cdim: usize, hidden: usize, residual: bool, seed: u64) -> Self {
+        Self {
+            label: if residual {
+                format!("DPHI_GATED_H{hidden}")
+            } else {
+                "MLP_GATED".into()
+            },
+            residual,
+            zdim,
+            net: Mlp::new(PD + cdim, hidden, 3 * PD, 0.1, seed),
+        }
+    }
+
+    pub fn is_gated(&self) -> bool {
+        self.net.dout == 3 * PD
+    }
+
+    fn combine(&self, q: &[f64], o: &[f64]) -> [f64; PD] {
+        let r = if self.residual { 1.0 } else { 0.0 };
+        if self.is_gated() {
+            [
+                r * q[0] + o[0] * q[0] + o[1] * q[1] + o[4],
+                r * q[1] + o[2] * q[0] + o[3] * q[1] + o[5],
+            ]
+        } else {
+            [o[0] + r * q[0], o[1] + r * q[1]]
+        }
+    }
+
+    fn d_raw(&self, q: &[f64], d: &[f64]) -> Vec<f64> {
+        if self.is_gated() {
+            vec![
+                d[0] * q[0],
+                d[0] * q[1],
+                d[1] * q[0],
+                d[1] * q[1],
+                d[0],
+                d[1],
+            ]
+        } else {
+            d.to_vec()
+        }
+    }
+
     fn input(z: &[f64], c: &[f64]) -> Vec<f64> {
         let mut v = z.to_vec();
         v.extend_from_slice(c);
@@ -252,9 +299,8 @@ impl Dphi {
         for p in 0..z.len() / PD {
             let q = &z[p * PD..(p + 1) * PD];
             let (_, o) = self.net.forward(&Self::input(q, c));
-            for i in 0..PD {
-                out[p * PD + i] = o[i] + if self.residual { q[i] } else { 0.0 };
-            }
+            let y = self.combine(q, &o);
+            out[p * PD..(p + 1) * PD].copy_from_slice(&y);
         }
         out
     }
@@ -287,18 +333,14 @@ impl Dphi {
                 for p in 0..npts {
                     let q = &x[p * PD..(p + 1) * PD];
                     let inp = Self::input(q, &c);
-                    let (h, mut o) = self.net.forward(&inp);
-                    if self.residual {
-                        for i in 0..PD {
-                            o[i] += q[i];
-                        }
-                    }
+                    let (h, raw) = self.net.forward(&inp);
+                    let o = self.combine(q, &raw);
                     let d: Vec<f64> = (0..PD)
                         .map(|i| 2.0 * (o[i] - y[p * PD + i]) / (x.len() * budget.batch) as f64)
                         .collect();
                     loss += (0..PD).map(|i| (o[i] - y[p * PD + i]).powi(2)).sum::<f64>()
                         / x.len() as f64;
-                    self.net.backward(&inp, &h, &d, &mut g);
+                    self.net.backward(&inp, &h, &self.d_raw(q, &d), &mut g);
                 }
             }
             opt.step(&mut p, &g);
@@ -343,12 +385,8 @@ impl Dphi {
                 for pt in 0..x.len() / PD {
                     let q = &x[pt * PD..(pt + 1) * PD];
                     let inp = Self::input(q, &c);
-                    let (h, mut o) = self.net.forward(&inp);
-                    if self.residual {
-                        for i in 0..PD {
-                            o[i] += q[i];
-                        }
-                    }
+                    let (h, raw) = self.net.forward(&inp);
+                    let o = self.combine(q, &raw);
                     let d: Vec<f64> = (0..PD)
                         .map(|i| 2.0 * (o[i] - y[pt * PD + i]) * scale / budget.batch as f64)
                         .collect();
@@ -356,7 +394,7 @@ impl Dphi {
                         .map(|i| (o[i] - y[pt * PD + i]).powi(2))
                         .sum::<f64>()
                         * scale;
-                    self.net.backward(&inp, &h, &d, &mut g);
+                    self.net.backward(&inp, &h, &self.d_raw(q, &d), &mut g);
                 }
             }
             opt.step(&mut p, &g);
@@ -409,7 +447,7 @@ impl Dphi {
                                 / (x.len() * budget.batch) as f64
                         })
                         .collect();
-                    self.net.backward(&inp, &h, &d, &mut g);
+                    self.net.backward(&inp, &h, &self.d_raw(q, &d), &mut g);
                 }
             }
             if any {
