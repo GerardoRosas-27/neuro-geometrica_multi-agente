@@ -238,3 +238,21 @@ Integridad: leakage=0, queries=0 en todas las condiciones; 0 hits del auditor en
 **Gate Fase A: FAIL** (gate por seed 3/16 y 3/16; IC de D1−B incluye 0 en ambas fases). Destilar directamente del teacher no supera a la ruta de consolidación existente.
 
 Lectura pre-registrada (§12, caso ii): D1 ≈ B y ambos muy lejos del teacher (captura ≈ 40–44 %), con error teacher→Dφ ≈ 6.5 %. La ruta de consolidación **no** es el cuello (dar etiquetas perfectas del teacher en todo el espacio no ayuda). El cuello está en la capacidad/optimización de Dφ-962 con el presupuesto bloqueado: con 4× pasos la misma arquitectura llega a 0.59–0.61 (captura ≈ 72 %), es decir, la representación de 962 parámetros puede acercarse al teacher pero el presupuesto de 8000 pasos la deja sub-entrenada. Según lo pre-registrado, se continúa a la Fase B (barrido de capacidad), que es la prueba que el plan prescribe para este caso. Nota honesta: D4 no es una condición comparable (usa 4× cómputo); es diagnóstico.
+
+## Fase B — barrido de capacidad (`DIST_B`)
+
+Corrido en `03335f9` (git_dirty=false). Ruta D1, presupuesto fijo 8000×16, mismas seeds/init. Memoria = params×8 B×4.
+
+| Modelo | params | memoria | wall entren. (s) | DEV acc | DEV rel_err₁ | CONF acc | CONF rel_err₁ | σ_max med (D/C) |
+|---|---|---|---|---|---|---|---|---|
+| Dφ H64 | 962 | 30.8 KB | 2.1 | 0.334 | 0.073 | 0.367 | 0.069 | 1.09/1.10 |
+| Dφ H136 | 2042 | 65.3 KB | 4.0 | **0.399** | 0.070 | **0.414** | 0.067 | 1.08/1.09 |
+| Dφ H272 | 4082 | 130.6 KB | 7.7 | 0.363 | 0.073 | 0.341 | 0.073 | 1.08/1.09 |
+| Dφ H544 | 8162 | 261.2 KB | 14.5 | 0.323 | 0.078 | 0.319 | 0.077 | 1.08/1.09 |
+| MLP H64 / H136 / H272 / H544 | igual | igual | igual | 0.318 / 0.371 / 0.372 / 0.300 | — | 0.334 / 0.421 / 0.357 / 0.337 | — | ≈1.08 |
+| B consolidación H64 | 962 | | | 0.339 | 0.071 | 0.377 | 0.069 | 1.10 |
+| Teacher | (384 números) | | | 0.829 | 0.027 | 0.831 | 0.025 | — |
+
+Pareadas vs H64: H136 **DEV +0.065 [+0.0005, +0.126]**, **CONF +0.046 [−0.024, +0.112]**; H272 +0.029 / −0.026 (IC incluye 0); H544 −0.011 / −0.048. Dφ vs MLP de igual H: todas las diferencias con IC que incluye 0 (−0.018…+0.033). Leakage=0, queries=0.
+
+**Gate Fase B: FAIL.** H* = 136 se eligió en DEV (único con IC>0, apenas), pero CONFIRM no reproduce (IC incluye 0). Con presupuesto fijo, más capacidad no ayuda de forma reproducible y H≥272 empeora (más lento de optimizar con los mismos 8000 pasos); el error teacher→Dφ se queda en 6–7 % en todas las H. Ninguna ventaja de la dinámica residual frente al MLP de igual capacidad. Conclusión: con este presupuesto el cuello no es el número de parámetros sino la optimización (coherente con D4 de la Fase A). Según lo pre-registrado (§13), la Fase C se aplica a H=64.
