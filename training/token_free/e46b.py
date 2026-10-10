@@ -153,6 +153,8 @@ def run(phase):
             np.save(f"{C_DIR}/e46b_psi_s{s}.npy", e["psi_all"])
             rows.append({"model": kind, "seed": s, "params": M.nparams(p), "train_s_per_seed": ts, "final_loss": ls[i], "params_sha256": sha, "res": res})
             print(json.dumps({"model": kind, "seed": s, "res": res}), flush=True)
+        json.dump({"manifest": man, "encoder_train_s": t_enc, "encoder_loss": enc_loss, "rows": rows},
+                  open(f"../../artifacts/token_free/e46b_{phase}.json", "w"), indent=1)
     json.dump({"manifest": man, "encoder_train_s": t_enc, "encoder_loss": enc_loss, "rows": rows},
               open(f"../../artifacts/token_free/e46b_{phase}.json", "w"), indent=1)
 
