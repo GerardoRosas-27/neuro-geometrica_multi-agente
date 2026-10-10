@@ -159,3 +159,24 @@ Pre-registro §10. Medias de 16 seeds; DEV / CONFIRM. `artifacts/v4/e45_full_{ru
 | E45a ganancia adaptativa ≥ 0.05 | 0/16 | 0/16 | 0/16 | 0/16 |
 
 Los tres gates **FAIL**. L2g elimina el olvido por construcción pero no aprende nuevas familias con 12 ejemplos/familia; L3 (energía) falla como se anticipó (las rotaciones no son flujos de gradiente). Sólo el consolidado T1 compone leyes no vistas (el rule por estructura; el genérico parcialmente). Analogía cognitiva: la memoria rápida (L2/L2g) no generaliza; la dinámica consolidada (H) generaliza parcialmente; la ley explícita consolidada (T1) es la que transfiere.
+
+## 11. Seguimiento 4 — E43/E44 con periferia LLM congelada
+
+Pre-registro §11. Periferia A = Gemma-2-2B-it Q3_K_L (loader existente, denso); B = Qwen2.5-1.5B-instruct Q4_K_M (loader candle vendorizado con `forward_hidden`); R = encoder aleatorio congelado. Embeddings cacheados (`artifacts/v4/lang/*.json.gz`, sha256 en `artifacts/v4/E43_E44/*/summary.md`). Decoder de vocabulario cerrado (azar ≈ 1/40–1/60). Accuracy top-1 en conceptos novedosos, media de 16 seeds (DEV / CONF):
+
+| | es held-out | en | fr | ja |
+|---|---|---|---|---|
+| E43 Dφ (Gemma) | 0.194 / 0.167 | 0.042 / 0.056 | 0.064 / 0.086 | 0.077 / 0.058 |
+| E43 OFFSET lineal (Gemma) | 0.319 / 0.264 | 0.069 / 0.090 | 0.177 / 0.214 | 0.030 / 0.010 |
+| E43 Dφ (encoder aleatorio) | 0.076 / 0.181 | 0.035 / 0.076 | 0.062 / 0.141 | 0.054 / 0.042 |
+| STATIC | 0 | 0 | 0 | 0 |
+| E44 Dφ_A ← Qwen alineado | 0.049 / 0.118 | 0.056 / 0.049 | 0.023 / 0.056 | 0.019 / 0.032 |
+| E44 Dφ_A ← aleatorio alineado | 0.069 / 0.056 | 0.076 / 0.083 | 0.073 / 0.049 | 0.077 / 0.030 |
+| E44 Dφ_A ← Gemma alineado (techo) | 0.153 / 0.153 | 0.028 / 0.049 | 0.065 / 0.057 | 0.049 / 0.040 |
+
+| Gate | DEV | CONF |
+|---|---|---|
+| E43 (≥2 de en/fr/ja superan max(STATIC, R)+0.05) | 2/16 FAIL | 3/16 FAIL |
+| E44 (Qwen ≥ R+0.05 y ≥ 0.5·Gemma) | 3/16 FAIL | 3/16 FAIL |
+
+**E43/E44 FAIL.** Con ~21 pares españoles, Dφ aprende algo en español (0.17–0.19, por encima del aleatorio en DEV) pero no transfiere a en/fr/ja más allá del encoder aleatorio, y queda por debajo del control lineal OFFSET. El cambio de LLM con alineación por 96 anclas no conserva la dinámica. Limitaciones: vocabulario pequeño, ja-plural artificial (々), pooling medio del hidden final; no se exploraron capas intermedias (no pre-registrado).
