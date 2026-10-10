@@ -1,262 +1,148 @@
-# Batería experimental E45–E57
+# Batería experimental E45–E57 — framework de entrenamiento + core Rust
+
+Todas las pruebas deben ejecutarse con dos capas claramente diferenciadas: **entrenamiento experimental** (Keras 3/JAX por defecto; PyTorch/TensorFlow si se justifica) y **runtime de evaluación Rust**. El prototipo Python puede servir para desarrollar la función y calcular gradientes, pero la latencia oficial del core se mide en Rust. Los resultados Python solo son resultados del prototipo hasta que se exportan parámetros y se supera la prueba de equivalencia.
+
+## Protocolo técnico común
+
+Para cada arquitectura registrar:
+- framework, versión, backend, compilador y dispositivo;
+- seed, parámetros entrenables, pasos de optimización y presupuesto de cómputo;
+- dimensiones de entrada/estado/salida, dtype, layout de tensores;
+- pérdida, optimizador, learning rate, scheduler y early stopping;
+- SHA-256 de dataset/splits/checkpoint/export;
+- latencia de encoder, core Rust y decoder por separado;
+- error numérico Python↔Rust: máximo, media, percentil 99;
+- resultados en seen, OOD, composición y rollout;
+- coste de entrenamiento y tamaño del artefacto exportado.
+
+No comparar solo tiempos de Python eager con Rust optimizado. Los benchmarks de arquitectura deben comparar el runtime Rust de las implementaciones portadas, y reportar por separado los costes de entrenamiento.
 
 ## E45 — Bottleneck token-free
 
-### Pregunta
-¿Cuánta dimensión necesita Ψ para conservar la información útil para la dinámica?
+**Pregunta:** ¿cuánta dimensión necesita Ψ para conservar las variables relevantes para la dinámica?
 
-### Condiciones
-N = 16, 32, 64, 128, 256, 512.
+Dimensiones: 16, 32, 64, 128, 256, 512.
 
-### Controles
-- raw hidden state;
-- random projection;
-- trained FieldEncoder;
-- PCA/linear bottleneck;
-- nonlinear bottleneck.
+Controles: hidden raw, proyección aleatoria, PCA/linear, FieldEncoder entrenado, bottleneck no lineal.
 
-### Métricas
-Accuracy, OOD, cosine, mutual-information proxy, reconstruction solo como diagnóstico, leakage lexical, latencia.
+Entrenamiento: Keras/JAX puede optimizar FieldEncoder con pérdidas contrastivas/relacionales; congelar el encoder lingüístico para la primera prueba.
 
-### Aceptación
-Existe un punto de compresión donde la calidad semántica y relacional se mantiene mientras el coste cae sustancialmente frente al hidden state completo.
+Aceptación: una dimensión compacta mantiene calidad semántica/relacional y reduce coste. Reconstrucción textual no basta y puede revelar fuga lexical.
 
-No se acepta reconstrucción textual como única evidencia: eso permitiría ocultar información lexical en Ψ.
+## E46 — Liquid vs MLP recurrente vs SSM
 
----
+Modelos:
+A. MLP recurrente: Ψ'=MLP(Ψ,c)
+B. dinámica líquida: Ψ'=Ψ+Δt·Fθ(Ψ,c)
+C. SSM compacto/selective-state
+D. dinámica lineal local.
 
-## E46 — Liquid vs recurrent MLP vs SSM
+Igualar aproximadamente parámetros, datos, seeds, presupuesto de entrenamiento y runtime Rust. La variante SSM es una referencia de comparación, no una presunción de victoria.
 
-### Pregunta
-¿La dinámica líquida aporta una ventaja real frente a una función recurrente convencional?
+Métricas: error one-step, rollout h=1/2/4/8/16/32/64, OOD, estabilidad/Jacobiano, µs/query, memoria y coste de entrenamiento.
 
-### Modelos
-A. `Ψ'=MLP(Ψ)`
-B. `Ψ'=Liquid(Ψ)`
-C. SSM/Mamba-like compact state model
-D. linear local dynamics
-
-### Igualación
-Mismo dataset, dimensiones cercanas, presupuesto de parámetros y presupuesto de entrenamiento comparable.
-
-### Métricas
-Error one-step, rollout h=1/2/4/8/16/32/64, estabilidad, Jacobiano, µs/query, memoria.
-
-### Aceptación
-El ganador debe demostrar ventaja en al menos dos dimensiones independientes: calidad OOD/rollout y eficiencia/estabilidad. Una sola mejora de velocidad no basta.
-
----
+Aceptación: ventaja en al menos dos ejes independientes: generalización/rollout y eficiencia/estabilidad. La superioridad solo existe para la configuración medida.
 
 ## E47 — Sparse Field
 
-### Hipótesis
-Solo una pequeña fracción de nodos participa en cada transición.
+k activo: 1%, 2%, 5%, 10%, 20%, 50%, 100%. Comparar top-k por magnitud, umbral adaptativo, routing aprendido y bloques locales.
 
-### k
-1%, 2%, 5%, 10%, 20%, 50%, 100%.
+Implementación: primero validar la máscara en framework; luego portar la misma semántica a Rust. Incluir coste de seleccionar nodos, no solo el coste de actualizarlos.
 
-### Variantes
-- top-k por magnitud;
-- threshold adaptativo;
-- routing aprendido;
-- bloque local.
+Aceptación: menor coste end-to-end del core Rust a calidad estadísticamente equivalente, sin inestabilidad ni explosión de pasos.
 
-### Aceptación
-Reducción significativa de operaciones y latencia sin degradación estadísticamente relevante de calidad y sin aumento patológico de pasos.
+## E48 — Inferencia adaptativa / early stopping
 
----
+Comparar pasos fijos 1/2/4/8/16/32/64 con parada por estabilidad:
+`||Ψ(t+1)-Ψ(t)|| < ε`, más una condición calibrada de confianza/energía.
 
-## E48 — Inference adaptive / early stopping
+La regla de parada se ajusta en DEV y se congela antes de TEST.
 
-### Hipótesis
-No todas las consultas requieren el mismo número de pasos.
-
-Detener cuando:
-
-`||Ψ_t+1-Ψ_t|| < ε`
-
-más estabilidad de energía y confianza mínima.
-
-### Prueba
-Comparar pasos fijos 1/2/4/8/16/32/64 contra stopping adaptativo.
-
-### Aceptación
-Menor coste medio manteniendo calidad OOD y evitando terminación prematura en consultas difíciles.
-
----
+Aceptación: baja latencia media sin degradación relevante en OOD, composición ni casos difíciles.
 
 ## E49 — Coarse-to-fine
 
-Primera fase:
+Primero dinámica de baja dimensión/resolución; refinar solo ante incertidumbre alta. Comparar con full-resolution en el mismo runtime Rust.
 
-`Ψ₀ → Ψ_coarse`
+Aceptación: menor latencia media con pérdida de calidad predefinida máxima de 1–2 puntos porcentuales, incluyendo OOD.
 
-Segunda fase solo si incertidumbre alta:
+## E50 — Beam geométrico
 
-`Ψ_coarse → Ψ_fine`.
+Generar K estados futuros (K=1,2,4,8) y rankearlos en el espacio de campo por estabilidad, energía y consistencia. No decodificar cada rama para elegir la respuesta.
 
-### Aceptación
-Menor latencia media que full-resolution con degradación máxima predefinida de 1–2 puntos porcentuales en accuracy/OOD.
+Aceptación: mejora composición/OOD frente a greedy y coste inferior a una búsqueda token-level comparable. Reportar coste de mantener ramas y no ocultar trabajo en el decoder.
 
----
+## E51 — Memoria asociativa
 
-## E50 — Geometric trajectory beam
+Controles: sin memoria, nearest-neighbor, Hopfield moderno/sparse, atractores aprendidos. El target no puede almacenarse directamente.
 
-En vez de explorar tokens, generar K futuros de campo:
-
-`Ψ₀ → {Ψ₁^1,...,Ψ₁^K}`
-
-Cada rama se puntúa por estabilidad, energía, plausibilidad dinámica y consistencia.
-
-### K
-1, 2, 4, 8.
-
-### Prohibido
-Decodificar cada rama para seleccionar la respuesta. El ranking debe realizarse en el espacio de campo.
-
-### Aceptación
-La búsqueda mejora composición/OOD frente a greedy con un coste menor que beam search token-level equivalente.
-
----
-
-## E51 — Memoria asociativa de campo
-
-### Objetivo
-Determinar si una memoria asociativa puede deformar la dinámica sin convertirse en un lookup de respuestas.
-
-### Controles
-- no memory;
-- nearest neighbor;
-- modern Hopfield;
-- sparse associative memory;
-- learned field attractors.
-
-### Test
-Target nunca almacenado directamente.
-
-### Aceptación
-La memoria debe cambiar la trayectoria o basin, no devolver el target.
-
----
+Aceptación: la memoria cambia el estado o la trayectoria; no devuelve el target ni un índice input→target. Lookup se reporta como control, nunca como evidencia de dinámica.
 
 ## E52 — Plasticidad online
 
-### Objetivo
-Aprender durante operación sin retraining global.
+Probar actualización de θ o adaptadores mediante error predictivo, actualización local, low-rank o deformación energética. Definir claramente qué estado es persistente y qué se guarda.
 
-Actualización candidata:
+Entrenamiento por lotes puede hacerse en JAX/Keras; si la actualización ocurre en Rust, demostrar equivalencia en un conjunto de operaciones y registrar su coste.
 
-`θ_{t+1}=θ_t + η·G(error, Ψ_t, Ψ̂_{t+1})`
-
-Variantes:
-- low-rank;
-- local Hebbian;
-- predictive-error;
-- energy deformation;
-- sparse adapter.
-
-### Aceptación
-Nueva experiencia produce una mejora medible en consultas posteriores y el cambio es reproducible.
-
----
+Aceptación: una experiencia mejora consultas futuras no vistas, con controles sin aprendizaje, experiencia aleatoria y etiquetas barajadas. Medir olvido e interferencia.
 
 ## E53 — Inferencia vs consolidación
 
-Separar dos costes:
-
-`hot path: Ψ → Dθ → Ψ'`
-
-`sleep path: experiences → consolidation → Δθ`
-
-Comparar:
-
-1. liquid inference + no learning;
-2. liquid + online plasticity;
-3. liquid + batch consolidation;
-4. Thermo CDT;
+Separar hot path y sleep path. Comparar:
+1. Liquid sin aprendizaje;
+2. plasticidad online;
+3. consolidación por lotes;
+4. Thermo CDT como control;
 5. híbrido.
 
-### Métricas
-µs/query, ms/experience, bytes/experience, energía/cambio, retención y transferencia.
+Métricas: µs/query en Rust, ms/experiencia, bytes/experiencia, coste de entrenamiento, retención, transferencia y coste por mejora.
 
-### Aceptación
-La arquitectura debe demostrar que la consolidación no contamina el hot path de forma desproporcionada.
-
----
+Aceptación: mejora persistente sin que el hot path tenga que consultar continuamente el almacén de episodios.
 
 ## E54 — LLM access kill test
 
-### Objetivo
-Demostrar que después de Ψ₀ el LLM es innecesario.
+Después de producir Ψ₀, desconectar el LLM, bloquear tokenizer/logits/hidden states y ejecutar el rollout exclusivamente en Rust.
 
-### Procedimiento
-1. producir Ψ₀;
-2. matar/desconectar el LLM;
-3. bloquear tokenizer, logits y acceso a hidden states;
-4. ejecutar todo el rollout;
-5. decodificar únicamente al final con un decoder independiente.
+Gates:
+- `llm_calls_after_encoder=0`
+- `token_ids_seen_by_core=0`
+- `tokenizer_calls_after_encoder=0`
 
-### Acceptance gate
-`llm_calls_after_encoder = 0`.
-
-Además:
-`token_ids_seen_by_core = 0`.
-
----
+Aceptación: rollout y evaluación pasan sin dependencia lingüística posterior a Ψ₀. La decodificación final debe quedar separada y auditada.
 
 ## E55 — Encoder swap
 
-Encoders:
-- Gemma hidden;
-- otro LLM compatible;
-- encoder semántico pequeño;
-- encoder aleatorio control.
+Encoders: Gemma hidden, otro encoder compatible, encoder semántico pequeño y control aleatorio. Congelar Dθ durante el test; documentar cualquier alineación aprendida.
 
-El `Dθ` entrenado debe permanecer congelado.
+Aceptación: medir cuánto sobrevive al cambio. Si el encoder requiere reentrenar la dinámica, registrar la dependencia; no declarar independencia.
 
-### Aceptación
-El cambio de encoder no destruye completamente la dinámica cuando los encoders están alineados en una interfaz de campo común. Si falla, se documenta dependencia del encoder.
+## E56 — Escalabilidad
 
----
+Dimensiones: 16, 32, 64, 128, 256, 512, 1024 según arquitectura. Medir FLOPs aproximados, p50/p95/p99 Rust, nodos activos, pasos, memoria, calidad, coste de entrenamiento y consolidación.
 
-## E56 — Scaling
-
-N = 16, 32, 64, 128, 256, 512, 1024 nodos/variables según arquitectura.
-
-Medir:
-- FLOPs aproximados;
-- µs/query;
-- active nodes;
-- steps;
-- memory;
-- accuracy;
-- OOD;
-- consolidation cost.
-
-### Aceptación
-La curva de coste debe ser explícita y compararse con el crecimiento de capacidad. No se aceptan afirmaciones de “escalabilidad” sin curva.
-
----
+Aceptación: publicar curvas capacidad-coste y punto de ruptura. No extrapolar escalabilidad desde una única dimensión.
 
 ## E57 — Head-to-head con v4
 
-Solo después de cerrar v4 y congelar ambos sistemas.
+Solo cuando v4 se haya cerrado y ambas ramas estén congeladas. Dataset común sellado, seeds emparejadas, decoder comparable, sin tuning posterior a TEST.
 
-### Protocolos
-- dataset común sellado;
-- mismos seeds;
-- mismo número de tareas;
-- decoder independiente equivalente;
-- sin tuning posterior al test.
+Competidores: v4 Dynamic Field, Liquid Rust denso, Liquid Rust sparse, Liquid con plasticidad/consolidación, baseline LLM, MLP recurrente y SSM.
 
-### Competidores
-1. v4 Dynamic Field;
-2. Token-Free Liquid;
-3. Token-Free Liquid Sparse;
-4. Token-Free Liquid Plastic;
-5. LLM baseline;
-6. recurrent MLP;
-7. SSM.
+Aceptar solo comparación reproducible con resultados positivos y negativos publicados. No fusionar por una mejora anecdótica.
 
-### Aceptación
-Publicar tanto victorias como derrotas. La rama experimental no se fusiona por rendimiento anecdótico.
+## Exportación y equivalencia Python → Rust
+
+Para cada modelo entrenado fuera de Rust:
+1. exportar parámetros a un formato estable (por ejemplo, safetensors/NPZ para intercambio y un formato binario versionado del proyecto para runtime);
+2. incluir manifiesto de nombres, formas, dtype, layout, activaciones y versión de arquitectura;
+3. ejecutar un corpus fijo de vectores de entrada en framework y Rust;
+4. medir error máximo, medio y p99 de cada estado intermedio y salida;
+5. fijar tolerancias antes de ejecutar TEST;
+6. verificar salidas discretas/decisiones cuando corresponda;
+7. almacenar hashes y reporte de equivalencia.
+
+Si una operación no tiene equivalencia exacta —por ejemplo, normalización, solver temporal, top-k con empates o reducción flotante—, definirla y testearla explícitamente. No modificar pesos para “arreglar” el resultado después de mirar TEST.
+
+## Estados
+
+Usar: `NOT_RUN`, `SMOKE_ONLY`, `PASS`, `PARTIAL`, `FAIL`, `LEAKED`, `DATASET_INVALID`, `PORT_PARITY_FAIL`.
