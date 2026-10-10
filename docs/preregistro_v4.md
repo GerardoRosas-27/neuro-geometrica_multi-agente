@@ -119,3 +119,12 @@ Plan: `docs/plan_v4_dphi_teacher_distillation.md` (commit `7a996b4`). Código: `
 - Métricas en TEST por familia y por región (`in_dist` / `interp_hole`): rel_err₁, error absoluto, coseno del desplazamiento con el target, distancia al manifold, σ_max(J) mediano, error teacher→Dφ (post-hoc). C1 re-evaluado en proceso nuevo.
 - **Gate (meta del plan):** media sobre seeds de rel_err₁ (TEST, recortado a 10) de C1 < 0.05 en DEV **y** CONFIRM, sin lookup ni memoria (leakage=0, queries=0, proceso nuevo bit-exacto). Gate por seed: rel_err₁(C1) < 0.05 + limpio.
 - Si falla: STOP antes de la Fase D (el plan exige cumplir la meta de un paso antes de estabilidad/reproyección/E33) y por tanto antes de Ψ64/Gemma E43/E44.
+
+## 15. Fase D — estabilidad y horizonte largo / E33 (pre-registrado antes de correr; tras PASS de la Fase C)
+
+- `--exps DIST_D`. Modelo: C1 de la Fase C (H=64, misma receta y seeds; re-entrenado de forma determinista en el proceso). Protocolo E33 sin cambios: familias iterables rotate+reflect de TEST, free-run sin teacher forcing, horizontes 1/2/4/8/16/32/64, correcto = rel_err<5 % contra la regla aplicada h veces.
+- Variantes (plan §2 Fase D): `V0_pure_C1` (Dφ puro), `V1_reproj_C1` (re-proyección por paso a la órbita de similitud(+espejo) de x0; usa sólo x0 y el estado, nunca el target), `V3_reproj_spectral_C1` (V1 + límite espectral δ/max(1,σ_max(J))). V3 se corre siempre pero sólo se interpreta si V1 sigue inestable. Controles: `V0_pure_M1_mlp` (MLP misma receta) y `V0_pure_C0_lock` (Dφ con el lock).
+- Diagnóstico por horizonte: accuracy, rel_err, deriva de norma (mediana ‖z‖/‖y‖), energía, distancia al manifold, crecimiento de perturbaciones (δ₀ aleatorio fijo por seed, ‖δ₀‖=1 %·‖x0‖; mediana ‖Φʰ(x+δ₀)−Φʰ(x)‖/‖δ₀‖), σ_max(J) mediano a lo largo del rollout.
+- **Gate por variante = gate E33:** región de estabilidad (máximo h contiguo desde h1 con acc ≥ 0.5) ≥ 8, limpio. Experimento: ≥ 9/16 seeds en DEV **y** CONFIRM (§5).
+- Atribución: una mejora de V1/V3 sólo se atribuye a la re-proyección comparada con V0 en las mismas seeds; V1 inyecta el prior de órbita de similitud (exacto para rotate/reflect) → no es estabilidad intrínseca. La re-proyección es mecanismo de estabilización, no memoria.
+- Núcleo Dφ "resuelto" (condición para pasar a Ψ64/Gemma E43/E44, plan §6): Fase C PASS **y** E33 PASS para V0 o V1 (reportando siempre V0). Si sólo falla E33 → plan §5: estudio manifold/proyección/Jacobiano, sin más epochs automáticos; STOP antes de E43/E44.

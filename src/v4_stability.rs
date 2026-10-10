@@ -67,7 +67,7 @@ pub fn project_similarity(x0: &[f64], z: &[f64]) -> Vec<f64> {
     best.1
 }
 
-fn step_variant(d: &Dphi, z: &[f64], c: &[f64], x0: &[f64], v: usize) -> (Vec<f64>, f64) {
+pub fn step_variant(d: &Dphi, z: &[f64], c: &[f64], x0: &[f64], v: usize) -> (Vec<f64>, f64) {
     let raw = d.step(z, c);
     let sig = m::sigma_max(&m::jacobian(|w| d.step(w, c), z));
     let mut out = raw.clone();

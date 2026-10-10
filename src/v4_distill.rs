@@ -395,6 +395,7 @@ pub fn run(seed: u64, exp: &str, opts: &RunOpts) -> Vec<Row> {
             ));
         }
         "DIST_C" => rows.extend(run_c(seed, &s, &aud, opts)),
+        "DIST_D" => rows.extend(run_d(seed, &s, &aud)),
         _ => rows.push(gate_row(exp, seed, false, "UNKNOWN_EXP".into())),
     }
     let _ = HIDDEN;
@@ -556,5 +557,129 @@ fn run_c(seed: u64, s: &Sealed, aud: &Auditor, opts: &RunOpts) -> Vec<Row> {
             models[0].2.rel_err, c1.rel_err, models[2].2.rel_err, models[0].2.acc, c1.acc, models[2].2.acc
         ),
     ));
+    rows
+}
+
+/// Fase D: rollout stability of the Fase-C model (E33 protocol, iterable
+/// families rotate+reflect, free-run). Variants: V0 pure, V1 per-step
+/// similarity(+mirror) re-projection onto x0's orbit, V3 V1+spectral limit.
+/// Controls: M1 (MLP, same recipe) pure; C0 (lock budget) pure.
+fn run_d(seed: u64, s: &Sealed, aud: &Auditor) -> Vec<Row> {
+    use crate::field_autonomy_v4::{target_h, HORIZONS, ITERABLE_FAMS};
+    let h = phase_hidden();
+    let mut c1 = Dphi::with_hidden(2 * K_POINTS, CTX_DIM, h, seed ^ 0xD0);
+    let f1 = train_onestep_route(&mut c1, s, seed, aud);
+    let mut m1 = Dphi::mlp_direct_h(2 * K_POINTS, CTX_DIM, h, seed ^ 0xD0);
+    let f2 = train_onestep_route(&mut m1, s, seed, aud);
+    let (c0, ev_c0, _) = train_route(
+        "consol",
+        Dphi::with_hidden(2 * K_POINTS, CTX_DIM, h, seed ^ 0xD0),
+        s,
+        seed,
+        TrainBudget::lock(),
+        aud,
+    );
+    s.verify_test().expect("TEST sealed");
+    let ev1 = evaluate(&c1, &s.ds.test, 1, Some((aud, &f1)), None);
+    let ev2 = evaluate(&m1, &s.ds.test, 1, Some((aud, &f2)), None);
+    let all_clean = clean(&ev1) && clean(&ev2) && clean(&ev_c0);
+    let iter_ex: Vec<&Example> =
+        s.ds.test
+            .iter()
+            .filter(|e| ITERABLE_FAMS.contains(&e.family_id))
+            .collect();
+    let mut rows = vec![];
+    let mut rng =
+        <rand_xoshiro::Xoshiro256StarStar as rand_xoshiro::rand_core::SeedableRng>::seed_from_u64(
+            seed ^ 0xD33,
+        );
+    let deltas: Vec<Vec<f64>> = iter_ex
+        .iter()
+        .map(|e| {
+            let v: Vec<f64> = e.input.iter().map(|_| rng.gen_range(-1.0..1.0)).collect();
+            let nv = m::norm(&v).max(1e-12);
+            v.iter()
+                .map(|x| x / nv * 0.01 * m::norm(&e.input))
+                .collect()
+        })
+        .collect();
+    for (label, d, vi) in [
+        ("V0_pure_C1", &c1, 0usize),
+        ("V1_reproj_C1", &c1, 1),
+        ("V3_reproj_spectral_C1", &c1, 3),
+        ("V0_pure_M1_mlp", &m1, 0),
+        ("V0_pure_C0_lock", &c0, 0),
+    ] {
+        let mut zs: Vec<Vec<f64>> = iter_ex.iter().map(|e| e.input.clone()).collect();
+        let mut zp: Vec<Vec<f64>> = iter_ex
+            .iter()
+            .zip(&deltas)
+            .map(|(e, dl)| e.input.iter().zip(dl).map(|(a, b)| a + b).collect())
+            .collect();
+        let (mut region, mut contiguous) = (0usize, true);
+        let mut sig_all = vec![];
+        let mut notes = vec![];
+        let hmax = *HORIZONS.last().unwrap();
+        for t in 1..=hmax {
+            for (i, e) in iter_ex.iter().enumerate() {
+                let (z, sg) =
+                    crate::v4_stability::step_variant(d, &zs[i], &e.context, &e.input, vi);
+                zs[i] = z;
+                sig_all.push(sg);
+                zp[i] = crate::v4_stability::step_variant(d, &zp[i], &e.context, &e.input, vi).0;
+            }
+            if HORIZONS.contains(&t) {
+                let (mut ok, mut re, mut dr, mut md, mut en, mut pg) =
+                    (0usize, vec![], vec![], vec![], vec![], vec![]);
+                for (i, e) in iter_ex.iter().enumerate() {
+                    let y = target_h(e, t);
+                    ok += m::correct(&zs[i], &y) as usize;
+                    re.push(m::rel_err(&zs[i], &y).min(10.0));
+                    dr.push(m::norm(&zs[i]) / m::norm(&y).max(1e-12));
+                    en.push(m::energy(&zs[i]) / m::energy(&y).max(1e-12));
+                    md.push(m::manifold_distance(&e.input, &zs[i]));
+                    pg.push(crate::v4_dataset::l2(&zp[i], &zs[i]) / m::norm(&deltas[i]).max(1e-12));
+                }
+                let acc = ok as f64 / iter_ex.len() as f64;
+                if contiguous && acc >= 0.5 {
+                    region = t;
+                } else {
+                    contiguous = false;
+                }
+                notes.push(format!("h{t}:acc={acc:.3},rel={:.3},norm={:.3},energy={:.3},manif={:.3},pert_growth={:.3}", m::mean(&re), m::median(&dr), m::median(&en), m::median(&md), m::median(&pg)));
+                rows.push(Row {
+                    experiment: "DIST_D".into(),
+                    seed,
+                    condition: format!("{label}_h{t}"),
+                    partition: "TEST_iterable".into(),
+                    n_examples: iter_ex.len(),
+                    params: d.params(),
+                    compute: 0,
+                    accuracy: acc,
+                    cosine: m::median(&pg),
+                    energy: m::median(&en),
+                    manifold_distance: m::median(&md),
+                    stability: m::mean(&re),
+                    leakage: 0,
+                    q: QueryCounters::default(),
+                    status: "CLEAN".into(),
+                    notes: format!(
+                        "norm_ratio={:.4} pert_growth={:.4}",
+                        m::median(&dr),
+                        m::median(&pg)
+                    ),
+                });
+            }
+        }
+        rows.push(Row {
+            partition: label.into(),
+            ..gate_row(
+                "DIST_D",
+                seed,
+                region >= 8 && all_clean,
+                format!("{label} region={region} sigma_med={:.4} rel_err1_all={:.4}/{:.4}/{:.4} clean={all_clean} {}", m::median(&sig_all), ev1.rel_err, ev2.rel_err, ev_c0.rel_err, notes.join(" ")),
+            )
+        });
+    }
     rows
 }
