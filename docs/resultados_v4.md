@@ -114,3 +114,27 @@ E35 y E36 siguen PASS con una consolidación que no conoce la estructura afín; 
 **E45 con consolidación genérica** (DEV/CONF): T1 0.482/0.504, H 0.174/0.172, L1 0.067/0.061, L2 0.000/0.001 → gate FAIL 0/16, 0/16. T1 genérico pierde su ventaja de coste (5.1 s de consolidación, 24 090 números, 245 µs/query) y ahora olvida (0.17), pero sigue ganando en accuracy. Tabla completa: `artifacts/v4/generic/e45/table.md`.
 
 **Corrección E45 (rule)**: H en fase 2 usaba episodios de fase 1 ya borrados; corregido (pseudo-experiencias desde la señal de fase 1). Re-corrida (`artifacts/v4/e45_fixed/`): H 0.238/0.251 (antes 0.213/0.238); el resto idéntico; gate sigue FAIL 0/16, 0/16. Sustituye a la tabla de §7.
+
+## 9. Seguimiento 2 — estabilidad (E33S en v4; variantes E23 en v3.7)
+
+Pre-registro §9. **E33S (v4, Dφ de E35-A, rotate+reflect, accuracy / rel_err media):**
+
+| Variante | h1 | h2 | h4 | h8 | h64 rel_err | PASS DEV | PASS CONF |
+|---|---|---|---|---|---|---|---|
+| V0 baseline (residual) | 0.127 / 0.126 | 0.005 / 0.010 | 0.000 / 0.001 | 0 / 0 | 1.52 / 1.65 | 0/16 | 0/16 |
+| V1 re-proyección manifold | 0.291 / 0.279 | 0.077 / 0.068 | 0.005 / 0.010 | 0 / 0.002 | 1.49 / 1.62 | 0/16 | 0/16 |
+| V2 límite espectral | 0.151 / 0.170 | 0.004 / 0.009 | 0 / 0 | 0 / 0 | 1.47 / 1.60 | 0/16 | 0/16 |
+| V3 V1+V2 | 0.263 / 0.253 | 0.053 / 0.052 | 0.008 / 0.007 | 0 / 0.001 | 1.45 / 1.53 | 0/16 | 0/16 |
+
+Lectura: en v4 el cuello no es la amplificación sino el **error de un paso** (rel_err ≈ 0.08–0.10 en h1, por encima del umbral 5 %); ningún operador de rollout puede convertir eso en una región estable ≥8. V1 duplica la accuracy en h1–h2 (prior de órbita rígida, declarado), V2 reduce la deriva de norma pero añade sesgo. E33 sigue **FAIL**.
+
+**E23 v3.7 (diagnóstico, cos medio por horizonte, 16 seeds 0xA300–0xA30F):**
+
+| Variante | h1 | h4 | h8 | h16 | h32 | h64 |
+|---|---|---|---|---|---|---|
+| V0 baseline (reproduce LONG v3.7) | 0.979 | 0.853 | 0.684 | 0.469 | 0.325 | 0.448 |
+| V1 re-proyección al manifold del encoder | 0.983 | 0.933 | 0.892 | 0.791 | **0.763** | **0.751** |
+| V2 límite espectral | 0.994 | 0.955 | **0.907** | **0.836** | 0.608 | 0.388 |
+| V3 V1+V2 | 0.994 | 0.948 | 0.879 | 0.774 | 0.621 | 0.480 |
+
+Confirma el diagnóstico de §5: en v3 (error de un paso minúsculo) la re-proyección al manifold es la palanca que arregla h32/h64 (+0.44/+0.30 de cos) y el límite espectral arregla h4–h16. Encoder no saturante: NOT_RUN (requiere re-entrenar encoder/Dφ v3). Sólo diagnóstico, sin gate pre-registrado sobre v3.
