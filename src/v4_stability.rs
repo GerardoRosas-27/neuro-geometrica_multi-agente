@@ -11,7 +11,7 @@
 #![allow(clippy::needless_range_loop)]
 
 use crate::field_autonomy_v4::{target_h, triples, Row, HORIZONS, ITERABLE_FAMS, K_POINTS};
-use crate::v4_controls::{Dphi, TrainBudget};
+use crate::v4_controls::{Dphi, Predictor, TrainBudget};
 use crate::v4_dataset::{generate_and_seal, DatasetConfig, Example, CTX_DIM};
 use crate::v4_metrics as m;
 use crate::v4_provenance::QueryCounters;
