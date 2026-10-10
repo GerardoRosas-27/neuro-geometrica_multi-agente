@@ -2,460 +2,324 @@
 
 **Rama:** `exp/field-autonomy-v4`  
 **Base:** `main`  
-**Fecha:** 2026-10-06  
-**Estado:** especificación para implementación por otro agente
+**Fecha:** 2026-10-09  
+**Estado:** especificación detallada para implementación por otro agente
 
-> v4 no pretende añadir más complejidad al campo por defecto. Reorganiza la siguiente batería alrededor de las preguntas que v3 dejó abiertas: si Dφ aprende reglas reales, si CDT puede actuar como experiencia en vez de lookup, si la dinámica es estable a largo horizonte, y si la capacidad persiste después de eliminar el estado episódico.
+> v4 no intenta rescatar E23 con más epochs ni añadir otro mecanismo de lookup. Su objetivo es separar recuperación, interpolación estática, dinámica aprendida y aprendizaje persistente a partir de experiencia consolidada.
 
-## 1. Punto de partida científico
+## 0. Estado de la base
 
-El ciclo v3 confirmó en seeds de confirmación los gates E18/E21/E22/E24, mientras E23, E25, E26, E27, E28, E29 y E30 permanecieron abiertos. La evidencia de v3 no debe reinterpretarse como prueba de autonomía completa.
+El Clean-Room v3.7 **sí está integrado en `main`** mediante PR #29 (`c59b9fe`, 2026-09-26). Algunos documentos históricos conservan frases antiguas como «no mergeado»; no deben interpretarse como estado actual.
 
-La hipótesis central de v4 es:
+La base científica de v4 es `main`. No reutilizar pesos, datasets, checkpoints ni artefactos entrenados de E11–E17/v3 como entrenamiento.
 
-`experiencias → consolidación CDT → regularidad/learning signal → adaptación de Dφ → dinámica sobre X_new → Y_new jamás almacenado`
+## 1. Pregunta científica central
 
-La hipótesis rival es:
+E18/E21/E22/E24 de v3 aportaron evidencia de que Dφ aprende reglas, generaliza parámetros, compone transformaciones y supera controles estáticos bajo el clean-room definido. La pregunta decisiva de v4 es:
 
-`X_new → recuperación/vecindad/tabla/CDT/RQM → Y_new`
+> **¿Puede una experiencia previa, consolidada por CDT, modificar persistentemente la dinámica Dφ de modo que, después de eliminar CDT/RQM/RAM y cualquier retrieval, Dφ resuelva estados nuevos cuya respuesta jamás estuvo almacenada?**
 
-o bien:
+Hipótesis H1:
 
-`X_new → interpolación trivial del encoder/decoder → Y_new`
+```text
+experiencias TRAIN
+      ↓
+consolidación CDT
+      ↓
+regularidad / learning signal
+      ↓
+adaptación de Dφ
+      ↓
+ELIMINAR CDT + RAM + RQM + retrieval
+      ↓
+X_new → Dφ → Y_new jamás almacenado
+```
 
-v4 debe diseñarse para separar estas explicaciones.
+Hipótesis rivales:
+
+```text
+H0a: X_new → lookup → Y_new
+H0b: X_new → NN/interpolación estática → Y_new
+H0c: X_new → Dφ preexistente → Y_new
+H0d: decoder/encoder contiene implícitamente la respuesta
+H0e: el beneficio es regularización genérica y no información procedente de CDT
+```
+
+v4 debe distinguirlas experimentalmente.
 
 ## 2. Principios obligatorios
 
-1. **Clean-room:** TRAIN/DEV/TEST generados y sellados antes de la confirmación.
-2. **No reutilización:** no usar pesos, checkpoints, prototypes, tablas, CDT, RQM ni datasets de E11–E17/v3 como entrenamiento.
-3. **FIELD_ONLY:** el benchmark científico principal tiene RQM, CDT retrieval, tablas, NN y attractor bank desactivados durante TEST.
-4. **Provenance:** cada predicción debe registrar el camino de información.
-5. **No teacher forcing en pruebas dinámicas.**
-6. **Controles fuertes:** static, linear, MLP, nearest-neighbor, random y simple recurrent/dynamic control.
-7. **Presupuesto emparejado:** comparar modelos con parámetros, ejemplos y compute documentados.
-8. **No retune sobre TEST.** Si se cambia arquitectura/hiperparámetros después de observar TEST, se invalida TEST y se genera otro split.
-9. **Independent decoder:** cuando el experimento lo permita, el decoder no puede codificar respuestas de TEST ni compartir lookup con CDT/RQM.
-10. **No claims de AGI/consciencia.** El resultado máximo depende de los gates realmente cerrados.
+1. TRAIN/DEV/TEST generados y sellados antes de CONFIRM.
+2. No reutilizar pesos, checkpoints, prototypes, tablas, CDT, RQM ni datasets de E11–E17/v3 como entrenamiento.
+3. TEST debe auditarse mediante hashes exactos y hashes canónicos/equivalentes.
+4. Benchmark principal FIELD_ONLY.
+5. En TEST científico E35–E41: `cdt_queries=0`, `rqm_queries=0`, `table_queries=0`, `nn_queries=0`, `attractor_queries=0`, `direct_memory_queries=0`.
+6. No teacher forcing durante free-run.
+7. Controles con mismo dataset, seed y presupuesto razonable.
+8. No retune después de observar TEST.
+9. Decoder independiente cuando sea posible.
+10. Una ruta directa al target/equivalente marca `LEAKED`.
+11. No seleccionar seeds favorables.
+12. No claims de AGI/consciencia/cognición general.
 
-## 3. Nueva jerarquía de experimentos
+## 3. Arquitectura experimental
 
-### Fase V4-A — fundamentos de dinámica
+```text
+Periferia/encoder → representación z → Dφ → estado z' → decoder independiente → respuesta
+```
 
-- **E31:** rule-learning suite 2.0, multi-familia.
-- **E32:** estabilidad dinámica/Jacobiano.
-- **E33:** long-horizon free-run con perturbaciones.
-- **E34:** static-vs-dynamic paired benchmark con capacidad igualada.
+Fuera del hot path de TEST:
 
-### Fase V4-B — CDT como experiencia
+```text
+experiencias → CDT consolidation → learning_signal → adapt(Dφ)
+```
 
-- **E35:** CDT-as-experience causal pipeline.
-- **E36:** ablación de consolidación.
-- **E37:** delete-after-learning / memory amnesia.
-- **E38:** persistence after restart.
+CDT no puede ser un diccionario de respuestas. El `learning_signal` puede ser una distribución, regla, estadística, matriz, parámetro, estructura relacional, gradiente o representación agregada, pero nunca `x_test → y_test`.
 
-### Fase V4-C — transferencia y aprendizaje continuo
+## 4. Batería
 
-- **E39:** transfer de regla entre familias.
-- **E40:** continual learning + forgetting.
-- **E41:** causal intervention y rollback.
+### V4-A — dinámica intrínseca
+- **E31:** rule-learning 2.0 multi-familia.
+- **E32:** estabilidad local/Jacobiano.
+- **E33:** free-run largo.
+- **E34:** static vs dynamic emparejado.
 
-### Fase V4-D — escalamiento y dependencia lingüística
+### V4-B — memoria como experiencia
+- **E35:** CDT → learning signal → adaptación Dφ → delete CDT → TEST.
+- **E36:** ablación causal de consolidación.
+- **E37:** delete-after-learning/amnesia.
+- **E38:** persistencia tras restart.
 
-- **E42:** scaling N=8/16/32/64/128.
-- **E43:** cross-lingual semantic transfer.
-- **E44:** LLM replacement / encoder swap.
+### V4-C — transferencia
+- **E39:** transferencia entre familias.
+- **E40:** continual learning/forgetting.
+- **E41:** intervención causal + rollback.
 
-No ejecutar E42–E44 como prioridad si E35 no supera el control de no-consolidación.
+### V4-D — límites
+- **E42:** N=8/16/32/64/128.
+- **E43:** transferencia lingüística ampliada.
+- **E44:** cambio de LLM/encoder.
 
----
+Orden: E31→E34, luego E35→E38, luego E39→E41 y finalmente E42→E44. Si E35 no supera su control, E42–E44 no se presentan como confirmación de la hipótesis central.
 
-# 4. E31 — Rule Learning 2.0
+# 5. E31 — Rule Learning 2.0
 
 ## Objetivo
-Demostrar que Dφ aprende una transformación/regla y no una colección de trayectorias.
+Probar que Dφ aprende una regularidad reutilizable y no una trayectoria/tabla.
 
-## Familias
+## Familias mínimas
 
-A. traslación 2D/3D  
-B. rotación  
-C. reflexión  
-D. escala  
-E. shear  
-F. afín  
-G. composición R2(R1(x))  
-H. perturbación suave/no lineal
+Traslación 2D/3D, rotación, reflexión, escala, shear, afín, composición de transformaciones y una familia suave/no lineal.
 
-Cada familia debe tener múltiples instancias, objetos y parámetros.
+Cada familia debe tener múltiples objetos, parámetros continuos y contextos. Un único A→B→C no es suficiente.
 
-## Split estructural
+## Split
 
-TRAIN: reglas y objetos base.  
-DEV: parámetros/objetos diferentes de TRAIN.  
-TEST: familia de objetos y combinaciones nunca observadas; targets y equivalentes no almacenados.
+TRAIN: objetos/parámetros base. DEV: distintos. TEST: objetos, parámetros o composiciones nunca vistas. Además de hash exacto, usar `canonical_target_hash` para equivalentes algebraicos.
 
 ## Controles
 
-- static encoder + decoder;
-- linear predictor;
-- MLP predictor;
-- Dφ;
-- nearest-neighbor;
-- shuffled-label control;
-- random dynamics control.
+STATIC, LINEAR, MLP de capacidad emparejada, Dφ, nearest-neighbor, random dynamics y shuffled-label.
 
 ## Gate
-Dφ debe superar al static y a los controles simples en al menos 3 familias y en la mayoría de seeds, con leakage=0. No se acepta una sola familia simbólica como prueba general.
 
----
+Dφ supera STATIC y controles simples en al menos 3 familias, mayoría de seeds, leakage=0. Reportar effect size además de accuracy.
 
-# 5. E32 — estabilidad local de Dφ
+# 6. E32 — estabilidad de Dφ
 
-El fallo E23 de v3 puede ser acumulación de error. Antes de añadir más capacidad, medir la geometría local.
+E23 v3 fue débil en horizontes largos. Antes de modificar Dφ hay que medir por qué.
 
-Para una transición `z' = Dφ(z,c)` registrar por step:
+Registrar por paso:
 
-- `||z||`;
-- `Δz`;
-- cosine con target;
-- energía;
-- distancia al manifold;
-- error de transición;
-- estimación de `σ_max(J)` del Jacobiano;
-- sensibilidad a `ε`.
+```text
+step
+norm_z
+norm_delta
+cosine_target
+energy
+manifold_distance
+transition_error
+jacobian_sigma_max
+perturbation_norm
+```
 
-Probar `ε ∈ {0.001, 0.01, 0.05, 0.10, 0.20}`.
+Estimar `σ_max(J)` mediante JVP/power iteration o finite differences documentadas. Perturbaciones: ε={0.001,0.01,0.05,0.10,0.20}.
 
-Interpretación:
+No imponer contractividad antes de medirla. `σ_max(J)>1` sostenido puede explicar amplificación de error; `σ_max(J)<1` localmente favorece contracción, pero no es por sí mismo prueba de buen aprendizaje.
 
-- `σ_max(J) < 1` localmente favorece contracción/estabilidad;
-- `σ_max(J) > 1` de forma sostenida puede explicar amplificación de error;
-- no imponer artificialmente contractividad: medir primero.
+# 7. E33 — free-run h1…h64
 
-Entregable: curvas por horizon y seed, no solo accuracy final.
+Entrenar one-step y evaluar sin reinyectar targets: `H={1,2,4,8,16,32,64}`.
 
----
+Separar reglas vistas, objetos nuevos, parámetros nuevos y perturbación inicial. Reportar error, cosine, energía, norma, manifold distance y divergencia por horizonte.
 
-# 6. E33 — free-run largo sin teacher forcing
+Gate: región de estabilidad reproducible. Si h32/h64 fallan, conservar el diagnóstico; no ocultarlo con teacher forcing.
 
-Entrenar one-step. Evaluar exclusivamente free-run:
+# 8. E34 — static vs dynamic emparejado
 
-`1,2,4,8,16,32,64` steps.
+Mismo dataset, seed, inicialización cuando sea comparable, optimizer, ejemplos y presupuesto de compute. Parámetros dentro de un rango previamente definido.
 
-Separar:
+```text
+STATIC(x) = Decoder(Encoder(x))
+DYNAMIC(x,c) = Decoder(Dφ(Encoder(x),c))
+```
 
-1. rollout sobre reglas vistas;
-2. rollout sobre objetos nuevos;
-3. rollout con parámetros nuevos;
-4. rollout con perturbación inicial.
+Añadir MLP de capacidad comparable. La pregunta es qué comportamiento aparece específicamente por dinámica y no por más capacidad.
 
-Registrar error acumulado, cosine, energía, norm drift, manifold distance y divergencia.
+# 9. E35 — GATE CENTRAL: CDT como experiencia
 
-Gate: demostrar una región de estabilidad reproducible y no solo un buen primer paso. Si h32/h64 fallan, conservar el diagnóstico y no maquillar la métrica mediante teacher forcing.
+Crear dos sistemas idénticos desde la misma inicialización:
 
----
+### A — control
 
-# 7. E34 — static vs dynamic estrictamente emparejado
+```text
+TRAIN → Dφ_A
+```
 
-Usar exactamente el mismo:
+### B — experiencia consolidada
 
-- dataset;
-- seed;
-- encoder initialization;
-- decoder initialization cuando sea comparable;
-- número de parámetros dentro de un rango documentado;
-- optimizer;
-- training examples;
-- compute budget.
+```text
+TRAIN experiences
+→ CDT consolidation
+→ learning_signal
+→ adapt Dφ_B
+→ DROP CDT/RAM/RQM/retrieval
+```
 
-Comparar:
+Ambos reciben el mismo TEST sellado.
 
-`STATIC(x)=Decoder(Encoder(x))`
+## Prohibiciones
 
-contra
+El learning signal no puede contener target TEST, equivalente canónico, índice input→target, prototype directo, ruta RQM, tabla de respuestas ni embedding almacenado que permita recuperar directamente el target.
 
-`DYNAMIC(x,c)=Decoder(Dφ(Encoder(x),c))`.
+## Información permitida
 
-Añadir un MLP con capacidad aproximadamente equivalente.
+CDT puede producir parámetros de regla, estadísticas agregadas, matriz de transición, distribución, topología, correlaciones, incertidumbre o señales de actualización de Dφ, siempre que la auditoría demuestre que no codifican respuestas TEST directamente.
 
-La pregunta no es si Dφ gana a un baseline débil, sino qué capacidad aparece específicamente por dinámica iterativa.
+## Protocolo
 
----
+```text
+1. generar TRAIN/DEV/TEST
+2. sellar manifest
+3. entrenar control A
+4. recolectar experiencias TRAIN
+5. consolidar B en CDT
+6. producir learning_signal
+7. adaptar Dφ_B
+8. serializar Dφ_B
+9. destruir CDT/RAM/RQM/indexes
+10. iniciar evaluator limpio
+11. cargar solo artefactos permitidos
+12. ejecutar TEST
+13. verificar queries=0
+14. comparar A vs B
+```
 
-# 8. E35 — EXPERIMENTO CENTRAL: CDT como experiencia
+## Gate
 
-Este es el gate principal de v4.
+```text
+performance(B) > performance(A)
+leakage = 0
+cdt_queries = 0
+rqm_queries = 0
+lookup_queries = 0
+target_seen_cdt = false
+target_equivalent_seen = false
+```
 
-## Fase A — Experience acquisition
+La comparación debe ser paired por seed y acompañada de effect size/intervalo. Si B no supera A, la hipótesis queda sin evidencia positiva bajo este protocolo.
 
-Generar experiencias `E_i=(x_i,c_i,y_i,context_i)` en TRAIN.
+# 10. E36 — ablación de consolidación
 
-No guardar respuestas TEST.
+Condiciones: A sin experiencia; B experiencia cruda; C consolidada; D CDT corrupto; E CDT irrelevante de igual tamaño; F estadísticas sin topología; G orden barajado.
 
-## Fase B — Consolidación
+Mantener cantidad de experiencias y presupuesto posterior. Si C solo mejora retrieval, es evidencia negativa para memoria como experiencia.
 
-CDT recibe solo experiencias TRAIN y debe producir un artefacto de consolidación. Este artefacto puede contener:
+# 11. E37 — delete-after-learning
 
-- estadísticas agregadas;
-- estructura de transición;
-- parámetros/reglas estimadas;
-- correlaciones;
-- distribución;
-- topología;
-- confianza/incertidumbre.
+```text
+experiencia → CDT → adapt Dφ → save Dφ
+                                  ↓
+                         DELETE CDT/RAM/RQM
+                                  ↓
+                             TEST limpio
+```
 
-No puede contener un índice `x_test → y_test`.
+Ejecutar en proceso nuevo. Gate: rendimiento post-delete cercano al pre-delete y por encima del control sin experiencia.
 
-## Fase C — Adaptación
+# 12. E38 — persistencia tras restart
 
-Usar el resultado de consolidación para entrenar/adaptar Dφ.
+Guardar encoder, Dφ, decoder, CDT, manifest y metadata por separado.
 
-La adaptación debe ocurrir **antes** de TEST.
+P0=encoder+Dφ+decoder con retrieval OFF.  
+P1=encoder+Dφ+decoder+CDT con retrieval OFF.  
+P2=Dφ+decoder cuando el protocolo lo permita.  
+P3=CDT retrieval como control positivo de lookup.
 
-## Fase D — eliminación del CDT
+La evidencia de aprendizaje persistente debe aparecer en P0/P2, no depender de P3.
 
-Antes de TEST:
+# 13. E39 — transferencia
 
-- desconectar CDT;
-- vaciar RAM episódica;
-- desactivar RQM;
-- desactivar table/NN/attractor retrieval.
+Aprender regla en familia A y probar la misma regularidad en B estructuralmente nueva. Ejemplo: círculos→triángulos bajo la misma transformación.
 
-La predicción debe ser:
+Gate: B consolidado supera no-consolidado y static, sin target B en CDT.
 
-`X_new → Encoder → Dφ → independent decoder → Y_new`.
+# 14. E40 — continual learning
 
-## Gate E35
+Secuencia `R1→R2→R3→R4`, consolidando/adaptando tras cada bloque. Medir accuracy por regla, forgetting, forward/backward transfer, interference, tamaño CDT y updates. Añadir CDT corrupto/irrelevante.
 
-El modelo con experiencias consolidadas debe superar significativamente al modelo idéntico sin experiencias, mientras el CDT ya no está disponible durante TEST y `target_seen_* = false`.
+# 15. E41 — intervención causal
 
-Este es el experimento que puede distinguir **memoria como experiencia** de **memoria como respuesta**.
+Guardar checkpoint baseline. Intervenir componentes estructurados de Dφ y, como control, componentes aleatorios de igual magnitud. Medir cambio en trayectoria, predicción, energía y estabilidad. Hacer rollback exacto.
 
----
+Gate: intervención estructurada reproducible, control aleatorio con distribución distinta y rollback recupera baseline.
 
-# 9. E36 — ablación causal de consolidación
+# 16. E42 — scaling
 
-Comparar al menos:
+`N={8,16,32,64,128}`. No compensar únicamente con epochs. Reportar capacidad efectiva, accuracy, margin, energy gap, samples-to-learn, compute, memoria CDT y estabilidad.
 
-A. sin experiencia;
-B. experiencia cruda sin consolidar;
-C. experiencia consolidada;
-D. CDT corrupto;
-E. CDT irrelevante pero del mismo tamaño;
-F. estadísticas agregadas sin topología;
-G. consolidación con orden de experiencias barajado.
+# 17. E43 — transferencia lingüística
 
-Misma cantidad de experiencia y mismo presupuesto posterior.
+LLM congelado. Entrenar en español y evaluar inglés/francés/japonés, con plural, género, paráfrasis, contexto, oraciones y distractores.
 
-Hipótesis esperada:
+Separar: invariancia del encoder, dinámica y decoder lingüístico. No usar E43 como evidencia general si falla E31 no lingüístico.
 
-`C > B > A` en generalización, pero C debe producir targets nunca almacenados.
+# 18. E44 — cambio de LLM
 
-Si C solo mejora retrieval, el resultado es negativo para la hipótesis central.
+Entrenar con periferia A y evaluar con B mediante alineamiento explícito y predefinido. Comparar mismo LLM, LLM cambiado y encoder aleatorio controlado.
 
----
+La hipótesis fuerte requiere conservar estructura del campo frente a un cambio razonable de periferia.
 
-# 10. E37 — delete-after-learning / amnesia experimental
+# 19. Estadística
 
-Secuencia:
+Mínimo 16 seeds DEV + 16 CONFIRM. Mismos seeds entre condiciones paired. Reportar media, mediana, dispersión, bootstrap CI y effect size. No publicar solo el mejor seed.
 
-1. aprender experiencias;
-2. consolidar CDT;
-3. adaptar Dφ;
-4. guardar Dφ;
-5. borrar CDT;
-6. borrar RAM;
-7. borrar RQM;
-8. ejecutar TEST.
+# 20. Auditoría de información
 
-Condición adicional: reconstruir el proceso en otro proceso limpio cargando únicamente los pesos/adaptaciones permitidos.
+Cada predicción registra:
 
-Gate: rendimiento post-delete cercano al pre-delete. Si cae a baseline, CDT no produjo aprendizaje persistente suficiente.
+```text
+target_seen_training
+target_seen_dev
+target_seen_cdt
+target_seen_rqm
+target_seen_table
+target_seen_nn
+target_seen_attractor
+target_equivalent_seen
+cdt_queries
+rqm_queries
+table_queries
+nn_queries
+attractor_queries
+direct_memory_queries
+decoder_lookup
+provenance_hash
+```
 
----
+Una ruta directa al target marca `LEAKED` y excluye la corrida científica.
 
-# 11. E38 — persistencia real
-
-Guardar artefactos separados:
-
-- encoder checkpoint;
-- Dφ checkpoint;
-- decoder checkpoint;
-- CDT artifact;
-- manifest;
-- metadata de versión.
-
-Reiniciar proceso y evaluar:
-
-P0 encoder+Dφ+decoder;  
-P1 encoder+Dφ+decoder+CDT pero retrieval OFF;  
-P2 Dφ+decoder;  
-P3 CDT retrieval control.
-
-La ruta científica es P0/P2. P3 es únicamente control de lookup.
-
----
-
-# 12. E39 — transferencia entre familias
-
-Aprender una regla sobre familia A, consolidar y adaptar Dφ. Evaluar la misma regularidad sobre familia B estructuralmente nueva.
-
-Ejemplo:
-
-TRAIN: círculos bajo T.  
-TEST: triángulos bajo T.
-
-La salida de B no puede existir en CDT ni en cualquier lookup.
-
-Gate: mejora sobre no-consolidado y static.
-
----
-
-# 13. E40 — continual learning
-
-Secuencia de reglas:
-
-`R1 → consolidate → adapt → R2 → consolidate → adapt → ... → R4`.
-
-Después evaluar R1–R4.
-
-Métricas:
-
-- accuracy por regla;
-- forgetting;
-- forward transfer;
-- backward transfer;
-- interference;
-- tamaño CDT;
-- número de updates.
-
-Añadir una condición CDT corrupto y una irrelevante para demostrar que el beneficio no es solo regularización genérica.
-
----
-
-# 14. E41 — intervención causal
-
-Guardar checkpoint baseline.
-
-Intervenir:
-
-A. componentes estructurados de Dφ;  
-B. componentes aleatorios de igual magnitud.
-
-Medir cambio en predicciones y dinámica.
-
-Después rollback exacto.
-
-Gate:
-
-- intervención estructurada produce efecto reproducible;
-- control aleatorio produce distribución distinta;
-- rollback recupera baseline.
-
----
-
-# 15. E42 — scaling
-
-Escalar conceptos/reglas: `N=8,16,32,64,128`.
-
-No aumentar únicamente epochs. Mantener protocolo y reportar:
-
-- capacidad efectiva;
-- accuracy;
-- margin;
-- energy gap;
-- samples-to-learn;
-- compute;
-- memoria CDT;
-- estabilidad.
-
-Comparar contra Hopfield/Hebb o controles disponibles en el repositorio cuando sea técnicamente comparable.
-
----
-
-# 16. E43 — transferencia lingüística
-
-Mantener el LLM congelado.
-
-Entrenar con español y evaluar equivalentes en inglés/francés/japonés, pero aumentar el benchmark respecto E12:
-
-- singular/plural;
-- género;
-- paráfrasis;
-- contexto completo;
-- oraciones;
-- distractores.
-
-Separar claramente:
-
-1. invariancia del encoder;
-2. aprendizaje de la dinámica;
-3. recuperación lingüística del decoder.
-
-No usar esto como evidencia de cognición si falla el benchmark no lingüístico.
-
----
-
-# 17. E44 — LLM swap
-
-Entrenar el campo con un encoder/periferia congelado A y evaluar con periferia B bajo un alineamiento explícito y documentado.
-
-Comparar:
-
-- mismo LLM;
-- LLM cambiado;
-- encoder aleatorio controlado.
-
-La tesis fuerte requiere que la estructura aprendida por el campo sobreviva a un cambio de periferia razonable.
-
----
-
-# 18. Protocolo estadístico
-
-Mínimo:
-
-- 16 seeds DEV;
-- 16 seeds CONFIRM;
-- intervalos de confianza bootstrap;
-- mediana y media;
-- distribución completa por seed;
-- effect size frente a controles;
-- paired tests cuando corresponda.
-
-No resumir únicamente con el mejor seed.
-
-Para E35–E41, usar exactamente los mismos seeds entre condiciones cuando sea posible.
-
----
-
-# 19. Auditoría de información
-
-Cada predicción debe registrar:
-
-`target_seen_training`  
-`target_seen_dev`  
-`target_seen_cdt`  
-`target_seen_rqm`  
-`target_seen_table`  
-`target_seen_nn`  
-`target_seen_attractor`  
-`target_equivalent_seen`  
-`cdt_queries`  
-`rqm_queries`  
-`table_queries`  
-`nn_queries`  
-`attractor_queries`  
-`direct_memory_queries`  
-`decoder_lookup`  
-`provenance_hash`
-
-Cualquier camino directo al target marca `LEAKED` y excluye la fila.
-
----
-
-# 20. Artefactos obligatorios por experimento
-
-Cada ejecución debe producir:
+# 21. Artefactos obligatorios
 
 ```text
 artifacts/v4/<experiment>/<run>/
@@ -468,83 +332,43 @@ artifacts/v4/<experiment>/<run>/
   plots/
 ```
 
-`config.json` debe incluir git SHA, branch, seed, hyperparameters, model sizes y budget.
+`config.json`: git SHA, branch, seed, hiperparámetros, tamaños y budget. `dataset_manifest.json`: hashes/particiones. `provenance.jsonl`: camino de información por predicción.
 
-`dataset_manifest.json` debe contener hashes y particiones.
+# 22. Gates iniciales
 
-`provenance.jsonl` debe permitir reconstruir el camino de información de cada predicción.
+| Gate | Estado inicial |
+|---|---|
+| E31 rule learning | NOT_RUN |
+| E32 stability | NOT_RUN |
+| E33 long rollout | NOT_RUN |
+| E34 static/dynamic | NOT_RUN |
+| E35 CDT experience | NOT_RUN |
+| E36 consolidation ablation | NOT_RUN |
+| E37 delete-after-learning | NOT_RUN |
+| E38 persistence | NOT_RUN |
+| E39 transfer | NOT_RUN |
+| E40 continual learning | NOT_RUN |
+| E41 causal intervention | NOT_RUN |
+| E42 scaling | NOT_RUN |
+| E43 language | NOT_RUN |
+| E44 LLM swap | NOT_RUN |
 
----
+Solo un resultado reproducible y auditado puede cambiar `NOT_RUN` a `PASS`.
 
-# 21. Orden de implementación recomendado
+## 23. Orden de implementación
 
-1. E31 + auditoría común.
-2. E32 + instrumentación Jacobiana.
-3. E33.
-4. E34.
-5. E35.
-6. E36.
-7. E37.
-8. E38.
-9. E39/E40.
-10. E41.
-11. E42.
-12. E43/E44.
+1. dataset + manifests;
+2. provenance/auditoría;
+3. E31;
+4. E32;
+5. E33;
+6. E34;
+7. E35;
+8. E36;
+9. E37;
+10. E38;
+11. E39–E41;
+12. E42;
+13. E43–E44.
 
-**Regla:** si E35 falla, no interpretar E42–E44 como evidencia de experiencia consolidada. Si E33 falla, no ocultar el problema aumentando capacidad sin diagnóstico.
-
----
-
-# 22. Criterio de éxito de v4
-
-No existe un único PASS global. Se deben cerrar gates independientes.
-
-### Gate cognitivo principal
-
-E35 + E36 + E37:
-
-`experiencia → consolidación → adaptación Dφ → CDT eliminado → target nuevo`
-
-con leakage=0, múltiples seeds, controles y mejora estadísticamente clara.
-
-### Gate dinámico
-
-E32 + E33:
-
-estabilidad y generalización de rollout a horizonte largo, con diagnóstico de Jacobiano.
-
-### Gate causal
-
-E41:
-
-intervención estructurada ≠ intervención aleatoria + rollback.
-
-### Gate persistente
-
-E38:
-
-capacidad sobrevive restart y eliminación de memoria episódica.
-
-### Gate transferencia
-
-E39 + E43/E44:
-
-regularidad transferible más allá de la familia/periferia usada para aprender.
-
-Solo si varios gates convergen se podrá afirmar que existe evidencia fuerte de un **sustrato externo que aprende dinámicas y consolida experiencia**. Incluso entonces no se sigue que exista consciencia, subjetividad o AGI.
-
----
-
-# 23. Regla para el agente implementador
-
-El agente que continúe esta rama debe:
-
-- leer primero este documento y `docs/plan_autonomia_campo_v3.md`;
-- inspeccionar `main` antes de tocar código;
-- no copiar checkpoints de ramas experimentales;
-- implementar primero infraestructura de auditoría/provenance;
-- separar benchmark, modelo, controles y reportería;
-- ejecutar smoke tests antes de suites completas;
-- no reportar resultados no ejecutados;
-- no modificar TEST después de observarlo;
-- registrar cada commit relevante en el handoff v4.
+**Regla v4:** no hacer que el campo acierte más a cualquier precio. Hacer imposible confundir recuperación, interpolación trivial, capacidad del decoder o memorización con aprendizaje dinámico persistente.
