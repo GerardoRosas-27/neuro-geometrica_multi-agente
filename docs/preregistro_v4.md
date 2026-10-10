@@ -102,3 +102,11 @@ Plan: `docs/plan_v4_dphi_teacher_distillation.md` (commit `7a996b4`). Código: `
 - **Gate de fase (plan §4):** media pareada D1−B > 0 con IC95 bootstrap (4000 remuestreos, semilla 0xB007) con límite inferior > 0 **en DEV y en CONFIRM**, más leakage=0, queries=0 y proceso nuevo OK en 32/32. Objetivo fuerte (no gate): D1 ≥ 0.70.
 - Lectura (plan §5) pre-fijada: (i) D1 alto (≥0.70) y B bajo → el cuello es la consolidación/señal; (ii) D1 ≈ B y lejos del teacher con teacher→Dφ alto → cuello de representación/capacidad → la Fase B (barrido de capacidad) es exactamente la prueba que el plan prescribe, así que se ejecuta aunque el gate A falle **sólo** en este caso, documentándolo; (iii) cualquier leakage/queries>0 o fallo de proceso nuevo → STOP.
 - DEV primero, luego CONFIRM sin retune. Smoke (`0x5A00`) sólo para comprobar que corre.
+
+## 13. Fase B — barrido de capacidad (pre-registrado antes de correr; después del FAIL caso ii de la Fase A)
+
+- `--exps DIST_B`. Misma parametrización residual `Ψ' = Ψ + ΔΨ`; ancho oculto H ∈ {64, 136, 272, 544} → 962 / 2042 / 4082 / 8162 parámetros. Ruta de entrenamiento: D1 (destilación directa del teacher, Fase A). Mismos dataset, seeds, init seed, presupuesto (8000×16, Adam 3e-3) y número de pasos para todas las H. Control: MLP directo (no residual) con la misma H en cada punto. Referencias: B ruta de consolidación H64 y teacher directo.
+- Reporte: parámetros, wall-clock de entrenamiento, memoria (params×8 B×4: pesos+grad+Adam m,v), rel_err₁, acc, σ_max(J) mediano, teacher→modelo.
+- **Gate de fase:** H* = la H más pequeña > 64 cuya diferencia pareada acc(H) − acc(H64) tenga media ≥ +0.05 e IC95 inferior > 0 en DEV; CONFIRM debe reproducir el mismo criterio **para la misma H*** (sin re-elegir). Leakage=0 y queries=0 en todas las condiciones. Si ninguna H lo cumple → FAIL.
+- Separación capacidad vs consolidación vs estabilidad: este barrido sólo varía capacidad (la ruta de consolidación queda fija y la estabilidad sólo se mide).
+- Paso siguiente pre-fijado: la Fase C se aplica "a la mejor capacidad" (plan §2). Si B pasa, H*; si B falla, H=64 (no hay mejor capacidad demostrada), documentándolo. Una mejora de Dφ que también obtenga el MLP de igual H no se atribuye a la dinámica.
