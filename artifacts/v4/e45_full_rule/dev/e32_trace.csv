@@ -1,0 +1,1 @@
+seed,step,norm_ratio,norm_delta,cosine_target,energy_ratio,manifold_distance,transition_error,jacobian_sigma_max,perturbation_growth_eps[0.001;0.01;0.05;0.10;0.20]@h1/8/32/64

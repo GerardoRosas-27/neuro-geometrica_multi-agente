@@ -138,3 +138,24 @@ Lectura: en v4 el cuello no es la amplificación sino el **error de un paso** (r
 | V3 V1+V2 | 0.994 | 0.948 | 0.879 | 0.774 | 0.621 | 0.480 |
 
 Confirma el diagnóstico de §5: en v3 (error de un paso minúsculo) la re-proyección al manifold es la palanca que arregla h32/h64 (+0.44/+0.30 de cos) y el límite espectral arregla h4–h16. Encoder no saturante: NOT_RUN (requiere re-entrenar encoder/Dφ v3). Sólo diagnóstico, sin gate pre-registrado sobre v3.
+
+## 10. Seguimiento 3 — E45 completo (L2g, L3, composición, iteración adaptativa)
+
+Pre-registro §10. Medias de 16 seeds; DEV / CONFIRM. `artifacts/v4/e45_full_{rule,generic}/`.
+
+| acc TEST | L1 | L2 | **L2g** | **L3** | T1 | H |
+|---|---|---|---|---|---|---|
+| consolidación rule | 0.067 / 0.061 | 0.001 / 0.001 | 0.062 / 0.050 | 0.009 / 0.010 | 0.808 / 0.802 | 0.238 / 0.251 |
+| consolidación genérica | 0.067 / 0.061 | 0.001 / 0.001 | 0.062 / 0.050 | 0.009 / 0.010 | 0.482 / 0.504 | 0.174 / 0.172 |
+
+**Composición** (rotate(p1,0) → scale(p2,p2) encadenados vs compose(p); acc encadenada / directa, rule): T1 1.000/0.961 (0.994/0.973); H 0.049/0.164 (0.066/0.191); L1 0/0.11; L2g ≈0; L3 0; STATIC 0.006. Genérica: T1 0.18/0.57 (0.23/0.59), H 0.02–0.05.
+
+**Iteración adaptativa** (sub-pasos p/n, parada si cambio <1 %): nunca se detiene antes de n=8 en ningún tercil de dificultad; accuracy n=1 → adaptativa: H 0.316 → 0.001 (rule), L1 0 → 0. Iterar Dφ acumula su error de un paso (consistente con §9).
+
+| Gate (PASS seeds) | rule DEV | rule CONF | gen DEV | gen CONF |
+|---|---|---|---|---|
+| E45b max(L1,L2,L2g,L3) ≥ T1−0.05 | 0/16 | 0/16 | 0/16 | 0/16 |
+| E45c mejor líquido encadenado ≥ STATIC+0.05 | 3/16 | 7/16 | 2/16 | 3/16 |
+| E45a ganancia adaptativa ≥ 0.05 | 0/16 | 0/16 | 0/16 | 0/16 |
+
+Los tres gates **FAIL**. L2g elimina el olvido por construcción pero no aprende nuevas familias con 12 ejemplos/familia; L3 (energía) falla como se anticipó (las rotaciones no son flujos de gradiente). Sólo el consolidado T1 compone leyes no vistas (el rule por estructura; el genérico parcialmente). Analogía cognitiva: la memoria rápida (L2/L2g) no generaliza; la dinámica consolidada (H) generaliza parcialmente; la ley explícita consolidada (T1) es la que transfiere.
