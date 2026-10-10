@@ -4,7 +4,7 @@ Rama: `exp/liquid-inference-experiments-8-9-10`
 
 Hardware: ver ejecución (`uname -a`, `rustc -V`).
 Modo: `--release`.
-Commit al correr: 0cc1a65.
+Commit al correr: db27d89.
 
 ## Tabla de registro
 
@@ -12,15 +12,15 @@ Commit al correr: 0cc1a65.
 
 | Exp | seed | N | acc_seen | acc_unseen | acc_ood | mean_us | p50 | p95 | p99 | top1 | margin | abs | liq | rqm | sleep_ms | engrams | verdict |
 |-----|-----:|--:|---------:|-----------:|--------:|--------:|----:|----:|----:|-----:|-------:|----:|----:|----:|---------:|--------:|---------|
-| E8_representation_invariance | 952592 | 15 | 1.000 | 1.000 | 0.500 | 21.556 | 20.407 | 22.839 | 34.181 | 0.698 | 0.229 | 4 | 0 | 0 | 0.000 | 0→2 | PARTIAL_PASS: stem/paraphrase attractor match; cross-lingual not claimed (lexicon) |
-| E9_relational_composition | 952592 | 8 | 1.000 | 1.000 | 1.000 | 2.608 | 2.858 | 3.970 | 3.970 | 0.872 | 0.841 | 0 | 1 | 6 | 0.469 | 0→3 | PASS: direct + composed hops via RQM walk (no transitive teach) |
-| E10_future_prediction | 952592 | 8 | 1.000 | 1.000 | 1.000 | 2.555 | 2.942 | 3.659 | 3.659 | 0.874 | 0.845 | 0 | 1 | 7 | 0.393 | 0→3 | PASS_PARTIAL: distance/bifurcation/perturbation via compose+wave |
-| E8_representation_invariance | 952593 | 15 | 1.000 | 1.000 | 0.625 | 20.801 | 20.452 | 21.953 | 22.998 | 0.634 | 0.210 | 3 | 0 | 0 | 0.000 | 0→2 | PARTIAL_PASS: stem/paraphrase attractor match; cross-lingual not claimed (lexicon) |
-| E9_relational_composition | 952593 | 8 | 1.000 | 1.000 | 1.000 | 3.186 | 3.586 | 4.876 | 4.876 | 0.872 | 0.841 | 0 | 1 | 6 | 0.522 | 0→3 | PASS: direct + composed hops via RQM walk (no transitive teach) |
-| E10_future_prediction | 952593 | 8 | 1.000 | 1.000 | 1.000 | 2.557 | 3.047 | 3.623 | 3.623 | 0.874 | 0.845 | 0 | 1 | 7 | 0.387 | 0→3 | PASS_PARTIAL: distance/bifurcation/perturbation via compose+wave |
-| E8_representation_invariance | 952594 | 15 | 1.000 | 1.000 | 0.500 | 20.858 | 20.615 | 22.225 | 22.933 | 0.700 | 0.229 | 4 | 0 | 0 | 0.000 | 0→2 | PARTIAL_PASS: stem/paraphrase attractor match; cross-lingual not claimed (lexicon) |
-| E9_relational_composition | 952594 | 8 | 1.000 | 1.000 | 1.000 | 3.207 | 3.509 | 4.861 | 4.861 | 0.872 | 0.841 | 0 | 1 | 6 | 0.504 | 0→3 | PASS: direct + composed hops via RQM walk (no transitive teach) |
-| E10_future_prediction | 952594 | 8 | 1.000 | 1.000 | 1.000 | 3.225 | 3.067 | 5.240 | 5.240 | 0.874 | 0.845 | 0 | 1 | 7 | 0.412 | 0→3 | PASS_PARTIAL: distance/bifurcation/perturbation via compose+wave |
+| E8_representation_invariance | 952592 | 15 | 1.000 | 1.000 | 0.500 | 27.289 | 27.627 | 28.825 | 29.003 | 0.698 | 0.229 | 4 | 0 | 0 | 0.000 | 0→2 | PARTIAL_PASS: stem/paraphrase attractor match; cross-lingual not claimed (lexicon) |
+| E9_relational_composition | 952592 | 8 | 1.000 | 1.000 | 1.000 | 4.004 | 3.147 | 12.338 | 12.338 | 0.872 | 0.841 | 0 | 1 | 6 | 0.419 | 0→3 | PASS: direct + composed hops via RQM walk (no transitive teach) |
+| E10_future_prediction | 952592 | 8 | 1.000 | 1.000 | 1.000 | 2.465 | 2.945 | 3.683 | 3.683 | 0.874 | 0.845 | 0 | 1 | 7 | 0.383 | 0→3 | PASS_PARTIAL: distance/bifurcation/perturbation via compose+wave |
+| E8_representation_invariance | 952593 | 15 | 1.000 | 1.000 | 0.625 | 20.517 | 20.241 | 21.552 | 22.496 | 0.634 | 0.210 | 3 | 0 | 0 | 0.000 | 0→2 | PARTIAL_PASS: stem/paraphrase attractor match; cross-lingual not claimed (lexicon) |
+| E9_relational_composition | 952593 | 8 | 1.000 | 1.000 | 1.000 | 2.612 | 2.832 | 3.973 | 3.973 | 0.872 | 0.841 | 0 | 1 | 6 | 0.453 | 0→3 | PASS: direct + composed hops via RQM walk (no transitive teach) |
+| E10_future_prediction | 952593 | 8 | 1.000 | 1.000 | 1.000 | 2.473 | 2.892 | 3.775 | 3.775 | 0.874 | 0.845 | 0 | 1 | 7 | 0.380 | 0→3 | PASS_PARTIAL: distance/bifurcation/perturbation via compose+wave |
+| E8_representation_invariance | 952594 | 15 | 1.000 | 1.000 | 0.500 | 20.440 | 20.195 | 21.524 | 22.422 | 0.700 | 0.229 | 4 | 0 | 0 | 0.000 | 0→2 | PARTIAL_PASS: stem/paraphrase attractor match; cross-lingual not claimed (lexicon) |
+| E9_relational_composition | 952594 | 8 | 1.000 | 1.000 | 1.000 | 2.583 | 2.819 | 3.968 | 3.968 | 0.872 | 0.841 | 0 | 1 | 6 | 0.396 | 0→3 | PASS: direct + composed hops via RQM walk (no transitive teach) |
+| E10_future_prediction | 952594 | 8 | 1.000 | 1.000 | 1.000 | 2.524 | 2.948 | 3.835 | 3.835 | 0.874 | 0.845 | 0 | 1 | 7 | 0.386 | 0→3 | PASS_PARTIAL: distance/bifurcation/perturbation via compose+wave |
 
 
 ## Fallos / notas por semilla

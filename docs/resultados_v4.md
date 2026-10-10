@@ -274,3 +274,39 @@ Desglose rel_err₁ C1 (DEV; CONF casi idéntico): translate 0.020, rotate 0.021
 **Gate Fase C: PASS** (rel_err₁ medio < 5 % en DEV y CONFIRM, 16/16 seeds cada una, sin lookup ni memoria).
 
 Lectura honesta: (1) la mejora viene de optimización (8× pasos, LR decreciente, pérdida relativa), no de capacidad ni de la ruta; cuesta 8× cómputo (~16 s por modelo). (2) El MLP no residual de igual capacidad logra lo mismo: no hay ventaja atribuible a la "dinámica". (3) Dos familias siguen por encima del 5 % (reflect 10 %, radial_warp 6 %); el promedio pasa por las otras seis. (4) Sigue siendo destilación de un teacher con clase de hipótesis diseñada (no emergente).
+
+## Fase D — estabilidad y horizonte largo, E33 repetido (`DIST_D`)
+
+Corrido en `db27d89` (git_dirty=false). Modelo C1 de la Fase C (rel_err₁ 3.7 %), protocolo E33 sin cambios (rotate+reflect, free-run). Medias sobre 16 seeds.
+
+| Variante | región media DEV/CONF | PASS DEV | PASS CONF | acc h1 | acc h2 | acc h4 | acc h8 | rel h8 | rel h64 | crec. perturbación h8 / h64 | norma h64 |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| V0 Dφ puro (C1) | 1.19 / 1.12 | 0/16 | 0/16 | 0.58/0.59 | 0.42/0.41 | 0.10/0.08 | 0.01/0.01 | 0.29 | 1.03/1.08 | 0.95 / 0.87–0.92 | 1.03–1.07 |
+| V1 + re-proyección | 1.69 / 1.88 | 0/16 | 0/16 | 0.63/0.65 | 0.54/0.56 | 0.24/0.25 | 0.07/0.05 | 0.24 | 0.97/1.00 | 0.49 / 0.37 | 0.95–0.99 |
+| V3 + re-proy. + espectral | 0.62 / 0.69 | 0/16 | 0/16 | 0.51 | 0.39 | 0.16–0.18 | 0.03–0.04 | 0.30–0.31 | 1.13–1.16 | 0.43 / 0.27 | 0.87–0.88 |
+| MLP misma receta, puro | 1.12 / 1.19 | 0/16 | 0/16 | 0.58/0.60 | 0.44/0.43 | 0.10 | 0.00–0.01 | 0.27 | 0.95 | 0.95–0.97 / 0.88–0.91 | 1.00–1.03 |
+| Dφ lock (C0), puro | 0 / 0 | 0/16 | 0/16 | 0.24/0.21 | 0.01 | 0 | 0 | 0.46–0.49 | 1.43–1.51 | 0.97–0.98 / 0.76–0.87 | 1.18–1.24 |
+
+σ_max(J) mediano a lo largo del rollout: C1 1.026–1.030, C0 1.052. Leakage=0, queries=0.
+
+**Gate Fase D / E33: FAIL** en todas las variantes (0/16 en ambas fases).
+
+Diagnóstico de estabilidad:
+- **No es inestabilidad dinámica.** Con C1 las perturbaciones no crecen (factor ≈ 0.9–0.99 en h8–h64 en V0, ≈ 0.4–0.5 con re-proyección), la norma deriva < 7 % a h64 y la energía queda en 0.9–1.16. Comparado con el lock (C0: σ 1.05, norma 1.18–1.24 a h64), la Fase C ya eliminó la mayor parte de la expansión.
+- **Es acumulación de sesgo de un paso.** rel_err crece ≈ linealmente (0.06 → 0.09 → 0.16 → 0.29 → 0.49 → 0.74 → 1.03 en h1…h64). En las familias iterables el error de un paso no es 3.7 % sino ~2 % (rotate) y ~10 % (reflect): reflect ya falla en h1 (acc h1 ≈ 0.58). Con un umbral fijo del 5 % sobre el estado, mantener h8 exige un error por paso del orden de ≤0.5 %, un orden de magnitud por debajo de la meta del plan.
+- **La re-proyección ayuda pero no basta** (región 1.2 → 1.7–1.9, acc h4 0.09 → 0.25, comparado contra V0 en las mismas seeds); elimina la distancia al manifold (→0) y la mitad de la sensibilidad a perturbaciones, pero no corrige el error dentro de la órbita (fase/ángulo/escala). El límite espectral (V3) empeora: contrae de más (norma 0.87).
+- MLP de igual capacidad ≈ Dφ también aquí.
+
+Decisión (pre-registrada §15, plan §5 "one-step <5 % pero E33 sigue fallando"): el núcleo Dφ **no** está resuelto → **STOP antes de Ψ64/Gemma E43/E44**. No se entrenaron más epochs como respuesta automática. El siguiente paso que el plan prescribe es el estudio de manifold/proyección/Jacobiano (p.ej. re-proyección que incluya la clase de transformación, error por paso en reflect/radial_warp, umbral de corrección por horizonte), que debe pre-registrarse aparte.
+
+## Resumen del ciclo del plan
+
+| Fase | Gate | DEV | CONFIRM | Resultado | Commit resultados |
+|---|---|---|---|---|---|
+| A techo de destilación | D1>B con IC>0 en ambas | D1−B −0.004 [−0.030,+0.019] | −0.010 [−0.044,+0.025] | **FAIL** (caso ii → B) | `308bfb9` |
+| B capacidad 962→8k | mejora reproducible vs H64 | H136 +0.065 [+0.0005,+0.126] | +0.046 [−0.024,+0.112] | **FAIL** (→ C con H64) | `74f7030` |
+| C one-step < 5 % | rel_err₁ medio < 0.05 | 0.0374 (16/16) | 0.0367 (16/16) | **PASS** (acc 0.81, captura ≈97 %) | `953bbe3` |
+| D estabilidad / E33 | región ≥8 en ≥9/16 | 0/16 todas | 0/16 todas | **FAIL** → STOP | (este commit) |
+| Ψ64/Gemma E43/E44 | — | — | — | **NOT_RUN** (núcleo Dφ no resuelto) | — |
+
+Núcleo token-free (Rust/JAX/export/Ψ64, rama `exp/token-free-liquid-field`) no tocado; liquid sigue sólo como control negativo.

@@ -12,6 +12,7 @@
 //! never reaches a model.
 
 #![allow(clippy::needless_range_loop)]
+#![allow(clippy::too_many_arguments)]
 
 use crate::field_autonomy_v4::{
     adapt_dynamics, collect_experience, consolidate, evaluate, replay_sample, triples, AuditFlags,
