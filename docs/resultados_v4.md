@@ -180,3 +180,30 @@ Pre-registro §11. Periferia A = Gemma-2-2B-it Q3_K_L (loader existente, denso);
 | E44 (Qwen ≥ R+0.05 y ≥ 0.5·Gemma) | 3/16 FAIL | 3/16 FAIL |
 
 **E43/E44 FAIL.** Con ~21 pares españoles, Dφ aprende algo en español (0.17–0.19, por encima del aleatorio en DEV) pero no transfiere a en/fr/ja más allá del encoder aleatorio, y queda por debajo del control lineal OFFSET. El cambio de LLM con alineación por 96 anclas no conserva la dinámica. Limitaciones: vocabulario pequeño, ja-plural artificial (々), pooling medio del hidden final; no se exploraron capas intermedias (no pre-registrado).
+
+## 12. Resumen final (estado de todos los experimentos, conclusiones, pendientes)
+
+Estado a 2026-10-10, tip de código `1da52e7`. DEV / CONFIRM, 16+16 seeds, sin retune.
+
+| Exp | Qué mide | Estado | Número clave (DEV / CONF) |
+|---|---|---|---|
+| E31 | Dφ aprende reglas | PASS 16/16 | acc 0.231 / 0.248 (STATIC 0.04) |
+| E32 | estabilidad σ_max | PASS (sesgo expansivo σ≈1.05–1.14) | 16/16 |
+| E33 | rollout largo | **FAIL** | h1 0.13 → h4 ≈0 |
+| E33S (seg. 2) | re-proyección / límite espectral | **FAIL** | mejor V1 h1 0.29, h4 ≤0.01 |
+| E34 | dinámica vs MLP igual capacidad | PARTIAL | Dφ 0.231/0.248 vs MLP 0.217/0.232 |
+| E35 | CDT → consolidación → Dφ (sin memoria) | PASS 11/16, 10/16 | A 0.231/0.248 → B 0.339/0.377 |
+| E35 genérico (seg. 1) | consolidación RFF sin estructura | PASS 14/16, 12/16 | B 0.360/0.389; teacher 0.894/0.899 |
+| E36 | ablación de contenido | PASS (rule y genérico) | 10/13 · 10/12 seeds |
+| E37 / E38 | borrado / persistencia | PASS | |pre−post| = 0 en 32/32 |
+| E39 / E40 / E41 | transfer / continual / causal | PASS | 13/10 · 16/16 · 16/16 |
+| E42 | scaling | FAIL/PARTIAL (gate estricto) | IC>0 en las 5 N |
+| E43 / E44 (seg. 4) | periferia LLM congelada / swap | **FAIL** | E43 2/16, 3/16; E44 3/16, 3/16 |
+| E45 (+seg. 1, 3) | líquido vs termo (CDT) | **FAIL** para líquido (0/16 todos los gates) | T1 0.808/0.802 (rule), 0.482/0.504 (gen); mejor líquido ≤0.07 |
+| E23 v3.7 diag (seg. 2) | re-proyección al manifold | diagnóstico (sin gate) | cos h64 0.448 → 0.751 |
+
+**Conclusiones sólidas.** (1) La consolidación fuera del hot path transfiere información de forma persistente a los pesos de Dφ (E35–E38, leakage/queries 0, proceso nuevo), y sobrevive a un teacher genérico sin estructura del generador (seg. 1). (2) La regla/teacher consolidado (T1/CDT) domina a los sustratos líquidos en accuracy, olvido, composición y coste (E45 completo). (3) En v3 la re-proyección al manifold arregla horizontes largos; en v4 no, porque el cuello es el error de un paso (~8 %).
+
+**Lo que no está demostrado.** Que el campo descubra regularidades solo (B es destilación de un teacher; Dφ captura ~40 %); ventaja de "dinámica" sobre MLP de igual capacidad (E34); rollout largo (E33); lenguaje real / swap de LLM (E43/E44).
+
+**Pendientes / abiertos.** (a) Subir la captura de Dφ del teacher consolidado (capacidad, pérdida de destilación, más pasos de replay). (b) Reducir el error de un paso de Dφ por debajo del 5 % antes de volver a atacar E33 (después: re-proyección V1). (c) Entrada lingüística: probar Ψ de 64-D de Gemma (bottleneck E45 de la rama token-free) como entrada a Dφ en lugar del pooling medio crudo. (d) E42 estricto. Comparativa y hoja de ruta: `docs/comparativa_v4_vs_token_free.md`.
