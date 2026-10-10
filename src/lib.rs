@@ -93,6 +93,8 @@ pub mod symmetry_guided_rqm_epr;
 pub mod symmetry_thermodynamic_substrate;
 pub mod thermo_router;
 pub mod thermodynamic_attractor_comparison;
+/// Token-Free Liquid Field (rama exp/token-free-liquid-field): core Rust sin tokens.
+pub mod token_free_field;
 /// Comparación de estructuras temporales de inferencia: evidencia sola,
 /// evidencia como frontera y dos vectores de estado con post-selección.
 pub mod transactional_training_experiment;
