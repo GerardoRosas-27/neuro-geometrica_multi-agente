@@ -2,196 +2,167 @@
 
 ## Propósito
 
-Esta rama investiga una hipótesis deliberadamente separada de la línea `field-autonomy-v4`:
+Esta rama investiga una hipótesis separada de `field-autonomy-v4`: después de una codificación semántica inicial, la inferencia puede ejecutarse sobre un estado de campo compacto sin consultar tokens, logits ni el LLM durante el hot path.
 
-> Después de una etapa de codificación semántica, el razonamiento/inferencia puede realizarse sobre un estado de campo compacto y continuo, sin volver a consultar tokens, logits ni el LLM durante el hot path.
+**Restricción de arquitectura:** el core de inferencia del proyecto permanece en Rust. No se reemplazará por Python ni se añadirá una dependencia de TensorFlow/JAX/PyTorch al binario de producción solo para entrenar. Se reutilizarán frameworks existentes como herramientas de entrenamiento y experimentación, y se evaluará la exportación de parámetros/operaciones a Rust.
 
-La rama **no modifica `main` ni la versión 4**. Su objetivo es producir evidencia independiente que en el futuro pueda enfrentarse experimentalmente contra `main` + v4.
+La rama no modifica `main` ni v4. Su propósito es producir evidencia independiente que posteriormente pueda compararse con `main` + v4.
 
-## Rama
+## Rama y aislamiento
 
-`exp/token-free-liquid-field`
-
-Base inicial: `main`.
+- Rama: `exp/token-free-liquid-field`.
+- Base: `main` en el momento de crear la rama.
+- No reutilizar checkpoints, pesos aprendidos, datasets sellados ni resultados favorables de v4.
+- Se puede reutilizar infraestructura genérica y código numérico existente si se documentan origen, versión y equivalencia.
+- La futura comparación contra v4 será una evaluación común sellada; no una mezcla anticipada de implementaciones.
 
 ## Hipótesis central
 
-Arquitectura propuesta:
+`texto → encoder lingüístico → FieldEncoder → Ψ₀ → Liquid Core Rust → Ψ₁…Ψₙ → decoder`
 
-`texto → periférico lingüístico → FieldEncoder → Ψ₀ → Liquid Core → Ψ₁ → Ψ₂ → ... → decoder`
+Después de obtener `Ψ₀`:
 
-Durante inferencia:
+- el Liquid Core solo recibe estado de campo, contexto estructurado permitido y parámetros;
+- no acepta texto, token IDs, tokenizer, logits ni acceso al LLM;
+- no calcula probabilidades de todos los tokens para explorar futuros;
+- el decoder se ejecuta al final y no puede actuar como tabla de respuestas.
 
-- el LLM/periférico no vuelve a intervenir;
-- no entran token IDs al Liquid Core;
-- no se generan probabilidades por token para explorar futuros;
-- el núcleo opera sobre Ψ y contexto de campo;
-- la decodificación ocurre al final.
+Si Gemma es el encoder, sigue procesando tokens dentro de sí mismo. “Token-free” significa que los tokens no entran al sustrato de campo después del encoder, no que el LLM sea token-free.
 
-Importante: esto **no** significa que el LLM deje de procesar tokens. Si se usa un LLM como encoder, los tokens siguen entrando al LLM. Lo que desaparece del núcleo cognitivo es el acceso a tokens después de producir Ψ₀.
+## Arquitectura de software: entrenamiento separado de ejecución
+
+### Camino de entrenamiento
+
+`dataset + manifest → Python/JAX/Keras (o PyTorch) → entrenamiento/validación → exportación de parámetros → artefacto versionado`
+
+### Camino de inferencia
+
+`entrada codificada → FieldEncoder compatible → estado Ψ → core Rust → estado final → decoder`
+
+El core Rust es la implementación de referencia de inferencia. El framework Python es un laboratorio para entrenar y comparar funciones candidatas; no debe permanecer en el hot path de producción.
+
+Los artefactos exportados deben incluir:
+- arquitectura y versión del esquema;
+- dimensiones, orden de tensores, dtype y convención de layout;
+- parámetros y SHA-256;
+- versión del framework y del exportador;
+- seed, configuración, manifest de datos y checksum de cada split;
+- tolerancia numérica de equivalencia;
+- reporte de pruebas de equivalencia Python/Rust.
+
+No se aceptará “portar pesos” sin especificar semántica de operaciones, activaciones, normalización, orden de actualización y tratamiento de estados recurrentes.
+
+## Frameworks recomendados
+
+### Primera opción de investigación: Keras 3 + backend JAX
+
+- Keras 3 sirve para describir capas y bucles de entrenamiento de forma compacta.
+- JAX permite autodiferenciación, compilación XLA y experimentación numérica con funciones de estado.
+- Utilizarlo para prototipos de FieldEncoder, dinámica recurrente, pérdidas, ablations y controles.
+- No asumir superioridad de rendimiento; medir entrenamiento y exportabilidad.
+
+### Alternativas
+
+- PyTorch: alternativa si las capas personalizadas, el ecosistema o la depuración experimental resultan más sencillos.
+- TensorFlow: alternativa válida si su exportación o herramientas de despliegue se ajustan mejor.
+- Rust nativo: referencia de inferencia, benchmarks de latencia y eventual aprendizaje local si se implementan y validan actualizaciones numéricas en Rust.
+
+No mantener simultáneamente implementaciones redundantes sin necesidad. Elegir un backend de investigación inicial y fijar versiones en el entorno reproducible. Los controles pequeños pueden implementarse directamente en Rust cuando eso reduzca la complejidad.
 
 ## Base teórica
 
 ### 1. Estado latente como interfaz
 
-El FieldEncoder debe transformar una representación lingüística de alta dimensión en un estado `Ψ ∈ R^N` de dimensión pequeña o moderada. El objetivo no es conservar información lexical completa, sino conservar las variables necesarias para la dinámica.
+El FieldEncoder comprime una activación de alta dimensión a `Ψ ∈ R^N`:
 
-`Ψ₀ = E_φ(h_LLM(x))`
+`Ψ₀ = Eφ(h_encoder(x))`
 
-Donde `h_LLM` es una activación congelada y `E_φ` aprende una representación de campo.
+La meta no es reconstruir cada detalle lexical, sino retener información suficiente para relaciones, transformaciones y predicciones. Dimensiones iniciales: 32, 64, 128; controles más amplios en E45.
 
-### 2. Dinámica líquida
+### 2. Dinámica recurrente / líquida
 
-El núcleo se modela como una dinámica recurrente:
+`Ψ(t+1) = Ψ(t) + Δt · Fθ(Ψ(t), c(t))`
 
-`Ψ(t+1) = Ψ(t) + Δt · F_θ(Ψ(t), c(t))`
+Una variante continua es `dΨ/dt = Fθ(Ψ,c,t)`. “Líquida” debe referirse a una dinámica dependiente del estado/contexto o a un mecanismo de adaptación definido, no simplemente a repetir un MLP.
 
-Una variante continua puede expresarse como:
+Liquid Time-Constant Networks son referencia conceptual para dinámicas continuas con escalas temporales dependientes del estado. Los SSM/selective-state models como Mamba son referencias de ingeniería para estudiar recurrencia eficiente. No se presupone que ninguna de estas familias sea automáticamente superior.
 
-`dΨ/dt = F_θ(Ψ,c,t)`
+### 3. Predicción en el espacio de campo
 
-El carácter líquido debe significar que la dinámica puede adaptar su evolución al estado, contexto o incertidumbre, no simplemente que se ejecuta un MLP repetido.
+El núcleo predice estados `Ψ_t → Ψ̂_{t+1}`. La salida lingüística se decodifica al final. Debe medirse si esto reduce coste sin sacrificar composición, OOD y calidad semántica.
 
-Liquid Time-Constant Networks son una referencia teórica relevante porque utilizan dinámicas continuas con constantes de tiempo dependientes del estado. Mamba/SSM es una referencia de ingeniería para estudiar estados recurrentes selectivos y procesamiento eficiente, aunque no debe asumirse que su arquitectura sea automáticamente la mejor para este proyecto.
-
-### 3. Predicción de estados, no de tokens
-
-El objetivo de cada paso es predecir el siguiente estado de campo:
-
-`Ψ_t → Ψ̂_{t+1}`
-
-La probabilidad lingüística solo aparece cuando el sistema necesita producir una respuesta externa. Esto permite estudiar si una gran parte del cálculo actualmente asociado a generación autoregresiva puede reemplazarse por evolución en un espacio latente compacto.
-
-### 4. Dinámica dispersa
-
-Una hipótesis adicional es que no todos los nodos deben actualizarse en cada paso:
+### 4. Sparsity
 
 `A_t = TopK(|Ψ_t|, k)`
 
-`Ψ_{t+1} = Ψ_t + M(A_t) ⊙ F_θ(Ψ_t)`
+Solo se actualizarán componentes seleccionados si el coste de selección no cancela el ahorro. Comparar con la versión densa en el mismo Rust runtime y con calidad emparejada.
 
-La hipótesis debe probarse contra el modelo denso. La sparsidad no debe introducirse solo para obtener velocidad; debe demostrar que mantiene calidad y estabilidad.
+### 5. Memoria asociativa opcional
 
-### 5. Memoria asociativa como componente opcional
+La memoria asociativa puede alterar el estado o la trayectoria, pero no devolver respuestas directas. Nearest-neighbor y lookup se conservan como controles negativos/positivos, no como prueba de dinámica aprendida.
 
-Hopfield moderno y memorias asociativas densas muestran que los estados distribuidos pueden almacenar patrones de forma asociativa y que la capacidad puede crecer fuertemente con la dimensión. Esta línea puede inspirar una memoria de campo, pero el benchmark debe distinguir memoria asociativa de simple nearest-neighbor/lookup.
+### 6. Plasticidad y consolidación
 
-### 6. El LLM como periférico, no como motor cognitivo
+Separar:
+- hot path: `Ψ → Dθ → Ψ'`;
+- learning/sleep path: `experiencias → consolidación → Δθ / señal de aprendizaje`.
 
-La tesis fuerte que se desea evaluar es:
+El gate más importante exige que, después de consolidar, borrar episodios y almacenamiento de respuestas no elimine la mejora en estados nuevos.
 
-`lenguaje → representación → dinámica → representación → lenguaje`
+## Qué no se afirma todavía
 
-No:
-
-`lenguaje → Transformer → token siguiente → Transformer → token siguiente...`
-
-La comparación debe ser empírica. No se presupone que el campo sea superior al LLM.
-
-## Qué NO se afirma todavía
-
-Esta rama no demuestra por sí misma:
-
-- conciencia;
-- vida artificial;
-- inteligencia general;
-- causalidad física del campo;
-- superioridad frente a Transformers;
-- que los tokens sean intrínsecamente innecesarios;
-- que un campo compacto pueda representar todo el conocimiento lingüístico.
-
-Solo investiga si una representación de campo puede convertirse en el dominio principal de inferencia después de una codificación inicial.
+No se afirma conciencia, vida artificial, inteligencia general, causalidad física del campo, superioridad frente a Transformers ni suficiencia universal de una representación compacta. Se investiga si un sustrato dinámico externo puede aprender y ejecutar transformaciones con mejor relación capacidad/coste.
 
 ## Principio experimental
 
-Cada experimento debe poder responder:
+Cada experimento debe documentar:
+1. qué datos entran al encoder y al core;
+2. qué recursos están prohibidos durante el hot path;
+3. arquitectura, parámetros y operaciones;
+4. latencia separada de encoder, core y decoder;
+5. calidad seen/OOD/composición/rollout;
+6. pasos y nodos activos;
+7. memoria y coste de entrenamiento/consolidación;
+8. equivalencia numérica entre modelo entrenado y core Rust;
+9. semillas y procedencia;
+10. si la velocidad procede de computación reducida o de memorizar respuestas.
 
-1. ¿Qué información entra al núcleo?
-2. ¿Qué información está prohibida durante el hot path?
-3. ¿Cuántos estados actualiza?
-4. ¿Cuántos pasos ejecuta?
-5. ¿Qué precisión conserva?
-6. ¿Cuánto cuesta en µs/query?
-7. ¿Qué ocurre fuera de distribución?
-8. ¿Qué información lingüística permanece en Ψ?
-9. ¿Puede cambiarse el LLM encoder sin destruir la dinámica?
-10. ¿La velocidad procede de una representación compacta o de memorizar respuestas?
-
-## Familias experimentales
+## Familias E45–E57
 
 - E45: bottleneck token-free.
-- E46: dinámica líquida vs MLP recurrente vs SSM.
+- E46: Liquid vs MLP recurrente vs SSM.
 - E47: inferencia dispersa.
-- E48: inferencia adaptativa y early stopping.
-- E49: predicción multiescala/coarse-to-fine.
-- E50: trayectorias múltiples / beam geométrico.
-- E51: memoria asociativa de campo.
-- E52: consolidación online en el campo.
-- E53: separación inferencia/consolidación.
-- E54: eliminación completa del LLM después de Ψ₀.
-- E55: sustitución del LLM encoder.
-- E56: escalabilidad del campo.
-- E57: benchmark integral contra v4.
-
-La numeración continúa desde v4 para evitar confundir resultados.
+- E48: stopping adaptativo.
+- E49: coarse-to-fine.
+- E50: beam geométrico.
+- E51: memoria asociativa.
+- E52: plasticidad online.
+- E53: consolidación vs inferencia.
+- E54: kill test del acceso al LLM.
+- E55: encoder swap.
+- E56: escalabilidad.
+- E57: comparación futura contra v4.
 
 ## Criterios generales de aceptación
 
-Un experimento puede ser `PASS` únicamente si:
+Un resultado solo es `PASS` cuando tiene splits limpios, manifest reproducible, provenance, controles, métricas de calidad y coste, múltiples seeds, y auditoría de acceso a memoria. Una mejora de velocidad con degradación no controlada de calidad será `PARTIAL`.
 
-- tiene dataset y manifest reproducibles;
-- tiene train/dev/test separados;
-- registra provenance;
-- no consulta información prohibida;
-- tiene al menos un control adecuado;
-- reporta latencia p50/p95/p99;
-- reporta precisión y OOD;
-- reporta pasos de dinámica y actividad del campo;
-- no usa el decoder como tabla de respuestas;
-- no reinyecta el target durante rollout;
-- permite repetir el resultado con semillas independientes.
+Para cualquier modelo entrenado fuera de Rust se requiere una prueba de equivalencia de ejecución: mismas entradas y parámetros, error máximo y medio dentro de tolerancias fijadas antes del test, y mismos resultados discretos cuando corresponda. Si la equivalencia falla, no se atribuyen resultados del prototipo al core Rust.
 
-Un resultado de velocidad sin control de exactitud será `PARTIAL`, no `PASS`.
+## Descubrimientos buscados
 
-## Descubrimientos que cambiarían la hipótesis
-
-### Descubrimiento A — bottleneck suficiente
-Si un campo de 32–128 dimensiones conserva las propiedades semánticas necesarias y permite inferencia sin pérdida relevante, se valida el bottleneck como interfaz cognitiva candidata.
-
-### Descubrimiento B — dinámica aprende reglas
-Si `D_θ` compone transformaciones y generaliza a estados nunca observados sin RQM/tabla/NN/attractor lookup, se fortalece la hipótesis de que la dinámica es portadora de conocimiento operacional.
-
-### Descubrimiento C — sparse field
-Si actualizar solo una fracción de nodos mantiene calidad y reduce significativamente el coste, la sparsidad se convierte en una vía principal de escalabilidad.
-
-### Descubrimiento D — inferencia adaptativa
-Si la mayoría de consultas converge en pocos pasos y las difíciles reciben más cómputo, puede sustituirse el número fijo de iteraciones por un presupuesto dinámico basado en estabilidad/incertidumbre.
-
-### Descubrimiento E — consolidación plástica
-Si experiencias pueden modificar `D_θ` o un estado plástico auxiliar y, tras borrar episodios y memoria explícita, el sistema conserva una mejora causal sobre el control sin experiencia, aparece evidencia del tipo:
-
-`experiencia → consolidación → modificación persistente → nueva inferencia`
-
-Esto conecta esta rama con la pregunta central de v4, pero debe mantenerse experimentalmente separado.
+- **Bottleneck suficiente:** 32–128 dimensiones retienen relaciones relevantes con menor coste.
+- **Dinámica operacional:** el núcleo compone reglas en estados nunca observados sin lookup.
+- **Sparsity útil:** menos cómputo real a calidad equivalente.
+- **Inferencia adaptativa:** consultas fáciles convergen pronto y las difíciles reciben más pasos.
+- **Consolidación plástica:** experiencia modifica persistentemente el comportamiento; al borrar episodios, se conserva mejora causal.
+- **Portabilidad:** los parámetros entrenados con framework producen comportamiento equivalente en Rust.
+- **Independencia del LLM:** tras Ψ₀, el core funciona sin llamadas lingüísticas.
 
 ## Comparación futura con v4
 
-La comparación final deberá ser posterior a la finalización de v4 y utilizar un dataset sellado común.
+Solo después de cerrar v4: dataset común sellado, mismos seeds/tareas/decoder comparable, configuraciones congeladas, sin ajuste posterior al test. Competidores mínimos: v4 Dynamic Field, Liquid Rust, Liquid sparse, Liquid plástico/consolidado, baseline LLM, MLP recurrente y SSM.
 
-Comparar como mínimo:
+Métricas: accuracy, OOD, composición, estabilidad a largo horizonte, p50/p95/p99, active_nodes, pasos, memoria, coste de entrenamiento/consolidación, transferencia y persistencia.
 
-- v4 Dynamic Field;
-- Token-Free Liquid Field;
-- Token-Free Liquid + sparse;
-- Token-Free Liquid + consolidación;
-- baseline LLM;
-- baseline MLP recurrente;
-- baseline SSM.
-
-Métricas:
-
-`accuracy, OOD, composition, long-horizon stability, µs/query, p95, active_nodes, rollout_steps, memory_bytes, training_cost, consolidation_cost, persistence, transfer`.
-
-La pregunta final no será simplemente “¿cuál tiene mayor accuracy?”, sino:
-
-> ¿Qué arquitectura obtiene mejor relación entre capacidad de generalización, persistencia del aprendizaje y coste computacional, sin esconder memoria de respuestas dentro del decoder o de mecanismos de lookup?
+La decisión de merge depende de evidencia reproducible, no del objetivo de la rama.
