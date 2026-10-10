@@ -3596,6 +3596,109 @@ pub fn diagnose_e23(seed: u64, hp: &HyperparamLock) -> Vec<String> {
     out
 }
 
+/// Follow-up 2: E23 rollout variants on the v3.7 model (diagnostic).
+/// V0 baseline; V1 re-projection each step onto the encoder manifold
+/// (nearest grid point + pattern-search refine of the decoded point);
+/// V2 tangent spectral limit (δ scaled by 1/max(1,σ_max(J))); V3 both.
+/// Returns `seed,variant,cos@h1,h2,h4,h8,h16,h32,h64`.
+pub fn e23_variants(seed: u64, hp: &HyperparamLock) -> Vec<String> {
+    let path = FeatPath::SoftScale;
+    let rule = ContRule::Translation { dx: 0.35, dy: -0.2 };
+    let bundle = match generate_and_seal(seed ^ 0xE23, rule, hp) {
+        Ok(b) => b,
+        Err(_) => return vec![],
+    };
+    let (mut enc, mut dynm) = fresh_models(seed, hp);
+    let mut train_aug = bundle.dataset.train.clone();
+    {
+        let mut rng_mf = Xoshiro256StarStar::seed_from_u64(seed ^ 0xE23F);
+        train_aug.extend(multifamily_curriculum(&mut rng_mf, 3));
+    }
+    let _ = train_consistency(&mut enc, &train_aug, hp.enc_epochs, seed, path);
+    let _ = train_dynamics(
+        &mut enc,
+        &mut dynm,
+        &train_aug,
+        hp.dyn_epochs,
+        hp.dyn_updates,
+        None,
+        seed ^ 2,
+        path,
+    );
+    let mut grid = Vec::new();
+    for gx in 0..=70 {
+        for gy in 0..=50 {
+            let p = (
+                -3.0 + 35.0 * gx as f64 / 70.0,
+                -18.0 + 26.0 * gy as f64 / 50.0,
+            );
+            grid.push((p, encode_xy(&enc, p, None, path)));
+        }
+    }
+    let reproj = |z: &[f64], action: Option<(f64, f64)>| -> Vec<f64> {
+        let mut best = grid
+            .iter()
+            .map(|(p, g)| (*p, cosine(z, g)))
+            .fold(((0.0, 0.0), f64::MIN), |a, b| if b.1 > a.1 { b } else { a });
+        let mut stp = 0.5;
+        for _ in 0..24 {
+            let mut improved = false;
+            for (dx, dy) in [(stp, 0.0), (-stp, 0.0), (0.0, stp), (0.0, -stp)] {
+                let p = (best.0 .0 + dx, best.0 .1 + dy);
+                let c = cosine(z, &encode_xy(&enc, p, None, path));
+                if c > best.1 {
+                    best = (p, c);
+                    improved = true;
+                }
+            }
+            if !improved {
+                stp *= 0.5;
+            }
+        }
+        encode_xy(&enc, best.0, action, path)
+    };
+    let hs = [1usize, 2, 4, 8, 16, 32, 64];
+    let names = [
+        "V0_baseline",
+        "V1_manifold_reproj",
+        "V2_spectral_limit",
+        "V3_reproj+spectral",
+    ];
+    let mut out = vec![];
+    for (v, name) in names.iter().enumerate() {
+        let mut cos_h = vec![vec![]; hs.len()];
+        for s in &bundle.dataset.test {
+            let mut fp = encode_xy(&enc, s.x, s.action, path);
+            let mut pt = s.x;
+            for t in 1..=64usize {
+                let mut nxt = dynm.step(&fp);
+                if v >= 2 {
+                    let sg = jac_sigma_field(&dynm, &fp).max(1.0);
+                    nxt = fp.iter().zip(&nxt).map(|(a, b)| a + (b - a) / sg).collect();
+                    normalize(&mut nxt);
+                }
+                if v == 1 || v == 3 {
+                    nxt = reproj(&nxt, s.action);
+                }
+                fp = nxt;
+                pt = rule.apply(pt);
+                if let Some(i) = hs.iter().position(|&h| h == t) {
+                    cos_h[i].push(cosine(&fp, &encode_xy(&enc, pt, s.action, path)));
+                }
+            }
+        }
+        out.push(format!(
+            "0x{seed:X},{name},{}",
+            cos_h
+                .iter()
+                .map(|c| format!("{:.4}", mean(c)))
+                .collect::<Vec<_>>()
+                .join(",")
+        ));
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

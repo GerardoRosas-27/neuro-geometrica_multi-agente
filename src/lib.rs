@@ -104,6 +104,7 @@ pub mod v4_dataset;
 pub mod v4_e45;
 pub mod v4_metrics;
 pub mod v4_provenance;
+pub mod v4_stability;
 /// VMC Jastrow complejo. Compila porque el unificado lo invoca; no justifica
 /// el módulo en el crate público. Tests detrás de `research`. Ver docs/archive.md.
 pub mod variational_spin_liquid_vmc;

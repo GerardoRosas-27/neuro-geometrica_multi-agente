@@ -63,3 +63,10 @@ Gate por seed: max(acc L1, acc L2) ≥ acc T1 − 0.05, queries=0, leaked=0. Exp
 - Ablaciones genéricas: D corrupto = contexto de familia desplazado (+1); F sin topología = RFF sin q (sólo contexto); E/G como antes.
 - Re-corrida E35/E36 y E45 con `--consol generic`, mismas seeds DEV/CONFIRM, mismos gates (§4, §7).
 - Corrección E45 (aplica a rule y generic): en la fase 2, H consolidaba con episodios de fase 1 ya "borrados"; ahora fase 2 = episodios fase 2 + pseudo-experiencias generadas desde la señal de fase 1 (igual para T1). E45 rule se re-corre y sustituye a la versión anterior.
+
+## 9. Seguimiento 2 — estabilidad E33/E23 (pre-registrado antes de correr)
+
+- `src/v4_stability.rs` (E33S): Dφ entrenado igual que E35-A (consolidación rule; lock sin cambios); sólo cambia el operador de rollout: V0 baseline (ya residual), V1 re-proyección cada paso a la órbita de similitud(+reflexión) de x0, V2 límite espectral δ/max(1,σ_max(J)), V3 V1+V2. Gate por variante = gate E33 (región de estabilidad ≥8 en rotate+reflect), mayoría en DEV y CONFIRM.
+- "Residual form": Dφ v4 ya es residual (V0). "Non-saturating encoder": no aplica en v4 (encoder identidad); en v3 requiere re-entrenar encoder/Dφ → NOT_RUN en este ciclo.
+- E23 v3.7 (diagnóstico, seeds 0xA300–0xA30F, LONG lock): V0, V1 (re-proyección al manifold del encoder: punto de grilla más cercano + pattern search), V2 límite espectral, V3 ambos; se reporta cos por horizonte, sin gate.
+- Advertencia pre-declarada: V1 inyecta el prior "el objeto se mueve en una órbita de similitud", que es exacto para rotate/reflect; un PASS de V1 no es evidencia de estabilidad intrínseca de Dφ.

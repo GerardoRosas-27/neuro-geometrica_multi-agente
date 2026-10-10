@@ -999,6 +999,15 @@ pub fn run_seed(seed: u64, opts: &RunOpts) -> SeedOut {
     let noflags = AuditFlags::default();
     let tr = triples(&s.ds.train);
 
+    if opts.exps.len() == 1 && opts.on("E33S") {
+        rows.extend(crate::v4_stability::run(seed));
+        return SeedOut {
+            rows,
+            provenance: prov,
+            manifest_json,
+            e32_trace: trace,
+        };
+    }
     if opts.exps.len() == 1 && opts.on("E45") {
         rows.extend(crate::v4_e45::run(seed));
         return SeedOut {
