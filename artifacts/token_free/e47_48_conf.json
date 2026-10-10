@@ -1,0 +1,3377 @@
+[
+ {
+  "exp": "E47",
+  "model": "liquid_ss",
+  "seed": 3,
+  "k": 1,
+  "q": {
+   "OOD": 0.03100000135600567,
+   "OOD_cost": 4.0,
+   "COMPOSITION": 0.017500000074505806,
+   "COMPOSITION_cost": 4.0,
+   "LONG_HORIZON": 0.0010000000474974513,
+   "LONG_HORIZON_cost": 4.0,
+   "axis1": 0.016500000492669642
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.511,
+    "p99": 0.587
+   },
+   "latency_us_step": {
+    "mean": 6.998670312500002,
+    "p50": 6.982,
+    "p95": 9.079,
+    "p99": 11.088
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33228,
+   "params_sha256": "71cef2fadec4eeae29884f6d4584ab020354c0bcf3928d9416f9670718dbec10",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 1.9073486328125e-06,
+    "mean_abs": 3.356944944243878e-09,
+    "p99_abs": 0.0
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 1.1444091796875e-05,
+    "mean_abs": 4.302228262531571e-08,
+    "p99_abs": 4.76837158203125e-07
+   },
+   "substeps_per_op_mean": 4.0,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E47",
+  "model": "liquid_ss",
+  "seed": 3,
+  "k": 2,
+  "q": {
+   "OOD": 0.029500002041459084,
+   "OOD_cost": 4.0,
+   "COMPOSITION": 0.016499999910593033,
+   "COMPOSITION_cost": 4.0,
+   "LONG_HORIZON": 0.0,
+   "LONG_HORIZON_cost": 4.0,
+   "axis1": 0.015333333984017372
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.413,
+    "p99": 0.693
+   },
+   "latency_us_step": {
+    "mean": 6.7693197265625,
+    "p50": 6.431,
+    "p95": 8.318,
+    "p99": 10.211
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33228,
+   "params_sha256": "71cef2fadec4eeae29884f6d4584ab020354c0bcf3928d9416f9670718dbec10",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 1.9073486328125e-06,
+    "mean_abs": 7.595190254505724e-09,
+    "p99_abs": 2.980232238769531e-07
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 3.0517578125e-05,
+    "mean_abs": 8.384404281969182e-08,
+    "p99_abs": 9.5367431640625e-07
+   },
+   "substeps_per_op_mean": 4.0,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E47",
+  "model": "liquid_ss",
+  "seed": 3,
+  "k": 4,
+  "q": {
+   "OOD": 0.027500001713633537,
+   "OOD_cost": 4.0,
+   "COMPOSITION": 0.015500000678002834,
+   "COMPOSITION_cost": 4.0,
+   "LONG_HORIZON": 0.0020000000949949026,
+   "LONG_HORIZON_cost": 4.0,
+   "axis1": 0.015000000828877091
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.41,
+    "p99": 0.478
+   },
+   "latency_us_step": {
+    "mean": 8.265842187500006,
+    "p50": 7.629,
+    "p95": 9.734,
+    "p99": 11.793
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33228,
+   "params_sha256": "71cef2fadec4eeae29884f6d4584ab020354c0bcf3928d9416f9670718dbec10",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 2.86102294921875e-06,
+    "mean_abs": 1.7919774109032005e-08,
+    "p99_abs": 4.76837158203125e-07
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 4.57763671875e-05,
+    "mean_abs": 1.520528485343675e-07,
+    "p99_abs": 1.1920928955078125e-06
+   },
+   "substeps_per_op_mean": 4.0,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E47",
+  "model": "liquid_ss",
+  "seed": 3,
+  "k": 7,
+  "q": {
+   "OOD": 0.02500000037252903,
+   "OOD_cost": 4.0,
+   "COMPOSITION": 0.013500000350177288,
+   "COMPOSITION_cost": 4.0,
+   "LONG_HORIZON": 0.0,
+   "LONG_HORIZON_cost": 4.0,
+   "axis1": 0.01283333357423544
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.526,
+    "p99": 0.64
+   },
+   "latency_us_step": {
+    "mean": 14.18706054687497,
+    "p50": 13.87,
+    "p95": 19.217,
+    "p99": 23.73
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33228,
+   "params_sha256": "71cef2fadec4eeae29884f6d4584ab020354c0bcf3928d9416f9670718dbec10",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 2.86102294921875e-06,
+    "mean_abs": 3.274817572673783e-08,
+    "p99_abs": 8.344650268554688e-07
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 1.52587890625e-05,
+    "mean_abs": 2.1927212401351426e-07,
+    "p99_abs": 1.6689300537109375e-06
+   },
+   "substeps_per_op_mean": 4.0,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E47",
+  "model": "liquid_ss",
+  "seed": 3,
+  "k": 13,
+  "q": {
+   "OOD": 0.01850000023841858,
+   "OOD_cost": 4.0,
+   "COMPOSITION": 0.010000000707805157,
+   "COMPOSITION_cost": 4.0,
+   "LONG_HORIZON": 0.0020000000949949026,
+   "LONG_HORIZON_cost": 4.0,
+   "axis1": 0.010166667013739547
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.513,
+    "p99": 0.817
+   },
+   "latency_us_step": {
+    "mean": 14.744550195312527,
+    "p50": 14.346,
+    "p95": 17.415,
+    "p99": 21.733
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33228,
+   "params_sha256": "71cef2fadec4eeae29884f6d4584ab020354c0bcf3928d9416f9670718dbec10",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 2.86102294921875e-06,
+    "mean_abs": 6.909658623044379e-08,
+    "p99_abs": 9.5367431640625e-07
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 3.62396240234375e-05,
+    "mean_abs": 3.714368972396187e-07,
+    "p99_abs": 2.86102294921875e-06
+   },
+   "substeps_per_op_mean": 4.0,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E47",
+  "model": "liquid_ss",
+  "seed": 3,
+  "k": 32,
+  "q": {
+   "OOD": 0.017000000923871994,
+   "OOD_cost": 4.0,
+   "COMPOSITION": 0.018000001087784767,
+   "COMPOSITION_cost": 4.0,
+   "LONG_HORIZON": 0.0010000000474974513,
+   "LONG_HORIZON_cost": 4.0,
+   "axis1": 0.012000000686384737
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.408,
+    "p99": 0.52
+   },
+   "latency_us_step": {
+    "mean": 26.82390800781247,
+    "p50": 24.846,
+    "p95": 32.799,
+    "p99": 37.583
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33228,
+   "params_sha256": "71cef2fadec4eeae29884f6d4584ab020354c0bcf3928d9416f9670718dbec10",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 2.86102294921875e-06,
+    "mean_abs": 2.1201179833951755e-07,
+    "p99_abs": 1.430511474609375e-06
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 0.0002518892288208008,
+    "mean_abs": 1.5026012079033535e-06,
+    "p99_abs": 1.4781951904296875e-05
+   },
+   "substeps_per_op_mean": 4.0,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E47",
+  "model": "liquid_ss",
+  "seed": 3,
+  "k": 64,
+  "q": {
+   "OOD": 0.19750000536441803,
+   "OOD_cost": 4.0,
+   "COMPOSITION": 0.3410000205039978,
+   "COMPOSITION_cost": 4.0,
+   "LONG_HORIZON": 0.05400000140070915,
+   "LONG_HORIZON_cost": 4.0,
+   "axis1": 0.19750000908970833
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.51,
+    "p99": 0.576
+   },
+   "latency_us_step": {
+    "mean": 45.62190156250007,
+    "p50": 42.334,
+    "p95": 56.221,
+    "p99": 60.948
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33228,
+   "params_sha256": "71cef2fadec4eeae29884f6d4584ab020354c0bcf3928d9416f9670718dbec10",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 3.7550926208496094e-06,
+    "mean_abs": 4.96995255616639e-07,
+    "p99_abs": 1.9073486328125e-06
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 0.0027277469635009766,
+    "mean_abs": 1.2886048921245674e-05,
+    "p99_abs": 0.0002224445343017578
+   },
+   "substeps_per_op_mean": 4.0,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E47",
+  "model": "mlp",
+  "seed": 3,
+  "k": 1,
+  "q": {
+   "OOD": 0.03150000050663948,
+   "OOD_cost": 1.0,
+   "COMPOSITION": 0.017500000074505806,
+   "COMPOSITION_cost": 1.0,
+   "LONG_HORIZON": 0.0010000000474974513,
+   "LONG_HORIZON_cost": 1.0,
+   "axis1": 0.016666666876214247
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.47,
+    "p99": 0.544
+   },
+   "latency_us_step": {
+    "mean": 3.8912763671875057,
+    "p50": 3.884,
+    "p95": 4.146,
+    "p99": 4.553
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33139,
+   "params_sha256": "c76bdce4b2efea975319832714a3bc170113b5d653b92ddbd90e11fbf354e113",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 3.337860107421875e-06,
+    "mean_abs": 7.503331289626658e-09,
+    "p99_abs": 2.384185791015625e-07
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 3.337860107421875e-06,
+    "mean_abs": 8.943015927798115e-08,
+    "p99_abs": 9.5367431640625e-07
+   },
+   "substeps_per_op_mean": 1.0,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E47",
+  "model": "mlp",
+  "seed": 3,
+  "k": 2,
+  "q": {
+   "OOD": 0.029000001028180122,
+   "OOD_cost": 1.0,
+   "COMPOSITION": 0.017000000923871994,
+   "COMPOSITION_cost": 1.0,
+   "LONG_HORIZON": 0.0,
+   "LONG_HORIZON_cost": 1.0,
+   "axis1": 0.015333333984017372
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.453,
+    "p99": 0.52
+   },
+   "latency_us_step": {
+    "mean": 3.5258197265624993,
+    "p50": 3.418,
+    "p95": 4.106,
+    "p99": 4.773
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33139,
+   "params_sha256": "c76bdce4b2efea975319832714a3bc170113b5d653b92ddbd90e11fbf354e113",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 2.384185791015625e-06,
+    "mean_abs": 1.5500972949666902e-08,
+    "p99_abs": 4.76837158203125e-07
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 3.0994415283203125e-06,
+    "mean_abs": 1.5496451055696525e-07,
+    "p99_abs": 1.1920928955078125e-06
+   },
+   "substeps_per_op_mean": 1.0,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E47",
+  "model": "mlp",
+  "seed": 3,
+  "k": 4,
+  "q": {
+   "OOD": 0.0215000007301569,
+   "OOD_cost": 1.0,
+   "COMPOSITION": 0.014500000514090061,
+   "COMPOSITION_cost": 1.0,
+   "LONG_HORIZON": 0.0,
+   "LONG_HORIZON_cost": 1.0,
+   "axis1": 0.012000000414748987
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.514,
+    "p99": 0.886
+   },
+   "latency_us_step": {
+    "mean": 4.4772001953125,
+    "p50": 4.101,
+    "p95": 5.925,
+    "p99": 7.233
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33139,
+   "params_sha256": "c76bdce4b2efea975319832714a3bc170113b5d653b92ddbd90e11fbf354e113",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 3.814697265625e-06,
+    "mean_abs": 3.450088570389198e-08,
+    "p99_abs": 9.5367431640625e-07
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 3.0994415283203125e-06,
+    "mean_abs": 2.385537527516135e-07,
+    "p99_abs": 1.430511474609375e-06
+   },
+   "substeps_per_op_mean": 1.0,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E47",
+  "model": "mlp",
+  "seed": 3,
+  "k": 7,
+  "q": {
+   "OOD": 0.0215000007301569,
+   "OOD_cost": 1.0,
+   "COMPOSITION": 0.011500000953674316,
+   "COMPOSITION_cost": 1.0,
+   "LONG_HORIZON": 0.0020000000949949026,
+   "LONG_HORIZON_cost": 1.0,
+   "axis1": 0.011666667259608706
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.411,
+    "p99": 0.658
+   },
+   "latency_us_step": {
+    "mean": 4.24274726562501,
+    "p50": 4.077,
+    "p95": 5.197,
+    "p99": 6.74
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33139,
+   "params_sha256": "c76bdce4b2efea975319832714a3bc170113b5d653b92ddbd90e11fbf354e113",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 3.337860107421875e-06,
+    "mean_abs": 6.937307261978276e-08,
+    "p99_abs": 1.430511474609375e-06
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 3.0994415283203125e-06,
+    "mean_abs": 3.1078758411240415e-07,
+    "p99_abs": 1.4901161193847656e-06
+   },
+   "substeps_per_op_mean": 1.0,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E47",
+  "model": "mlp",
+  "seed": 3,
+  "k": 13,
+  "q": {
+   "OOD": 0.01600000075995922,
+   "OOD_cost": 1.0,
+   "COMPOSITION": 0.012500000186264515,
+   "COMPOSITION_cost": 1.0,
+   "LONG_HORIZON": 0.0,
+   "LONG_HORIZON_cost": 1.0,
+   "axis1": 0.009500000315407911
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.408,
+    "p99": 0.524
+   },
+   "latency_us_step": {
+    "mean": 5.578080468750003,
+    "p50": 5.432,
+    "p95": 6.905,
+    "p99": 8.655
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33139,
+   "params_sha256": "c76bdce4b2efea975319832714a3bc170113b5d653b92ddbd90e11fbf354e113",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 4.76837158203125e-06,
+    "mean_abs": 1.438271510778577e-07,
+    "p99_abs": 1.9073486328125e-06
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 3.814697265625e-06,
+    "mean_abs": 4.484167419605001e-07,
+    "p99_abs": 1.9073486328125e-06
+   },
+   "substeps_per_op_mean": 1.0,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E47",
+  "model": "mlp",
+  "seed": 3,
+  "k": 32,
+  "q": {
+   "OOD": 0.049000002443790436,
+   "OOD_cost": 1.0,
+   "COMPOSITION": 0.04350000247359276,
+   "COMPOSITION_cost": 1.0,
+   "LONG_HORIZON": 0.0020000000949949026,
+   "LONG_HORIZON_cost": 1.0,
+   "axis1": 0.0315000016707927
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.56,
+    "p99": 1.0
+   },
+   "latency_us_step": {
+    "mean": 7.998722851562503,
+    "p50": 7.465,
+    "p95": 9.923,
+    "p99": 13.005
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33139,
+   "params_sha256": "c76bdce4b2efea975319832714a3bc170113b5d653b92ddbd90e11fbf354e113",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 5.7220458984375e-06,
+    "mean_abs": 3.818918230535928e-07,
+    "p99_abs": 2.384185791015625e-06
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 1.043081283569336e-05,
+    "mean_abs": 1.1256794891778554e-06,
+    "p99_abs": 4.76837158203125e-06
+   },
+   "substeps_per_op_mean": 1.0,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E47",
+  "model": "mlp",
+  "seed": 3,
+  "k": 64,
+  "q": {
+   "OOD": 0.3035000264644623,
+   "OOD_cost": 1.0,
+   "COMPOSITION": 0.503000020980835,
+   "COMPOSITION_cost": 1.0,
+   "LONG_HORIZON": 0.1380000114440918,
+   "LONG_HORIZON_cost": 1.0,
+   "axis1": 0.3148333529631297
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.455,
+    "p99": 0.52
+   },
+   "latency_us_step": {
+    "mean": 11.174171875000056,
+    "p50": 11.573,
+    "p95": 13.219,
+    "p99": 14.577
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33139,
+   "params_sha256": "c76bdce4b2efea975319832714a3bc170113b5d653b92ddbd90e11fbf354e113",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 5.7220458984375e-06,
+    "mean_abs": 7.83965276696108e-07,
+    "p99_abs": 2.86102294921875e-06
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 0.0011647939682006836,
+    "mean_abs": 7.661764470867638e-06,
+    "p99_abs": 7.200241088867188e-05
+   },
+   "substeps_per_op_mean": 1.0,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E48",
+  "mode": "fixed",
+  "K": 1,
+  "seed": 3,
+  "q": {
+   "OOD": 0.0010000000474974513,
+   "OOD_cost": 1.0,
+   "COMPOSITION": 0.0005000000237487257,
+   "COMPOSITION_cost": 1.0,
+   "LONG_HORIZON": 0.0010000000474974513,
+   "LONG_HORIZON_cost": 1.0,
+   "axis1": 0.0008333333729145428
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.409,
+    "p99": 0.47
+   },
+   "latency_us_step": {
+    "mean": 11.758822070312492,
+    "p50": 10.243,
+    "p95": 13.709,
+    "p99": 15.534
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33228,
+   "params_sha256": "71cef2fadec4eeae29884f6d4584ab020354c0bcf3928d9416f9670718dbec10",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 7.62939453125e-06,
+    "mean_abs": 1.1656181868602289e-06,
+    "p99_abs": 4.291534423828125e-06
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 0.23851299285888672,
+    "mean_abs": 0.009440165682462975,
+    "p99_abs": 0.06656670570373535
+   },
+   "substeps_per_op_mean": 1.0,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E48",
+  "mode": "fixed",
+  "K": 2,
+  "seed": 3,
+  "q": {
+   "OOD": 0.0820000022649765,
+   "OOD_cost": 2.0,
+   "COMPOSITION": 0.15900000929832458,
+   "COMPOSITION_cost": 2.0,
+   "LONG_HORIZON": 0.01100000087171793,
+   "LONG_HORIZON_cost": 2.0,
+   "axis1": 0.08400000414500634
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.455,
+    "p99": 0.524
+   },
+   "latency_us_step": {
+    "mean": 21.990205078124966,
+    "p50": 20.207,
+    "p95": 26.861,
+    "p99": 30.078
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33228,
+   "params_sha256": "71cef2fadec4eeae29884f6d4584ab020354c0bcf3928d9416f9670718dbec10",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 8.58306884765625e-06,
+    "mean_abs": 9.233986020262819e-07,
+    "p99_abs": 3.337860107421875e-06
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 0.020392656326293945,
+    "mean_abs": 0.0004269311865527925,
+    "p99_abs": 0.0043544769287109375
+   },
+   "substeps_per_op_mean": 2.0,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E48",
+  "mode": "fixed",
+  "K": 4,
+  "seed": 3,
+  "q": {
+   "OOD": 0.19750000536441803,
+   "OOD_cost": 4.0,
+   "COMPOSITION": 0.3410000205039978,
+   "COMPOSITION_cost": 4.0,
+   "LONG_HORIZON": 0.05400000140070915,
+   "LONG_HORIZON_cost": 4.0,
+   "axis1": 0.19750000908970833
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.407,
+    "p99": 0.472
+   },
+   "latency_us_step": {
+    "mean": 45.47493300781247,
+    "p50": 44.199,
+    "p95": 53.908,
+    "p99": 60.537
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33228,
+   "params_sha256": "71cef2fadec4eeae29884f6d4584ab020354c0bcf3928d9416f9670718dbec10",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 3.7550926208496094e-06,
+    "mean_abs": 4.96995255616639e-07,
+    "p99_abs": 1.9073486328125e-06
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 0.0027277469635009766,
+    "mean_abs": 1.2886048921245674e-05,
+    "p99_abs": 0.0002224445343017578
+   },
+   "substeps_per_op_mean": 4.0,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E48",
+  "mode": "fixed",
+  "K": 8,
+  "seed": 3,
+  "q": {
+   "OOD": 0.18200001120567322,
+   "OOD_cost": 8.0,
+   "COMPOSITION": 0.29250001907348633,
+   "COMPOSITION_cost": 8.0,
+   "LONG_HORIZON": 0.036000002175569534,
+   "LONG_HORIZON_cost": 8.0,
+   "axis1": 0.17016667748490968
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.407,
+    "p99": 0.479
+   },
+   "latency_us_step": {
+    "mean": 89.84095507812488,
+    "p50": 82.363,
+    "p95": 112.492,
+    "p99": 123.318
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33228,
+   "params_sha256": "71cef2fadec4eeae29884f6d4584ab020354c0bcf3928d9416f9670718dbec10",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 3.814697265625e-06,
+    "mean_abs": 3.481732449017727e-07,
+    "p99_abs": 1.430511474609375e-06
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 0.0016858577728271484,
+    "mean_abs": 6.908357306656399e-06,
+    "p99_abs": 0.0001227855682373047
+   },
+   "substeps_per_op_mean": 8.0,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E48",
+  "mode": "fixed",
+  "K": 16,
+  "seed": 3,
+  "q": {
+   "OOD": 0.16850000619888306,
+   "OOD_cost": 16.0,
+   "COMPOSITION": 0.26500001549720764,
+   "COMPOSITION_cost": 16.0,
+   "LONG_HORIZON": 0.026000000536441803,
+   "LONG_HORIZON_cost": 16.0,
+   "axis1": 0.15316667407751083
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.454,
+    "p99": 0.532
+   },
+   "latency_us_step": {
+    "mean": 184.69713652343768,
+    "p50": 171.003,
+    "p95": 230.485,
+    "p99": 259.356
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33228,
+   "params_sha256": "71cef2fadec4eeae29884f6d4584ab020354c0bcf3928d9416f9670718dbec10",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 3.337860107421875e-06,
+    "mean_abs": 3.07087503870207e-07,
+    "p99_abs": 1.3113021850585938e-06
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 0.001987934112548828,
+    "mean_abs": 1.0919432455125389e-05,
+    "p99_abs": 0.00023114681243896484
+   },
+   "substeps_per_op_mean": 16.0,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E48",
+  "mode": "fixed",
+  "K": 32,
+  "seed": 3,
+  "q": {
+   "OOD": 0.15650001168251038,
+   "OOD_cost": 32.0,
+   "COMPOSITION": 0.2510000169277191,
+   "COMPOSITION_cost": 32.0,
+   "LONG_HORIZON": 0.02200000174343586,
+   "LONG_HORIZON_cost": 32.0,
+   "axis1": 0.1431666767845551
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.479,
+    "p99": 0.557
+   },
+   "latency_us_step": {
+    "mean": 352.1237933593747,
+    "p50": 326.092,
+    "p95": 436.061,
+    "p99": 495.201
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33228,
+   "params_sha256": "71cef2fadec4eeae29884f6d4584ab020354c0bcf3928d9416f9670718dbec10",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 3.337860107421875e-06,
+    "mean_abs": 3.0658003424832714e-07,
+    "p99_abs": 1.430511474609375e-06
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 0.0016360282897949219,
+    "mean_abs": 9.605863411366045e-06,
+    "p99_abs": 0.00017452239990234375
+   },
+   "substeps_per_op_mean": 32.0,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E48",
+  "mode": "fixed",
+  "K": 64,
+  "seed": 3,
+  "q": {
+   "OOD": 0.1550000011920929,
+   "OOD_cost": 64.0,
+   "COMPOSITION": 0.24250000715255737,
+   "COMPOSITION_cost": 64.0,
+   "LONG_HORIZON": 0.017000000923871994,
+   "LONG_HORIZON_cost": 64.0,
+   "axis1": 0.1381666697561741
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.409,
+    "p99": 0.467
+   },
+   "latency_us_step": {
+    "mean": 696.1542624999995,
+    "p50": 652.445,
+    "p95": 854.861,
+    "p99": 948.76
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33228,
+   "params_sha256": "71cef2fadec4eeae29884f6d4584ab020354c0bcf3928d9416f9670718dbec10",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 2.384185791015625e-06,
+    "mean_abs": 3.054595509865976e-07,
+    "p99_abs": 1.1920928955078125e-06
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 0.007544517517089844,
+    "mean_abs": 1.4657084292934996e-05,
+    "p99_abs": 0.00016546249389648438
+   },
+   "substeps_per_op_mean": 64.0,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E48",
+  "mode": "adaptive",
+  "eps": 0.1,
+  "seed": 3,
+  "q": {
+   "OOD": 0.17400000989437103,
+   "OOD_cost": 19.532001495361328,
+   "COMPOSITION": 0.27549999952316284,
+   "COMPOSITION_cost": 18.863000869750977,
+   "LONG_HORIZON": 0.03100000135600567,
+   "LONG_HORIZON_cost": 19.89175033569336,
+   "axis1": 0.1601666702578465
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.407,
+    "p99": 0.473
+   },
+   "latency_us_step": {
+    "mean": 207.15275937499965,
+    "p50": 164.645,
+    "p95": 382.283,
+    "p99": 431.921
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33228,
+   "params_sha256": "71cef2fadec4eeae29884f6d4584ab020354c0bcf3928d9416f9670718dbec10",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 3.814697265625e-06,
+    "mean_abs": 3.384872968581476e-07,
+    "p99_abs": 1.430511474609375e-06
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 0.0017328262329101562,
+    "mean_abs": 1.0779628567547661e-05,
+    "p99_abs": 0.0001888573169708252
+   },
+   "substeps_per_op_mean": 20.1494140625,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E48",
+  "mode": "adaptive",
+  "eps": 0.03,
+  "seed": 3,
+  "q": {
+   "OOD": 0.15800000727176666,
+   "OOD_cost": 45.14950180053711,
+   "COMPOSITION": 0.2540000081062317,
+   "COMPOSITION_cost": 41.93250274658203,
+   "LONG_HORIZON": 0.026000000536441803,
+   "LONG_HORIZON_cost": 44.2765007019043,
+   "axis1": 0.14600000530481339
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.409,
+    "p99": 0.477
+   },
+   "latency_us_step": {
+    "mean": 568.1128296875,
+    "p50": 488.222,
+    "p95": 917.891,
+    "p99": 1445.506
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33228,
+   "params_sha256": "71cef2fadec4eeae29884f6d4584ab020354c0bcf3928d9416f9670718dbec10",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 3.337860107421875e-06,
+    "mean_abs": 2.987508622709356e-07,
+    "p99_abs": 1.1920928955078125e-06
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 0.0010015368461608887,
+    "mean_abs": 6.330159038725469e-06,
+    "p99_abs": 9.918212890625e-05
+   },
+   "substeps_per_op_mean": 45.0654296875,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E48",
+  "mode": "adaptive",
+  "eps": 0.01,
+  "seed": 3,
+  "q": {
+   "OOD": 0.1525000035762787,
+   "OOD_cost": 95.68800354003906,
+   "COMPOSITION": 0.24550001323223114,
+   "COMPOSITION_cost": 89.78400421142578,
+   "LONG_HORIZON": 0.01900000125169754,
+   "LONG_HORIZON_cost": 89.46400451660156,
+   "axis1": 0.13900000602006912
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.494,
+    "p99": 0.569
+   },
+   "latency_us_step": {
+    "mean": 1227.7769632812478,
+    "p50": 1280.486,
+    "p95": 1662.568,
+    "p99": 1775.332
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33228,
+   "params_sha256": "71cef2fadec4eeae29884f6d4584ab020354c0bcf3928d9416f9670718dbec10",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 2.384185791015625e-06,
+    "mean_abs": 3.080950250478054e-07,
+    "p99_abs": 1.1920928955078125e-06
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 0.0014448165893554688,
+    "mean_abs": 8.45468014887274e-06,
+    "p99_abs": 0.000156402587890625
+   },
+   "substeps_per_op_mean": 91.0703125,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E48",
+  "mode": "adaptive",
+  "eps": 0.003,
+  "seed": 3,
+  "q": {
+   "OOD": 0.1550000011920929,
+   "OOD_cost": 122.83000946044922,
+   "COMPOSITION": 0.24250000715255737,
+   "COMPOSITION_cost": 122.76400756835938,
+   "LONG_HORIZON": 0.017000000923871994,
+   "LONG_HORIZON_cost": 121.40200805664062,
+   "axis1": 0.1381666697561741
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.41,
+    "p99": 0.495
+   },
+   "latency_us_step": {
+    "mean": 1437.6165599609344,
+    "p50": 1322.613,
+    "p95": 1760.22,
+    "p99": 2011.851
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33228,
+   "params_sha256": "71cef2fadec4eeae29884f6d4584ab020354c0bcf3928d9416f9670718dbec10",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 2.384185791015625e-06,
+    "mean_abs": 3.054595509865976e-07,
+    "p99_abs": 1.1920928955078125e-06
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 0.0006488561630249023,
+    "mean_abs": 5.4377581193421065e-06,
+    "p99_abs": 8.58306884765625e-05
+   },
+   "substeps_per_op_mean": 121.88671875,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E47",
+  "model": "liquid_ss",
+  "seed": 4,
+  "k": 1,
+  "q": {
+   "OOD": 0.030500002205371857,
+   "OOD_cost": 4.0,
+   "COMPOSITION": 0.017000000923871994,
+   "COMPOSITION_cost": 4.0,
+   "LONG_HORIZON": 0.0,
+   "LONG_HORIZON_cost": 4.0,
+   "axis1": 0.015833334376414616
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.41,
+    "p99": 0.47
+   },
+   "latency_us_step": {
+    "mean": 6.03453496093751,
+    "p50": 5.809,
+    "p95": 7.686,
+    "p99": 9.145
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33228,
+   "params_sha256": "5bf021acf593a161d364b1ac1b286d27716f5e3b32f127c6ae4a1e59d1976de8",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 1.9073486328125e-06,
+    "mean_abs": 3.14321368932724e-09,
+    "p99_abs": 0.0
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 9.5367431640625e-06,
+    "mean_abs": 4.320008883951232e-08,
+    "p99_abs": 5.960464477539062e-07
+   },
+   "substeps_per_op_mean": 4.0,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E47",
+  "model": "liquid_ss",
+  "seed": 4,
+  "k": 2,
+  "q": {
+   "OOD": 0.029500002041459084,
+   "OOD_cost": 4.0,
+   "COMPOSITION": 0.01600000075995922,
+   "COMPOSITION_cost": 4.0,
+   "LONG_HORIZON": 0.0,
+   "LONG_HORIZON_cost": 4.0,
+   "axis1": 0.015166667600472769
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.407,
+    "p99": 0.47
+   },
+   "latency_us_step": {
+    "mean": 6.6506892578125045,
+    "p50": 6.422,
+    "p95": 8.507,
+    "p99": 9.952
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33228,
+   "params_sha256": "5bf021acf593a161d364b1ac1b286d27716f5e3b32f127c6ae4a1e59d1976de8",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 1.9073486328125e-06,
+    "mean_abs": 7.323251338675618e-09,
+    "p99_abs": 2.384185791015625e-07
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 1.1444091796875e-05,
+    "mean_abs": 8.55884536576923e-08,
+    "p99_abs": 9.5367431640625e-07
+   },
+   "substeps_per_op_mean": 4.0,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E47",
+  "model": "liquid_ss",
+  "seed": 4,
+  "k": 4,
+  "q": {
+   "OOD": 0.02500000037252903,
+   "OOD_cost": 4.0,
+   "COMPOSITION": 0.018000001087784767,
+   "COMPOSITION_cost": 4.0,
+   "LONG_HORIZON": 0.0010000000474974513,
+   "LONG_HORIZON_cost": 4.0,
+   "axis1": 0.014666667169270417
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.407,
+    "p99": 0.474
+   },
+   "latency_us_step": {
+    "mean": 8.392961328124978,
+    "p50": 7.677,
+    "p95": 9.755,
+    "p99": 11.46
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33228,
+   "params_sha256": "5bf021acf593a161d364b1ac1b286d27716f5e3b32f127c6ae4a1e59d1976de8",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 2.384185791015625e-06,
+    "mean_abs": 1.7134880181401968e-08,
+    "p99_abs": 4.76837158203125e-07
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 9.5367431640625e-06,
+    "mean_abs": 1.5177261047938373e-07,
+    "p99_abs": 1.1920928955078125e-06
+   },
+   "substeps_per_op_mean": 4.0,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E47",
+  "model": "liquid_ss",
+  "seed": 4,
+  "k": 7,
+  "q": {
+   "OOD": 0.021000001579523087,
+   "OOD_cost": 4.0,
+   "COMPOSITION": 0.014000000432133675,
+   "COMPOSITION_cost": 4.0,
+   "LONG_HORIZON": 0.0020000000949949026,
+   "LONG_HORIZON_cost": 4.0,
+   "axis1": 0.012333334035550555
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.505,
+    "p99": 0.884
+   },
+   "latency_us_step": {
+    "mean": 11.129764453125034,
+    "p50": 11.257,
+    "p95": 13.132,
+    "p99": 15.989
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33228,
+   "params_sha256": "5bf021acf593a161d364b1ac1b286d27716f5e3b32f127c6ae4a1e59d1976de8",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 2.86102294921875e-06,
+    "mean_abs": 3.5038624446315225e-08,
+    "p99_abs": 9.5367431640625e-07
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 3.6835670471191406e-05,
+    "mean_abs": 2.7132580271427287e-07,
+    "p99_abs": 2.1457672119140625e-06
+   },
+   "substeps_per_op_mean": 4.0,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E47",
+  "model": "liquid_ss",
+  "seed": 4,
+  "k": 13,
+  "q": {
+   "OOD": 0.012500000186264515,
+   "OOD_cost": 4.0,
+   "COMPOSITION": 0.012000000104308128,
+   "COMPOSITION_cost": 4.0,
+   "LONG_HORIZON": 0.0010000000474974513,
+   "LONG_HORIZON_cost": 4.0,
+   "axis1": 0.008500000112690032
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.451,
+    "p99": 0.563
+   },
+   "latency_us_step": {
+    "mean": 14.95423847656249,
+    "p50": 14.838,
+    "p95": 17.603,
+    "p99": 21.84
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33228,
+   "params_sha256": "5bf021acf593a161d364b1ac1b286d27716f5e3b32f127c6ae4a1e59d1976de8",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 2.384185791015625e-06,
+    "mean_abs": 7.319465566979488e-08,
+    "p99_abs": 9.5367431640625e-07
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 0.0002593994140625,
+    "mean_abs": 4.53485085927241e-07,
+    "p99_abs": 3.814697265625e-06
+   },
+   "substeps_per_op_mean": 4.0,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E47",
+  "model": "liquid_ss",
+  "seed": 4,
+  "k": 32,
+  "q": {
+   "OOD": 0.017500000074505806,
+   "OOD_cost": 4.0,
+   "COMPOSITION": 0.015000000596046448,
+   "COMPOSITION_cost": 4.0,
+   "LONG_HORIZON": 0.0,
+   "LONG_HORIZON_cost": 4.0,
+   "axis1": 0.010833333556850752
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.544,
+    "p99": 0.64
+   },
+   "latency_us_step": {
+    "mean": 28.24774082031242,
+    "p50": 27.606,
+    "p95": 34.661,
+    "p99": 41.267
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33228,
+   "params_sha256": "5bf021acf593a161d364b1ac1b286d27716f5e3b32f127c6ae4a1e59d1976de8",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 2.86102294921875e-06,
+    "mean_abs": 2.1086452761664987e-07,
+    "p99_abs": 1.430511474609375e-06
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 0.00011539459228515625,
+    "mean_abs": 1.6557984565679362e-06,
+    "p99_abs": 2.2411346435546875e-05
+   },
+   "substeps_per_op_mean": 4.0,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E47",
+  "model": "liquid_ss",
+  "seed": 4,
+  "k": 64,
+  "q": {
+   "OOD": 0.17900000512599945,
+   "OOD_cost": 4.0,
+   "COMPOSITION": 0.2970000207424164,
+   "COMPOSITION_cost": 4.0,
+   "LONG_HORIZON": 0.05100000277161598,
+   "LONG_HORIZON_cost": 4.0,
+   "axis1": 0.17566667621334395
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.442,
+    "p99": 0.505
+   },
+   "latency_us_step": {
+    "mean": 45.87568671874991,
+    "p50": 42.142,
+    "p95": 56.324,
+    "p99": 62.03
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33228,
+   "params_sha256": "5bf021acf593a161d364b1ac1b286d27716f5e3b32f127c6ae4a1e59d1976de8",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 3.814697265625e-06,
+    "mean_abs": 4.839118332711223e-07,
+    "p99_abs": 1.9073486328125e-06
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 0.011213541030883789,
+    "mean_abs": 2.5036002966771775e-05,
+    "p99_abs": 0.0002543926239013672
+   },
+   "substeps_per_op_mean": 4.0,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E47",
+  "model": "mlp",
+  "seed": 4,
+  "k": 1,
+  "q": {
+   "OOD": 0.03150000050663948,
+   "OOD_cost": 1.0,
+   "COMPOSITION": 0.017500000074505806,
+   "COMPOSITION_cost": 1.0,
+   "LONG_HORIZON": 0.0,
+   "LONG_HORIZON_cost": 1.0,
+   "axis1": 0.016333333527048428
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.405,
+    "p99": 0.48
+   },
+   "latency_us_step": {
+    "mean": 3.3193773437499985,
+    "p50": 3.203,
+    "p95": 4.184,
+    "p99": 5.328
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33139,
+   "params_sha256": "df5d0674a8d4f52715d74282421b137cc99d8b73e582e0924b52ad1423b1f3fd",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 2.384185791015625e-06,
+    "mean_abs": 7.847802407923155e-09,
+    "p99_abs": 2.384185791015625e-07
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 2.384185791015625e-06,
+    "mean_abs": 9.044265425472986e-08,
+    "p99_abs": 9.5367431640625e-07
+   },
+   "substeps_per_op_mean": 1.0,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E47",
+  "model": "mlp",
+  "seed": 4,
+  "k": 2,
+  "q": {
+   "OOD": 0.02850000187754631,
+   "OOD_cost": 1.0,
+   "COMPOSITION": 0.01600000075995922,
+   "COMPOSITION_cost": 1.0,
+   "LONG_HORIZON": 0.0,
+   "LONG_HORIZON_cost": 1.0,
+   "axis1": 0.014833334212501844
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.527,
+    "p99": 0.616
+   },
+   "latency_us_step": {
+    "mean": 3.4489419921874975,
+    "p50": 3.347,
+    "p95": 4.31,
+    "p99": 5.59
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33139,
+   "params_sha256": "df5d0674a8d4f52715d74282421b137cc99d8b73e582e0924b52ad1423b1f3fd",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 2.384185791015625e-06,
+    "mean_abs": 1.60805484483717e-08,
+    "p99_abs": 5.960464477539062e-07
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 3.0994415283203125e-06,
+    "mean_abs": 1.545911914035969e-07,
+    "p99_abs": 1.1920928955078125e-06
+   },
+   "substeps_per_op_mean": 1.0,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E47",
+  "model": "mlp",
+  "seed": 4,
+  "k": 4,
+  "q": {
+   "OOD": 0.023000001907348633,
+   "OOD_cost": 1.0,
+   "COMPOSITION": 0.020500000566244125,
+   "COMPOSITION_cost": 1.0,
+   "LONG_HORIZON": 0.003000000026077032,
+   "LONG_HORIZON_cost": 1.0,
+   "axis1": 0.015500000833223263
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.408,
+    "p99": 0.48
+   },
+   "latency_us_step": {
+    "mean": 3.7135351562500034,
+    "p50": 3.648,
+    "p95": 4.147,
+    "p99": 4.919
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33139,
+   "params_sha256": "df5d0674a8d4f52715d74282421b137cc99d8b73e582e0924b52ad1423b1f3fd",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 2.86102294921875e-06,
+    "mean_abs": 3.5174707591068e-08,
+    "p99_abs": 9.5367431640625e-07
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 2.6226043701171875e-06,
+    "mean_abs": 2.370019842601323e-07,
+    "p99_abs": 1.3113021850585938e-06
+   },
+   "substeps_per_op_mean": 1.0,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E47",
+  "model": "mlp",
+  "seed": 4,
+  "k": 7,
+  "q": {
+   "OOD": 0.018000001087784767,
+   "OOD_cost": 1.0,
+   "COMPOSITION": 0.016499999910593033,
+   "COMPOSITION_cost": 1.0,
+   "LONG_HORIZON": 0.0,
+   "LONG_HORIZON_cost": 1.0,
+   "axis1": 0.0115000003327926
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.409,
+    "p99": 0.515
+   },
+   "latency_us_step": {
+    "mean": 4.390268554687515,
+    "p50": 4.073,
+    "p95": 6.677,
+    "p99": 7.964
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33139,
+   "params_sha256": "df5d0674a8d4f52715d74282421b137cc99d8b73e582e0924b52ad1423b1f3fd",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 4.76837158203125e-06,
+    "mean_abs": 7.342578101088293e-08,
+    "p99_abs": 1.430511474609375e-06
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 2.5033950805664062e-06,
+    "mean_abs": 3.16858034921097e-07,
+    "p99_abs": 1.5497207641601562e-06
+   },
+   "substeps_per_op_mean": 1.0,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E47",
+  "model": "mlp",
+  "seed": 4,
+  "k": 13,
+  "q": {
+   "OOD": 0.014000000432133675,
+   "OOD_cost": 1.0,
+   "COMPOSITION": 0.010000000707805157,
+   "COMPOSITION_cost": 1.0,
+   "LONG_HORIZON": 0.0020000000949949026,
+   "LONG_HORIZON_cost": 1.0,
+   "axis1": 0.008666667078311244
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.408,
+    "p99": 0.529
+   },
+   "latency_us_step": {
+    "mean": 5.415138085937499,
+    "p50": 5.395,
+    "p95": 6.84,
+    "p99": 7.227
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33139,
+   "params_sha256": "df5d0674a8d4f52715d74282421b137cc99d8b73e582e0924b52ad1423b1f3fd",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 5.245208740234375e-06,
+    "mean_abs": 1.4997976904851384e-07,
+    "p99_abs": 1.9073486328125e-06
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 4.291534423828125e-06,
+    "mean_abs": 4.545316869553062e-07,
+    "p99_abs": 1.9073486328125e-06
+   },
+   "substeps_per_op_mean": 1.0,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E47",
+  "model": "mlp",
+  "seed": 4,
+  "k": 32,
+  "q": {
+   "OOD": 0.04000000283122063,
+   "OOD_cost": 1.0,
+   "COMPOSITION": 0.03700000047683716,
+   "COMPOSITION_cost": 1.0,
+   "LONG_HORIZON": 0.0020000000949949026,
+   "LONG_HORIZON_cost": 1.0,
+   "axis1": 0.026333334467684228
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.408,
+    "p99": 0.59
+   },
+   "latency_us_step": {
+    "mean": 7.569293359374996,
+    "p50": 7.357,
+    "p95": 9.584,
+    "p99": 11.194
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33139,
+   "params_sha256": "df5d0674a8d4f52715d74282421b137cc99d8b73e582e0924b52ad1423b1f3fd",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 7.152557373046875e-06,
+    "mean_abs": 3.892880613420857e-07,
+    "p99_abs": 2.6226043701171875e-06
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 1.5616416931152344e-05,
+    "mean_abs": 1.2119288044232235e-06,
+    "p99_abs": 5.409121513366699e-06
+   },
+   "substeps_per_op_mean": 1.0,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E47",
+  "model": "mlp",
+  "seed": 4,
+  "k": 64,
+  "q": {
+   "OOD": 0.29600000381469727,
+   "OOD_cost": 1.0,
+   "COMPOSITION": 0.4710000157356262,
+   "COMPOSITION_cost": 1.0,
+   "LONG_HORIZON": 0.1290000081062317,
+   "LONG_HORIZON_cost": 1.0,
+   "axis1": 0.2986666758855184
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.404,
+    "p99": 0.458
+   },
+   "latency_us_step": {
+    "mean": 9.74774687499999,
+    "p50": 9.323,
+    "p95": 12.561,
+    "p99": 14.272
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33139,
+   "params_sha256": "df5d0674a8d4f52715d74282421b137cc99d8b73e582e0924b52ad1423b1f3fd",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 6.198883056640625e-06,
+    "mean_abs": 7.977705536177382e-07,
+    "p99_abs": 2.86102294921875e-06
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 0.000156402587890625,
+    "mean_abs": 6.236133231141139e-06,
+    "p99_abs": 4.6133995056152344e-05
+   },
+   "substeps_per_op_mean": 1.0,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E48",
+  "mode": "fixed",
+  "K": 1,
+  "seed": 4,
+  "q": {
+   "OOD": 0.0,
+   "OOD_cost": 1.0,
+   "COMPOSITION": 0.0010000000474974513,
+   "COMPOSITION_cost": 1.0,
+   "LONG_HORIZON": 0.0,
+   "LONG_HORIZON_cost": 1.0,
+   "axis1": 0.0003333333491658171
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.512,
+    "p99": 0.783
+   },
+   "latency_us_step": {
+    "mean": 12.37308222656249,
+    "p50": 13.029,
+    "p95": 15.217,
+    "p99": 16.688
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33228,
+   "params_sha256": "5bf021acf593a161d364b1ac1b286d27716f5e3b32f127c6ae4a1e59d1976de8",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 8.58306884765625e-06,
+    "mean_abs": 1.1186842812094255e-06,
+    "p99_abs": 3.814697265625e-06
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 0.18468952178955078,
+    "mean_abs": 0.007041684551495564,
+    "p99_abs": 0.04948139190673828
+   },
+   "substeps_per_op_mean": 1.0,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E48",
+  "mode": "fixed",
+  "K": 2,
+  "seed": 4,
+  "q": {
+   "OOD": 0.07200000435113907,
+   "OOD_cost": 2.0,
+   "COMPOSITION": 0.140500009059906,
+   "COMPOSITION_cost": 2.0,
+   "LONG_HORIZON": 0.014000000432133675,
+   "LONG_HORIZON_cost": 2.0,
+   "axis1": 0.07550000461439292
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.408,
+    "p99": 0.454
+   },
+   "latency_us_step": {
+    "mean": 21.03913984374996,
+    "p50": 20.245,
+    "p95": 27.977,
+    "p99": 31.145
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33228,
+   "params_sha256": "5bf021acf593a161d364b1ac1b286d27716f5e3b32f127c6ae4a1e59d1976de8",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 6.198883056640625e-06,
+    "mean_abs": 9.124131565840798e-07,
+    "p99_abs": 3.337860107421875e-06
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 0.025931358337402344,
+    "mean_abs": 0.0003651625760312527,
+    "p99_abs": 0.006094694137573242
+   },
+   "substeps_per_op_mean": 2.0,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E48",
+  "mode": "fixed",
+  "K": 4,
+  "seed": 4,
+  "q": {
+   "OOD": 0.17900000512599945,
+   "OOD_cost": 4.0,
+   "COMPOSITION": 0.2970000207424164,
+   "COMPOSITION_cost": 4.0,
+   "LONG_HORIZON": 0.05100000277161598,
+   "LONG_HORIZON_cost": 4.0,
+   "axis1": 0.17566667621334395
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.412,
+    "p99": 0.482
+   },
+   "latency_us_step": {
+    "mean": 44.46083964843764,
+    "p50": 40.545,
+    "p95": 55.726,
+    "p99": 62.417
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33228,
+   "params_sha256": "5bf021acf593a161d364b1ac1b286d27716f5e3b32f127c6ae4a1e59d1976de8",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 3.814697265625e-06,
+    "mean_abs": 4.839118332711223e-07,
+    "p99_abs": 1.9073486328125e-06
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 0.011213541030883789,
+    "mean_abs": 2.5036002966771775e-05,
+    "p99_abs": 0.0002543926239013672
+   },
+   "substeps_per_op_mean": 4.0,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E48",
+  "mode": "fixed",
+  "K": 8,
+  "seed": 4,
+  "q": {
+   "OOD": 0.17250001430511475,
+   "OOD_cost": 8.0,
+   "COMPOSITION": 0.26200002431869507,
+   "COMPOSITION_cost": 8.0,
+   "LONG_HORIZON": 0.03700000047683716,
+   "LONG_HORIZON_cost": 8.0,
+   "axis1": 0.15716667970021567
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.407,
+    "p99": 0.492
+   },
+   "latency_us_step": {
+    "mean": 87.76908085937488,
+    "p50": 81.322,
+    "p95": 111.384,
+    "p99": 124.381
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33228,
+   "params_sha256": "5bf021acf593a161d364b1ac1b286d27716f5e3b32f127c6ae4a1e59d1976de8",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 2.86102294921875e-06,
+    "mean_abs": 3.445136655955139e-07,
+    "p99_abs": 1.430511474609375e-06
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 0.0024671554565429688,
+    "mean_abs": 7.82050169334525e-06,
+    "p99_abs": 7.542967796325684e-05
+   },
+   "substeps_per_op_mean": 8.0,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E48",
+  "mode": "fixed",
+  "K": 16,
+  "seed": 4,
+  "q": {
+   "OOD": 0.1575000137090683,
+   "OOD_cost": 16.0,
+   "COMPOSITION": 0.23250001668930054,
+   "COMPOSITION_cost": 16.0,
+   "LONG_HORIZON": 0.02800000086426735,
+   "LONG_HORIZON_cost": 16.0,
+   "axis1": 0.13933334375421205
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.408,
+    "p99": 0.474
+   },
+   "latency_us_step": {
+    "mean": 176.72561093750042,
+    "p50": 160.793,
+    "p95": 228.691,
+    "p99": 256.538
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33228,
+   "params_sha256": "5bf021acf593a161d364b1ac1b286d27716f5e3b32f127c6ae4a1e59d1976de8",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 2.86102294921875e-06,
+    "mean_abs": 3.103321262187819e-07,
+    "p99_abs": 1.2516975402832031e-06
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 0.0009624958038330078,
+    "mean_abs": 6.331030135697802e-06,
+    "p99_abs": 9.882450103759766e-05
+   },
+   "substeps_per_op_mean": 16.0,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E48",
+  "mode": "fixed",
+  "K": 32,
+  "seed": 4,
+  "q": {
+   "OOD": 0.1535000056028366,
+   "OOD_cost": 32.0,
+   "COMPOSITION": 0.2160000056028366,
+   "COMPOSITION_cost": 32.0,
+   "LONG_HORIZON": 0.02500000037252903,
+   "LONG_HORIZON_cost": 32.0,
+   "axis1": 0.13150000385940075
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.408,
+    "p99": 0.484
+   },
+   "latency_us_step": {
+    "mean": 348.6039181640632,
+    "p50": 319.975,
+    "p95": 443.16,
+    "p99": 494.036
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33228,
+   "params_sha256": "5bf021acf593a161d364b1ac1b286d27716f5e3b32f127c6ae4a1e59d1976de8",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 3.814697265625e-06,
+    "mean_abs": 3.067141278734198e-07,
+    "p99_abs": 1.3113021850585938e-06
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 0.0005383491516113281,
+    "mean_abs": 6.830821829950651e-06,
+    "p99_abs": 0.0001270771026611328
+   },
+   "substeps_per_op_mean": 32.0,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E48",
+  "mode": "fixed",
+  "K": 64,
+  "seed": 4,
+  "q": {
+   "OOD": 0.15050001442432404,
+   "OOD_cost": 64.0,
+   "COMPOSITION": 0.21250000596046448,
+   "COMPOSITION_cost": 64.0,
+   "LONG_HORIZON": 0.02500000037252903,
+   "LONG_HORIZON_cost": 64.0,
+   "axis1": 0.12933334025243917
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.407,
+    "p99": 0.484
+   },
+   "latency_us_step": {
+    "mean": 699.7352542968758,
+    "p50": 640.707,
+    "p95": 889.804,
+    "p99": 982.237
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33228,
+   "params_sha256": "5bf021acf593a161d364b1ac1b286d27716f5e3b32f127c6ae4a1e59d1976de8",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 2.86102294921875e-06,
+    "mean_abs": 2.9977283588777937e-07,
+    "p99_abs": 1.1920928955078125e-06
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 0.0011298656463623047,
+    "mean_abs": 6.112989723305873e-06,
+    "p99_abs": 9.322166442871094e-05
+   },
+   "substeps_per_op_mean": 64.0,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E48",
+  "mode": "adaptive",
+  "eps": 0.1,
+  "seed": 4,
+  "q": {
+   "OOD": 0.16100001335144043,
+   "OOD_cost": 20.0575008392334,
+   "COMPOSITION": 0.24000000953674316,
+   "COMPOSITION_cost": 19.0210018157959,
+   "LONG_HORIZON": 0.029000001028180122,
+   "LONG_HORIZON_cost": 20.158000946044922,
+   "axis1": 0.14333334130545458
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.408,
+    "p99": 0.472
+   },
+   "latency_us_step": {
+    "mean": 212.9194660156244,
+    "p50": 166.427,
+    "p95": 391.861,
+    "p99": 482.918
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33228,
+   "params_sha256": "5bf021acf593a161d364b1ac1b286d27716f5e3b32f127c6ae4a1e59d1976de8",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 2.86102294921875e-06,
+    "mean_abs": 3.372326773387613e-07,
+    "p99_abs": 1.430511474609375e-06
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 0.0009212493896484375,
+    "mean_abs": 8.675521655732155e-06,
+    "p99_abs": 0.00017833709716796875
+   },
+   "substeps_per_op_mean": 20.3193359375,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E48",
+  "mode": "adaptive",
+  "eps": 0.03,
+  "seed": 4,
+  "q": {
+   "OOD": 0.1510000079870224,
+   "OOD_cost": 46.387001037597656,
+   "COMPOSITION": 0.22200001776218414,
+   "COMPOSITION_cost": 42.372501373291016,
+   "LONG_HORIZON": 0.02800000086426735,
+   "LONG_HORIZON_cost": 44.31575393676758,
+   "axis1": 0.13366667553782463
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.405,
+    "p99": 0.467
+   },
+   "latency_us_step": {
+    "mean": 520.6160589843754,
+    "p50": 434.675,
+    "p95": 865.017,
+    "p99": 1278.635
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33228,
+   "params_sha256": "5bf021acf593a161d364b1ac1b286d27716f5e3b32f127c6ae4a1e59d1976de8",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 2.86102294921875e-06,
+    "mean_abs": 3.0465818667835265e-07,
+    "p99_abs": 1.1920928955078125e-06
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 0.0011171698570251465,
+    "mean_abs": 6.457604222021018e-06,
+    "p99_abs": 8.440017700195312e-05
+   },
+   "substeps_per_op_mean": 44.681640625,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E48",
+  "mode": "adaptive",
+  "eps": 0.01,
+  "seed": 4,
+  "q": {
+   "OOD": 0.15200001001358032,
+   "OOD_cost": 96.41300201416016,
+   "COMPOSITION": 0.21400001645088196,
+   "COMPOSITION_cost": 90.1760025024414,
+   "LONG_HORIZON": 0.02800000086426735,
+   "LONG_HORIZON_cost": 88.85675048828125,
+   "axis1": 0.13133334244290987
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.408,
+    "p99": 0.482
+   },
+   "latency_us_step": {
+    "mean": 1232.585071289064,
+    "p50": 1275.992,
+    "p95": 1658.675,
+    "p99": 1793.195
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33228,
+   "params_sha256": "5bf021acf593a161d364b1ac1b286d27716f5e3b32f127c6ae4a1e59d1976de8",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 3.814697265625e-06,
+    "mean_abs": 2.9973747928124794e-07,
+    "p99_abs": 1.1920928955078125e-06
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 0.00478053092956543,
+    "mean_abs": 1.5664527438730147e-05,
+    "p99_abs": 0.0003230571746826172
+   },
+   "substeps_per_op_mean": 89.82421875,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E48",
+  "mode": "adaptive",
+  "eps": 0.003,
+  "seed": 4,
+  "q": {
+   "OOD": 0.15000000596046448,
+   "OOD_cost": 123.14600372314453,
+   "COMPOSITION": 0.21250000596046448,
+   "COMPOSITION_cost": 123.03800964355469,
+   "LONG_HORIZON": 0.02500000037252903,
+   "LONG_HORIZON_cost": 121.37350463867188,
+   "axis1": 0.12916667076448599
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.41,
+    "p99": 3.655
+   },
+   "latency_us_step": {
+    "mean": 1379.2307390625015,
+    "p50": 1270.114,
+    "p95": 1718.427,
+    "p99": 1862.477
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33228,
+   "params_sha256": "5bf021acf593a161d364b1ac1b286d27716f5e3b32f127c6ae4a1e59d1976de8",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 2.86102294921875e-06,
+    "mean_abs": 2.9977283588777937e-07,
+    "p99_abs": 1.1920928955078125e-06
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 0.0005927085876464844,
+    "mean_abs": 5.823386615588788e-06,
+    "p99_abs": 8.58306884765625e-05
+   },
+   "substeps_per_op_mean": 121.71875,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E47",
+  "model": "liquid_ss",
+  "seed": 5,
+  "k": 1,
+  "q": {
+   "OOD": 0.027500001713633537,
+   "OOD_cost": 4.0,
+   "COMPOSITION": 0.017500000074505806,
+   "COMPOSITION_cost": 4.0,
+   "LONG_HORIZON": 0.0,
+   "LONG_HORIZON_cost": 4.0,
+   "axis1": 0.015000000596046448
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.408,
+    "p99": 0.482
+   },
+   "latency_us_step": {
+    "mean": 6.015934570312497,
+    "p50": 5.845,
+    "p95": 7.534,
+    "p99": 7.973
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33228,
+   "params_sha256": "cc55aac99ef2b173525185737ffce41b5e6ddbebc85ef6eb88526faa7a1c98dd",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 1.430511474609375e-06,
+    "mean_abs": 2.913111529778689e-09,
+    "p99_abs": 2.9802322387695312e-08
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 3.814697265625e-06,
+    "mean_abs": 3.755098987312522e-08,
+    "p99_abs": 4.76837158203125e-07
+   },
+   "substeps_per_op_mean": 4.0,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E47",
+  "model": "liquid_ss",
+  "seed": 5,
+  "k": 2,
+  "q": {
+   "OOD": 0.027000000700354576,
+   "OOD_cost": 4.0,
+   "COMPOSITION": 0.01600000075995922,
+   "COMPOSITION_cost": 4.0,
+   "LONG_HORIZON": 0.0,
+   "LONG_HORIZON_cost": 4.0,
+   "axis1": 0.014333333820104599
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.407,
+    "p99": 0.476
+   },
+   "latency_us_step": {
+    "mean": 7.096445703125012,
+    "p50": 7.084,
+    "p95": 8.111,
+    "p99": 8.403
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33228,
+   "params_sha256": "cc55aac99ef2b173525185737ffce41b5e6ddbebc85ef6eb88526faa7a1c98dd",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 1.0728836059570312e-06,
+    "mean_abs": 6.138179742265493e-09,
+    "p99_abs": 2.384185791015625e-07
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 3.814697265625e-06,
+    "mean_abs": 7.132297241696506e-08,
+    "p99_abs": 7.152557373046875e-07
+   },
+   "substeps_per_op_mean": 4.0,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E47",
+  "model": "liquid_ss",
+  "seed": 5,
+  "k": 4,
+  "q": {
+   "OOD": 0.023500001057982445,
+   "OOD_cost": 4.0,
+   "COMPOSITION": 0.013500000350177288,
+   "COMPOSITION_cost": 4.0,
+   "LONG_HORIZON": 0.0010000000474974513,
+   "LONG_HORIZON_cost": 4.0,
+   "axis1": 0.012666667151885727
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.406,
+    "p99": 0.461
+   },
+   "latency_us_step": {
+    "mean": 8.317444335937484,
+    "p50": 7.697,
+    "p95": 10.46,
+    "p99": 12.701
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33228,
+   "params_sha256": "cc55aac99ef2b173525185737ffce41b5e6ddbebc85ef6eb88526faa7a1c98dd",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 2.2649765014648438e-06,
+    "mean_abs": 1.3993485481478274e-08,
+    "p99_abs": 4.76837158203125e-07
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 7.62939453125e-06,
+    "mean_abs": 1.332957708655158e-07,
+    "p99_abs": 9.5367431640625e-07
+   },
+   "substeps_per_op_mean": 4.0,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E47",
+  "model": "liquid_ss",
+  "seed": 5,
+  "k": 7,
+  "q": {
+   "OOD": 0.020500000566244125,
+   "OOD_cost": 4.0,
+   "COMPOSITION": 0.01600000075995922,
+   "COMPOSITION_cost": 4.0,
+   "LONG_HORIZON": 0.0010000000474974513,
+   "LONG_HORIZON_cost": 4.0,
+   "axis1": 0.012500000457900265
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.404,
+    "p99": 0.455
+   },
+   "latency_us_step": {
+    "mean": 10.02738320312503,
+    "p50": 9.466,
+    "p95": 12.954,
+    "p99": 16.478
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33228,
+   "params_sha256": "cc55aac99ef2b173525185737ffce41b5e6ddbebc85ef6eb88526faa7a1c98dd",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 1.9073486328125e-06,
+    "mean_abs": 2.9071088647469878e-08,
+    "p99_abs": 5.960464477539062e-07
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 1.9073486328125e-05,
+    "mean_abs": 2.0565812519635074e-07,
+    "p99_abs": 1.430511474609375e-06
+   },
+   "substeps_per_op_mean": 4.0,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E47",
+  "model": "liquid_ss",
+  "seed": 5,
+  "k": 13,
+  "q": {
+   "OOD": 0.012500000186264515,
+   "OOD_cost": 4.0,
+   "COMPOSITION": 0.008500000461935997,
+   "COMPOSITION_cost": 4.0,
+   "LONG_HORIZON": 0.0,
+   "LONG_HORIZON_cost": 4.0,
+   "axis1": 0.007000000216066837
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.521,
+    "p99": 0.605
+   },
+   "latency_us_step": {
+    "mean": 13.942205468750043,
+    "p50": 13.086,
+    "p95": 17.985,
+    "p99": 24.018
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33228,
+   "params_sha256": "cc55aac99ef2b173525185737ffce41b5e6ddbebc85ef6eb88526faa7a1c98dd",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 2.86102294921875e-06,
+    "mean_abs": 6.411289632524131e-08,
+    "p99_abs": 9.5367431640625e-07
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 4.1961669921875e-05,
+    "mean_abs": 3.6876809872410377e-07,
+    "p99_abs": 2.86102294921875e-06
+   },
+   "substeps_per_op_mean": 4.0,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E47",
+  "model": "liquid_ss",
+  "seed": 5,
+  "k": 32,
+  "q": {
+   "OOD": 0.016499999910593033,
+   "OOD_cost": 4.0,
+   "COMPOSITION": 0.012500000186264515,
+   "COMPOSITION_cost": 4.0,
+   "LONG_HORIZON": 0.0020000000949949026,
+   "LONG_HORIZON_cost": 4.0,
+   "axis1": 0.01033333339728415
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.498,
+    "p99": 0.604
+   },
+   "latency_us_step": {
+    "mean": 27.880219726562558,
+    "p50": 25.018,
+    "p95": 34.272,
+    "p99": 38.677
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33228,
+   "params_sha256": "cc55aac99ef2b173525185737ffce41b5e6ddbebc85ef6eb88526faa7a1c98dd",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 2.86102294921875e-06,
+    "mean_abs": 2.0401375877554528e-07,
+    "p99_abs": 1.430511474609375e-06
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 8.893013000488281e-05,
+    "mean_abs": 1.2243680771462095e-06,
+    "p99_abs": 1.1444091796875e-05
+   },
+   "substeps_per_op_mean": 4.0,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E47",
+  "model": "liquid_ss",
+  "seed": 5,
+  "k": 64,
+  "q": {
+   "OOD": 0.18700000643730164,
+   "OOD_cost": 4.0,
+   "COMPOSITION": 0.2840000092983246,
+   "COMPOSITION_cost": 4.0,
+   "LONG_HORIZON": 0.04000000283122063,
+   "LONG_HORIZON_cost": 4.0,
+   "axis1": 0.17033333952228227
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.53,
+    "p99": 0.924
+   },
+   "latency_us_step": {
+    "mean": 45.808333398437554,
+    "p50": 41.846,
+    "p95": 57.942,
+    "p99": 63.133
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33228,
+   "params_sha256": "cc55aac99ef2b173525185737ffce41b5e6ddbebc85ef6eb88526faa7a1c98dd",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 4.76837158203125e-06,
+    "mean_abs": 5.092510946269613e-07,
+    "p99_abs": 1.9073486328125e-06
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 0.0014907121658325195,
+    "mean_abs": 1.0387590805294167e-05,
+    "p99_abs": 0.0001475811004638672
+   },
+   "substeps_per_op_mean": 4.0,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E47",
+  "model": "mlp",
+  "seed": 5,
+  "k": 1,
+  "q": {
+   "OOD": 0.030000001192092896,
+   "OOD_cost": 1.0,
+   "COMPOSITION": 0.017500000074505806,
+   "COMPOSITION_cost": 1.0,
+   "LONG_HORIZON": 0.0,
+   "LONG_HORIZON_cost": 1.0,
+   "axis1": 0.0158333337555329
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.41,
+    "p99": 0.465
+   },
+   "latency_us_step": {
+    "mean": 3.4496062500000066,
+    "p50": 3.284,
+    "p95": 4.643,
+    "p99": 4.937
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33139,
+   "params_sha256": "859f6262cd8a0a137f86b343697824ee300ccc3a0f0105f9eabb1935ead048b4",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 3.814697265625e-06,
+    "mean_abs": 7.2805050876922905e-09,
+    "p99_abs": 2.384185791015625e-07
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 2.86102294921875e-06,
+    "mean_abs": 9.057623628905276e-08,
+    "p99_abs": 9.5367431640625e-07
+   },
+   "substeps_per_op_mean": 1.0,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E47",
+  "model": "mlp",
+  "seed": 5,
+  "k": 2,
+  "q": {
+   "OOD": 0.02850000187754631,
+   "OOD_cost": 1.0,
+   "COMPOSITION": 0.01600000075995922,
+   "COMPOSITION_cost": 1.0,
+   "LONG_HORIZON": 0.0,
+   "LONG_HORIZON_cost": 1.0,
+   "axis1": 0.014833334212501844
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.406,
+    "p99": 0.472
+   },
+   "latency_us_step": {
+    "mean": 3.4255501953125047,
+    "p50": 3.355,
+    "p95": 4.272,
+    "p99": 5.444
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33139,
+   "params_sha256": "859f6262cd8a0a137f86b343697824ee300ccc3a0f0105f9eabb1935ead048b4",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 2.86102294921875e-06,
+    "mean_abs": 1.671014615567401e-08,
+    "p99_abs": 6.258487701416016e-07
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 2.6226043701171875e-06,
+    "mean_abs": 1.565759646382503e-07,
+    "p99_abs": 1.1920928955078125e-06
+   },
+   "substeps_per_op_mean": 1.0,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E47",
+  "model": "mlp",
+  "seed": 5,
+  "k": 4,
+  "q": {
+   "OOD": 0.023000001907348633,
+   "OOD_cost": 1.0,
+   "COMPOSITION": 0.016499999910593033,
+   "COMPOSITION_cost": 1.0,
+   "LONG_HORIZON": 0.0,
+   "LONG_HORIZON_cost": 1.0,
+   "axis1": 0.013166667272647222
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.407,
+    "p99": 0.476
+   },
+   "latency_us_step": {
+    "mean": 3.7870632812500076,
+    "p50": 3.675,
+    "p95": 4.741,
+    "p99": 4.994
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33139,
+   "params_sha256": "859f6262cd8a0a137f86b343697824ee300ccc3a0f0105f9eabb1935ead048b4",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 3.814697265625e-06,
+    "mean_abs": 3.615036803239491e-08,
+    "p99_abs": 9.5367431640625e-07
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 3.337860107421875e-06,
+    "mean_abs": 2.414080881862901e-07,
+    "p99_abs": 1.4007091522216797e-06
+   },
+   "substeps_per_op_mean": 1.0,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E47",
+  "model": "mlp",
+  "seed": 5,
+  "k": 7,
+  "q": {
+   "OOD": 0.013500000350177288,
+   "OOD_cost": 1.0,
+   "COMPOSITION": 0.018000001087784767,
+   "COMPOSITION_cost": 1.0,
+   "LONG_HORIZON": 0.003000000026077032,
+   "LONG_HORIZON_cost": 1.0,
+   "axis1": 0.011500000488013029
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.495,
+    "p99": 0.617
+   },
+   "latency_us_step": {
+    "mean": 5.320959570312497,
+    "p50": 5.125,
+    "p95": 6.687,
+    "p99": 8.107
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33139,
+   "params_sha256": "859f6262cd8a0a137f86b343697824ee300ccc3a0f0105f9eabb1935ead048b4",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 3.814697265625e-06,
+    "mean_abs": 7.14124723799614e-08,
+    "p99_abs": 1.430511474609375e-06
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 4.291534423828125e-06,
+    "mean_abs": 3.248540707545544e-07,
+    "p99_abs": 1.5497207641601562e-06
+   },
+   "substeps_per_op_mean": 1.0,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E47",
+  "model": "mlp",
+  "seed": 5,
+  "k": 13,
+  "q": {
+   "OOD": 0.013500000350177288,
+   "OOD_cost": 1.0,
+   "COMPOSITION": 0.01600000075995922,
+   "COMPOSITION_cost": 1.0,
+   "LONG_HORIZON": 0.0,
+   "LONG_HORIZON_cost": 1.0,
+   "axis1": 0.009833333703378836
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.406,
+    "p99": 0.479
+   },
+   "latency_us_step": {
+    "mean": 5.152949023437477,
+    "p50": 4.894,
+    "p95": 7.706,
+    "p99": 8.196
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33139,
+   "params_sha256": "859f6262cd8a0a137f86b343697824ee300ccc3a0f0105f9eabb1935ead048b4",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 4.76837158203125e-06,
+    "mean_abs": 1.4726379049534444e-07,
+    "p99_abs": 1.9073486328125e-06
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 4.1425228118896484e-06,
+    "mean_abs": 4.652234508739639e-07,
+    "p99_abs": 1.996755599975586e-06
+   },
+   "substeps_per_op_mean": 1.0,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E47",
+  "model": "mlp",
+  "seed": 5,
+  "k": 32,
+  "q": {
+   "OOD": 0.026500001549720764,
+   "OOD_cost": 1.0,
+   "COMPOSITION": 0.03750000149011612,
+   "COMPOSITION_cost": 1.0,
+   "LONG_HORIZON": 0.0020000000949949026,
+   "LONG_HORIZON_cost": 1.0,
+   "axis1": 0.02200000104494393
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.409,
+    "p99": 0.537
+   },
+   "latency_us_step": {
+    "mean": 7.866762499999991,
+    "p50": 7.406,
+    "p95": 9.913,
+    "p99": 11.341
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33139,
+   "params_sha256": "859f6262cd8a0a137f86b343697824ee300ccc3a0f0105f9eabb1935ead048b4",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 6.67572021484375e-06,
+    "mean_abs": 3.9530280560029496e-07,
+    "p99_abs": 2.86102294921875e-06
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 1.8298625946044922e-05,
+    "mean_abs": 1.2406480038862355e-06,
+    "p99_abs": 5.4836273193359375e-06
+   },
+   "substeps_per_op_mean": 1.0,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E47",
+  "model": "mlp",
+  "seed": 5,
+  "k": 64,
+  "q": {
+   "OOD": 0.27250000834465027,
+   "OOD_cost": 1.0,
+   "COMPOSITION": 0.44350001215934753,
+   "COMPOSITION_cost": 1.0,
+   "LONG_HORIZON": 0.12300000339746475,
+   "LONG_HORIZON_cost": 1.0,
+   "axis1": 0.27966667463382083
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.474,
+    "p99": 0.547
+   },
+   "latency_us_step": {
+    "mean": 10.963066015625,
+    "p50": 11.657,
+    "p95": 13.939,
+    "p99": 14.225
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33139,
+   "params_sha256": "859f6262cd8a0a137f86b343697824ee300ccc3a0f0105f9eabb1935ead048b4",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 5.7220458984375e-06,
+    "mean_abs": 8.068206227562769e-07,
+    "p99_abs": 2.86102294921875e-06
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 0.00030732154846191406,
+    "mean_abs": 6.639518488782414e-06,
+    "p99_abs": 5.340576171875e-05
+   },
+   "substeps_per_op_mean": 1.0,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E48",
+  "mode": "fixed",
+  "K": 1,
+  "seed": 5,
+  "q": {
+   "OOD": 0.0010000000474974513,
+   "OOD_cost": 1.0,
+   "COMPOSITION": 0.0005000000237487257,
+   "COMPOSITION_cost": 1.0,
+   "LONG_HORIZON": 0.0020000000949949026,
+   "LONG_HORIZON_cost": 1.0,
+   "axis1": 0.00116666672208036
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.407,
+    "p99": 0.473
+   },
+   "latency_us_step": {
+    "mean": 10.462133984375013,
+    "p50": 10.135,
+    "p95": 13.485,
+    "p99": 15.762
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33228,
+   "params_sha256": "cc55aac99ef2b173525185737ffce41b5e6ddbebc85ef6eb88526faa7a1c98dd",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 1.049041748046875e-05,
+    "mean_abs": 1.140655399467505e-06,
+    "p99_abs": 4.291534423828125e-06
+   },
+   "step16": {
+    "discrete_match": 0.99609375,
+    "max_abs": 0.19969511032104492,
+    "mean_abs": 0.008891675881386618,
+    "p99_abs": 0.05999279022216797
+   },
+   "substeps_per_op_mean": 1.0,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E48",
+  "mode": "fixed",
+  "K": 2,
+  "seed": 5,
+  "q": {
+   "OOD": 0.05300000309944153,
+   "OOD_cost": 2.0,
+   "COMPOSITION": 0.08450000733137131,
+   "COMPOSITION_cost": 2.0,
+   "LONG_HORIZON": 0.007000000216066837,
+   "LONG_HORIZON_cost": 2.0,
+   "axis1": 0.04816667021562656
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.418,
+    "p99": 0.495
+   },
+   "latency_us_step": {
+    "mean": 23.210659179687532,
+    "p50": 20.495,
+    "p95": 29.59,
+    "p99": 30.931
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33228,
+   "params_sha256": "cc55aac99ef2b173525185737ffce41b5e6ddbebc85ef6eb88526faa7a1c98dd",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 7.62939453125e-06,
+    "mean_abs": 9.089977766052471e-07,
+    "p99_abs": 3.5762786865234375e-06
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 0.018036365509033203,
+    "mean_abs": 0.00020958246898317157,
+    "p99_abs": 0.002698183059692383
+   },
+   "substeps_per_op_mean": 2.0,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E48",
+  "mode": "fixed",
+  "K": 4,
+  "seed": 5,
+  "q": {
+   "OOD": 0.18700000643730164,
+   "OOD_cost": 4.0,
+   "COMPOSITION": 0.2840000092983246,
+   "COMPOSITION_cost": 4.0,
+   "LONG_HORIZON": 0.04000000283122063,
+   "LONG_HORIZON_cost": 4.0,
+   "axis1": 0.17033333952228227
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.404,
+    "p99": 0.467
+   },
+   "latency_us_step": {
+    "mean": 44.533114843749985,
+    "p50": 40.12,
+    "p95": 55.865,
+    "p99": 62.023
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33228,
+   "params_sha256": "cc55aac99ef2b173525185737ffce41b5e6ddbebc85ef6eb88526faa7a1c98dd",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 4.76837158203125e-06,
+    "mean_abs": 5.092510946269613e-07,
+    "p99_abs": 1.9073486328125e-06
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 0.0014907121658325195,
+    "mean_abs": 1.0387590805294167e-05,
+    "p99_abs": 0.0001475811004638672
+   },
+   "substeps_per_op_mean": 4.0,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E48",
+  "mode": "fixed",
+  "K": 8,
+  "seed": 5,
+  "q": {
+   "OOD": 0.164000004529953,
+   "OOD_cost": 8.0,
+   "COMPOSITION": 0.25300002098083496,
+   "COMPOSITION_cost": 8.0,
+   "LONG_HORIZON": 0.02800000086426735,
+   "LONG_HORIZON_cost": 8.0,
+   "axis1": 0.14833334212501845
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.509,
+    "p99": 0.584
+   },
+   "latency_us_step": {
+    "mean": 85.76764609374999,
+    "p50": 79.987,
+    "p95": 110.019,
+    "p99": 125.267
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33228,
+   "params_sha256": "cc55aac99ef2b173525185737ffce41b5e6ddbebc85ef6eb88526faa7a1c98dd",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 4.76837158203125e-06,
+    "mean_abs": 3.57760086444614e-07,
+    "p99_abs": 1.430511474609375e-06
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 0.0010758638381958008,
+    "mean_abs": 7.949776602345082e-06,
+    "p99_abs": 0.0001666545867919922
+   },
+   "substeps_per_op_mean": 8.0,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E48",
+  "mode": "fixed",
+  "K": 16,
+  "seed": 5,
+  "q": {
+   "OOD": 0.15800000727176666,
+   "OOD_cost": 16.0,
+   "COMPOSITION": 0.2150000035762787,
+   "COMPOSITION_cost": 16.0,
+   "LONG_HORIZON": 0.02200000174343586,
+   "LONG_HORIZON_cost": 16.0,
+   "axis1": 0.13166667086382708
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.477,
+    "p99": 0.56
+   },
+   "latency_us_step": {
+    "mean": 181.7658773437505,
+    "p50": 162.794,
+    "p95": 229.988,
+    "p99": 271.43
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33228,
+   "params_sha256": "cc55aac99ef2b173525185737ffce41b5e6ddbebc85ef6eb88526faa7a1c98dd",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 2.86102294921875e-06,
+    "mean_abs": 3.286167213900626e-07,
+    "p99_abs": 1.430511474609375e-06
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 0.0001277923583984375,
+    "mean_abs": 2.316396347623595e-06,
+    "p99_abs": 2.41696834564209e-05
+   },
+   "substeps_per_op_mean": 16.0,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E48",
+  "mode": "fixed",
+  "K": 32,
+  "seed": 5,
+  "q": {
+   "OOD": 0.1550000011920929,
+   "OOD_cost": 32.0,
+   "COMPOSITION": 0.2045000046491623,
+   "COMPOSITION_cost": 32.0,
+   "LONG_HORIZON": 0.024000000208616257,
+   "LONG_HORIZON_cost": 32.0,
+   "axis1": 0.12783333534995714
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.406,
+    "p99": 0.477
+   },
+   "latency_us_step": {
+    "mean": 346.30283867187495,
+    "p50": 318.368,
+    "p95": 439.882,
+    "p99": 493.115
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33228,
+   "params_sha256": "cc55aac99ef2b173525185737ffce41b5e6ddbebc85ef6eb88526faa7a1c98dd",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 3.337860107421875e-06,
+    "mean_abs": 3.2226107293809036e-07,
+    "p99_abs": 1.430511474609375e-06
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 0.0014073848724365234,
+    "mean_abs": 5.188356702490182e-06,
+    "p99_abs": 8.296966552734375e-05
+   },
+   "substeps_per_op_mean": 32.0,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E48",
+  "mode": "fixed",
+  "K": 64,
+  "seed": 5,
+  "q": {
+   "OOD": 0.15200001001358032,
+   "OOD_cost": 64.0,
+   "COMPOSITION": 0.19850000739097595,
+   "COMPOSITION_cost": 64.0,
+   "LONG_HORIZON": 0.023000001907348633,
+   "LONG_HORIZON_cost": 64.0,
+   "axis1": 0.12450000643730164
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.404,
+    "p99": 0.457
+   },
+   "latency_us_step": {
+    "mean": 693.8191255859357,
+    "p50": 643.713,
+    "p95": 854.021,
+    "p99": 949.309
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33228,
+   "params_sha256": "cc55aac99ef2b173525185737ffce41b5e6ddbebc85ef6eb88526faa7a1c98dd",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 2.86102294921875e-06,
+    "mean_abs": 3.1898690622256254e-07,
+    "p99_abs": 1.430511474609375e-06
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 0.0003113746643066406,
+    "mean_abs": 3.976375246850239e-06,
+    "p99_abs": 6.651878356933594e-05
+   },
+   "substeps_per_op_mean": 64.0,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E48",
+  "mode": "adaptive",
+  "eps": 0.1,
+  "seed": 5,
+  "q": {
+   "OOD": 0.15900000929832458,
+   "OOD_cost": 20.3700008392334,
+   "COMPOSITION": 0.22800001502037048,
+   "COMPOSITION_cost": 19.35500144958496,
+   "LONG_HORIZON": 0.024000000208616257,
+   "LONG_HORIZON_cost": 20.209001541137695,
+   "axis1": 0.13700000817577043
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.409,
+    "p99": 0.493
+   },
+   "latency_us_step": {
+    "mean": 214.4611494140626,
+    "p50": 163.682,
+    "p95": 392.256,
+    "p99": 431.488
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33228,
+   "params_sha256": "cc55aac99ef2b173525185737ffce41b5e6ddbebc85ef6eb88526faa7a1c98dd",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 4.76837158203125e-06,
+    "mean_abs": 3.468745148893504e-07,
+    "p99_abs": 1.430511474609375e-06
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 0.0005154609680175781,
+    "mean_abs": 4.232932354852892e-06,
+    "p99_abs": 6.103515625e-05
+   },
+   "substeps_per_op_mean": 20.3583984375,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E48",
+  "mode": "adaptive",
+  "eps": 0.03,
+  "seed": 5,
+  "q": {
+   "OOD": 0.15300001204013824,
+   "OOD_cost": 46.624000549316406,
+   "COMPOSITION": 0.20600001513957977,
+   "COMPOSITION_cost": 43.00550079345703,
+   "LONG_HORIZON": 0.024000000208616257,
+   "LONG_HORIZON_cost": 43.8962516784668,
+   "axis1": 0.12766667579611143
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.406,
+    "p99": 0.489
+   },
+   "latency_us_step": {
+    "mean": 540.7130898437492,
+    "p50": 619.56,
+    "p95": 878.012,
+    "p99": 1480.223
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33228,
+   "params_sha256": "cc55aac99ef2b173525185737ffce41b5e6ddbebc85ef6eb88526faa7a1c98dd",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 3.337860107421875e-06,
+    "mean_abs": 3.2441027997265337e-07,
+    "p99_abs": 1.430511474609375e-06
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 0.0008497238159179688,
+    "mean_abs": 3.940459663454021e-06,
+    "p99_abs": 4.649162292480469e-05
+   },
+   "substeps_per_op_mean": 44.4931640625,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E48",
+  "mode": "adaptive",
+  "eps": 0.01,
+  "seed": 5,
+  "q": {
+   "OOD": 0.1510000079870224,
+   "OOD_cost": 95.38600158691406,
+   "COMPOSITION": 0.20100000500679016,
+   "COMPOSITION_cost": 91.00900268554688,
+   "LONG_HORIZON": 0.023000001907348633,
+   "LONG_HORIZON_cost": 88.17825317382812,
+   "axis1": 0.12500000496705374
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.54,
+    "p99": 0.642
+   },
+   "latency_us_step": {
+    "mean": 1242.0448818359378,
+    "p50": 1278.585,
+    "p95": 1658.044,
+    "p99": 1795.547
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33228,
+   "params_sha256": "cc55aac99ef2b173525185737ffce41b5e6ddbebc85ef6eb88526faa7a1c98dd",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 2.86102294921875e-06,
+    "mean_abs": 3.1952151857694844e-07,
+    "p99_abs": 1.430511474609375e-06
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 0.0012205243110656738,
+    "mean_abs": 4.680242426502446e-06,
+    "p99_abs": 3.8623809814453125e-05
+   },
+   "substeps_per_op_mean": 88.7470703125,
+   "token_ids_seen_by_core": 0
+  }
+ },
+ {
+  "exp": "E48",
+  "mode": "adaptive",
+  "eps": 0.003,
+  "seed": 5,
+  "q": {
+   "OOD": 0.15200001001358032,
+   "OOD_cost": 122.67700958251953,
+   "COMPOSITION": 0.19850000739097595,
+   "COMPOSITION_cost": 123.46400451660156,
+   "LONG_HORIZON": 0.023000001907348633,
+   "LONG_HORIZON_cost": 120.88225555419922,
+   "axis1": 0.12450000643730164
+  },
+  "rust": {
+   "latency_us_decoder": {
+    "p50": 0.406,
+    "p99": 0.479
+   },
+   "latency_us_step": {
+    "mean": 1373.9393447265663,
+    "p50": 1279.645,
+    "p95": 1679.254,
+    "p99": 1797.899
+   },
+   "llm_calls_after_encoder": 0,
+   "memory_queries": 0,
+   "params": 33228,
+   "params_sha256": "cc55aac99ef2b173525185737ffce41b5e6ddbebc85ef6eb88526faa7a1c98dd",
+   "step1": {
+    "discrete_match": 1.0,
+    "max_abs": 2.86102294921875e-06,
+    "mean_abs": 3.1898690622256254e-07,
+    "p99_abs": 1.430511474609375e-06
+   },
+   "step16": {
+    "discrete_match": 1.0,
+    "max_abs": 0.0008461177349090576,
+    "mean_abs": 4.425895653525913e-06,
+    "p99_abs": 6.222724914550781e-05
+   },
+   "substeps_per_op_mean": 120.453125,
+   "token_ids_seen_by_core": 0
+  }
+ }
+]
