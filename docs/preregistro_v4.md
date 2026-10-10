@@ -70,3 +70,13 @@ Gate por seed: max(acc L1, acc L2) ≥ acc T1 − 0.05, queries=0, leaked=0. Exp
 - "Residual form": Dφ v4 ya es residual (V0). "Non-saturating encoder": no aplica en v4 (encoder identidad); en v3 requiere re-entrenar encoder/Dφ → NOT_RUN en este ciclo.
 - E23 v3.7 (diagnóstico, seeds 0xA300–0xA30F, LONG lock): V0, V1 (re-proyección al manifold del encoder: punto de grilla más cercano + pattern search), V2 límite espectral, V3 ambos; se reporta cos por horizonte, sin gate.
 - Advertencia pre-declarada: V1 inyecta el prior "el objeto se mueve en una órbita de similitud", que es exacto para rotate/reflect; un PASS de V1 no es evidencia de estabilidad intrínseca de Dφ.
+
+## 10. Seguimiento 3 — completar E45 (pre-registrado antes de correr)
+
+Mismo diseño E45 (96 experiencias, 2 fases, borrado, auditoría), corrido con consolidación rule y genérica. Brains nuevos:
+- **L2g**: base = L1 tras fase 1; un adaptador UVᵀ (rango 4) por familia seleccionado por el one-hot del contexto; presupuesto fase 2 repartido por familia (total = L2).
+- **L3**: paisaje energético cuadrático E(q,c)=½qᵀS(c)q+b(c)·q, S simétrica, S y b lineales en [c,1] (55 números); consolidación = mínimos cuadrados; fase 2 con pseudo-experiencias generadas por su propio modelo de fase 1; inferencia = un paso de gradiente. Limitación declarada: no puede representar flujos antisimétricos (rotación).
+Gates (por seed; experimento PASS si ≥9/16 en DEV y CONFIRM):
+- **E45b**: max(L1, L2, L2g, L3) ≥ T1 − 0.05, queries/leakage = 0.
+- **E45c composición**: aplicar rotate(p1,0) y luego scale(p2,p2) (dos dinámicas aprendidas) para predecir compose(p) en TEST; PASS si el mejor cerebro líquido (L1, L2g, L3, H) encadenado ≥ STATIC + 0.05. Se reporta también la predicción directa con contexto compose.
+- **E45a iteración adaptativa**: para Dφ (L1, H) en translate/rotate/scale, iterar n=2..8 sub-pasos con parámetros p/n y parar cuando el cambio relativo < 1 %; PASS si max(ganancia de accuracy adaptativa vs n=1) ≥ 0.05. Se reporta n medio por tercil de dificultad |p|.

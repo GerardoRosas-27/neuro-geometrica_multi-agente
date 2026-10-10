@@ -119,6 +119,123 @@ impl Predictor for LowRank {
     }
 }
 
+/// L2g: context-gated low-rank fast memory — one UVᵀ adapter per family,
+/// selected by the context one-hot; families without an adapter use the base.
+#[derive(Clone)]
+pub struct LowRankGated {
+    pub base: Dphi,
+    pub ad: Vec<Option<LowRank>>,
+}
+
+impl LowRankGated {
+    pub fn train(&mut self, data: &[Example], b: TrainBudget, seed: u64) {
+        let fams: Vec<usize> = (0..crate::v4_dataset::N_FAM)
+            .filter(|f| data.iter().any(|e| e.family_id == *f))
+            .collect();
+        let per = TrainBudget {
+            steps: b.steps / fams.len().max(1),
+            ..b
+        };
+        for &f in &fams {
+            let mut lr = LowRank::new(self.base.clone(), seed ^ f as u64);
+            let d: Vec<Example> = data.iter().filter(|e| e.family_id == f).cloned().collect();
+            lr.train(&triples(&d), per, seed ^ (0x100 + f as u64));
+            self.ad[f] = Some(lr);
+        }
+    }
+    pub fn n_fast(&self) -> usize {
+        self.ad.iter().flatten().map(|a| a.n_fast()).sum()
+    }
+}
+
+impl Predictor for LowRankGated {
+    fn name(&self) -> &str {
+        "L2g_lowrank_gated"
+    }
+    fn predict(&self, x: &[f64], c: &[f64]) -> Vec<f64> {
+        let f = (0..crate::v4_dataset::N_FAM)
+            .find(|&i| c[i] > 0.5)
+            .unwrap_or(0);
+        match &self.ad[f] {
+            Some(a) => a.predict(x, c),
+            None => self.base.step(x, c),
+        }
+    }
+    fn params(&self) -> usize {
+        self.base.params() + self.n_fast()
+    }
+}
+
+/// L3: energy-landscape dynamics. Each point descends a quadratic energy
+/// E(q,c)=½qᵀS(c)q+b(c)·q whose (symmetric) S and b are linear in [c,1];
+/// consolidation = least-squares deformation of the landscape. Inference = one
+/// gradient step q' = q − ∇E. (Antisymmetric flows such as rotation are not
+/// representable by a gradient field — expected limitation.)
+#[derive(Clone)]
+pub struct Energy {
+    pub w: Vec<f64>, // 5 × 11
+}
+
+fn cfeat(c: &[f64]) -> Vec<f64> {
+    let mut f = c.to_vec();
+    f.push(1.0);
+    f
+}
+
+impl Energy {
+    pub fn fit(exps: &[Example]) -> Self {
+        let (mut fe, mut ys) = (vec![], vec![]);
+        for e in exps {
+            let f = cfeat(&e.context);
+            let nf = f.len();
+            for i in 0..e.input.len() / 2 {
+                let (qx, qy) = (e.input[2 * i], e.input[2 * i + 1]);
+                let (dx, dy) = (e.expected[2 * i] - qx, e.expected[2 * i + 1] - qy);
+                let mut rx = vec![0.0; 5 * nf];
+                let mut ry = vec![0.0; 5 * nf];
+                for j in 0..nf {
+                    rx[j] = -qx * f[j];
+                    rx[nf + j] = -qy * f[j];
+                    rx[3 * nf + j] = -f[j];
+                    ry[nf + j] = -qx * f[j];
+                    ry[2 * nf + j] = -qy * f[j];
+                    ry[4 * nf + j] = -f[j];
+                }
+                fe.push(rx);
+                ys.push(vec![dx]);
+                fe.push(ry);
+                ys.push(vec![dy]);
+            }
+        }
+        let w = crate::v4_controls::ridge(&fe, &ys, 1e-6 * fe.len() as f64);
+        Self {
+            w: w.iter().map(|r| r[0]).collect(),
+        }
+    }
+}
+
+impl Predictor for Energy {
+    fn name(&self) -> &str {
+        "L3_energy"
+    }
+    fn predict(&self, x: &[f64], c: &[f64]) -> Vec<f64> {
+        let f = cfeat(c);
+        let nf = f.len();
+        let lin = |k: usize| (0..nf).map(|j| self.w[k * nf + j] * f[j]).sum::<f64>();
+        let (s11, s12, s22, bx, by) = (lin(0), lin(1), lin(2), lin(3), lin(4));
+        let mut y = x.to_vec();
+        for i in 0..x.len() / 2 {
+            let (qx, qy) = (x[2 * i], x[2 * i + 1]);
+            y[2 * i] = qx - (s11 * qx + s12 * qy + bx);
+            y[2 * i + 1] = qy - (s12 * qx + s22 * qy + by);
+        }
+        y
+    }
+    fn params(&self) -> usize {
+        self.w.len()
+    }
+}
+
 /// T1: inference directly from the consolidated CDT rules (episodes deleted).
 pub struct Thermo {
     pub sig: LearningSignal,
@@ -359,7 +476,165 @@ pub fn run(seed: u64) -> Vec<Row> {
         lat_us: latency_us(&h, &s.ds.test),
         updates: lock.examples_seen(),
     });
+    // ── follow-up 3: L2g (context-gated fast memory) ──
+    let mut l2g = LowRankGated {
+        base: l1_p1.clone(),
+        ad: vec![None; crate::v4_dataset::N_FAM],
+    };
+    let t = Instant::now();
+    l2g.train(&p2, half, seed ^ 0x72);
+    let ms = t.elapsed().as_secs_f64() * 1e3;
+    brains.push(Brain {
+        name: "L2g_liquid_lowrank_gated",
+        ev: evaluate(
+            &l2g,
+            &s.ds.test,
+            1,
+            Some((&aud, &AuditFlags::default())),
+            None,
+        ),
+        set1_p1: a11,
+        set1_p2: acc(&l2g, &t1),
+        set2: acc(&l2g, &t2),
+        retention: acc(&l2g, &episodes),
+        cons_ms: brains[0].cons_ms / 2.0 + ms,
+        changed: changed(&init, &l1_p1) + l2g.n_fast(),
+        bytes: l2g.params() * 8,
+        lat_us: latency_us(&l2g, &s.ds.test),
+        updates: half.examples_seen(),
+    });
+    // ── follow-up 3: L3 energy landscape (own consolidation, own pseudo-replay) ──
+    let t = Instant::now();
+    let e1 = Energy::fit(&p1);
+    let a31 = acc(&e1, &t1);
+    let mut rng = Xoshiro256StarStar::seed_from_u64(seed ^ 0x3E);
+    let mut p2e = p2.clone();
+    for i in 0..p1.len() {
+        let src = &p2[rng.gen_range(0..p2.len())];
+        let f = SET1[i % SET1.len()];
+        let pp = [rng.gen_range(-1.0..1.0), rng.gen_range(-1.0..1.0)];
+        let mut e = src.clone();
+        e.family_id = f;
+        e.params = pp;
+        e.context = crate::v4_dataset::context_of(f, pp);
+        e.expected = e1.predict(&e.input, &e.context);
+        p2e.push(e);
+    }
+    let e3 = Energy::fit(&p2e);
+    let ms = t.elapsed().as_secs_f64() * 1e3;
+    brains.push(Brain {
+        name: "L3_energy_landscape",
+        ev: evaluate(
+            &e3,
+            &s.ds.test,
+            1,
+            Some((&aud, &AuditFlags::default())),
+            None,
+        ),
+        set1_p1: a31,
+        set1_p2: acc(&e3, &t1),
+        set2: acc(&e3, &t2),
+        retention: acc(&e3, &episodes),
+        cons_ms: ms,
+        changed: e3.params(),
+        bytes: e3.params() * 8,
+        lat_us: latency_us(&e3, &s.ds.test),
+        updates: p1.len() + p2e.len(),
+    });
     let st = acc(&StaticCtl, &s.ds.test);
+    // ── composition transfer: rotate(p1,0) then scale(p2,p2) == compose(p) ──
+    let comp: Vec<&Example> = s.ds.test.iter().filter(|e| e.family_id == 6).collect();
+    let chain = |p: &dyn Predictor| -> (f64, f64) {
+        let (mut okc, mut okd) = (0usize, 0usize);
+        for e in &comp {
+            let pr = p.predict(
+                &e.input,
+                &crate::v4_dataset::context_of(1, [e.params[0], 0.0]),
+            );
+            let ch = p.predict(
+                &pr,
+                &crate::v4_dataset::context_of(3, [e.params[1], e.params[1]]),
+            );
+            okc += m::correct(&ch, &e.expected) as usize;
+            okd += m::correct(&p.predict(&e.input, &e.context), &e.expected) as usize;
+        }
+        (
+            okc as f64 / comp.len().max(1) as f64,
+            okd as f64 / comp.len().max(1) as f64,
+        )
+    };
+    let preds: Vec<(&str, &dyn Predictor)> = vec![
+        ("L1", &l1),
+        ("L2g", &l2g),
+        ("L3", &e3),
+        ("T1", &th),
+        ("H", &h),
+        ("STATIC", &StaticCtl),
+    ];
+    let comp_res: Vec<(&str, f64, f64)> = preds
+        .iter()
+        .map(|(n, p)| {
+            let (c, d) = chain(*p);
+            (*n, c, d)
+        })
+        .collect();
+    // ── adaptive iteration vs difficulty (Dφ brains, families translate/rotate/scale) ──
+    let adap = |p: &Dphi| -> String {
+        let ex: Vec<&Example> =
+            s.ds.test
+                .iter()
+                .filter(|e| [0usize, 1, 3].contains(&e.family_id))
+                .collect();
+        let mut by_bin = [[0.0f64; 4]; 3]; // [bin][acc1, acc_adapt, n_mean, count]
+        for e in &ex {
+            let mag = (e.params[0].powi(2) + e.params[1].powi(2)).sqrt();
+            let bin = if mag < 0.6 {
+                0
+            } else if mag < 1.0 {
+                1
+            } else {
+                2
+            };
+            let one = p.step(&e.input, &e.context);
+            let mut prev = one.clone();
+            let mut used = 1usize;
+            for n in 2..=8usize {
+                let c = crate::v4_dataset::context_of(
+                    e.family_id,
+                    [e.params[0] / n as f64, e.params[1] / n as f64],
+                );
+                let pr = p.rollout(&e.input, &c, n);
+                let ch = m::rel_err(&pr, &prev);
+                prev = pr;
+                used = n;
+                if ch < 0.01 {
+                    break;
+                }
+            }
+            by_bin[bin][0] += m::correct(&one, &e.expected) as usize as f64;
+            by_bin[bin][1] += m::correct(&prev, &e.expected) as usize as f64;
+            by_bin[bin][2] += used as f64;
+            by_bin[bin][3] += 1.0;
+        }
+        let tot1: f64 = by_bin.iter().map(|b| b[0]).sum::<f64>() / ex.len() as f64;
+        let tota: f64 = by_bin.iter().map(|b| b[1]).sum::<f64>() / ex.len() as f64;
+        format!(
+            "acc1={tot1:.3} acc_adapt={tota:.3} {}",
+            by_bin
+                .iter()
+                .enumerate()
+                .map(|(i, b)| format!(
+                    "bin{i}:acc1={:.2},adapt={:.2},n={:.2}",
+                    b[0] / b[3].max(1.0),
+                    b[1] / b[3].max(1.0),
+                    b[2] / b[3].max(1.0)
+                ))
+                .collect::<Vec<_>>()
+                .join(" ")
+        )
+    };
+    let adap_l1 = adap(&l1);
+    let adap_h = adap(&h);
 
     let mut rows = vec![];
     for b in &brains {
@@ -387,6 +662,85 @@ pub fn run(seed: u64) -> Vec<Row> {
         });
     }
     let best_l = brains[0].ev.acc.max(brains[1].ev.acc);
+    let best_l_all = brains
+        .iter()
+        .filter(|b| b.name.starts_with('L'))
+        .map(|b| b.ev.acc)
+        .fold(0.0, f64::max);
+    let mut extra = vec![];
+    let mk = |exp: &str, pass: bool, notes: String| Row {
+        experiment: exp.into(),
+        seed,
+        condition: "GATE".into(),
+        partition: "TEST".into(),
+        n_examples: 0,
+        params: 0,
+        compute: 0,
+        accuracy: 0.0,
+        cosine: 0.0,
+        energy: 0.0,
+        manifold_distance: 0.0,
+        stability: 0.0,
+        leakage: 0,
+        q: QueryCounters::default(),
+        status: if pass { "PASS".into() } else { "FAIL".into() },
+        notes,
+    };
+    let t1acc = brains[2].ev.acc;
+    let clean_all = brains
+        .iter()
+        .all(|b| b.ev.queries.total() == 0 && b.ev.leaked == 0);
+    extra.push(mk(
+        "E45b",
+        best_l_all >= t1acc - MARGIN && clean_all,
+        format!(
+            "L1={:.3} L2={:.3} L2g={:.3} L3={:.3} T1={t1acc:.3} H={:.3}",
+            brains[0].ev.acc,
+            brains[1].ev.acc,
+            brains[4].ev.acc,
+            brains[5].ev.acc,
+            brains[3].ev.acc
+        ),
+    ));
+    let st_c = comp_res
+        .iter()
+        .find(|r| r.0 == "STATIC")
+        .map(|r| r.1)
+        .unwrap_or(0.0);
+    let best_liq_c = comp_res
+        .iter()
+        .filter(|r| ["L1", "L2g", "L3", "H"].contains(&r.0))
+        .map(|r| r.1)
+        .fold(0.0, f64::max);
+    extra.push(mk(
+        "E45c",
+        best_liq_c >= st_c + MARGIN,
+        comp_res
+            .iter()
+            .map(|(n, c, d)| format!("{n}:chain={c:.3},direct={d:.3}"))
+            .collect::<Vec<_>>()
+            .join(" "),
+    ));
+    let gain = |sx: &str| -> f64 {
+        let a1: f64 = sx
+            .split("acc1=")
+            .nth(1)
+            .and_then(|v| v.split(' ').next())
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0.0);
+        let aa: f64 = sx
+            .split("acc_adapt=")
+            .nth(1)
+            .and_then(|v| v.split(' ').next())
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0.0);
+        aa - a1
+    };
+    extra.push(mk(
+        "E45a",
+        gain(&adap_l1).max(gain(&adap_h)) >= MARGIN,
+        format!("L1[{adap_l1}] H[{adap_h}]"),
+    ));
     let clean = brains
         .iter()
         .all(|b| b.ev.queries.total() == 0 && b.ev.leaked == 0);
@@ -413,5 +767,6 @@ pub fn run(seed: u64) -> Vec<Row> {
             brains[0].ev.acc, brains[1].ev.acc, brains[2].ev.acc, brains[3].ev.acc
         ),
     });
+    rows.extend(extra);
     rows
 }
