@@ -372,3 +372,20 @@ Solo un resultado reproducible y auditado puede cambiar `NOT_RUN` a `PASS`.
 13. E43–E44.
 
 **Regla v4:** no hacer que el campo acierte más a cualquier precio. Hacer imposible confundir recuperación, interpolación trivial, capacidad del decoder o memorización con aprendizaje dinámico persistente.
+
+# 24. E45 — Liquid-vs-Thermo Consolidation Benchmark (añadido 2026-10-09, tras E31–E44)
+
+Pregunta: ¿puede una arquitectura líquida (Dφ) ser el sustrato principal de **inferencia y consolidación**, con CDT como control? El POC previo comparó mecanismos no equivalentes (WavePredictCore interferencia analítica 0.24 µs/query vs CDT step()+firma 62 µs); E45 compara con **mismas experiencias y mismo presupuesto de updates**.
+
+Cuatro cerebros, mismas ~96 experiencias (12/familia × 8) en dos fases (fase 1: familias 0–3, fase 2: familias 4–7), DELETE de episodios/CDT/RQM/RAM/tablas/retrieval antes de TEST, mismos contadores de auditoría:
+
+- **L1** Liquid inferencia + consolidación directa con plasticidad gated por error predictivo (Ψt→Dφ→Ψpred vs Ψreal; sólo ejemplos con rel_err ≥ 0.05 generan gradiente).
+- **L2** Liquid largo plazo (L1 en fase 1) + memoria rápida low-rank ΔD = UVᵀ (rango 4 sobre la capa de salida) para fase 2 con base congelada; rollback = UV←0.
+- **L3** deformación de paisaje energético: NOT_RUN en este ciclo (opcional).
+- **T1** Thermo/CDT: inferencia y consolidación por CDT (regla consolidada por familia; episodios borrados).
+- **H** Híbrido: inferencia Liquid + consolidación CDT (replay generativo, como E35/E40-B).
+
+Métricas: accuracy TEST nueva (total, set1, set2), olvido/interferencia en set1 tras fase 2, retención sobre episodios borrados (copia del auditor), tiempo de consolidación, parámetros/bytes cambiados, footprint persistente, latencia/query, nº de updates (gating), costo por punto de accuracy ganado. Composición A→B→C como dinámica: NOT_RUN (el benchmark no tiene contexto para composiciones no vistas). Iteración adaptativa / fallback lineal: NOT_RUN.
+
+Gate pre-registrado (por seed): **sustrato líquido viable** si max(L1, L2) ≥ T1 − 0.05 en accuracy TEST con queries/leakage = 0. PASS de experimento si ≥ 9/16 en DEV y CONFIRM. Se reportan también H vs L1 y el ganador por métrica sin gate.
+Analogía cognitiva (sólo interpretativa): corto plazo = UVᵀ/episodios; largo plazo = dinámica consolidada.

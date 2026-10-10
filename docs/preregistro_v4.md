@@ -51,3 +51,7 @@ En la seed SMOKE `0x5A00` se observó que un Dφ que procesa el objeto entero (1
 `collect_experience(TRAIN) → CdtStore` (cada lectura cuenta `cdt_queries`) → `consolidate` → `LearningSignal` (por familia: regla afín puntual con coeficientes cuadráticos en p, 36 números + estadísticos de entrada/parámetros; **ningún par x→y**) → `adapt_dynamics` (mismo presupuesto que A: 8000×16 muestras; 50 % TRAIN, 50 % replay generativo de estados sintéticos nuevos) → `drop(signal, cdt)` → verificación hash TEST → evaluación con contadores thread-local por predicción. Todos los targets de replay se auditan contra TEST (hash canónico y bola de corrección 5 %). A y B comparten init (`seed^0xD0`) y stream de muestreo (`seed^0x7A`).
 
 Hipótesis rival H0e (regularización genérica) se prueba en E36 (D/E/F/G de igual tamaño). La varianza por stream de muestreo se estima con B_raw (replay crudo = misma distribución que A).
+
+## 7. E45 (añadido antes de ejecutarlo)
+
+Gate por seed: max(acc L1, acc L2) ≥ acc T1 − 0.05, queries=0, leaked=0. Experimento PASS si ≥9/16 en DEV y en CONFIRM. Dataset: `train_per_family=12` (96 experiencias), resto igual. Presupuesto por fase = 4000×16 muestras para L1/L2/H. Umbral de gating = REL_ERR_OK (0.05). Rango UVᵀ = 4.

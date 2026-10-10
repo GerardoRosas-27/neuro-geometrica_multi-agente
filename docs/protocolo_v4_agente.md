@@ -313,3 +313,7 @@ Cada `summary.md` debe contener:
 ```
 
 Cada commit de resultados debe indicar si los números son smoke, DEV o CONFIRM.
+
+## 18. E45 (Liquid vs Thermo) — protocolo
+
+Módulo `src/v4_e45.rs`; runner `run_field_autonomy_v4 run --phase dev|confirm --exps E45 --out artifacts/v4/e45`. Mismas seeds DEV/CONFIRM v4, mismo lock (`steps` totales repartidos 50/50 por fase). Pre-registro en `plan_autonomia_campo_v4.md §24` y `preregistro_v4.md §7`, commiteado antes de correr.
