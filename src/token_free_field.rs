@@ -27,6 +27,10 @@ pub enum DynKind {
     Liquid,
     Ssm,
     Linear,
+    /// Liquid con K sub-pasos Euler (dt = 1/K), ciclo 2.
+    LiquidSs,
+    /// Residual Ψ + MLP([Ψ,c]) (análogo arquitectónico de Dφ v4).
+    V4Res,
 }
 
 #[derive(Deserialize)]
@@ -42,6 +46,10 @@ struct RawArtifact {
     #[serde(rename = "N")]
     n: usize,
     ops: usize,
+    #[serde(default)]
+    ctx_dim: Option<usize>,
+    #[serde(default)]
+    substeps: Option<usize>,
     params_sha256: String,
     params: BTreeMap<String, RawTensor>,
 }
@@ -79,6 +87,10 @@ pub struct LiquidParams {
     pub kind: DynKind,
     pub n: usize,
     pub ops: usize,
+    /// Dimensión del contexto estructurado (= ops si es one-hot).
+    pub ctx_dim: usize,
+    /// Sub-pasos por defecto (solo LiquidSs).
+    pub substeps: usize,
     pub sha256: String,
     w1: Option<Mat>,
     b1: Vec<f32>,
@@ -90,6 +102,24 @@ pub struct LiquidParams {
     b: Vec<Vec<f32>>,
     dec_w: Mat,
     dec_b: Vec<f32>,
+    /// Transpuestas (por columna contigua) para actualizar solo índices activos.
+    w2t: Vec<f32>,
+    wgt: Vec<f32>,
+    at: Vec<Vec<f32>>,
+}
+
+fn transpose(m: &Mat) -> Vec<f32> {
+    let mut t = vec![0.0; m.data.len()];
+    for i in 0..m.rows {
+        for j in 0..m.cols {
+            t[j * m.rows + i] = m.data[i * m.cols + j];
+        }
+    }
+    t
+}
+
+fn dot(a: &[f32], b: &[f32]) -> f32 {
+    a.iter().zip(b).map(|(x, y)| x * y).sum()
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -129,6 +159,8 @@ impl LiquidParams {
             "liquid" => DynKind::Liquid,
             "ssm" => DynKind::Ssm,
             "linear" => DynKind::Linear,
+            "liquid_ss" => DynKind::LiquidSs,
+            "v4res" => DynKind::V4Res,
             k => return Err(format!("kind desconocido {k}")),
         };
         let mut p = raw.params;
@@ -155,21 +187,32 @@ impl LiquidParams {
                 b.push(tb.data[o * n..(o + 1) * n].to_vec());
             }
         }
+        let w1 = take("model.W1").map(mat);
+        let w2 = take("model.W2").map(mat);
+        let wg = take("model.Wg").map(mat);
+        let w2t = w2.as_ref().map(transpose).unwrap_or_default();
+        let wgt = wg.as_ref().map(transpose).unwrap_or_default();
+        let at = a.iter().map(transpose).collect();
         Ok(Self {
             kind,
             n: raw.n,
             ops: raw.ops,
+            ctx_dim: raw.ctx_dim.unwrap_or(raw.ops),
+            substeps: raw.substeps.unwrap_or(1),
             sha256: raw.params_sha256,
-            w1: take("model.W1").map(mat),
+            w1,
             b1: vecof(take("model.b1")),
-            w2: take("model.W2").map(mat),
+            w2,
             b2: vecof(take("model.b2")),
-            wg: take("model.Wg").map(mat),
+            wg,
             bg: vecof(take("model.bg")),
             a,
             b,
             dec_w,
             dec_b,
+            w2t,
+            wgt,
+            at,
         })
     }
 
@@ -185,50 +228,119 @@ impl LiquidParams {
             + self.b.iter().map(Vec::len).sum::<usize>()
     }
 
-    /// Una transición Ψ → Ψ' (semántica idéntica a `e46.py::step`).
+    /// Una transición Ψ → Ψ' con contexto one-hot (semántica de `e46.py::step`).
     pub fn step(&self, psi: &FieldState, c: FieldContext, scratch: &mut Scratch) -> FieldState {
+        assert!(c.op < self.ops, "op fuera de rango");
+        let mut cv = vec![0.0f32; self.ctx_dim];
+        cv[c.op] = 1.0;
+        self.step_ctx(psi, &cv, None, None, scratch).0
+    }
+
+    /// Transición general: contexto vectorial estructurado, máscara top-k
+    /// opcional (E47) y número de sub-pasos opcional (E48, solo LiquidSs).
+    /// Devuelve (Ψ', sub-pasos calculados).
+    pub fn step_ctx(
+        &self,
+        psi: &FieldState,
+        c: &[f32],
+        topk: Option<usize>,
+        substeps: Option<usize>,
+        scratch: &mut Scratch,
+    ) -> (FieldState, usize) {
         let n = self.n;
         assert_eq!(psi.0.len(), n, "dimensión de Ψ");
-        assert!(c.op < self.ops, "op fuera de rango");
-        let mut out = vec![0.0f32; n];
+        assert_eq!(c.len(), self.ctx_dim, "dimensión de contexto");
+        // Selección top-k por magnitud (empates: índice menor). Coste incluido.
+        let sel: Vec<usize> = match topk {
+            Some(k) if k < n => {
+                let mut idx: Vec<usize> = (0..n).collect();
+                idx.sort_by(|&i, &j| psi.0[j].abs().total_cmp(&psi.0[i].abs()).then(i.cmp(&j)));
+                idx.truncate(k);
+                idx
+            }
+            _ => (0..n).collect(),
+        };
+        let mut cur = psi.0.clone();
         if self.kind == DynKind::Linear {
-            self.a[c.op].vecmat(&psi.0, Some(&self.b[c.op]), &mut out);
-            return FieldState(out);
+            let op = (0..self.ops)
+                .max_by(|&i, &j| c[i].total_cmp(&c[j]).then(j.cmp(&i)))
+                .unwrap_or(0);
+            let at = &self.at[op];
+            let mut out = cur.clone();
+            if sel.len() == n {
+                for j in 0..n {
+                    out[j] = self.b[op][j] + dot(&cur, &at[j * n..(j + 1) * n]);
+                }
+            } else {
+                for &j in &sel {
+                    let row = &at[j * n..(j + 1) * n];
+                    out[j] = self.b[op][j] + sel.iter().map(|&i| cur[i] * row[i]).sum::<f32>();
+                }
+            }
+            return (FieldState(out), 1);
         }
+        let k_sub = if self.kind == DynKind::LiquidSs {
+            substeps.unwrap_or(self.substeps).max(1)
+        } else {
+            1
+        };
+        let dt = 1.0 / k_sub as f32;
+        for _ in 0..k_sub {
+            self.inner(&mut cur, c, &sel, dt, scratch);
+        }
+        (FieldState(cur), k_sub)
+    }
+
+    /// Una evaluación de F sobre los índices `sel` (resto intacto).
+    fn inner(&self, cur: &mut [f32], c: &[f32], sel: &[usize], dt: f32, scratch: &mut Scratch) {
+        let n = self.n;
         let x = &mut scratch.x;
         x.clear();
-        x.extend_from_slice(&psi.0);
-        x.extend((0..self.ops).map(|o| if o == c.op { 1.0 } else { 0.0 }));
+        x.resize(n, 0.0);
+        for &i in sel {
+            x[i] = cur[i];
+        }
+        x.extend_from_slice(c);
         let w1 = self.w1.as_ref().expect("W1");
         let w2 = self.w2.as_ref().expect("W2");
         scratch.h.resize(w1.cols, 0.0);
         w1.vecmat(x, Some(&self.b1), &mut scratch.h);
-        let act: fn(f32) -> f32 = if self.kind == DynKind::Liquid {
-            f32::tanh
+        let liquid = matches!(self.kind, DynKind::Liquid | DynKind::LiquidSs);
+        if liquid {
+            scratch.h.iter_mut().for_each(|v| *v = v.tanh());
         } else {
-            gelu
-        };
-        scratch.h.iter_mut().for_each(|v| *v = act(*v));
-        w2.vecmat(&scratch.h, Some(&self.b2), &mut out);
-        match self.kind {
-            DynKind::Mlp | DynKind::Linear => {}
-            DynKind::Liquid | DynKind::Ssm => {
-                scratch.g.resize(n, 0.0);
-                self.wg
-                    .as_ref()
-                    .expect("Wg")
-                    .vecmat(x, Some(&self.bg), &mut scratch.g);
-                for ((o, &p), &g) in out.iter_mut().zip(&psi.0).zip(&scratch.g) {
-                    *o = if self.kind == DynKind::Liquid {
-                        let tau = 0.5 + softplus(g);
-                        p + (-p / tau + *o)
-                    } else {
-                        sigmoid(g) * p + *o
-                    };
-                }
-            }
+            scratch.h.iter_mut().for_each(|v| *v = gelu(*v));
         }
-        FieldState(out)
+        let gated = matches!(
+            self.kind,
+            DynKind::Liquid | DynKind::LiquidSs | DynKind::Ssm
+        );
+        for &j in sel {
+            let hd = w2.rows;
+            let f = self.b2[j] + dot(&scratch.h, &self.w2t[j * hd..(j + 1) * hd]);
+            let p = x[j];
+            let g = if gated {
+                let ind = n + self.ctx_dim;
+                self.bg[j] + dot(x, &self.wgt[j * ind..(j + 1) * ind])
+            } else {
+                0.0
+            };
+            scratch.pending.push((
+                j,
+                match self.kind {
+                    DynKind::Mlp => f,
+                    DynKind::V4Res => p + f,
+                    DynKind::Ssm => sigmoid(g) * p + f,
+                    _ => {
+                        let tau = 0.5 + softplus(g);
+                        p + dt * (-p / tau + f)
+                    }
+                },
+            ));
+        }
+        for (j, v) in scratch.pending.drain(..) {
+            cur[j] = v;
+        }
     }
 
     pub fn rollout(
@@ -282,7 +394,7 @@ impl LiquidParams {
 pub struct Scratch {
     x: Vec<f32>,
     h: Vec<f32>,
-    g: Vec<f32>,
+    pending: Vec<(usize, f32)>,
 }
 
 #[cfg(test)]
