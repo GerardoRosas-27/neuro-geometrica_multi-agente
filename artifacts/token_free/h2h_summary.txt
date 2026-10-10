@@ -1,0 +1,20 @@
+== dev (16 semillas)
+v4 Dphi A: h1=0.2314 roll=[0.127, 0.005, 0.0, 0.0, 0.0, 0.0, 0.0] comp2=0.025 lat_p50=9.20 params=962 wall_E35=3.73s mem_q=0
+v4 Dphi B: h1=0.3386 roll=[0.239, 0.009, 0.0, 0.0, 0.0, 0.0, 0.0] comp2=0.059 lat_p50=9.19 params=962 wall_E35=3.73s mem_q=0
+TF mlp A: h1=0.0000 roll=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0] comp2=0.000 lat_p50=0.40 params=957 train=0.41s parity_max_step1=1.2e-06 step64=1.7e+19 mem_q=0
+TF mlp B: h1=0.0000 roll=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0] comp2=0.000 lat_p50=0.40 params=957 train=0.49s parity_max_step1=1.3e-06 step64=1.2e+25 mem_q=0
+TF liquid_ss A: h1=0.0000 roll=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0] comp2=0.000 lat_p50=2.07 params=953 train=0.84s parity_max_step1=5.4e-07 step64=4.6e+00 mem_q=0
+TF liquid_ss B: h1=0.0000 roll=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0] comp2=0.000 lat_p50=2.09 params=953 train=1.06s parity_max_step1=6.0e-07 step64=1.1e+00 mem_q=0
+TF ssm A: h1=0.0002 roll=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0] comp2=0.000 lat_p50=0.48 params=953 train=0.45s parity_max_step1=1.1e-06 step64=2.5e+18 mem_q=0
+TF ssm B: h1=0.0005 roll=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0] comp2=0.000 lat_p50=0.48 params=953 train=0.59s parity_max_step1=8.4e-07 step64=1.3e+19 mem_q=0
+TF_ssm_B - v4_B: -0.3381 IC95 [-0.3816, -0.2932]
+== conf (16 semillas)
+v4 Dphi A: h1=0.2480 roll=[0.126, 0.01, 0.001, 0.0, 0.0, 0.0, 0.0] comp2=0.030 lat_p50=9.31 params=962 wall_E35=3.76s mem_q=0
+v4 Dphi B: h1=0.3774 roll=[0.205, 0.015, 0.0, 0.0, 0.0, 0.0, 0.0] comp2=0.059 lat_p50=9.31 params=962 wall_E35=3.76s mem_q=0
+TF mlp A: h1=0.0000 roll=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0] comp2=0.000 lat_p50=0.40 params=957 train=0.37s parity_max_step1=1.3e-06 step64=3.8e+22 mem_q=0
+TF mlp B: h1=0.0000 roll=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0] comp2=0.000 lat_p50=0.40 params=957 train=0.46s parity_max_step1=1.3e-06 step64=1.4e+18 mem_q=0
+TF liquid_ss A: h1=0.0000 roll=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0] comp2=0.000 lat_p50=2.07 params=953 train=0.83s parity_max_step1=6.0e-07 step64=5.3e-01 mem_q=0
+TF liquid_ss B: h1=0.0000 roll=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0] comp2=0.000 lat_p50=2.09 params=953 train=1.08s parity_max_step1=6.0e-07 step64=6.5e+00 mem_q=0
+TF ssm A: h1=0.0002 roll=[0.001, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0] comp2=0.000 lat_p50=0.48 params=953 train=0.44s parity_max_step1=1.3e-06 step64=1.3e+26 mem_q=0
+TF ssm B: h1=0.0010 roll=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0] comp2=0.000 lat_p50=0.48 params=953 train=0.58s parity_max_step1=9.5e-07 step64=8.3e+21 mem_q=0
+TF_ssm_B - v4_B: -0.3765 IC95 [-0.4207, -0.3293]
