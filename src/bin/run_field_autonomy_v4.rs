@@ -37,6 +37,9 @@ fn main() {
     let exps: std::collections::HashSet<String> = get("--exps")
         .map(|v| v.split(',').map(|s| s.trim().to_string()).collect())
         .unwrap_or_default();
+    if get("--consol").as_deref() == Some("generic") {
+        GENERIC_CONSOLIDATION.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
     let out = PathBuf::from(get("--out").unwrap_or_else(|| "artifacts/v4".into())).join(&phase);
     fs::create_dir_all(&out).expect("out dir");
     let sha = git(&["rev-parse", "HEAD"]);
@@ -87,11 +90,12 @@ fn main() {
     fs::write(out.join("dataset_manifest.jsonl"), &manifests).unwrap();
     fs::write(out.join("e32_trace.csv"), &trace).unwrap();
     let config = format!(
-        "{{\"git_sha\":\"{sha}\",\"git_dirty\":{dirty},\"branch\":\"exp/field-autonomy-v4\",\"phase\":\"{phase}\",\"seeds\":[{}],\"hp_lock\":{},\"hp_lock_sha256\":\"{}\",\"exps\":\"{}\",\"wall_s\":{:.1}}}",
+        "{{\"git_sha\":\"{sha}\",\"git_dirty\":{dirty},\"branch\":\"exp/field-autonomy-v4\",\"phase\":\"{phase}\",\"seeds\":[{}],\"hp_lock\":{},\"hp_lock_sha256\":\"{}\",\"exps\":\"{}\",\"consolidation\":\"{}\",\"wall_s\":{:.1}}}",
         seeds.iter().map(|s| format!("\"0x{s:X}\"")).collect::<Vec<_>>().join(","),
         hp_lock_json(),
         hp_lock_hash(),
         get("--exps").unwrap_or_else(|| "ALL".into()),
+        get("--consol").unwrap_or_else(|| "rule".into()),
         t0.elapsed().as_secs_f64()
     );
     fs::write(out.join("config.json"), &config).unwrap();

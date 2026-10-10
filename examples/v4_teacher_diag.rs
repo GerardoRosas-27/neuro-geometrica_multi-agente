@@ -6,6 +6,9 @@ use cdt_rqm_epr::v4_dataset::*;
 use cdt_rqm_epr::v4_metrics as m;
 fn main() {
     let phase = std::env::args().nth(1).unwrap_or_else(|| "dev".into());
+    if std::env::args().nth(2).as_deref() == Some("generic") {
+        GENERIC_CONSOLIDATION.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
     let seeds = if phase == "confirm" {
         CONFIRM_SEEDS_V4
     } else {
@@ -18,8 +21,7 @@ fn main() {
         let sig = consolidate(&cdt, ConsolidateMode::Full);
         let (mut ok, mut re) = (0usize, vec![]);
         for e in &sealed.ds.test {
-            let r = sig.rules.iter().find(|r| r.fam == e.family_id).unwrap();
-            let y = rule_apply(r, e.params, &e.input, false);
+            let y = sig.predict(e.family_id, e.params, &e.input).unwrap();
             ok += m::correct(&y, &e.expected) as usize;
             re.push(m::rel_err(&y, &e.expected));
         }

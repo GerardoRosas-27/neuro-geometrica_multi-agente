@@ -363,11 +363,180 @@ pub struct FamilyRule {
 pub struct LearningSignal {
     pub kind: String,
     pub rules: Vec<FamilyRule>,
+    /// Item-1 generic consolidation (no generator structure), when enabled.
+    pub generic: Option<GenericField>,
 }
 
 impl LearningSignal {
     pub fn n_numbers(&self) -> usize {
-        self.rules.len() * (36 + 12)
+        match &self.generic {
+            Some(g) => g.n_numbers(),
+            None => self.rules.len() * (36 + 12),
+        }
+    }
+
+    /// Consolidated predictor (teacher) — used by T1 and diagnostics.
+    pub fn predict(&self, fam: usize, p: [f64; 2], x: &[f64]) -> Option<Vec<f64>> {
+        if let Some(g) = &self.generic {
+            if !g.fams.iter().any(|s| s.fam == fam) {
+                return None;
+            }
+            return Some(g.apply(fam, p, x));
+        }
+        let r = self.rules.iter().find(|r| r.fam == fam)?;
+        Some(rule_apply(r, p, x, self.kind.starts_with("StatsOnly")))
+    }
+}
+
+/// Global switch for the consolidation family (set once by the runner).
+pub static GENERIC_CONSOLIDATION: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+pub const RFF_D: usize = 1600;
+pub const RFF_LEN: f64 = 1.4;
+pub const RFF_LAM: f64 = 1e-8;
+
+fn env_or(k: &str, d: f64) -> f64 {
+    std::env::var(k)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(d)
+}
+
+/// Generic consolidation: random-Fourier-feature kernel ridge on
+/// `u = [q, context]` → Δq, shared across points. Knows nothing about
+/// affine/rotation structure. Replay inputs: per-family independent Gaussian
+/// per point (mean/std of experienced points) — no object-shape model.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct GenericField {
+    pub omega: Vec<f64>,
+    pub phase: Vec<f64>,
+    pub w: Vec<Vec<f64>>,
+    pub use_q: bool,
+    pub ctx_shift: bool,
+    pub fams: Vec<GenericStats>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct GenericStats {
+    pub fam: usize,
+    pub p_min: [f64; 2],
+    pub p_max: [f64; 2],
+    pub mean: [f64; 2],
+    pub std: [f64; 2],
+}
+
+impl GenericField {
+    fn n_numbers(&self) -> usize {
+        self.omega.len() + self.phase.len() + self.w.len() * 2 + self.fams.len() * 8
+    }
+
+    fn feats(&self, q: (f64, f64), c: &[f64]) -> Vec<f64> {
+        let mut u = vec![
+            if self.use_q { q.0 } else { 0.0 },
+            if self.use_q { q.1 } else { 0.0 },
+        ];
+        u.extend_from_slice(c);
+        let d = u.len();
+        let mut f: Vec<f64> = (0..self.phase.len())
+            .map(|i| {
+                (2.0 / self.phase.len() as f64).sqrt()
+                    * ((0..d).map(|j| self.omega[i * d + j] * u[j]).sum::<f64>() + self.phase[i])
+                        .cos()
+            })
+            .collect();
+        f.extend_from_slice(&u);
+        f.push(1.0);
+        f
+    }
+
+    pub fn apply(&self, fam: usize, p: [f64; 2], x: &[f64]) -> Vec<f64> {
+        let nf = if self.ctx_shift {
+            (fam + 1) % N_FAM
+        } else {
+            fam
+        };
+        let c = context_of(nf, p);
+        let mut y = x.to_vec();
+        for i in 0..x.len() / 2 {
+            let f = self.feats((x[2 * i], x[2 * i + 1]), &c);
+            for k in 0..2 {
+                y[2 * i + k] += f.iter().zip(&self.w).map(|(a, w)| a * w[k]).sum::<f64>();
+            }
+        }
+        y
+    }
+}
+
+pub fn consolidate_generic(
+    exps: &[Experience],
+    mode: ConsolidateMode,
+    seed: u64,
+) -> LearningSignal {
+    let mut rng = Xoshiro256StarStar::seed_from_u64(seed ^ 0x6E6E);
+    let d = 2 + CTX_DIM;
+    let nd = env_or("V4_RFF_D", RFF_D as f64) as usize;
+    let len = env_or("V4_RFF_LEN", RFF_LEN);
+    let lam = env_or("V4_RFF_LAM", RFF_LAM);
+    let mut g = GenericField {
+        omega: (0..nd * d)
+            .map(|_| {
+                let (u1, u2): (f64, f64) = (rng.gen_range(1e-12..1.0), rng.gen_range(0.0..1.0));
+                (-2.0 * u1.ln()).sqrt() * (std::f64::consts::TAU * u2).cos() / len
+            })
+            .collect(),
+        phase: (0..nd)
+            .map(|_| rng.gen_range(0.0..std::f64::consts::TAU))
+            .collect(),
+        w: vec![],
+        use_q: mode != ConsolidateMode::StatsOnly,
+        ctx_shift: false,
+        fams: vec![],
+    };
+    let (mut feats, mut ys) = (vec![], vec![]);
+    for e in exps {
+        let c = context_of(e.fam, e.params);
+        for i in 0..e.x.len() / 2 {
+            feats.push(g.feats((e.x[2 * i], e.x[2 * i + 1]), &c));
+            ys.push(vec![
+                e.y[2 * i] - e.x[2 * i],
+                e.y[2 * i + 1] - e.x[2 * i + 1],
+            ]);
+        }
+    }
+    g.w = crate::v4_controls::ridge(&feats, &ys, lam * feats.len() as f64);
+    for f in 0..N_FAM {
+        let fx: Vec<&Experience> = exps.iter().filter(|e| e.fam == f).collect();
+        if fx.is_empty() {
+            continue;
+        }
+        let (mut xs, mut yv) = (vec![], vec![]);
+        let (mut pmin, mut pmax) = ([f64::MAX; 2], [f64::MIN; 2]);
+        for e in &fx {
+            for i in 0..e.x.len() / 2 {
+                xs.push(e.x[2 * i]);
+                yv.push(e.x[2 * i + 1]);
+            }
+            for k in 0..2 {
+                pmin[k] = pmin[k].min(e.params[k]);
+                pmax[k] = pmax[k].max(e.params[k]);
+            }
+        }
+        g.fams.push(GenericStats {
+            fam: f,
+            p_min: pmin,
+            p_max: pmax,
+            mean: [m::mean(&xs), m::mean(&yv)],
+            std: [m::std(&xs), m::std(&yv)],
+        });
+    }
+    if mode == ConsolidateMode::Corrupt {
+        g.ctx_shift = true;
+    }
+    LearningSignal {
+        kind: format!("Generic{mode:?}"),
+        rules: vec![],
+        generic: Some(g),
     }
 }
 
@@ -397,6 +566,9 @@ fn rule_feats(p: [f64; 2], q: (f64, f64), stats_only: bool) -> Vec<f64> {
 
 pub fn consolidate(store: &CdtStore, mode: ConsolidateMode) -> LearningSignal {
     let exps = store.read_all();
+    if GENERIC_CONSOLIDATION.load(std::sync::atomic::Ordering::Relaxed) {
+        return consolidate_generic(exps, mode, 0x6E);
+    }
     let mut rules = Vec::new();
     for f in 0..N_FAM {
         let fx: Vec<&Experience> = exps.iter().filter(|e| e.fam == f).collect();
@@ -458,7 +630,11 @@ pub fn consolidate(store: &CdtStore, mode: ConsolidateMode) -> LearningSignal {
         }
         kind.push_str("(perm+1)");
     }
-    LearningSignal { kind, rules }
+    LearningSignal {
+        kind,
+        rules,
+        generic: None,
+    }
 }
 
 pub fn rule_apply(r: &FamilyRule, p: [f64; 2], x: &[f64], stats_only: bool) -> Vec<f64> {
@@ -477,6 +653,18 @@ pub fn rule_apply(r: &FamilyRule, p: [f64; 2], x: &[f64], stats_only: bool) -> V
 /// Generative replay from the learning signal (fresh synthetic states;
 /// never a stored experience).
 pub fn replay_sample(sig: &LearningSignal, rng: &mut Xoshiro256StarStar, k: usize) -> Triple {
+    if let Some(g) = &sig.generic {
+        let st = &g.fams[rng.gen_range(0..g.fams.len())];
+        let p = [
+            rng.gen_range(st.p_min[0]..=st.p_max[0]),
+            rng.gen_range(st.p_min[1]..=st.p_max[1]),
+        ];
+        let x: Vec<f64> = (0..2 * k)
+            .map(|i| st.mean[i % 2] + st.std[i % 2] * rng.gen_range(-1.7..1.7))
+            .collect();
+        let y = g.apply(st.fam, p, &x);
+        return (x, context_of(st.fam, p), y);
+    }
     let r = &sig.rules[rng.gen_range(0..sig.rules.len())];
     let p = [
         rng.gen_range(r.p_min[0]..=r.p_max[0]),
@@ -496,6 +684,32 @@ pub fn replay_sample(sig: &LearningSignal, rng: &mut Xoshiro256StarStar, k: usiz
     }
     let y = rule_apply(r, p, &x, sig.kind.starts_with("StatsOnly"));
     (x, context_of(r.fam, p), y)
+}
+
+/// Generative pseudo-experiences from a consolidated signal (used when the
+/// original episodes were already deleted, e.g. E45 phase 2).
+pub fn pseudo_experiences(sig: &LearningSignal, n: usize, k: usize, seed: u64) -> Vec<Example> {
+    let mut rng = Xoshiro256StarStar::seed_from_u64(seed ^ 0x95E0);
+    (0..n)
+        .map(|i| {
+            let (x, c, y) = replay_sample(sig, &mut rng, k);
+            let fam = (0..N_FAM).find(|&f| c[f] > 0.5).unwrap_or(0);
+            let params = [c[N_FAM], c[N_FAM + 1]];
+            Example {
+                rule_id: fam,
+                family_id: fam,
+                instance_id: u64::MAX - i as u64,
+                object_class: ObjectClass::Blob,
+                params,
+                canonical_target_hash: canonical_hash(&y),
+                input: x,
+                context: c,
+                expected: y,
+                partition: Partition::Train,
+                subset: "pseudo",
+            }
+        })
+        .collect()
 }
 
 /// Adapt Dφ with the same budget as the control: each sample is drawn from

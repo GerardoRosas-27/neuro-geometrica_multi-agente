@@ -55,3 +55,11 @@ Hipótesis rival H0e (regularización genérica) se prueba en E36 (D/E/F/G de ig
 ## 7. E45 (añadido antes de ejecutarlo)
 
 Gate por seed: max(acc L1, acc L2) ≥ acc T1 − 0.05, queries=0, leaked=0. Experimento PASS si ≥9/16 en DEV y en CONFIRM. Dataset: `train_per_family=12` (96 experiencias), resto igual. Presupuesto por fase = 4000×16 muestras para L1/L2/H. Umbral de gating = REL_ERR_OK (0.05). Rango UVᵀ = 4.
+
+## 8. Seguimiento 1 — consolidación genérica (pre-registrado antes de correr DEV/CONFIRM)
+
+- `consolidate_generic`: kernel ridge con random Fourier features sobre `u=[q, contexto]` → Δq, compartido entre puntos; ningún conocimiento de estructura afín/rotación; replay con entradas gaussianas independientes por punto (media/std por familia) y parámetros uniformes en el rango visto.
+- Hiperparámetros elegidos en seeds de tuning **nuevas** `0xC400–0xC407`, sólo sobre la partición DEV, sólo con la accuracy del teacher (`artifacts/v4/generic/tuning_round*.txt`): **D=1600, ℓ=1.4, λ=1e-8·n**. Congelados.
+- Ablaciones genéricas: D corrupto = contexto de familia desplazado (+1); F sin topología = RFF sin q (sólo contexto); E/G como antes.
+- Re-corrida E35/E36 y E45 con `--consol generic`, mismas seeds DEV/CONFIRM, mismos gates (§4, §7).
+- Corrección E45 (aplica a rule y generic): en la fase 2, H consolidaba con episodios de fase 1 ya "borrados"; ahora fase 2 = episodios fase 2 + pseudo-experiencias generadas desde la señal de fase 1 (igual para T1). E45 rule se re-corre y sustituye a la versión anterior.

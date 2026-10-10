@@ -5,8 +5,8 @@
 #![allow(clippy::needless_range_loop)]
 
 use crate::field_autonomy_v4::{
-    adapt_dynamics, collect_experience, consolidate, evaluate, rule_apply, triples, AuditFlags,
-    Auditor, ConsolidateMode, EvalOut, ExpMode, LearningSignal, Row, K_POINTS, MARGIN,
+    adapt_dynamics, collect_experience, consolidate, evaluate, pseudo_experiences, triples,
+    AuditFlags, Auditor, ConsolidateMode, EvalOut, ExpMode, LearningSignal, Row, K_POINTS, MARGIN,
 };
 use crate::v4_controls::{Adam, Dphi, Predictor, StaticCtl, TrainBudget, Triple, PD};
 use crate::v4_dataset::{generate_and_seal, DatasetConfig, Example, CTX_DIM};
@@ -130,10 +130,9 @@ impl Predictor for Thermo {
     }
     fn predict(&self, x: &[f64], c: &[f64]) -> Vec<f64> {
         let fam = (0..c.len() - 2).find(|&i| c[i] > 0.5).unwrap_or(0);
-        match self.sig.rules.iter().find(|r| r.fam == fam) {
-            Some(r) => rule_apply(r, [c[c.len() - 2], c[c.len() - 1]], x, false),
-            None => x.to_vec(),
-        }
+        self.sig
+            .predict(fam, [c[c.len() - 2], c[c.len() - 1]], x)
+            .unwrap_or_else(|| x.to_vec())
     }
     fn params(&self) -> usize {
         self.sig.n_numbers()
@@ -275,10 +274,18 @@ pub fn run(seed: u64) -> Vec<Row> {
     drop(cdt1);
     let th1 = Thermo { sig: sig1 };
     let a_t1 = acc(&th1, &t1);
-    let cdt2 = collect_experience(&p2, ExpMode::Real, seed);
+    // phase 2: phase-1 episodes are gone; consolidate phase-2 episodes plus
+    // pseudo-experiences generated from the phase-1 consolidated signal.
+    let mut p2_aug = p2.clone();
+    p2_aug.extend(pseudo_experiences(&th1.sig, p1.len(), k, seed));
+    let cdt2 = collect_experience(&p2_aug, ExpMode::Real, seed);
     let mut sig = consolidate(&cdt2, ConsolidateMode::Full);
     drop(cdt2);
-    sig.rules.extend(th1.sig.rules.iter().cloned());
+    if sig.generic.is_none() {
+        // rule mode: per-family rules; phase-1 rules from real episodes are kept.
+        sig.rules.retain(|r| !SET1.contains(&r.fam));
+        sig.rules.extend(th1.sig.rules.iter().cloned());
+    }
     let ms = t.elapsed().as_secs_f64() * 1e3;
     let th = Thermo { sig };
     brains.push(Brain {
@@ -320,7 +327,10 @@ pub fn run(seed: u64) -> Vec<Row> {
         &mut fl,
     );
     let ah1 = acc(&h, &t1);
-    let c12 = collect_experience(&s.ds.train, ExpMode::Real, seed);
+    // phase-1 episodes were deleted: phase-2 consolidation = p2 + pseudo(p1).
+    let mut p2h = p2.clone();
+    p2h.extend(pseudo_experiences(&s1, p1.len(), k, seed));
+    let c12 = collect_experience(&p2h, ExpMode::Real, seed);
     let s12 = consolidate(&c12, ConsolidateMode::Full);
     drop(c12);
     adapt_dynamics(
