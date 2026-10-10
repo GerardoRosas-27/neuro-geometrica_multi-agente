@@ -80,3 +80,12 @@ Gates (por seed; experimento PASS si ≥9/16 en DEV y CONFIRM):
 - **E45b**: max(L1, L2, L2g, L3) ≥ T1 − 0.05, queries/leakage = 0.
 - **E45c composición**: aplicar rotate(p1,0) y luego scale(p2,p2) (dos dinámicas aprendidas) para predecir compose(p) en TEST; PASS si el mejor cerebro líquido (L1, L2g, L3, H) encadenado ≥ STATIC + 0.05. Se reporta también la predicción directa con contexto compose.
 - **E45a iteración adaptativa**: para Dφ (L1, H) en translate/rotate/scale, iterar n=2..8 sub-pasos con parámetros p/n y parar cuando el cambio relativo < 1 %; PASS si max(ganancia de accuracy adaptativa vs n=1) ≥ 0.05. Se reporta n medio por tercil de dificultad |p|.
+
+## 11. Seguimiento 4 — E43/E44 con periferia LLM congelada (pre-registrado antes de correr)
+
+- Periferia A: `gemma-2-2b-it-Q3_K_L.gguf` (loader existente `native_gemma2`, denso, media del hidden final de la secuencia). Periferia B (E44): `qwen2.5-1.5b-instruct-q4_k_m.gguf` (loader de candle vendorizado `v4_qwen2_hidden`, tokenizer.json oficial de Qwen2.5). Control R: encoder aleatorio congelado (trigramas hash → proyección gaussiana). Embeddings cacheados una vez (`artifacts/v4/lang/emb_*.json`, sha256 en manifest).
+- Tarea: relaciones plural y femenino (16 + 14 conceptos; es/en/fr/ja; ja-plural sólo con reduplicación `々`, 7 conceptos). Por seed: 70 % de los conceptos españoles = TRAIN, 30 % held-out. PCA (d=16) ajustada sólo con palabras españolas de TRAIN; Dφ = MLP residual sobre el vector PCA, contexto = relación; 3000 pasos Adam. Decoder = vecino más cercano (coseno) entre todas las formas del idioma evaluado (vocabulario cerrado → se reporta `decoder_lookup`, no es memoria de la tarea).
+- Métrica principal: accuracy top-1 en pares de **conceptos novedosos** (no presentes en TRAIN en ningún idioma). Controles: STATIC (identidad), OFFSET (desplazamiento medio por relación — control lineal), Dφ con encoder R.
+- **Gate E43** por seed: acc Dφ_A ≥ max(STATIC, Dφ_R) + 0.05 en ≥2 de {en, fr, ja}. Experimento PASS si ≥9/16 en DEV y CONFIRM.
+- **Gate E44** por seed: Dφ entrenado con A; en test la entrada pasa por B (o R) alineado al espacio PCA de A con ridge sobre 96 palabras ancla (disjuntas de la tarea, λ=1e-3·traza/n). PASS si acc_B ≥ acc_R + 0.05 y acc_B ≥ 0.5·acc_A (pares novedosos, todos los idiomas). Experimento PASS si ≥9/16 en DEV y CONFIRM.
+- Seeds DEV 0xA400–0xA40F, CONFIRM 0xB400–0xB40F (varían split y init). Sin tuning.

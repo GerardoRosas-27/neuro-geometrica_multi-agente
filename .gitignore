@@ -44,3 +44,4 @@ models/*.gguf
 
 models/*.box-store-snap-*
 /data/revoked_sessions.json
+artifacts/v4/lang/*.json

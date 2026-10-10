@@ -102,8 +102,11 @@ pub mod unified_spin_cognitive_engine;
 pub mod v4_controls;
 pub mod v4_dataset;
 pub mod v4_e45;
+pub mod v4_language;
 pub mod v4_metrics;
 pub mod v4_provenance;
+#[allow(clippy::all)]
+pub mod v4_qwen2_hidden;
 pub mod v4_stability;
 /// VMC Jastrow complejo. Compila porque el unificado lo invoca; no justifica
 /// el módulo en el crate público. Tests detrás de `research`. Ver docs/archive.md.
