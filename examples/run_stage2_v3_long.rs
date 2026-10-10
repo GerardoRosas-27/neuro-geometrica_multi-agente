@@ -72,9 +72,13 @@ fn main() {
     md.push_str("Seeds confirmación `0xB300–0xB30F`: **no corridas**.\n");
     md.push_str("Periferia: numeric FIELD_ONLY; RQM/NN/table/attractor OFF en eval.\n\n");
     md.push_str("## Hardening en esta corrida (v3.7)\n\n");
-    md.push_str("- `HyperparamLock::long()`: dyn_epochs=560 dyn_updates=7 (push absolute cos_dyn).\n");
+    md.push_str(
+        "- `HyperparamLock::long()`: dyn_epochs=560 dyn_updates=7 (push absolute cos_dyn).\n",
+    );
     md.push_str("- **E18/E24 (v3.7)**: SoftScale train/dyn + Relative-only static probe (E21 dual-probe pattern).\n");
-    md.push_str("- **E21 dual-probe retained**: SoftScale train/dyn + Relative-only static probe.\n");
+    md.push_str(
+        "- **E21 dual-probe retained**: SoftScale train/dyn + Relative-only static probe.\n",
+    );
     md.push_str("- **E22 (v3.7)**: mid-agree-gated closed-loop; latent-T2 hop gate else single-shot; disagree-lin∩mlp.\n");
     md.push_str("- **E23**: shared v3.5 mix retained (no h32/h64 lever this cycle).\n");
     md.push_str("- Dual FeatPath: SoftScale E18/E21/E22/E23/E24 dyn; Relative static probe E18/E21/E22/E24.\n");
@@ -99,9 +103,7 @@ fn main() {
         "- Filas `DATASET_INVALID`: **{contam_invalid}**\n\n"
     ));
     md.push_str("## Leakage\n\n");
-    md.push_str(&format!(
-        "- Filas leakage>0: **{leak_nonzero}**\n\n"
-    ));
+    md.push_str(&format!("- Filas leakage>0: **{leak_nonzero}**\n\n"));
     md.push_str("## Histogramas de veredicto\n\n");
     md.push_str("| Experimento | verdict hist |\n|---|---|\n");
     for (exp, vh) in &hist {
