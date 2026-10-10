@@ -461,7 +461,7 @@ pub fn consolidate(store: &CdtStore, mode: ConsolidateMode) -> LearningSignal {
     LearningSignal { kind, rules }
 }
 
-fn rule_apply(r: &FamilyRule, p: [f64; 2], x: &[f64], stats_only: bool) -> Vec<f64> {
+pub fn rule_apply(r: &FamilyRule, p: [f64; 2], x: &[f64], stats_only: bool) -> Vec<f64> {
     let mut y = vec![0.0; x.len()];
     for i in 0..x.len() / 2 {
         let q = (x[2 * i], x[2 * i + 1]);

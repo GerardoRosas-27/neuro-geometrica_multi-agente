@@ -1,0 +1,32 @@
+E35 TEST    n=16 A=0.2480 B=0.3774 diff=+0.1294 med=+0.1622 CI95=[+0.0742,+0.1838] dz=1.10 B>A in 14
+E35 DEV     n=16 A=0.2643 B=0.3294 diff=+0.0651 med=+0.0781 CI95=[-0.0000,+0.1315] dz=0.46 B>A in 11
+E36 C-Braw  n=16 A=0.2639 B=0.3774 diff=+0.1135 med=+0.1094 CI95=[+0.0622,+0.1631] dz=1.06 B>A in 15
+E36 Braw-A  n=16 A=0.2480 B=0.2639 diff=+0.0159 med=+0.0176 CI95=[-0.0259,+0.0586] dz=0.18 B>A in 10
+E39         n=16 A=0.2544 B=0.3242 diff=+0.0698 med=+0.0839 CI95=[+0.0283,+0.1091] dz=0.83 B>A in 12
+E42 N=8    n=16 A=0.2368 B=0.3250 diff=+0.0881 med=+0.1192 CI95=[+0.0484,+0.1255] dz=1.09 B>A in 13
+E42 N=16   n=16 A=0.2539 B=0.3892 diff=+0.1353 med=+0.1445 CI95=[+0.0835,+0.1836] dz=1.29 B>A in 14
+E42 N=32   n=16 A=0.2522 B=0.3804 diff=+0.1282 med=+0.1348 CI95=[+0.0774,+0.1770] dz=1.23 B>A in 14
+E42 N=64   n=16 A=0.2730 B=0.3713 diff=+0.0984 med=+0.0997 CI95=[+0.0435,+0.1570] dz=0.83 B>A in 13
+E42 N=128  n=16 A=0.2239 B=0.3762 diff=+0.1523 med=+0.1328 CI95=[+0.0935,+0.2119] dz=1.25 B>A in 15
+E35/36/39/42 total leaked predictions=0 total memory queries in TEST=0
+E33 h1   iterable_acc=0.126 all_acc=0.248 mean_rel_err=0.078
+E33 h2   iterable_acc=0.010 all_acc=0.021 mean_rel_err=0.139
+E33 h4   iterable_acc=0.001 all_acc=0.000 mean_rel_err=0.255
+E33 h8   iterable_acc=0.000 all_acc=0.001 mean_rel_err=0.482
+E33 h16  iterable_acc=0.000 all_acc=0.001 mean_rel_err=0.978
+E33 h32  iterable_acc=0.000 all_acc=0.001 mean_rel_err=1.544
+E33 h64  iterable_acc=0.000 all_acc=0.003 mean_rel_err=1.888
+E34 DPHI_h1              acc=0.248
+E34 MLP_DIRECT_h1        acc=0.232
+E34 DPHI_h4_iter         acc=0.001
+E34 MLP_DIRECT_h4_iter   acc=0.000
+E34 STATIC               acc=0.042
+E31 DPHI            acc=0.248
+E31 STATIC          acc=0.042
+E31 LINEAR          acc=0.000
+E31 RANDOM_DYN      acc=0.000
+E31 SHUFFLED_LABEL  acc=0.000
+E31 NN_LOOKUP       acc=0.015
+E40 A_sequential      acc=0.164
+E40 B_cdt_replay      acc=0.649
+E40 D_corrupt_replay  acc=0.074

@@ -173,3 +173,26 @@ Mantener una tabla explícita para E31–E44 con `NOT_RUN`, `SMOKE_ONLY`, `PASS`
 Solo cambiar de estado con resultados realmente ejecutados y artefactos reproducibles.
 
 **Regla final:** v4 no busca simplemente que el campo acierte más. Busca demostrar que la experiencia consolidada cambia la dinámica de forma persistente y que esa dinámica genera respuestas nuevas después de que la memoria de experiencias ha sido retirada.
+
+## Estado tras el primer ciclo v4 (2026-10-09)
+
+Ver `docs/resultados_v4.md` (DEV `0xA400–0xA40F` + CONFIRM `0xB400–0xB40F`, pre-registro `docs/preregistro_v4.md`).
+
+| Gate | Estado |
+|---|---|
+| E31 | PASS (16/16, 16/16) |
+| E32 | PASS (16/16, 16/16) — sesgo expansivo σ≈1.08 |
+| E33 | FAIL (0/16, 0/16) |
+| E34 | PARTIAL (5/16, 6/16) |
+| E35 | PASS (11/16, 10/16; IC95 B−A >0) — B destila un teacher consolidado de acc 0.83 |
+| E36 | PASS (10/16, 13/16) |
+| E37 | PASS (11/16, 10/16) |
+| E38 | PASS (11/16, 10/16) |
+| E39 | PASS (13/16, 10/16) |
+| E40 | PASS (16/16, 16/16) |
+| E41 | PASS (16/16, 16/16) |
+| E42 | FAIL/PARTIAL (4/16, 5/16) por gate estricto |
+| E43 | NOT_RUN |
+| E44 | NOT_RUN |
+
+Pendiente: consolidación menos diseñada a mano (aprendida/genérica), estabilidad multi-paso (E33), E43/E44 con periferia LLM.
