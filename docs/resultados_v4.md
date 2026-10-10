@@ -207,3 +207,34 @@ Estado a 2026-10-10, tip de código `1da52e7`. DEV / CONFIRM, 16+16 seeds, sin r
 **Lo que no está demostrado.** Que el campo descubra regularidades solo (B es destilación de un teacher; Dφ captura ~40 %); ventaja de "dinámica" sobre MLP de igual capacidad (E34); rollout largo (E33); lenguaje real / swap de LLM (E43/E44).
 
 **Pendientes / abiertos.** (a) Subir la captura de Dφ del teacher consolidado (capacidad, pérdida de destilación, más pasos de replay). (b) Reducir el error de un paso de Dφ por debajo del 5 % antes de volver a atacar E33 (después: re-proyección V1). (c) Entrada lingüística: probar Ψ de 64-D de Gemma (bottleneck E45 de la rama token-free) como entrada a Dφ en lugar del pooling medio crudo. (d) E42 estricto. Comparativa y hoja de ruta: `docs/comparativa_v4_vs_token_free.md`.
+
+---
+
+# Plan Dφ / teacher distillation (`docs/plan_v4_dphi_teacher_distillation.md`)
+
+Pre-registro: `docs/preregistro_v4.md` §12+. Código: `src/v4_distill.rs`, análisis `scripts/v4_distill_analyze.py`. Artefactos: `artifacts/v4/distill/{smoke,dev,confirm}/` (`metrics.csv`, `summary.md`, `paired_stats.txt`, `config.json`, `checkpoints/`). Seeds DEV `0xA400–0xA40F`, CONFIRM `0xB400–0xB40F`, sin retune.
+
+## Fase A — techo de destilación (`DIST_A`)
+
+Corrido en `86a750a` (git_dirty=false), DEV y CONFIRM, 16+16 seeds, ~32 s cada fase. Presupuesto 8000×16 en todas las condiciones salvo D4 (4×).
+
+| Condición (TEST, acc rel_err<5 %) | DEV acc | DEV rel_err₁ | CONF acc | CONF rel_err₁ | teacher→modelo rel (DEV/CONF) | σ_max med |
+|---|---|---|---|---|---|---|
+| T teacher directo (post-hoc) | 0.829 | 0.027 | 0.831 | 0.025 | — | — |
+| A sólo TRAIN | 0.231 | 0.079 | 0.248 | 0.078 | 0.081/0.080 | 1.12 |
+| B ruta de consolidación (E35-B) | 0.339 | 0.071 | 0.377 | 0.069 | 0.066/0.064 | 1.10 |
+| **D1 destilación directa del teacher** | **0.334** | 0.073 | **0.367** | 0.069 | 0.065/0.063 | 1.09 |
+| M1 MLP directo (962) destilado | 0.318 | 0.073 | 0.334 | 0.071 | 0.065/0.064 | 1.09 |
+| D4 destilación, 4× pasos (diagnóstico) | 0.610 | 0.057 | 0.591 | 0.057 | 0.045/0.046 | 1.07 |
+
+Pareadas (IC95 bootstrap):
+- **D1 − B: DEV −0.004 [−0.030, +0.019] (8/16); CONF −0.010 [−0.044, +0.025] (5/16).**
+- D1 − A: +0.103 [+0.051, +0.154] / +0.119 [+0.063, +0.176].
+- D1 − M1 (control MLP igual capacidad): +0.016 [−0.033, +0.069] / +0.033 [−0.012, +0.073] → sin ventaja demostrada de Dφ residual.
+- D4 − D1: +0.275 [+0.198, +0.350] (16/16) / +0.224 [+0.170, +0.275] (15/16).
+
+Integridad: leakage=0, queries=0 en todas las condiciones; 0 hits del auditor en las etiquetas del teacher; proceso nuevo (`eval-checkpoint`) bit-exacto con queries=0 en 32/32.
+
+**Gate Fase A: FAIL** (gate por seed 3/16 y 3/16; IC de D1−B incluye 0 en ambas fases). Destilar directamente del teacher no supera a la ruta de consolidación existente.
+
+Lectura pre-registrada (§12, caso ii): D1 ≈ B y ambos muy lejos del teacher (captura ≈ 40–44 %), con error teacher→Dφ ≈ 6.5 %. La ruta de consolidación **no** es el cuello (dar etiquetas perfectas del teacher en todo el espacio no ayuda). El cuello está en la capacidad/optimización de Dφ-962 con el presupuesto bloqueado: con 4× pasos la misma arquitectura llega a 0.59–0.61 (captura ≈ 72 %), es decir, la representación de 962 parámetros puede acercarse al teacher pero el presupuesto de 8000 pasos la deja sub-entrenada. Según lo pre-registrado, se continúa a la Fase B (barrido de capacidad), que es la prueba que el plan prescribe para este caso. Nota honesta: D4 no es una condición comparable (usa 4× cómputo); es diagnóstico.
