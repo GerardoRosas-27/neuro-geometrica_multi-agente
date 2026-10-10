@@ -6,6 +6,7 @@
 //!   orbit of the input x0 (uses only x0 and the current state, never the target);
 //! * V2 tangent spectral limit: δ ← δ / max(1, σ_max(J_step(z)));
 //! * V3 V1+V2.
+//!
 //! Non-saturating encoder: not applicable here (identity encoder).
 
 #![allow(clippy::needless_range_loop)]
