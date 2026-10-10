@@ -93,3 +93,24 @@ Gate (max(L1,L2) ≥ T1−0.05, queries=0): **FAIL** — DEV 0/16, CONFIRM 0/16.
 | H_liquid_inf_cdt_cons | 0.238 | 0.246 | 0.082 | 0.230 | 0.355 | 1826.3 | 962 | 7696 | 9.63 | 128000 | 0 |
 
 Lectura: con 96 experiencias y presupuesto igual de updates, el sustrato líquido puro (L1 gated, L2 low-rank) no consolida: L1 0.06–0.07 y olvida set1 por completo tras fase 2; la memoria rápida L2 (UVᵀ en capa de salida, sin gating por contexto) destruye set1 y no aprende set2 (rollback la revierte exactamente). T1 (regla CDT consolidada) gana en todo: accuracy 0.80, olvido 0, ~4000× menos tiempo de consolidación, 0.12 µs/query, 384 números. El híbrido (inferencia líquida + consolidación CDT) queda en medio (0.21–0.24). Misma salvedad que §3: la consolidación CDT es una regresión cuya clase de hipótesis coincide con el generador, así que la comparación favorece estructuralmente a T1; no es prueba general de que lo termodinámico supere a lo líquido. Analogía cognitiva: en este benchmark el "largo plazo" útil vive en la regla consolidada, no en la dinámica.
+
+## 8. Seguimiento 1 — consolidación genérica (RFF kernel ridge, sin estructura del generador)
+
+Pre-registro §8. Tuning sólo en seeds nuevas `0xC400–0xC407` (partición DEV, accuracy del teacher): D=1600, ℓ=1.4, λ=1e-8·n. Mismas seeds DEV/CONFIRM y gates.
+
+| | DEV | CONFIRM |
+|---|---|---|
+| Teacher genérico (consolidado como predictor, TEST) | 0.894 | 0.899 |
+| E35 A / B | 0.231 / 0.360 | 0.248 / 0.389 |
+| E35 B−A [IC95], d_z | +0.128 [+0.085,+0.170], 1.45 | +0.141 [+0.095,+0.187], 1.44 |
+| E35 seeds PASS | **14/16** | **12/16** |
+| E35 partición DEV (in-dist) B−A [IC95] | +0.095 [+0.053,+0.136] | +0.089 [+0.041,+0.133] |
+| E36 seeds PASS | 10/16 | 12/16 |
+| E36 C − B_raw [IC95] | +0.096 [+0.038,+0.154] | +0.125 [+0.063,+0.184] |
+| Leakage / queries en TEST | 0 / 0 | 0 / 0 |
+
+E35 y E36 siguen PASS con una consolidación que no conoce la estructura afín; la ganancia ahora también es significativa en la partición in-dist. La salvedad cambia de forma, no desaparece: Dφ (0.36–0.39) sigue muy por debajo del teacher genérico (0.89–0.90) — destila ~40 % de la regularidad consolidada.
+
+**E45 con consolidación genérica** (DEV/CONF): T1 0.482/0.504, H 0.174/0.172, L1 0.067/0.061, L2 0.000/0.001 → gate FAIL 0/16, 0/16. T1 genérico pierde su ventaja de coste (5.1 s de consolidación, 24 090 números, 245 µs/query) y ahora olvida (0.17), pero sigue ganando en accuracy. Tabla completa: `artifacts/v4/generic/e45/table.md`.
+
+**Corrección E45 (rule)**: H en fase 2 usaba episodios de fase 1 ya borrados; corregido (pseudo-experiencias desde la señal de fase 1). Re-corrida (`artifacts/v4/e45_fixed/`): H 0.238/0.251 (antes 0.213/0.238); el resto idéntico; gate sigue FAIL 0/16, 0/16. Sustituye a la tabla de §7.

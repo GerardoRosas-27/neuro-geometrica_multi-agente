@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 import csv, re, sys, statistics as st
-for ph in sys.argv[1:]:
-    rows = [r for r in csv.DictReader(open(f"artifacts/v4/e45/{ph}/metrics.csv")) if r["condition"] != "GATE"]
+base = sys.argv[1]
+for ph in sys.argv[2:]:
+    rows = [r for r in csv.DictReader(open(f"{base}/{ph}/metrics.csv")) if r["condition"] != "GATE"]
     print(f"## {ph}\n| brain | acc TEST | set1 tras p2 | olvido | set2 | retención episodios borrados | consolidación ms | params cambiados | bytes | latencia µs | updates | queries |")
     print("|---|---|---|---|---|---|---|---|---|---|---|---|")
     for b in ["L1_liquid_gated", "L2_liquid_lowrank", "T1_thermo_cdt", "H_liquid_inf_cdt_cons"]:
