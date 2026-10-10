@@ -101,6 +101,7 @@ pub mod transformation_family_discovery;
 pub mod unified_spin_cognitive_engine;
 pub mod v4_controls;
 pub mod v4_dataset;
+pub mod v4_e45;
 pub mod v4_metrics;
 pub mod v4_provenance;
 /// VMC Jastrow complejo. Compila porque el unificado lo invoca; no justifica

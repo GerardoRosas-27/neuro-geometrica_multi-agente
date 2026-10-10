@@ -785,6 +785,15 @@ pub fn run_seed(seed: u64, opts: &RunOpts) -> SeedOut {
     let noflags = AuditFlags::default();
     let tr = triples(&s.ds.train);
 
+    if opts.exps.len() == 1 && opts.on("E45") {
+        rows.extend(crate::v4_e45::run(seed));
+        return SeedOut {
+            rows,
+            provenance: prov,
+            manifest_json,
+            e32_trace: trace,
+        };
+    }
     // E35 (also provides Dφ_A for E31–E34)
     let e35 = run_e35_core(&s, seed, k, "E35", true);
     let a = &e35.a;

@@ -100,7 +100,7 @@ impl Mlp {
     }
 
     /// Accumulate MSE gradient for one example; `d_out` = dL/d(out).
-    fn backward(&self, inp: &[f64], h: &[f64], d_out: &[f64], g: &mut [f64]) {
+    pub fn backward(&self, inp: &[f64], h: &[f64], d_out: &[f64], g: &mut [f64]) {
         let (a, b, c) = (self.w1.len(), self.b1.len(), self.w2.len());
         let mut dh = vec![0.0; self.dh];
         for k in 0..self.dout {
@@ -291,6 +291,60 @@ impl Dphi {
             last = loss / budget.batch as f64;
         }
         last
+    }
+
+    /// E45-L1: predictive-error-gated plasticity. Examples whose one-step
+    /// prediction is already within `tau` relative error produce no gradient.
+    /// Returns the number of examples that actually updated the weights.
+    pub fn train_gated(
+        &mut self,
+        data: &[Triple],
+        budget: TrainBudget,
+        seed: u64,
+        tau: f64,
+    ) -> usize {
+        let mut rng = Xoshiro256StarStar::seed_from_u64(seed);
+        let n = self.net.n_params();
+        let mut opt = Adam::new(n, budget.lr);
+        let mut p = self.net.flat();
+        let mut updates = 0usize;
+        for _ in 0..budget.steps {
+            let mut g = vec![0.0; n];
+            let mut any = false;
+            for _ in 0..budget.batch {
+                let (x, c, y) = &data[rng.gen_range(0..data.len())];
+                let pred = self.step(x, c);
+                let err = pred
+                    .iter()
+                    .zip(y)
+                    .map(|(a, b)| (a - b) * (a - b))
+                    .sum::<f64>()
+                    .sqrt()
+                    / y.iter().map(|v| v * v).sum::<f64>().sqrt().max(1e-9);
+                if err < tau {
+                    continue;
+                }
+                any = true;
+                updates += 1;
+                for pt in 0..x.len() / PD {
+                    let q = &x[pt * PD..(pt + 1) * PD];
+                    let inp = Self::input(q, c);
+                    let (h, _) = self.net.forward(&inp);
+                    let d: Vec<f64> = (0..PD)
+                        .map(|i| {
+                            2.0 * (pred[pt * PD + i] - y[pt * PD + i])
+                                / (x.len() * budget.batch) as f64
+                        })
+                        .collect();
+                    self.net.backward(&inp, &h, &d, &mut g);
+                }
+            }
+            if any {
+                opt.step(&mut p, &g);
+                self.net.set_flat(&p);
+            }
+        }
+        updates
     }
 
     pub fn train_on(&mut self, data: &[Triple], budget: TrainBudget, seed: u64) -> f64 {
