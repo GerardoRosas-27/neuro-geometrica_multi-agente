@@ -350,3 +350,11 @@ Lectura honesta:
 - Cómputo: 8× la receta de la Fase C (64× el lock original), ~2 min por modelo.
 
 Según §16/§15 el núcleo Dφ se considera resuelto al nivel pre-registrado → siguiente paso: Ψ64/Gemma E43/E44 con pre-registro propio (§17).
+
+## §17 — Ψ64/Gemma E43/E44: NOT_RUN (bloqueo de compatibilidad, documentado antes de pre-registrar)
+
+El gate §16 habilita este paso, pero el plan §6 pide usar "el Ψ64 obtenido en E45 de `exp/token-free-liquid-field`" como entrada semántica **congelada**, y eso no se puede hacer tal cual:
+- Los encoders Ψ64 de E45 (`/workspace/ngm-tokenfree-cache/enc_mlp_N64_s{0..5}.npz`: W1 512×256, W2 256×64) se entrenaron sobre el hidden de **512-d de un proxy lingüístico aleatorio congelado** (`FrozenEncoder`, semilla 12345). No se entrenaron sobre Gemma; los propios resultados token-free lo marcan como limitación principal ("no Gemma; queda para E55").
+- Los embeddings de Gemma de E43/E44 (`artifacts/v4/lang/emb_gemma.json`) tienen 2304 dimensiones. No hay una entrada Gemma→Ψ64 compatible: cualquier proyección 2304→512 o un Ψ64 re-entrenado sobre Gemma sería un componente **nuevo**, no "el Ψ64 de E45 congelado".
+
+Para no cambiar el diseño sin aprobación, E43/E44 con Ψ64 quedan **NOT_RUN** y el ciclo se detiene aquí. Opciones para decidir: (a) re-entrenar un bottleneck Ψ64 con la receta E45 sobre hidden de Gemma (pre-registro nuevo, encoder entrenado sólo con palabras TRAIN y luego congelado); (b) E55 de la rama token-free (Ψ64 sobre Gemma real) y después importarlo; (c) una proyección fija 2304→512 + Ψ64 E45 como control negativo de transferencia.
