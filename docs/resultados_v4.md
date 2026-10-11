@@ -310,3 +310,43 @@ Decisión (pre-registrada §15, plan §5 "one-step <5 % pero E33 sigue fallando"
 | Ψ64/Gemma E43/E44 | — | — | — | **NOT_RUN** (núcleo Dφ no resuelto) | — |
 
 Núcleo token-free (Rust/JAX/export/Ψ64, rama `exp/token-free-liquid-field`) no tocado; liquid sigue sólo como control negativo.
+
+## §16 — Estudio de sesgo por paso: manifold/proyección/Jacobiano (`DIST_E`)
+
+Pre-registro §16 (`9826285`, con diagnóstico previo en seeds de tuning `0xC500–0xC503`, partición DEV; logs en `artifacts/v4/bias_diag/`). DEV corrido en `9826285`, CONFIRM en `ef2938c` (sólo añade el script de análisis; código idéntico), git_dirty=false en ambas. Receta one-step de la Fase C con 8× pasos (256k), H=136, τ=1 %. Artefactos `artifacts/v4/distill_e/{dev,confirm}/`.
+
+**Causa de reflect/radial_warp.** No es un problema de paridad: la reflexión es representable por el campo residual. El sesgo venía de la **consolidación**: el teacher tiene error propio de 9–13 % en reflect y 6–10 % en radial_warp (fuera de su clase de hipótesis), y el replay lo transmitía a Dφ. Lo arreglan dos cosas: (a) **replay de confianza**, que excluye del replay las familias cuyo residuo de ajuste de consolidación (in-sample, sobre la CDT) es ≥1 % (máscara: reflect y radial_warp excluidas); (b) un **campo local-lineal con compuerta** (Δ = M(q,c)·q + b(q,c), genérico y sin conocimiento de familias) que hace precisos los productos q·trig(p).
+
+### Un paso (TEST, medias de 16 seeds, DEV / CONFIRM)
+
+| Modelo | params | acc | rel_err₁ | reflect | radial_warp | rotate | resto (rango) |
+|---|---|---|---|---|---|---|---|
+| E0 Fase C (H64, 1×) | 962 | 0.808 / 0.814 | 0.0374 / 0.0367 | 0.101 / 0.094 | 0.061 / 0.060 | 0.021 / 0.023 | 0.020–0.029 |
+| E1 tanh H136 + confianza | 2042 | 0.924 / 0.907 | 0.0182 / 0.0193 | 0.047 / 0.054 | 0.041 / 0.042 | 0.010 | 0.007–0.016 |
+| E2 gated + replay completo | 2590 | 0.863 / 0.872 | 0.0246 / 0.0231 | 0.099 / 0.091 | 0.051 / 0.048 | 0.008 | 0.006–0.012 |
+| **E3 gated + confianza** | 2590 | **0.983 / 0.986** | **0.0090 / 0.0089** | **0.010 / 0.012** | 0.029 / 0.027 | 0.007 | 0.003–0.011 |
+| M3 MLP gated + confianza (control) | 2590 | 0.980 / 0.984 | 0.0093 / 0.0093 | 0.010 / 0.012 | 0.031 / 0.030 | 0.007 | 0.003–0.011 |
+
+Separación: parametrización (E1 vs E3) y consolidación (E2 vs E3) son necesarias **las dos**; ninguna sola baja reflect por debajo del 5 %. Error medio por paso 0.9 %: no se llegó a la meta del ~0.5 % (rotate 0.7 %, reflect 1.0–1.2 %, radial_warp 2.7 %). Leakage=0, queries=0, proceso nuevo bit-exacto 16/16 + 16/16.
+
+### E33 (protocolo sin cambios, rotate+reflect, free-run)
+
+| Variante | PASS DEV | PASS CONF | región mediana | acc h4 | acc h8 | acc h16 | rel h8 | crec. pert. h8 |
+|---|---|---|---|---|---|---|---|---|
+| E0 Fase C | 0/16 | 0/16 | 1 | 0.10 / 0.08 | 0.01 | 0.00 | 0.29 | 0.95–0.97 |
+| E1 | 0/16 | 0/16 | 2 | 0.45 / 0.43 | 0.19 / 0.17 | 0.03–0.04 | 0.15–0.16 | 0.98 |
+| E2 | 0/16 | 0/16 | 2–3 | 0.49 / 0.47 | 0.25 / 0.24 | 0.07–0.08 | 0.27–0.28 | 0.97 |
+| **E3 Dφ puro (V0)** | **13/16** | **9/16** | 8 | 0.93 / 0.87 | **0.63 / 0.55** | 0.26 / 0.22 | 0.054 / 0.061 | 0.99 |
+| E3 + re-proyección (V1) | 13/16 | 12/16 | 8 | 0.94 / 0.88 | 0.67 / 0.59 | 0.34 / 0.28 | 0.049 / 0.057 | 0.55–0.56 |
+| M3 MLP gated (V0) | 12/16 | 10/16 | 8 | 0.94 / 0.88 | 0.62 / 0.56 | 0.23 / 0.21 | 0.054 / 0.059 | 0.99 |
+
+**Gate §16 (E33 E3 V0 región ≥8 en ≥9/16, DEV y CONFIRM, limpio, proceso nuevo): PASS** (13/16, 9/16). Es el primer PASS de E33 en v4.
+
+Lectura honesta:
+- Es un PASS **justo**: CONFIRM queda exactamente en el umbral (9/16), la región es 8 y no 16 (acc h16 ≈ 0.2), y el error sigue creciendo de forma lineal (sesgo, no caos: las perturbaciones no crecen, factor ≈ 0.99).
+- **El control MLP también pasa** (12/16, 10/16): la mejora viene de la cabeza multiplicativa, de la consolidación de confianza y de la optimización, no de la forma residual/"dinámica".
+- La re-proyección suma +0–3 seeds y reduce a la mitad la sensibilidad a perturbaciones. Contra V0 no es la causa del PASS.
+- La máscara de confianza depende del residuo de ajuste del teacher, y la clase del teacher la diseñamos nosotros. Lo que se demuestra es saber *cuándo no fiarse* del teacher, no aprendizaje emergente.
+- Cómputo: 8× la receta de la Fase C (64× el lock original), ~2 min por modelo.
+
+Según §16/§15 el núcleo Dφ se considera resuelto al nivel pre-registrado → siguiente paso: Ψ64/Gemma E43/E44 con pre-registro propio (§17).
