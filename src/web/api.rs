@@ -1,11 +1,10 @@
 //! REST API JSON + estáticos + SSE de entrenamiento en vivo.
 
+use crate::field_v4::SmokeReport;
 use crate::web::auth::{self, AuthConfig, SharedAuth};
-use crate::web::field_eval::FieldEvalReport;
 use crate::web::process_job::{ProcessesSnapshot, SleepJobSnapshot, TestsJobSnapshot};
-use crate::web::sleep_optimize::{SleepOptimizeOpts, SleepOptimizeReport};
-use crate::web::state::{AppState, ChatRequest};
-use crate::web::telemetry::{FuseReportDto, SleepReportDto, TelemetrySnapshot};
+use crate::web::state::{AppState, ChatRequest, FIELD_ONLY_LABEL, FIELD_ROUTE};
+use crate::web::telemetry::TelemetrySnapshot;
 use crate::web::train_job::{LiveTrainStartRequest, TrainJobSnapshot, TrainLiveEvent};
 use axum::extract::{Query, State};
 use axum::http::{header, HeaderValue};
@@ -32,7 +31,8 @@ pub type SharedState = Arc<Mutex<AppState>>;
 pub struct HealthResponse {
     pub ok: bool,
     pub llm_mode: String,
-    pub engrams: usize,
+    /// Estado del campo v4 (Dφ, CDT de vigilia, último lote/sueño).
+    pub field: serde_json::Value,
     pub wake_buffer: usize,
     pub training: bool,
     pub sleeping: bool,
@@ -77,56 +77,16 @@ fn llm_active_of(g: &AppState) -> LlmActive {
 
 #[derive(Clone, Debug, Serialize)]
 pub struct FullTelemetry {
+    pub architecture: &'static str,
     pub metrics: TelemetrySnapshot,
-    pub liquid: LiquidSlice,
-    pub cdt: CdtSlice,
-    pub rqm: RqmSlice,
-    pub train: TrainSlice,
-    pub last_fuse: Option<FuseReportDto>,
-    pub last_sleep: Option<SleepReportDto>,
-    pub train_log_tail: Vec<crate::web::state::TrainEvent>,
+    pub field_rel_err_avg: f64,
+    pub field: serde_json::Value,
     pub llm_mode: String,
     pub live_job: TrainJobSnapshot,
-    pub last_sleep_optimize: Option<SleepOptimizeReport>,
-    pub last_field_eval: Option<FieldEvalReport>,
     pub sleep_job: SleepJobSnapshot,
     pub tests_job: TestsJobSnapshot,
+    pub last_smoke: Option<SmokeReport>,
     pub processes: ProcessesSnapshot,
-}
-
-#[derive(Clone, Debug, Serialize)]
-pub struct LiquidSlice {
-    pub queries: u64,
-    pub score_last: f64,
-    pub score_avg: f64,
-    pub latency_us_last: f64,
-    pub route_pct: f64,
-    pub last_route: Option<String>,
-}
-
-#[derive(Clone, Debug, Serialize)]
-pub struct CdtSlice {
-    pub engram_count: usize,
-    pub wake_buffer: usize,
-    pub sleeps: u64,
-    pub last_sleep: Option<SleepReportDto>,
-}
-
-#[derive(Clone, Debug, Serialize)]
-pub struct RqmSlice {
-    pub infer_calls: u64,
-    pub train_calls: u64,
-    pub route_pct: f64,
-    pub relational_cues: usize,
-}
-
-#[derive(Clone, Debug, Serialize)]
-pub struct TrainSlice {
-    pub training: bool,
-    pub epochs_done: u64,
-    pub accuracy: Option<f64>,
-    pub events_tail: Vec<crate::web::state::TrainEvent>,
-    pub live: TrainJobSnapshot,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -134,54 +94,35 @@ pub struct EventsQuery {
     pub after: Option<u64>,
 }
 
-/// Lanza el loop de lotes en background (libera el Mutex entre lotes).
+/// Lanza el loop de lotes en background. Cada lote se calcula **sin** el
+/// lock (chat, telemetría y Spider siguen respondiendo).
 pub fn spawn_live_train_loop(state: SharedState) {
     tokio::spawn(async move {
         loop {
-            let cont = {
-                let st = state.clone();
-                match tokio::task::spawn_blocking(move || {
-                    // API externa activa: el dataset se genera por HTTP **sin**
-                    // sostener el lock (chat/telemetría siguen respondiendo).
-                    let plan = st
+            let st = state.clone();
+            let r = tokio::task::spawn_blocking(move || {
+                let plan = st
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .next_train_plan();
+                let Some(plan) = plan else { return false };
+                let done = AppState::compute_train(plan);
+                st.lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .apply_train(done)
+            })
+            .await;
+            match r {
+                Ok(true) => {}
+                Ok(false) => break,
+                Err(e) => {
+                    state
                         .lock()
                         .unwrap_or_else(|e| e.into_inner())
-                        .external_dataset_plan();
-                    let pre = plan.map(|(cfg, batch_size, seed)| {
-                        let r = crate::web::llm_periphery::generate_train_batch_external(
-                            &cfg,
-                            batch_size,
-                            seed,
-                            crate::web::llm_periphery::chat_timeout(),
-                        );
-                        (seed, r)
-                    });
-                    let mut g = st.lock().unwrap_or_else(|e| e.into_inner());
-                    g.run_one_live_batch_with(pre)
-                })
-                .await
-                {
-                    Ok(v) => v,
-                    Err(e) => {
-                        if let Ok(mut g) = state.lock() {
-                            g.train_job.push_event(
-                                "error",
-                                format!("worker panic: {e}"),
-                                None,
-                                None,
-                                json!({}),
-                            );
-                            g.training = false;
-                            g.train_job.running = false;
-                        }
-                        false
-                    }
+                        .fail_train(format!("worker panic: {e}"));
+                    break;
                 }
-            };
-            if !cont {
-                break;
             }
-            // Ceder al event loop para chat/telemetry.
             tokio::time::sleep(Duration::from_millis(15)).await;
         }
     });
@@ -190,32 +131,29 @@ pub fn spawn_live_train_loop(state: SharedState) {
 pub fn spawn_sleep_job(state: SharedState) {
     tokio::spawn(async move {
         loop {
-            let cont = {
-                let st = state.clone();
-                match tokio::task::spawn_blocking(move || {
-                    let mut g = st.lock().unwrap();
-                    g.run_one_sleep_cycle()
-                })
-                .await
-                {
-                    Ok(v) => v,
-                    Err(e) => {
-                        if let Ok(mut g) = state.lock() {
-                            g.sleep_job.push_event(
-                                "error",
-                                format!("worker panic: {e}"),
-                                json!({}),
-                            );
-                            g.sleep_job.running = false;
-                            g.sleep_job.phase = "error".into();
-                            g.sleep_job.finished_ms = Some(crate::web::train_job::now_ms());
-                        }
-                        false
-                    }
+            let st = state.clone();
+            let r = tokio::task::spawn_blocking(move || {
+                let plan = st
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .next_sleep_plan();
+                let Some(plan) = plan else { return false };
+                let done = AppState::compute_sleep(plan);
+                st.lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .apply_sleep(done)
+            })
+            .await;
+            match r {
+                Ok(true) => {}
+                Ok(false) => break,
+                Err(e) => {
+                    state
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .fail_sleep(format!("worker panic: {e}"));
+                    break;
                 }
-            };
-            if !cont {
-                break;
             }
             tokio::time::sleep(Duration::from_millis(15)).await;
         }
@@ -225,33 +163,29 @@ pub fn spawn_sleep_job(state: SharedState) {
 pub fn spawn_tests_job(state: SharedState) {
     tokio::spawn(async move {
         loop {
-            let cont = {
-                let st = state.clone();
-                match tokio::task::spawn_blocking(move || {
-                    let mut g = st.lock().unwrap();
-                    g.run_one_tests_cycle()
-                })
-                .await
-                {
-                    Ok(v) => v,
-                    Err(e) => {
-                        if let Ok(mut g) = state.lock() {
-                            g.tests_job.push_event(
-                                "error",
-                                format!("worker panic: {e}"),
-                                json!({}),
-                            );
-                            g.tests_job.running = false;
-                            g.field_eval_running = false;
-                            g.tests_job.phase = "error".into();
-                            g.tests_job.finished_ms = Some(crate::web::train_job::now_ms());
-                        }
-                        false
-                    }
+            let st = state.clone();
+            let r = tokio::task::spawn_blocking(move || {
+                let plan = st
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .next_tests_plan();
+                let Some(plan) = plan else { return false };
+                let rep = AppState::compute_tests(&plan);
+                st.lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .apply_tests(plan, rep)
+            })
+            .await;
+            match r {
+                Ok(true) => {}
+                Ok(false) => break,
+                Err(e) => {
+                    state
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .fail_tests(format!("worker panic: {e}"));
+                    break;
                 }
-            };
-            if !cont {
-                break;
             }
             tokio::time::sleep(Duration::from_millis(15)).await;
         }
@@ -300,9 +234,7 @@ pub fn router_with_auth(state: SharedState, static_dir: PathBuf, auth: SharedAut
         .route("/api/tests/events", get(tests_events))
         .route("/api/processes", get(processes))
         .route("/api/telemetry", get(telemetry))
-        .route("/api/telemetry/liquid", get(telemetry_liquid))
-        .route("/api/telemetry/cdt", get(telemetry_cdt))
-        .route("/api/telemetry/rqm", get(telemetry_rqm))
+        .route("/api/telemetry/field", get(telemetry_field))
         .route("/api/telemetry/train", get(telemetry_train))
         .route("/api/chat/history", get(chat_history))
         .route("/api/chat/reset", post(chat_reset))
@@ -366,11 +298,11 @@ async fn app_status(State(st): State<SharedState>) -> impl IntoResponse {
     Json(HealthResponse {
         ok: true,
         llm_mode: g.llm_mode().as_str().into(),
-        engrams: g.fuse.engram_count(),
-        wake_buffer: g.fuse.wake_buffer_len(),
-        training: g.training || g.train_job.running,
+        field: g.field.status_json(),
+        wake_buffer: g.field.wake.len(),
+        training: g.train_job.running,
         sleeping: g.sleep_job.running,
-        testing: g.tests_job.running || g.field_eval_running,
+        testing: g.tests_job.running,
         active_processes: procs.active,
         probe: g.probe.name().into(),
         raw_gemma_available: g.probe.raw_handle().is_some(),
@@ -382,7 +314,7 @@ async fn app_status(State(st): State<SharedState>) -> impl IntoResponse {
 
 /// Arranque del modelo: si falta el GGUF y la descarga automática está activa,
 /// lo descarga en segundo plano (curl) y hace hot-swap de la sonda a Gemma.
-/// El servidor sigue sirviendo (léxico) mientras tanto.
+/// El servidor sigue sirviendo (campo sin LLM local) mientras tanto.
 pub fn spawn_model_bootstrap(state: SharedState) {
     let (cfg, needs) = {
         let g = state.lock().unwrap_or_else(|e| e.into_inner());
@@ -454,9 +386,9 @@ async fn chat(
     }
 }
 
-/// ON: campo (líquido/CDT/RQM) produce el estado bajo el lock (en hilo
+/// ON: el campo v4 (Dφ) produce el estado bajo el lock (en hilo
 /// bloqueante, no en el event loop); Gemma lo **decodifica** a texto fuera del
-/// lock con plazo. Si Gemma no está o falla → decoder léxico. Siempre responde.
+/// lock con plazo. Si no hay LLM o falla → estado del campo. Siempre responde.
 async fn chat_field_decoder(st: SharedState, message: String) -> axum::response::Response {
     use crate::web::llm_periphery::{chat_timeout, field_decoder_config};
     use axum::http::StatusCode;
@@ -473,12 +405,16 @@ async fn chat_field_decoder(st: SharedState, message: String) -> axum::response:
     let msg = message.clone();
     let field = tokio::task::spawn_blocking(move || {
         let mut g = st2.lock().unwrap_or_else(|e| e.into_inner());
-        let was_running = g.train_job.running;
+        let (was_train, was_sleep) = (g.train_job.running, g.sleep_job.running);
         let resp = g.handle_chat(&msg);
-        let should_spawn = resp.route == "train" && g.train_job.running && !was_running;
+        let should_spawn = (
+            resp.route == "train" && g.train_job.running && !was_train,
+            resp.route == "sleep" && g.sleep_job.running && !was_sleep,
+        );
         let job = g.field_decode_job(&msg, &resp);
         let pending_note = (job.is_none()
-            && matches!(resp.route.as_str(), "Liquid" | "RqmFallback")
+            && resp.route == FIELD_ROUTE
+            && g.active_external().is_none()
             && g.model_status.state != "ready")
             .then(|| g.model_unavailable_reason());
         (resp, should_spawn, job, pending_note)
@@ -496,8 +432,11 @@ async fn chat_field_decoder(st: SharedState, message: String) -> axum::response:
         }
     };
     let field_secs = t0.elapsed().as_secs_f64();
-    if should_spawn {
+    if should_spawn.0 {
         spawn_live_train_loop(st.clone());
+    }
+    if should_spawn.1 {
+        spawn_sleep_job(st.clone());
     }
     if let Some(job) = job {
         let seed = std::time::SystemTime::now()
@@ -537,12 +476,12 @@ async fn chat_field_decoder(st: SharedState, message: String) -> axum::response:
         resp.fallback = outcome.fallback;
     } else if let Some(note) = pending_note {
         resp.reply.push_str(&format!(
-            "\n\n(decoder Gemma aún no disponible: {note}; respuesta del decoder léxico)"
+            "\n\n(decoder Gemma aún no disponible: {note}; se muestra el estado del campo)"
         ));
     }
-    if resp.llm.is_empty() && matches!(resp.route.as_str(), "Liquid" | "RqmFallback") {
-        resp.llm = "decoder léxico".into();
-        resp.llm_id = "lexicon".into();
+    if resp.llm.is_empty() && resp.route == FIELD_ROUTE {
+        resp.llm = FIELD_ONLY_LABEL.into();
+        resp.llm_id = "field".into();
     }
     Json(resp).into_response()
 }
@@ -769,11 +708,9 @@ async fn train_start(
     use crate::web::train_job::parse_batches_field;
     // missing / null / 0 / "infinite" → infinito (default).
     let batches = parse_batches_field(body.batches.as_ref());
-    let batch_size = body.batch_size.unwrap_or(8);
-    let epochs = body.epochs.unwrap_or(1);
     let started = {
         let mut g = st.lock().unwrap();
-        g.begin_live_train(batches, batch_size, epochs)
+        g.begin_live_train(batches, body.steps)
     };
     if started.ok {
         spawn_live_train_loop(st);
@@ -846,10 +783,9 @@ async fn train_stream(
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct SleepRequest {
-    pub prune_intensity: Option<f64>,
-    pub compact_intensity: Option<f64>,
-    pub consolidate_first: Option<bool>,
-    /// Si true (o cycles null) → ciclos hasta Detener.
+    /// Pasos de destilación de Dφ por ciclo.
+    pub steps: Option<usize>,
+    /// Si true (o cycles null) → ciclos hasta vaciar la CDT o Detener.
     pub infinite: Option<bool>,
     /// Número de ciclos; null/0/"infinite" = infinito.
     pub cycles: Option<serde_json::Value>,
@@ -859,14 +795,6 @@ pub struct SleepRequest {
 pub struct TestsStartRequest {
     pub infinite: Option<bool>,
     pub cycles: Option<serde_json::Value>,
-}
-
-fn sleep_opts_from_req(req: SleepRequest) -> SleepOptimizeOpts {
-    SleepOptimizeOpts {
-        prune_intensity: req.prune_intensity.unwrap_or(0.55),
-        compact_intensity: req.compact_intensity.unwrap_or(0.55),
-        consolidate_first: req.consolidate_first.unwrap_or(true),
-    }
 }
 
 /// Alias de `/api/sleep/start` (async). Devuelve job_id; el informe final está en status.
@@ -883,23 +811,14 @@ async fn sleep_start(
 ) -> impl IntoResponse {
     use crate::web::process_job::resolve_infinite_cycles;
     let req = body.map(|j| j.0).unwrap_or(SleepRequest {
-        prune_intensity: None,
-        compact_intensity: None,
-        consolidate_first: None,
+        steps: None,
         infinite: None,
         cycles: None,
     });
     let (infinite, total_cycles) = resolve_infinite_cycles(req.infinite, req.cycles.as_ref());
-    let opts = sleep_opts_from_req(SleepRequest {
-        prune_intensity: req.prune_intensity,
-        compact_intensity: req.compact_intensity,
-        consolidate_first: req.consolidate_first,
-        infinite: None,
-        cycles: None,
-    });
     let started = {
         let mut g = st.lock().unwrap();
-        g.begin_sleep_job(opts, infinite, total_cycles)
+        g.begin_sleep_job(req.steps, infinite, total_cycles)
     };
     if started.ok {
         spawn_sleep_job(st);
@@ -969,7 +888,7 @@ async fn tests_stop(State(st): State<SharedState>) -> impl IntoResponse {
 
 async fn tests_last(State(st): State<SharedState>) -> impl IntoResponse {
     let g = st.lock().unwrap();
-    Json(g.tests_status())
+    Json(json!({ "running": g.tests_job.running, "last": g.tests_job.last_report }))
 }
 
 async fn tests_status_full(State(st): State<SharedState>) -> impl IntoResponse {
@@ -998,46 +917,16 @@ async fn processes(State(st): State<SharedState>) -> impl IntoResponse {
 }
 
 fn build_full(g: &AppState) -> FullTelemetry {
-    let last_route = g.last_fuse_dto().map(|f| f.route);
-    let live = g.train_job.snapshot_for_api();
     FullTelemetry {
+        architecture: "v4",
         metrics: g.metrics.clone(),
-        liquid: LiquidSlice {
-            queries: g.metrics.liquid_queries,
-            score_last: g.metrics.liquid_score_last,
-            score_avg: g.metrics.liquid_score_avg(),
-            latency_us_last: g.metrics.liquid_latency_us_last,
-            route_pct: g.metrics.liquid_route_pct(),
-            last_route,
-        },
-        cdt: CdtSlice {
-            engram_count: g.fuse.engram_count(),
-            wake_buffer: g.fuse.wake_buffer_len(),
-            sleeps: g.metrics.sleeps,
-            last_sleep: g.last_sleep_dto(),
-        },
-        rqm: RqmSlice {
-            infer_calls: g.fuse.rqm_infer_calls,
-            train_calls: g.fuse.rqm_train_calls,
-            route_pct: g.metrics.rqm_route_pct(),
-            relational_cues: g.fuse.relational_cues.len(),
-        },
-        train: TrainSlice {
-            training: g.training,
-            epochs_done: g.metrics.train_epochs_done,
-            accuracy: g.metrics.train_accuracy(),
-            events_tail: g.train_log.iter().rev().take(30).cloned().collect(),
-            live: live.clone(),
-        },
-        last_fuse: g.last_fuse_dto(),
-        last_sleep: g.last_sleep_dto(),
-        train_log_tail: g.train_log.iter().rev().take(50).cloned().collect(),
+        field_rel_err_avg: g.metrics.field_rel_err_avg(),
+        field: g.field.status_json(),
         llm_mode: g.llm_mode().as_str().into(),
-        live_job: live,
-        last_sleep_optimize: g.last_sleep_optimize.clone(),
-        last_field_eval: g.last_field_eval.clone(),
+        live_job: g.train_job.snapshot_for_api(),
         sleep_job: g.sleep_job.snapshot_for_api(),
         tests_job: g.tests_job.snapshot_for_api(),
+        last_smoke: g.field.last_smoke.clone(),
         processes: g.processes_snapshot(),
     }
 }
@@ -1047,24 +936,14 @@ async fn telemetry(State(st): State<SharedState>) -> impl IntoResponse {
     Json(build_full(&g))
 }
 
-async fn telemetry_liquid(State(st): State<SharedState>) -> impl IntoResponse {
+async fn telemetry_field(State(st): State<SharedState>) -> impl IntoResponse {
     let g = st.lock().unwrap();
-    Json(build_full(&g).liquid)
-}
-
-async fn telemetry_cdt(State(st): State<SharedState>) -> impl IntoResponse {
-    let g = st.lock().unwrap();
-    Json(build_full(&g).cdt)
-}
-
-async fn telemetry_rqm(State(st): State<SharedState>) -> impl IntoResponse {
-    let g = st.lock().unwrap();
-    Json(build_full(&g).rqm)
+    Json(g.field.status_json())
 }
 
 async fn telemetry_train(State(st): State<SharedState>) -> impl IntoResponse {
     let g = st.lock().unwrap();
-    Json(build_full(&g).train)
+    Json(g.train_job.snapshot_for_api())
 }
 
 /// «Nuevo chat»: vacía el historial del servidor (y el contexto crudo de OFF).
@@ -1358,12 +1237,7 @@ mod tests {
 
     fn lex_state() -> SharedState {
         let mut s = AppState::new();
-        s.probe = crate::web::llm_periphery::PeripheralProbe::Lexicon(
-            crate::field_linguistic_layer::GemmaShapedLexicon::new(11),
-        );
-        s.decoder = crate::web::llm_periphery::ConceptDecoder::new(
-            crate::web::llm_periphery::LlmMode::Lexicon,
-        );
+        s.probe = crate::web::llm_periphery::PeripheralProbe::Unloaded;
         Arc::new(Mutex::new(s))
     }
 
@@ -1406,7 +1280,7 @@ mod tests {
         ("GET", "/api/tests/events?after=0"),
         ("GET", "/api/processes"),
         ("GET", "/api/telemetry"),
-        ("GET", "/api/telemetry/liquid"),
+        ("GET", "/api/telemetry/field"),
         ("GET", "/api/telemetry/cdt"),
         ("GET", "/api/telemetry/rqm"),
         ("GET", "/api/telemetry/train"),
@@ -1567,7 +1441,7 @@ mod tests {
         assert_eq!(st, StatusCode::OK);
         assert_eq!(v["ok"], true);
         for k in [
-            "engrams",
+            "field",
             "model",
             "llm_active",
             "probe",
@@ -1774,7 +1648,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn health_ok_lexicon() {
+    async fn health_ok_without_gguf() {
         let app = test_router(lex_state());
         let res = app
             .oneshot(
@@ -1831,10 +1705,7 @@ mod tests {
     #[tokio::test]
     async fn chat_raw_without_gguf_errors_and_skips_field() {
         let state = lex_state();
-        let (liq0, rqm0) = {
-            let g = state.lock().unwrap();
-            (g.metrics.liquid_queries, g.fuse.rqm_infer_calls)
-        };
+        let q0 = state.lock().unwrap().metrics.field_queries;
         let app = test_router(state.clone());
         let (st, v) = post_chat(app.clone(), r#"{"message":"hola","mode":"gemma_raw"}"#).await;
         assert_eq!(st, StatusCode::SERVICE_UNAVAILABLE);
@@ -1846,9 +1717,8 @@ mod tests {
         assert_eq!(st2, StatusCode::SERVICE_UNAVAILABLE);
         assert_eq!(v2["mode"], "gemma_raw");
         let g = state.lock().unwrap();
-        // No cae al campo: sin infer líquido/RQM.
-        assert_eq!(g.metrics.liquid_queries, liq0);
-        assert_eq!(g.fuse.rqm_infer_calls, rqm0);
+        // No cae al campo: sin pasos de Dφ.
+        assert_eq!(g.metrics.field_queries, q0);
         assert_eq!(g.raw_chat_calls, 2);
         assert!(g
             .chat_log
@@ -1915,7 +1785,7 @@ mod tests {
                     .method("POST")
                     .uri("/api/chat")
                     .header("content-type", "application/json")
-                    .body(Body::from(r#"{"message":"hola líquido"}"#))
+                    .body(Body::from(r#"{"message":"hola campo"}"#))
                     .unwrap(),
             )
             .await
@@ -1925,9 +1795,9 @@ mod tests {
             .await
             .unwrap();
         let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-        assert!(v["reply"].as_str().unwrap().len() > 0);
-        assert!(v.get("concept_in").is_some());
-        assert!(v.get("liquid_score").is_some());
+        assert!(!v["reply"].as_str().unwrap().is_empty());
+        assert_eq!(v["route"], "field_v4");
+        assert!(v["field"]["family"].as_str().is_some());
         assert!(v.get("decoded").is_some());
 
         let res2 = app
@@ -1944,549 +1814,141 @@ mod tests {
             .await
             .unwrap();
         let t: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-        assert!(t.get("liquid").is_some());
-        assert!(t.get("cdt").is_some());
-        assert!(t.get("rqm").is_some());
-        assert!(t.get("train").is_some());
+        assert_eq!(t["architecture"], "v4");
+        assert!(t.get("field").is_some());
         assert!(t.get("live_job").is_some());
+        assert_eq!(t["metrics"]["field_queries"], 1);
     }
 
-    #[tokio::test]
-    async fn train_start_async_increases_engrams() {
-        let st = lex_state();
-        let before = st.lock().unwrap().fuse.engram_count();
-        let app = test_router(st.clone());
+    async fn get_json(app: &Router, uri: &str) -> serde_json::Value {
+        let res = app
+            .clone()
+            .oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        serde_json::from_slice(&bytes).unwrap()
+    }
+
+    async fn post_json(app: &Router, uri: &str, body: &str) -> serde_json::Value {
         let res = app
             .clone()
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/api/train/start")
+                    .uri(uri)
                     .header("content-type", "application/json")
-                    .body(Body::from(r#"{"batches":2,"batch_size":4,"epochs":1}"#))
+                    .body(Body::from(body.to_string()))
                     .unwrap(),
             )
             .await
             .unwrap();
-        assert_eq!(res.status(), StatusCode::OK);
         let bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
             .await
             .unwrap();
-        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(v["ok"], true);
-        assert!(v["job_id"].as_str().unwrap().len() > 0);
+        serde_json::from_slice(&bytes).unwrap()
+    }
 
-        // Esperar a que el worker termine.
-        for _ in 0..200 {
-            tokio::time::sleep(Duration::from_millis(25)).await;
-            let g = st.lock().unwrap();
-            if !g.train_job.running {
-                break;
+    async fn wait_idle(app: &Router, uri: &str, secs: u64) -> serde_json::Value {
+        let t0 = std::time::Instant::now();
+        loop {
+            let v = get_json(app, uri).await;
+            if v["running"] == false || t0.elapsed().as_secs() > secs {
+                return v;
             }
+            tokio::time::sleep(Duration::from_millis(100)).await;
         }
-        let after = st.lock().unwrap().fuse.engram_count();
-        assert!(after > before, "engrams {after} <= {before}");
-
-        let status = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .uri("/api/train/status")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(status.status(), StatusCode::OK);
-        let bytes = axum::body::to_bytes(status.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let s: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(s["running"], false);
-        assert!(s["events"].as_array().unwrap().len() > 0);
-        assert!(s.get("engrams").is_some());
-
-        let ev = app
-            .oneshot(
-                Request::builder()
-                    .uri("/api/train/events?after=0")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(ev.status(), StatusCode::OK);
     }
 
-    #[tokio::test]
-    async fn train_start_omitted_batches_is_infinite_then_stop() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn train_sleep_tests_async_v4() {
         let st = lex_state();
         let app = test_router(st.clone());
-        let res = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/api/train/start")
-                    .header("content-type", "application/json")
-                    .body(Body::from(r#"{"batch_size":3,"epochs":1}"#))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(res.status(), StatusCode::OK);
-        let bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        // Entrenamiento: 1 lote corto → informe v4 con memoria cero.
+        let v = post_json(&app, "/api/train/start", r#"{"batches":1,"steps":40}"#).await;
+        assert_eq!(v["ok"], true);
+        let s = wait_idle(&app, "/api/train/status", 120).await;
+        assert_eq!(s["running"], false);
+        assert_eq!(s["current_batch"], 1);
+        let rep = &s["last_report"];
+        assert_eq!(rep["metrics"]["test_queries"], 0);
+        assert_eq!(rep["metrics"]["leaked"], 0);
+        assert!(rep["metrics"]["acc"].as_f64().is_some());
+        assert!(s["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|e| e["kind"] == "dphi"));
+        // Chat ON durante/después: el campo responde con Dφ entrenado.
+        let (_, c) = post_chat(app.clone(), r#"{"message":"refleja esto"}"#).await;
+        assert_eq!(c["field"]["trained"], true);
+        // Sueño: consolida y borra la CDT.
+        let v = post_json(&app, "/api/sleep/start", r#"{"cycles":1,"steps":40}"#).await;
+        assert_eq!(v["ok"], true, "{v}");
+        let s = wait_idle(&app, "/api/sleep/status", 120).await;
+        assert_eq!(s["last_report"]["cdt_dropped"], true);
+        assert_eq!(s["last_report"]["after"]["test_queries"], 0);
+        assert_eq!(st.lock().unwrap().field.wake.len(), 0);
+        // Sin CDT de vigilia no hay segundo sueño.
+        let v = post_json(&app, "/api/sleep/start", r#"{"cycles":1}"#).await;
+        assert_eq!(v["ok"], false);
+        // Eventos con cursor.
+        let ev = get_json(&app, "/api/sleep/events?after=0").await;
+        assert!(!ev["events"].as_array().unwrap().is_empty());
+        let p = get_json(&app, "/api/processes").await;
+        assert!(p["active"].as_array().unwrap().is_empty());
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn train_infinite_until_stop() {
+        let st = lex_state();
+        let app = test_router(st.clone());
+        let v = post_json(&app, "/api/train/start", r#"{"steps":20}"#).await;
         assert_eq!(v["ok"], true);
         assert_eq!(v["infinite"], true);
-
-        // Dejar correr al menos un lote.
-        for _ in 0..80 {
-            tokio::time::sleep(Duration::from_millis(25)).await;
-            let g = st.lock().unwrap();
-            if g.train_job.current_batch >= 1 || g.train_job.datasets_saved >= 1 {
-                break;
-            }
+        let t0 = std::time::Instant::now();
+        while st.lock().unwrap().train_job.current_batch < 2 && t0.elapsed().as_secs() < 120 {
+            tokio::time::sleep(Duration::from_millis(50)).await;
         }
-        {
-            let g = st.lock().unwrap();
-            assert!(g.train_job.infinite);
-            assert!(g.train_job.total_batches.is_none());
-            assert!(g.train_job.running || g.train_job.datasets_saved >= 1);
-        }
-
-        let stop = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/api/train/stop")
-                    .header("content-type", "application/json")
-                    .body(Body::from("{}"))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(stop.status(), StatusCode::OK);
-
-        for _ in 0..100 {
-            tokio::time::sleep(Duration::from_millis(25)).await;
-            let g = st.lock().unwrap();
-            if !g.train_job.running {
-                break;
-            }
-        }
-        let g = st.lock().unwrap();
-        assert!(!g.train_job.running);
-        assert!(g.train_job.cancelled || g.train_job.datasets_saved >= 1);
-    }
-
-    #[tokio::test]
-    async fn sleep_job_async_status_events_and_report() {
-        let st = lex_state();
-        {
-            let mut g = st.lock().unwrap();
-            let cands = g.candidates();
-            for i in 0..4 {
-                g.fuse.observe(i, &cands);
-                g.fuse.teach_relation(i, (i + 1) % 8);
-            }
-            let _ = g.fuse.sleep_consolidate();
-            g.ever_trained = true;
-        }
-        let app = test_router(st.clone());
-        let res = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/api/sleep/start")
-                    .header("content-type", "application/json")
-                    .body(Body::from(
-                        r#"{"prune_intensity":0.5,"compact_intensity":0.5,"infinite":false,"cycles":1}"#,
-                    ))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(res.status(), StatusCode::OK);
-        let bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let v = post_json(&app, "/api/train/stop", "{}").await;
         assert_eq!(v["ok"], true);
-        assert!(v["job_id"].as_str().unwrap().len() > 0);
-
-        for _ in 0..200 {
-            tokio::time::sleep(Duration::from_millis(25)).await;
-            if !st.lock().unwrap().sleep_job.running {
-                break;
-            }
-        }
-        let status = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .uri("/api/sleep/status")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        let bytes = axum::body::to_bytes(status.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let s: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let s = wait_idle(&app, "/api/train/status", 60).await;
         assert_eq!(s["running"], false);
-        assert_eq!(s["infinite"], false);
-        assert_eq!(s["current_cycle"], 1);
-        assert_eq!(s["total_cycles"], 1);
-        assert!(s["events"].as_array().unwrap().len() > 0);
-        assert!(s.get("last_report").is_some());
-        assert!(s["last_report"].get("free_energy_before").is_some());
-
-        let ev = app
-            .oneshot(
-                Request::builder()
-                    .uri("/api/sleep/events?after=0")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(ev.status(), StatusCode::OK);
+        assert!(s["current_batch"].as_u64().unwrap() >= 2);
+        // Un segundo arranque mientras corre se rechaza.
+        let a = post_json(&app, "/api/train/start", r#"{"steps":20}"#).await;
+        let b = post_json(&app, "/api/train/start", r#"{"steps":20}"#).await;
+        assert_eq!(a["ok"], true);
+        assert_eq!(b["ok"], false);
+        let _ = post_json(&app, "/api/train/stop", "{}").await;
+        let _ = wait_idle(&app, "/api/train/status", 60).await;
     }
 
-    #[tokio::test]
-    async fn tests_job_async_status_events_and_last() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn tests_job_runs_v4_smoke() {
         let st = lex_state();
         let app = test_router(st.clone());
-        let res = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/api/tests/start")
-                    .header("content-type", "application/json")
-                    .body(Body::from(r#"{"infinite":false,"cycles":1}"#))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(res.status(), StatusCode::OK);
-        let bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let v = post_json(&app, "/api/tests/start", r#"{"cycles":1}"#).await;
         assert_eq!(v["ok"], true);
-
-        for _ in 0..200 {
-            tokio::time::sleep(Duration::from_millis(25)).await;
-            if !st.lock().unwrap().tests_job.running {
-                break;
-            }
-        }
-        let status = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .uri("/api/tests/status")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        let bytes = axum::body::to_bytes(status.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let s: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(s["running"], false);
-        assert!(s["events"].as_array().unwrap().len() > 0);
-        assert!(s["last_report"].get("identity_accuracy").is_some());
-
-        let last = app
-            .oneshot(
-                Request::builder()
-                    .uri("/api/tests/last")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        let bytes = axum::body::to_bytes(last.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let l: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(l["running"], false);
-        assert!(l["last"].get("identity_accuracy").is_some());
-    }
-
-    #[tokio::test]
-    async fn sleep_infinite_runs_until_stop() {
-        let st = lex_state();
-        {
-            let mut g = st.lock().unwrap();
-            let cands = g.candidates();
-            for i in 0..4 {
-                g.fuse.observe(i, &cands);
-                g.fuse.teach_relation(i, (i + 1) % 8);
-            }
-            let _ = g.fuse.sleep_consolidate();
-            g.ever_trained = true;
-        }
-        let app = test_router(st.clone());
-        let res = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/api/sleep/start")
-                    .header("content-type", "application/json")
-                    .body(Body::from(
-                        r#"{"prune_intensity":0.4,"compact_intensity":0.4,"infinite":true}"#,
-                    ))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(res.status(), StatusCode::OK);
-        let bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(v["ok"], true);
-        assert_eq!(v["infinite"], true);
-
-        for _ in 0..120 {
-            tokio::time::sleep(Duration::from_millis(25)).await;
-            let g = st.lock().unwrap();
-            if g.sleep_job.current_cycle >= 1 || g.sleep_job.event_seq > 2 {
-                break;
-            }
-        }
-        {
-            let g = st.lock().unwrap();
-            assert!(g.sleep_job.infinite);
-            assert!(g.sleep_job.total_cycles.is_none());
-            assert!(g.sleep_job.running || g.sleep_job.current_cycle >= 1);
-        }
-
-        let stop = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/api/sleep/stop")
-                    .header("content-type", "application/json")
-                    .body(Body::from("{}"))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(stop.status(), StatusCode::OK);
-
-        for _ in 0..120 {
-            tokio::time::sleep(Duration::from_millis(25)).await;
-            if !st.lock().unwrap().sleep_job.running {
-                break;
-            }
-        }
-        let g = st.lock().unwrap();
-        assert!(!g.sleep_job.running);
-        assert!(g.sleep_job.cancelled || g.sleep_job.current_cycle >= 1);
-    }
-
-    #[tokio::test]
-    async fn tests_infinite_runs_until_stop() {
-        let st = lex_state();
-        let app = test_router(st.clone());
-        let res = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/api/tests/start")
-                    .header("content-type", "application/json")
-                    .body(Body::from(r#"{"infinite":true,"cycles":null}"#))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(res.status(), StatusCode::OK);
-        let bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(v["ok"], true);
-        assert_eq!(v["infinite"], true);
-
-        for _ in 0..120 {
-            tokio::time::sleep(Duration::from_millis(25)).await;
-            let g = st.lock().unwrap();
-            if g.tests_job.current_cycle >= 1 || g.tests_job.event_seq > 2 {
-                break;
-            }
-        }
-        {
-            let g = st.lock().unwrap();
-            assert!(g.tests_job.infinite);
-            assert!(g.tests_job.running || g.tests_job.current_cycle >= 1);
-        }
-
-        let _ = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/api/tests/stop")
-                    .header("content-type", "application/json")
-                    .body(Body::from("{}"))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        for _ in 0..120 {
-            tokio::time::sleep(Duration::from_millis(25)).await;
-            if !st.lock().unwrap().tests_job.running {
-                break;
-            }
-        }
-        let status = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .uri("/api/tests/status")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        let bytes = axum::body::to_bytes(status.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let s: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(s["running"], false);
-        assert_eq!(s["infinite"], true);
-    }
-
-    #[tokio::test]
-    async fn train_reconnect_status_keeps_running_with_events() {
-        let st = lex_state();
-        let app = test_router(st.clone());
-        let _ = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/api/train/start")
-                    .header("content-type", "application/json")
-                    .body(Body::from(r#"{"batches":null,"batch_size":3,"epochs":1}"#))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        // Esperar al menos un evento / lote.
-        for _ in 0..80 {
-            tokio::time::sleep(Duration::from_millis(25)).await;
-            let g = st.lock().unwrap();
-            if g.train_job.event_seq > 0 {
-                break;
-            }
-        }
-
-        // "Reconnect": status debe seguir running (o haber avanzado) con buffer.
-        let status = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .uri("/api/train/status")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        let bytes = axum::body::to_bytes(status.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let s: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-        assert!(s["events"].as_array().unwrap().len() > 0);
-        assert!(s["running"] == true || s["event_seq"].as_u64().unwrap() > 0);
-
-        let procs = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .uri("/api/processes")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        let bytes = axum::body::to_bytes(procs.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let p: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-        assert!(p.get("train").is_some());
-        assert!(p.get("sleep").is_some());
-        assert!(p.get("tests").is_some());
-        assert!(p.get("active").is_some());
-
-        let health = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .uri("/api/status")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        let bytes = axum::body::to_bytes(health.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let h: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-        assert!(h.get("sleeping").is_some());
-        assert!(h.get("testing").is_some());
-        assert!(h.get("active_processes").is_some());
-
-        let _ = app
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/api/train/stop")
-                    .header("content-type", "application/json")
-                    .body(Body::from("{}"))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        for _ in 0..100 {
-            tokio::time::sleep(Duration::from_millis(25)).await;
-            if !st.lock().unwrap().train_job.running {
-                break;
-            }
-        }
-    }
-
-    #[tokio::test]
-    async fn live_train_start_response_shape() {
-        let _ = crate::web::train_job::LiveTrainStartResponse {
-            ok: true,
-            job_id: "x".into(),
-            message: "ok".into(),
-            infinite: Some(true),
-        };
+        let s = wait_idle(&app, "/api/tests/status", 300).await;
+        let rep = &s["last_report"];
+        assert!(rep["rows"].as_array().unwrap().len() >= 6);
+        assert!(rep["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|r| r["test"].as_str().unwrap().starts_with("auditoría"))
+            .all(|r| r["verdict"] == "PASS"));
+        let last = get_json(&app, "/api/tests/last").await;
+        assert!(last["last"]["rows"].is_array());
     }
 
     // ------------------------------------------------ proveedores LLM (mock OpenAI)
 
     const GOOD_KEY: &str = "obk1.mockKEY0123456789abcdef";
 
-    /// Servidor OpenAI-compatible mínimo en 127.0.0.1:<libre>. Devuelve la base `/v1`.
     async fn spawn_mock_openai() -> String {
         use axum::http::HeaderMap;
         async fn authed(h: &HeaderMap) -> bool {
@@ -2728,10 +2190,7 @@ mod tests {
         );
 
         // Chat ON (decoder del campo) → el campo decide y la API verbaliza.
-        let (liq0, _) = {
-            let g = state.lock().unwrap();
-            (g.metrics.liquid_queries, 0)
-        };
+        let q0 = state.lock().unwrap().metrics.field_queries;
         let (st, v) = post_chat(
             app.clone(),
             r#"{"message":"hola campo","mode":"field_decoder"}"#,
@@ -2740,39 +2199,13 @@ mod tests {
         assert_eq!(st, StatusCode::OK);
         let reply = v["reply"].as_str().unwrap();
         assert!(reply.starts_with("MOCK-DECODER: hola campo"), "{reply}");
-        assert!(reply.contains("Estado del campo") && reply.contains("[campo] ruta="));
+        assert!(reply.contains("Estado del campo") && reply.contains("[campo v4]"));
         assert!(!reply.contains("<think>"));
         assert!(v["decoded"]
             .as_str()
             .unwrap()
             .starts_with("api decoder·mock-model"));
-        assert!(state.lock().unwrap().metrics.liquid_queries > liq0);
-
-        // Entrenamiento: dataset generado por la API externa.
-        let (st, v) = call_json(
-            app.clone(),
-            "POST",
-            "/api/train/start",
-            Some(json!({ "batches": 1, "batch_size": 4, "epochs": 1 })),
-        )
-        .await;
-        assert_eq!(st, StatusCode::OK);
-        assert_eq!(v["ok"], true);
-        for _ in 0..400 {
-            tokio::time::sleep(Duration::from_millis(25)).await;
-            if !state.lock().unwrap().train_job.running {
-                break;
-            }
-        }
-        {
-            let g = state.lock().unwrap();
-            assert_eq!(g.train_job.dataset_source.as_deref(), Some("api:mock"));
-            assert!(g
-                .train_job
-                .events
-                .iter()
-                .any(|e| e.kind == "dataset" && e.message.contains("source=api:mock")));
-        }
+        assert!(state.lock().unwrap().metrics.field_queries > q0);
 
         // Nuevo chat limpia el contexto que se reenvía a la API.
         let (st, _) = call_json(app.clone(), "POST", "/api/chat/reset", Some(json!({}))).await;
@@ -2833,7 +2266,7 @@ mod tests {
         assert!(r.contains("401") && r.contains("API · mala"), "{r}");
         // Error no entra al historial reenviado.
         assert!(state.lock().unwrap().raw_history().is_empty());
-        // ON: sin Gemma local → decoder léxico con el motivo.
+        // ON: sin Gemma local → estado del campo con el motivo.
         let (st, v) = post_chat(
             app.clone(),
             r#"{"message":"hola campo","mode":"field_decoder"}"#,
@@ -2842,7 +2275,7 @@ mod tests {
         assert_eq!(st, StatusCode::OK);
         let r = v["reply"].as_str().unwrap();
         assert!(r.contains("no respondió") && r.contains("401"), "{r}");
-        assert_eq!(v["llm"], "decoder léxico");
+        assert_eq!(v["llm"], FIELD_ONLY_LABEL);
     }
 
     #[test]

@@ -18,7 +18,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-/// Id reservado del LLM local (Gemma 2 GGUF / léxico).
+/// Id reservado del LLM local (Gemma 2 GGUF).
 pub const LOCAL_ID: &str = "gemma_local";
 /// Id del proveedor definido por variables de entorno.
 pub const ENV_ID: &str = "env";
@@ -1223,7 +1223,7 @@ pub fn field_decoder_messages(user_msg: &str, field_state: &str) -> Vec<ChatMess
     vec![
         ChatMessage::new(
             "system",
-            "Eres el decoder de un modelo de campo (líquido/CDT/RQM). No inventes el estado: \
+            "Eres el decoder de un modelo de campo v4 (Dφ). No inventes el estado: \
              verbaliza en español, en 1-3 frases, la respuesta al usuario y cierra mencionando \
              el estado del campo que se te da.",
         ),

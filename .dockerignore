@@ -16,3 +16,9 @@ target-correlation-test/
 *.progress
 build_log*.txt
 docs/cv/
+artifacts/
+docs/
+examples/
+scripts/
+training/
+data/

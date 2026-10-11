@@ -755,11 +755,28 @@ pub fn train_onestep_trusted_b(
     tau: f64,
     budget: TrainBudget,
 ) -> (AuditFlags, Vec<bool>) {
+    let (flags, trusted, _) = train_trusted_on(d, &s.ds.train, seed, Some(aud), tau, budget);
+    (flags, trusted)
+}
+
+/// §16 recipe on an arbitrary TRAIN set (used by the app): experience → CDT →
+/// consolidation (teacher) → per-family fit residual → trusted mask → Dφ
+/// one-step training on TRAIN ground truth ∪ trusted teacher replay. CDT and
+/// teacher are dropped before returning. Returns (audit flags, trusted mask,
+/// per-family fit residual).
+pub fn train_trusted_on(
+    d: &mut Dphi,
+    train: &[Example],
+    seed: u64,
+    aud: Option<&Auditor>,
+    tau: f64,
+    budget: TrainBudget,
+) -> (AuditFlags, Vec<bool>, Vec<f64>) {
     let k = K_POINTS;
-    let tr = triples(&s.ds.train);
+    let tr = triples(train);
     let n = tr.len();
     let mut flags = AuditFlags::default();
-    let cdt = collect_experience(&s.ds.train, ExpMode::Real, seed);
+    let cdt = collect_experience(train, ExpMode::Real, seed);
     flags.cdt_canon = cdt.canonical_targets();
     let sig = consolidate(&cdt, ConsolidateMode::Full);
     let res = family_fit_residual(&sig, cdt.read_all());
@@ -771,7 +788,9 @@ pub fn train_onestep_trusted_b(
             loop {
                 let t = replay_sample(&sig, r, k);
                 if trusted[fam_params(&t.1).0] {
-                    hits.extend(aud.hits(&t.2));
+                    if let Some(a) = aud {
+                        hits.extend(a.hits(&t.2));
+                    }
                     return t;
                 }
             }
@@ -787,7 +806,7 @@ pub fn train_onestep_trusted_b(
             flags.equiv_hits.insert(h);
         }
     }
-    (flags, trusted)
+    (flags, trusted, res)
 }
 
 /// §16 pre-registered constants.

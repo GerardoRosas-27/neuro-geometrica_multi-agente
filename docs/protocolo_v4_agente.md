@@ -9,9 +9,9 @@ Este documento convierte `plan_autonomia_campo_v4.md` en una lista operativa par
 1. Confirmar branch `exp/field-autonomy-v4`.
 2. Leer:
    - `docs/plan_autonomia_campo_v4.md`
-   - `docs/plan_autonomia_campo_v3.md`
-   - `docs/cierre_exp_field_autonomy_next_v3.md`
-   - `docs/etapa_2_autonomia_campo_experimentos.md`
+   - `docs/historico/plan_autonomia_campo_v3.md`
+   - `docs/historico/cierre_exp_field_autonomy_next_v3.md`
+   - `docs/historico/etapa_2_autonomia_campo_experimentos.md`
 3. Inspeccionar `src/field_autonomy_stage2_v2.rs` y módulos de FieldEncoder/Dφ/CDT/RQM.
 4. Confirmar SHA de `main` que sirve de base.
 5. No traer archivos de `exp/field-autonomy-next` salvo documentación de referencia. Si se copia lógica, documentar por qué y verificar que no se copian pesos/datasets.

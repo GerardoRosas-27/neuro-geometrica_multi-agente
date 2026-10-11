@@ -9,7 +9,7 @@
 //! - `GEMMA2_AUTO_DOWNLOAD`: `0` desactiva la descarga en arranque (def `1`).
 //!
 //! La descarga usa `curl` (presente en la imagen Docker) en un hilo aparte: el
-//! servidor arranca enseguida (healthcheck OK) en modo léxico y hace hot-swap a
+//! servidor arranca enseguida (healthcheck OK) sin LLM local y hace hot-swap a
 //! Gemma cuando el GGUF queda descargado y cargado.
 
 use serde::Serialize;

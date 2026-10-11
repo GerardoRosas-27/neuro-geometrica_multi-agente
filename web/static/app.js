@@ -133,8 +133,8 @@
     const name = ext ? activeLlm.label : "Gemma";
     modeHint.classList.remove("warn");
     if (on) {
-      modeHint.textContent = `Activo · campo líquido/CDT/RQM → ${name} interpreta (decoder-only)`;
-      input.placeholder = "Pregunta al campo (decoder de engramas/conceptos)…";
+      modeHint.textContent = `Activo · campo v4 (Dφ) → ${name} verbaliza (decoder-only)`;
+      input.placeholder = "Pide una transformación al campo: «rota 0.3», «refleja», «escala»…";
     } else {
       modeHint.textContent = ext
         ? `Inactivo · ${name} directo (sin campo)`
@@ -146,7 +146,7 @@
       }
     }
     if (on && !ext && rawAvailable === false) {
-      modeHint.textContent += " · decoder léxico (" + modelStatusText() + ")";
+      modeHint.textContent += " · sin LLM: estado del campo (" + modelStatusText() + ")";
     }
   }
   function modelStatusText() {
@@ -212,7 +212,8 @@
         rawAvailable = h.raw_gemma_available;
         syncChatMode();
       }
-      const bits = [`ok · engramas ${h.engrams}`];
+      const f = h.field || {};
+      const bits = [`ok · Dφ ${f.trained ? "entrenado" : "sin entrenar"} · CDT ${h.wake_buffer ?? 0}`];
       if (h.training) bits.push("entrenando");
       if (h.sleeping) bits.push("durmiendo");
       if (h.testing) bits.push("pruebas");
@@ -231,8 +232,7 @@
     return (events || [])
       .map((e) => {
         const b = e.batch != null ? ` b${e.batch}` : "";
-        const eng = e.engrams != null ? ` eng=${e.engrams}` : "";
-        return `[${e.kind}]${b}${eng} ${e.message}`;
+        return `[${e.kind}]${b} ${e.message}`;
       })
       .join("\n");
   }
@@ -291,45 +291,24 @@
               : "idle"
       );
       setText("tr-job", job.job_id || "—");
-      // Lote actual (progreso) + épocas/lote (config). Nunca solo epochs.
-      const epochsCfg = job.epochs != null ? job.epochs : "—";
-      const bs =
-        job.batch_size != null && job.batch_size !== ""
-          ? ` · bs=${job.batch_size}`
-          : "";
-      setText("tr-epochs", `lote ${cur} · ${epochsCfg} ép/lote${bs}`);
-      setText(
-        "tr-acc",
-        job.accuracy == null || job.accuracy === ""
-          ? "—"
-          : (100 * Number(job.accuracy)).toFixed(1) + "%"
-      );
-      setText(
-        "tr-eng",
-        job.engrams != null && job.engrams !== "" ? job.engrams : "—"
-      );
-      const fam = job.last_dataset_family || "—";
-      const exps =
-        Array.isArray(job.last_experiment_ids) && job.last_experiment_ids.length
-          ? ` (${job.last_experiment_ids.join(",")})`
-          : "";
-      setText("tr-family", fam === "—" ? "—" : fam + exps);
-      setText(
-        "tr-dataset",
-        (job.dataset_size != null ? job.dataset_size : "—") +
-          (job.dataset_source ? ` (${job.dataset_source})` : "")
-      );
-      setText(
-        "tr-ds-saved",
-        job.datasets_saved != null ? job.datasets_saved : "—"
-      );
+      setText("tr-steps", job.steps != null ? `${job.steps} pasos/lote` : "—");
+      const r = job.last_report || null;
+      const m = (r && r.metrics) || null;
+      const pct = (x) => (x == null ? "—" : (100 * Number(x)).toFixed(1) + "%");
+      setText("tr-acc", m ? pct(m.acc) : "—");
+      setText("tr-relerr", m ? Number(m.rel_err_1step).toFixed(4) : "—");
+      setText("tr-rollout", m ? `${pct(m.rollout_acc)} (h${m.rollout_h})` : "—");
+      setText("tr-audit", m ? `queries=${m.test_queries} · leaked=${m.leaked}` : "—");
+      setText("tr-cdt", r ? r.cdt_experiences : "—");
+      setText("tr-trusted", r ? (r.trusted_families.join(", ") || "ninguna") : "—");
+      setText("tr-dataset", r ? `0x${Number(r.seed).toString(16).toUpperCase()} · ${r.dataset_hash.slice(0, 12)} · ${r.audit_status}` : "—");
+      setText("tr-fam", m ? m.fam_acc.map(([f, a]) => `${f} ${(100 * a).toFixed(0)}%`).join(" · ") : "—");
       setText(
         "tr-ckpt",
-        job.last_dataset_path ||
-          (job.last_checkpoint && job.last_checkpoint.path) ||
-          "—"
+        job.last_checkpoint
+          ? `${job.last_checkpoint.path} (${(job.last_checkpoint.weights_hash || "").slice(0, 12)})`
+          : "—"
       );
-      setText("tr-decoded", job.last_decoded || "—");
 
       const merged =
         liveEvents.length > 0
@@ -404,15 +383,15 @@
 
   function renderSleepReport(r) {
     if (!r) return;
-    $("sl-f-before").textContent = Number(r.free_energy_before).toFixed(4);
-    $("sl-f-after").textContent = Number(r.free_energy_after).toFixed(4);
-    $("sl-sym-before").textContent = Number(r.symmetry_before).toFixed(4);
-    $("sl-sym-after").textContent = Number(r.symmetry_after).toFixed(4);
-    $("sl-hs").textContent = Number(r.handshake).toFixed(4);
-    $("sl-pruned").textContent = r.routes_pruned;
-    $("sl-phasors").textContent = r.phasors_compacted;
-    $("sl-edges").textContent = `${r.edges_compacted} / ${r.nodes_compacted}`;
-    $("sl-eng").textContent = r.engrams;
+    const pct = (x) => (100 * Number(x)).toFixed(1) + "%";
+    setText("sl-exp", r.experiences_consolidated);
+    setText("sl-teacher", r.teacher_numbers);
+    setText("sl-trusted", (r.trusted_families || []).join(", ") || "ninguna");
+    setText("sl-acc", `${pct(r.before.acc)} → ${pct(r.after.acc)}`);
+    setText("sl-relerr", `${Number(r.before.rel_err_1step).toFixed(4)} → ${Number(r.after.rel_err_1step).toFixed(4)}`);
+    setText("sl-rollout", `${pct(r.before.rollout_acc)} → ${pct(r.after.rollout_acc)} (h${r.after.rollout_h})`);
+    setText("sl-audit", `CDT borrada=${r.cdt_dropped ? "sí" : "no"} · queries=${r.after.test_queries} · leaked=${r.after.leaked}`);
+    setText("sl-ms", (Number(r.sleep_ms) / 1000).toFixed(1) + " s · " + r.steps + " pasos");
     $("sl-report").textContent = JSON.stringify(r, null, 2);
   }
 
@@ -479,49 +458,20 @@
       $("te-report").textContent = "(aún no hay informe)";
       return;
     }
-    $("te-eng").textContent = r.engrams;
-    $("te-had").textContent = r.had_engrams ? "sí" : "no";
-    if ($("te-suite")) {
-      const suite = r.experiment_suite;
-      if (suite && suite.verdict_counts) {
-        const parts = Object.entries(suite.verdict_counts)
-          .map(([k, v]) => `${k}=${v}`)
-          .sort();
-        $("te-suite").textContent = `${suite.rows?.length || 0} filas · ${parts.join(" ")} · ${Math.round(suite.elapsed_ms || 0)} ms`;
-      } else {
-        $("te-suite").textContent = "—";
-      }
-    }
-    $("te-id-acc").textContent =
-      (100 * (r.identity_accuracy || 0)).toFixed(1) +
-      `% (${r.identity_correct}/${r.identity_total})`;
-    $("te-sh-acc").textContent =
-      r.shifted_accuracy == null
-        ? "— (sin cues RQM)"
-        : (100 * r.shifted_accuracy).toFixed(1) +
-          `% (${r.shifted_correct}/${r.shifted_total})`;
-    $("te-lat").textContent =
-      Number(r.liquid_latency_us_mean).toFixed(2) +
-      ` (p50 ${Number(r.liquid_latency_us_p50).toFixed(2)})`;
-    $("te-recall").textContent =
-      r.engram_recall_mean == null
-        ? "—"
-        : Number(r.engram_recall_mean).toFixed(3);
-    $("te-f").textContent =
-      r.free_energy == null ? "—" : Number(r.free_energy).toFixed(4);
-    $("te-sym").textContent =
-      r.symmetry == null ? "—" : Number(r.symmetry).toFixed(4);
-    $("te-hs").textContent =
-      r.handshake == null ? "—" : Number(r.handshake).toFixed(4);
-    $("te-routes").textContent = JSON.stringify(r.route_histogram || {});
-    $("te-concepts").textContent = JSON.stringify(r.per_concept || [], null, 2);
+    setText("te-verdict", `${r.pass} PASS · ${r.fail} FAIL`);
+    setText("te-e35", `A=${Number(r.e35_mean_a).toFixed(3)} · B=${Number(r.e35_mean_b).toFixed(3)} · Δ=${(r.e35_mean_b - r.e35_mean_a >= 0 ? "+" : "") + (r.e35_mean_b - r.e35_mean_a).toFixed(3)}`);
+    setText("te-elapsed", (Number(r.elapsed_ms) / 1000).toFixed(1) + " s");
+    const rows = (r.rows || [])
+      .map((x) => `${x.verdict.padEnd(4)} ${x.test} [${x.seed}] ${x.value} (umbral: ${x.threshold})`)
+      .join("\n");
+    $("te-rows").textContent = rows + ((r.notes || []).length ? "\n\nnotas: " + r.notes.join(" · ") : "");
     $("te-report").textContent = JSON.stringify(r, null, 2);
   }
 
   function renderTelemetry(t) {
     if (!t) return;
     const job = t.live_job || (t.train && t.train.live) || null;
-    // Aislar errores de render de job para no bloquear líquido/CDT/RQM.
+    // Aislar errores de render de job para no bloquear el resto.
     try {
       if (job) renderLiveJob(job);
       if (t.sleep_job) renderSleepJob(t.sleep_job);
@@ -531,53 +481,25 @@
     }
 
     try {
-      const li = t.liquid || {};
-      setText("li-q", li.queries != null ? li.queries : "—");
-      setText(
-        "li-score",
-        li.score_last != null ? Number(li.score_last).toFixed(4) : "—"
-      );
-      setText(
-        "li-avg",
-        li.score_avg != null ? Number(li.score_avg).toFixed(4) : "—"
-      );
-      setText(
-        "li-lat",
-        li.latency_us_last != null
-          ? Number(li.latency_us_last).toFixed(2)
-          : "—"
-      );
-      setText(
-        "li-pct",
-        li.route_pct != null ? Number(li.route_pct).toFixed(1) + "%" : "—"
-      );
-      setText("li-route", li.last_route || "—");
-
-      const cd = t.cdt || {};
-      setText("cd-eng", cd.engram_count != null ? cd.engram_count : "—");
-      setText("cd-wake", cd.wake_buffer != null ? cd.wake_buffer : "—");
-      setText("cd-sleeps", cd.sleeps != null ? cd.sleeps : "—");
-
-      const rq = t.rqm || {};
-      setText("rq-inf", rq.infer_calls != null ? rq.infer_calls : "—");
-      setText("rq-tr", rq.train_calls != null ? rq.train_calls : "—");
-      setText(
-        "rq-pct",
-        rq.route_pct != null ? Number(rq.route_pct).toFixed(1) + "%" : "—"
-      );
-      setText(
-        "rq-cues",
-        rq.relational_cues != null ? rq.relational_cues : "—"
-      );
+      const f = t.field || {};
+      const m = t.metrics || {};
+      setText("fv-state", f.trained ? `entrenado (${f.origin})` : "sin entrenar");
+      setText("fv-params", f.params != null ? f.params : "—");
+      setText("fv-hash", f.weights_hash ? f.weights_hash.slice(0, 16) : "—");
+      setText("fv-wake", f.wake_experiences != null ? f.wake_experiences : "—");
+      setText("fv-batches", f.batches_total != null ? f.batches_total : "—");
+      setText("fv-sleeps", f.sleeps_total != null ? f.sleeps_total : "—");
+      setText("fv-chat", m.field_queries != null ? `${m.field_queries} (${m.field_correct} <5%)` : "—");
+      setText("fv-relerr", t.field_rel_err_avg != null ? Number(t.field_rel_err_avg).toFixed(4) : "—");
+      setText("fv-lat", m.field_latency_us_last != null ? Number(m.field_latency_us_last).toFixed(0) : "—");
     } catch (err) {
-      console.warn("render liquid/cdt/rqm failed", err);
+      console.warn("render field failed", err);
     }
 
     try {
-      if (t.last_sleep_optimize && !t.sleep_job?.running)
-        renderSleepReport(t.last_sleep_optimize);
-      if (t.last_field_eval && !t.tests_job?.running)
-        renderTests(t.last_field_eval);
+      if (t.field && t.field.last_sleep && !t.sleep_job?.running)
+        renderSleepReport(t.field.last_sleep);
+      if (t.last_smoke && !t.tests_job?.running) renderTests(t.last_smoke);
       if (badgeMode) badgeMode.textContent = `LLM: ${t.llm_mode || "—"}`;
       if (t.processes) {
         updateProcessBadges({
@@ -863,12 +785,14 @@
       const meta =
         rMode === "gemma_raw"
           ? `modelo=${r.llm && r.llm_id !== "gemma_local" ? r.llm : "Gemma 2 original"} (sin campo) · ${r.decoded || ""} · ${secs}s`
-          : `${llmTxt}ruta=${r.route} · in=${r.concept_in}→out=${r.concept_out} · líquido=${Number(r.liquid_score).toFixed(3)} · eng=${r.engrams} · decoded=${r.decoded} · ${secs}s`;
+          : r.field
+            ? `${llmTxt}campo v4 · ${r.field.family} · err₁=${(100 * r.field.rel_err).toFixed(1)}% · ${r.field.trained ? "Dφ entrenado" : "Dφ sin entrenar"} · ${r.decoded} · ${secs}s`
+            : `ruta=${r.route} · ${secs}s`;
       addMsg("agent", r.reply, meta, rMode, {
         error: !res.ok,
         llm: rMode === "gemma_raw" ? (r.llm || llmAtSend) : null,
       });
-      if (r.route === "train") {
+      if (r.route === "train" || r.route === "sleep") {
         await reconnectProcesses();
       }
       refreshTelemetry();
@@ -894,9 +818,8 @@
     eventAfter = 0;
     liveEvents = [];
     try {
-      const body = infinite
-        ? { batches: null, batch_size: 8, epochs: 1 }
-        : { batches: 4, batch_size: 8, epochs: 1 };
+      const steps = Number($("tr-steps-in")?.value) || 4000;
+      const body = infinite ? { batches: null, steps } : { batches: 4, steps };
       const r = await api("/api/train/start", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -932,21 +855,8 @@
     pollTrainOnce();
   });
 
-  function bindSlider(id, valId) {
-    const sl = $(id);
-    const val = $(valId);
-    const sync = () => {
-      val.textContent = (sl.value / 100).toFixed(2);
-    };
-    sl.addEventListener("input", sync);
-    sync();
-  }
-  bindSlider("sl-prune", "sl-prune-val");
-  bindSlider("sl-compact", "sl-compact-val");
-
   $("btn-sleep").addEventListener("click", async () => {
-    const prune = $("sl-prune").value / 100;
-    const compact = $("sl-compact").value / 100;
+    const steps = Number($("sl-steps-in")?.value) || 8000;
     const infinite = $("chk-infinite-sleep")?.checked !== false;
     sleepEventAfter = 0;
     sleepEvents = [];
@@ -954,9 +864,7 @@
     $("sl-status").textContent = "iniciando…";
     try {
       const body = {
-        prune_intensity: prune,
-        compact_intensity: compact,
-        consolidate_first: true,
+        steps,
         infinite,
         cycles: infinite ? null : 1,
       };

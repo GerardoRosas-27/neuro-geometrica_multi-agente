@@ -1,42 +1,31 @@
 //! Estado compartido de la app agentica (Arc<Mutex<AppState>>).
+//!
+//! El único motor de campo es v4 ([`crate::field_v4`]): Dφ (campo residual
+//! local-lineal con compuerta) + CDT de vigilia + teacher consolidado que se
+//! borra tras aprender. El cómputo pesado (lotes, sueño, pruebas) corre **fuera
+//! del lock**: se toma un plan, se calcula y se aplica el resultado.
 
 use crate::field_gemma_probe::{RawGemmaHandle, RawGemmaReply};
-use crate::field_hybrid_infer::FieldHybridInfer;
-use crate::liquid_cdt_memory::SleepReport;
-use crate::liquid_cdt_rqm_fuse::{FuseReport, FusedLiquidCdt, InferRoute};
-use crate::web::experiment_suite::{run_ui_experiment_suite, ExperimentSuiteReport};
-use crate::web::field_eval::{run_field_eval_with_progress, FieldEvalReport, FieldEvalStatus};
-use crate::web::llm_periphery::{
-    generate_train_batch, open_best_probe, ChatMode, ConceptDecoder, LlmMode, PeripheralProbe,
-    TrainBatchMeta, TrainExample, NUM_CONCEPTS,
+use crate::field_v4::{
+    self, ChatField, SleepReport, SmokeReport, TrainBatchReport, APP_SLEEP_STEPS, APP_TRAIN_STEPS,
 };
+use crate::v4_controls::Dphi;
+use crate::v4_dataset::Example;
+use crate::web::llm_periphery::{open_best_probe, LlmMode, PeripheralProbe};
 use crate::web::llm_provider::{ProviderConfig, ProviderStore, LOCAL_ID};
 use crate::web::model_fetch::{ModelConfig, ModelStatus};
 use crate::web::process_job::{
     ProcessesSnapshot, SleepJob, SleepStartResponse, TestsJob, TestsStartResponse,
 };
-use crate::web::sleep_optimize::{
-    run_sleep_optimize_with_progress, SleepOptimizeOpts, SleepOptimizeReport,
-};
-use crate::web::telemetry::{FuseReportDto, SleepReportDto, TelemetrySnapshot};
+use crate::web::telemetry::TelemetrySnapshot;
 use crate::web::train_job::{
-    batch_metrics, relation_target, write_checkpoint, write_dataset_checkpoint, write_latest_index,
-    CheckpointFile, CheckpointMeta, DatasetCheckpointFile, LiquidDatasetMetrics, TrainJob,
-    TrainLiveEvent,
+    read_latest_dphi, write_dphi_checkpoint, CheckpointMeta, DphiCheckpointFile,
+    LiveTrainStartResponse, TrainJob, TrainLiveEvent,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::time::Instant;
 use uuid::Uuid;
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct TrainEvent {
-    pub t_ms: u64,
-    pub kind: String,
-    pub detail: String,
-    pub engrams: usize,
-    pub epoch: Option<u64>,
-}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ChatTurn {
@@ -46,28 +35,24 @@ pub struct ChatTurn {
     pub role: String,
     pub text: String,
     pub route: Option<String>,
-    pub concept_in: Option<usize>,
-    pub concept_out: Option<usize>,
-    /// LLM que generó el texto (Gemma local / API externa). `None` = campo/léxico.
+    /// LLM que generó el texto (Gemma local / API externa). `None` = campo.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub llm: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
 pub struct ChatResponse {
-    /// Modo que respondió: `field_decoder` (campo + Gemma decoder) | `gemma_raw`.
+    /// Modo que respondió: `field_decoder` (campo v4 + LLM decoder) | `gemma_raw`.
     pub mode: String,
     pub reply: String,
+    /// `field_v4` | `train` | `sleep` | `status` | `gemma_raw` | `gemma_raw_error`.
     pub route: String,
-    pub concept_in: usize,
-    pub concept_out: usize,
-    pub liquid_score: f64,
-    pub rqm_score: Option<f64>,
-    pub engrams: usize,
-    /// Texto del **LLM decoder only** (concepto de campo → texto).
+    /// Estado del campo v4 para este mensaje (solo modo ON).
+    pub field: Option<ChatField>,
+    /// Descripción corta de quién verbalizó / métricas del decoder.
     pub decoded: String,
     /// LLM que produjo el texto: `Gemma local`, `API · nombre (modelo)` o
-    /// `decoder léxico`. Vacío en intents sin LLM (train/sleep…).
+    /// `campo (sin LLM)`. Vacío en intents sin LLM (train/sleep…).
     pub llm: String,
     /// Id del proveedor que respondió (`gemma_local` o id de API).
     pub llm_id: String,
@@ -81,57 +66,128 @@ pub struct ChatRequest {
     /// `"field_decoder"` (def) | `"gemma_raw"`.
     #[serde(default)]
     pub mode: Option<String>,
-    /// Alternativa booleana a `mode`: true = decoder del campo, false = Gemma crudo.
+    /// Alternativa booleana a `mode`: true = decoder del campo, false = LLM crudo.
     #[serde(default)]
     pub field_decoder: Option<bool>,
 }
 
 impl ChatRequest {
-    pub fn chat_mode(&self) -> Result<ChatMode, String> {
-        ChatMode::resolve(self.mode.as_deref(), self.field_decoder)
+    pub fn chat_mode(&self) -> Result<crate::web::llm_periphery::ChatMode, String> {
+        crate::web::llm_periphery::ChatMode::resolve(self.mode.as_deref(), self.field_decoder)
     }
 }
 
 const FIELD_MODE: &str = "field_decoder";
 const RAW_MODE: &str = "gemma_raw";
+pub const FIELD_ROUTE: &str = "field_v4";
 /// Pares (user, model) de chat crudo que se reenvían como contexto.
 const RAW_HISTORY_PAIRS: usize = 4;
 
-/// Compat: respuesta síncrona legacy (tests / intents). Preferir job async.
-#[derive(Clone, Debug, Serialize)]
-pub struct TrainStartResponse {
-    pub ok: bool,
-    pub epochs: u64,
-    pub events: Vec<TrainEvent>,
-    pub engrams: usize,
-    pub accuracy: Option<f64>,
-    pub sleep: Option<SleepReportDto>,
-    pub job_id: Option<String>,
+/// Motor de campo v4 de la app.
+pub struct FieldEngine {
+    /// Dφ actual (§16: cabeza local-lineal con compuerta, H = 136).
+    pub dphi: Dphi,
+    /// True si Dφ vio al menos un lote (o se cargó de checkpoint).
+    pub trained: bool,
+    /// CDT de vigilia: experiencias TRAIN pendientes de consolidar en sueño.
+    pub wake: Vec<Example>,
+    /// Origen del Dφ actual (`init` | `checkpoint:<ruta>` | `train` | `sleep`).
+    pub origin: String,
+    pub batches_total: usize,
+    pub sleeps_total: usize,
+    pub last_train: Option<TrainBatchReport>,
+    pub last_sleep: Option<SleepReport>,
+    pub last_smoke: Option<SmokeReport>,
+}
+
+impl FieldEngine {
+    pub fn new(load_checkpoint: bool) -> Self {
+        let mut e = Self {
+            dphi: field_v4::new_dphi(0x0A11_D0F1),
+            trained: false,
+            wake: Vec::new(),
+            origin: "init".into(),
+            batches_total: 0,
+            sleeps_total: 0,
+            last_train: None,
+            last_sleep: None,
+            last_smoke: None,
+        };
+        if load_checkpoint {
+            if let Some((path, f)) = read_latest_dphi() {
+                if let Some(d) = field_v4::from_checkpoint(&f.dphi) {
+                    tracing::info!(path = %path.display(), "Dφ v4 restaurado de checkpoint");
+                    e.dphi = d;
+                    e.trained = true;
+                    e.origin = format!("checkpoint:{}", path.display());
+                    e.last_train = f.report;
+                }
+            }
+        }
+        e
+    }
+
+    pub fn status_json(&self) -> serde_json::Value {
+        json!({
+            "architecture": "v4 · Dφ residual local-lineal con compuerta (§16) + CDT/teacher borrados antes de TEST",
+            "trained": self.trained,
+            "origin": self.origin,
+            "params": crate::v4_controls::Predictor::params(&self.dphi),
+            "weights_hash": self.dphi.weights_hash(),
+            "wake_experiences": self.wake.len(),
+            "batches_total": self.batches_total,
+            "sleeps_total": self.sleeps_total,
+            "last_train": self.last_train,
+            "last_sleep": self.last_sleep,
+        })
+    }
+}
+
+/// Plan de un lote (tomado bajo el lock, ejecutado fuera).
+pub struct TrainPlan {
+    pub job_id: String,
+    pub batch: usize,
+    pub seed: u64,
+    pub steps: usize,
+    pub dphi: Dphi,
+    pub wake: Vec<Example>,
+}
+
+pub struct TrainDone {
+    pub plan: TrainPlan,
+    pub report: TrainBatchReport,
+}
+
+pub struct SleepPlan {
+    pub cycle: usize,
+    pub seed: u64,
+    pub steps: usize,
+    pub dphi: Dphi,
+    pub wake: Vec<Example>,
+}
+
+pub struct SleepDone {
+    pub plan: SleepPlan,
+    pub report: Option<SleepReport>,
+}
+
+pub struct TestsPlan {
+    pub cycle: usize,
+    pub model: Option<Dphi>,
 }
 
 pub struct AppState {
-    pub fuse: FusedLiquidCdt,
-    pub field_hybrid: Option<FieldHybridInfer>,
+    pub field: FieldEngine,
     pub probe: PeripheralProbe,
-    pub decoder: ConceptDecoder,
-    pub train_log: Vec<TrainEvent>,
     pub chat_log: Vec<ChatTurn>,
-    pub last_fuse: Option<FuseReport>,
-    pub last_sleep: Option<SleepReport>,
     pub metrics: TelemetrySnapshot,
-    pub training: bool,
     pub started_ms: u64,
     pub train_job: TrainJob,
     pub sleep_job: SleepJob,
     pub tests_job: TestsJob,
-    pub last_sleep_optimize: Option<SleepOptimizeReport>,
-    pub last_field_eval: Option<FieldEvalReport>,
-    pub field_eval_running: bool,
-    /// True tras completar ≥1 lote de train (o si hay engramas/datasets).
-    pub ever_trained: bool,
-    /// Última suite de experimentos (pestaña Pruebas).
-    pub last_experiment_suite: Option<ExperimentSuiteReport>,
-    /// Llamadas al chat crudo Gemma (no cuentan como infer líquido/RQM).
+    /// Escribir checkpoints a disco (false en tests).
+    pub persist: bool,
+    /// Llamadas al chat crudo (OFF).
     pub raw_chat_calls: u64,
     /// Config del GGUF (ruta/URL/sha) y estado de descarga/carga.
     pub model_cfg: ModelConfig,
@@ -176,38 +232,27 @@ pub enum RawBackend {
     },
 }
 
-/// Dataset pre-generado por la API externa: (seed, lote o error de la API).
-pub type PreGeneratedDataset = Option<(u64, Result<(Vec<TrainExample>, TrainBatchMeta), String>)>;
-
 /// Etiqueta del LLM local.
 pub const LOCAL_LABEL: &str = "Gemma local";
+/// Etiqueta cuando ningún LLM verbalizó (se muestra el estado del campo).
+pub const FIELD_ONLY_LABEL: &str = "campo (sin LLM)";
 
 impl AppState {
     pub fn new() -> Self {
         let model_cfg = ModelConfig::from_env();
         let probe = open_best_probe(0x0A6E_471C);
         let mode = probe.mode();
-        let fuse = FusedLiquidCdt::new(NUM_CONCEPTS);
+        let persist = !cfg!(test);
         Self {
-            fuse,
-            field_hybrid: Some(FieldHybridInfer::new(0xF1E1D)),
+            field: FieldEngine::new(persist),
             probe,
-            decoder: ConceptDecoder::new(mode),
-            train_log: Vec::new(),
             chat_log: Vec::new(),
-            last_fuse: None,
-            last_sleep: None,
             metrics: TelemetrySnapshot::default(),
-            training: false,
             started_ms: now_ms(),
             train_job: TrainJob::default(),
             sleep_job: SleepJob::default(),
             tests_job: TestsJob::default(),
-            last_sleep_optimize: None,
-            last_field_eval: None,
-            field_eval_running: false,
-            ever_trained: false,
-            last_experiment_suite: None,
+            persist,
             raw_chat_calls: 0,
             model_status: if matches!(mode, LlmMode::GemmaGguf) {
                 ModelStatus::new("ready", &model_cfg, "GGUF cargado")
@@ -255,19 +300,16 @@ impl AppState {
         }
     }
 
-    /// «Nuevo chat»: borra el historial del servidor (incluye los pares crudos
-    /// que el modo OFF reenvía como contexto). No toca campo/engramas/train.
+    /// «Nuevo chat»: borra el historial del servidor. No toca el campo.
     pub fn reset_chat(&mut self) -> usize {
         let n = self.chat_log.len();
         self.chat_log.clear();
         n
     }
 
-    /// Hot-swap: instala la sonda Gemma recién descargada/cargada.
+    /// Hot-swap: instala Gemma recién descargado/cargado.
     pub fn install_probe(&mut self, probe: PeripheralProbe) {
-        let mode = probe.mode();
         self.probe = probe;
-        self.decoder = ConceptDecoder::new(mode);
         self.model_status = ModelStatus::new("ready", &self.model_cfg, "GGUF cargado");
     }
 
@@ -299,10 +341,10 @@ impl AppState {
         }
     }
 
-    /// ON: si la respuesta viene del campo (Liquid/RQM) y hay LLM disponible
-    /// (API externa activa o Gemma cargado), prepara el trabajo de decodificación.
+    /// ON: si la respuesta viene del campo y hay LLM disponible (API externa
+    /// activa o Gemma cargado), prepara el trabajo de decodificación.
     pub fn field_decode_job(&self, message: &str, resp: &ChatResponse) -> Option<DecodeJob> {
-        if !matches!(resp.route.as_str(), "Liquid" | "RqmFallback") {
+        if resp.route != FIELD_ROUTE {
             return None;
         }
         let local = self.probe.raw_handle();
@@ -313,19 +355,7 @@ impl AppState {
             },
             None => DecodeBackend::Gemma(local?),
         };
-        let rqm = resp
-            .rqm_score
-            .map(|r| format!(", RQM {r:.3}"))
-            .unwrap_or_default();
-        let state = format!(
-            "concepto {}→{} («{}»), ruta {}, líquido {:.3}{rqm}, engramas {}",
-            resp.concept_in,
-            resp.concept_out,
-            self.decoder.decode(resp.concept_out),
-            resp.route,
-            resp.liquid_score,
-            resp.engrams,
-        );
+        let state = resp.field.as_ref()?.summary();
         Some(DecodeJob {
             backend,
             gemma_prompt: crate::field_gemma_probe::render_field_decoder_prompt(
@@ -337,9 +367,9 @@ impl AppState {
         })
     }
 
-    /// Aplica el texto de Gemma (decoder) a la respuesta de campo ya registrada.
-    /// Si Gemma falló, conserva la respuesta del decoder léxico y anota el motivo:
-    /// ON **siempre** responde.
+    /// Aplica el texto del LLM decoder a la respuesta de campo ya registrada.
+    /// Si el LLM falló, conserva el estado del campo y anota el motivo: ON
+    /// **siempre** responde.
     pub fn apply_field_decoded(
         &mut self,
         resp: ChatResponse,
@@ -348,9 +378,6 @@ impl AppState {
         self.apply_field_decoded_by(resp, result, "gemma2 decoder", LOCAL_ID, LOCAL_LABEL, None)
     }
 
-    /// Igual que [`Self::apply_field_decoded`] indicando quién decodificó
-    /// (`who` = prefijo de `decoded`, `llm_id`/`llm` = proveedor) y una nota
-    /// opcional (p. ej. respaldo local tras fallo de la API externa).
     pub fn apply_field_decoded_by(
         &mut self,
         mut resp: ChatResponse,
@@ -361,34 +388,18 @@ impl AppState {
         note: Option<String>,
     ) -> ChatResponse {
         let ok_text = matches!(&result, Ok(r) if !r.text.trim().is_empty());
+        let state = resp.field.as_ref().map(|f| f.summary()).unwrap_or_default();
         match result {
             Ok(r) if !r.text.trim().is_empty() => {
-                resp.reply = format!(
-                    "{}\n\n[campo] ruta={} · {}→{} · líquido={:.3} · engramas={}",
-                    r.text.trim(),
-                    resp.route,
-                    resp.concept_in,
-                    resp.concept_out,
-                    resp.liquid_score,
-                    resp.engrams
-                );
-                resp.decoded = format!(
-                    "{who} · «{}» · {} tok · {:.1}s",
-                    self.decoder.decode(resp.concept_out),
-                    r.generated_tokens,
-                    r.seconds
-                );
+                resp.reply = format!("{}\n\n[campo v4] {state}", r.text.trim());
+                resp.decoded = format!("{who} · {} tok · {:.1}s", r.generated_tokens, r.seconds);
             }
-            Ok(_) => {
-                resp.reply.push_str(&format!(
-                    "\n\n(decoder {llm} devolvió texto vacío; se muestra el decoder léxico)"
-                ));
-            }
-            Err(e) => {
-                resp.reply.push_str(&format!(
-                    "\n\n(decoder {llm} no respondió: {e}; se muestra el decoder léxico)"
-                ));
-            }
+            Ok(_) => resp.reply.push_str(&format!(
+                "\n\n(decoder {llm} devolvió texto vacío; se muestra el estado del campo)"
+            )),
+            Err(e) => resp.reply.push_str(&format!(
+                "\n\n(decoder {llm} no respondió: {e}; se muestra el estado del campo)"
+            )),
         }
         if let Some(n) = note {
             resp.reply.push_str(&format!("\n\n({n})"));
@@ -397,8 +408,8 @@ impl AppState {
             resp.llm = llm.to_string();
             resp.llm_id = llm_id.to_string();
         } else {
-            resp.llm = "decoder léxico".into();
-            resp.llm_id = "lexicon".into();
+            resp.llm = FIELD_ONLY_LABEL.into();
+            resp.llm_id = "field".into();
         }
         let turn_llm = resp.llm.clone();
         if let Some(last) = self
@@ -461,7 +472,7 @@ impl AppState {
     }
 
     /// Registra el turno crudo (éxito o error) y construye la respuesta.
-    /// No incrementa contadores líquido/RQM; sí `raw_chat_calls`.
+    /// No toca el campo; sí `raw_chat_calls`.
     pub fn record_raw_chat(
         &mut self,
         message: &str,
@@ -496,8 +507,6 @@ impl AppState {
                 role: role.into(),
                 text,
                 route,
-                concept_in: None,
-                concept_out: None,
                 llm: (role == "agent").then(|| llm.clone()),
             });
         }
@@ -530,11 +539,7 @@ impl AppState {
             mode: RAW_MODE.into(),
             reply,
             route: route.into(),
-            concept_in: 0,
-            concept_out: 0,
-            liquid_score: 0.0,
-            rqm_score: None,
-            engrams: self.fuse.engram_count(),
+            field: None,
             decoded,
         }
     }
@@ -571,298 +576,132 @@ impl AppState {
         resp
     }
 
-    /// Evidencia de entrenamiento previo para gate de sueño.
+    /// Evidencia de entrenamiento previo para el gate de sueño: hay
+    /// experiencias en la CDT de vigilia.
     pub fn has_training_evidence(&self) -> bool {
-        self.ever_trained || self.train_job.datasets_saved > 0 || self.fuse.engram_count() > 0
+        !self.field.wake.is_empty()
     }
 
     pub fn llm_mode(&self) -> LlmMode {
         self.probe.mode()
     }
 
-    pub fn candidates(&self) -> Vec<usize> {
-        (0..self.fuse.num_labels).collect()
-    }
-
-    fn push_train(&mut self, kind: &str, detail: impl Into<String>, epoch: Option<u64>) {
-        let detail = detail.into();
-        let ev = TrainEvent {
-            t_ms: now_ms().saturating_sub(self.started_ms),
-            kind: kind.into(),
-            detail: detail.clone(),
-            engrams: self.fuse.engram_count(),
-            epoch,
-        };
-        self.train_log.push(ev);
-        if self.train_log.len() > 500 {
-            let drain = self.train_log.len() - 500;
-            self.train_log.drain(0..drain);
+    fn push_chat_pair(&mut self, msg: &str, reply: &str, route: &str) {
+        for (role, text, route) in [
+            ("user", msg.to_string(), None),
+            ("agent", reply.to_string(), Some(route.to_string())),
+        ] {
+            self.chat_log.push(ChatTurn {
+                mode: Some(FIELD_MODE.into()),
+                role: role.into(),
+                text,
+                route,
+                llm: None,
+            });
+        }
+        if self.chat_log.len() > 200 {
+            let drain = self.chat_log.len() - 200;
+            self.chat_log.drain(0..drain);
         }
     }
 
-    /// Chat agentico: intents sueltos ES/EN + encode→fuse→decode (decoder only).
+    fn intent_response(&mut self, msg: &str, reply: String, route: &str) -> ChatResponse {
+        self.push_chat_pair(msg, &reply, route);
+        ChatResponse {
+            mode: FIELD_MODE.into(),
+            reply,
+            route: route.into(),
+            field: None,
+            decoded: String::new(),
+            llm: String::new(),
+            llm_id: String::new(),
+            fallback: false,
+        }
+    }
+
+    /// Chat ON: intents (entrenar / dormir / estado) o paso del campo v4.
     pub fn handle_chat(&mut self, message: &str) -> ChatResponse {
         let msg = message.trim();
         let lower = msg.to_lowercase();
 
         if looks_like_train(&lower) {
-            let started = self.begin_live_train(None, 8, 1);
+            let started = self.begin_live_train(None, None);
             let reply = if started.ok {
                 format!(
-                    "Entrenamiento en vivo iniciado (job {}). Modo infinito · CDT por dataset. \
-                     Mira el panel Entrenamiento. Usa Detener para parar.",
+                    "Entrenamiento v4 iniciado (job {}). Modo infinito: dataset sellado → CDT → teacher → Dφ (§16). Mira la pestaña Entrenamiento; Detener para parar.",
                     started.job_id
                 )
             } else {
                 format!("No se pudo iniciar: {}", started.message)
             };
-            self.chat_log.push(ChatTurn {
-                mode: Some(FIELD_MODE.into()),
-                role: "user".into(),
-                text: msg.into(),
-                route: None,
-                concept_in: None,
-                concept_out: None,
-                llm: None,
-            });
-            self.chat_log.push(ChatTurn {
-                mode: Some(FIELD_MODE.into()),
-                role: "agent".into(),
-                text: reply.clone(),
-                route: Some("train".into()),
-                concept_in: None,
-                concept_out: None,
-                llm: None,
-            });
-            return ChatResponse {
-                llm: String::new(),
-                llm_id: String::new(),
-                fallback: false,
-                mode: FIELD_MODE.into(),
-                reply,
-                route: "train".into(),
-                concept_in: 0,
-                concept_out: 0,
-                liquid_score: 0.0,
-                rqm_score: None,
-                engrams: self.fuse.engram_count(),
-                decoded: self.decoder.decode_field_concept(0),
-            };
+            return self.intent_response(msg, reply, "train");
         }
 
         if looks_like_sleep(&lower) {
-            if !self.has_training_evidence() {
-                let reply = "Necesitas entrenar antes de dormir (al menos 1 lote o engramas/datasets_saved > 0). Usa la pestaña Entrenamiento.".to_string();
-                self.chat_log.push(ChatTurn {
-                    mode: Some(FIELD_MODE.into()),
-                    role: "user".into(),
-                    text: msg.into(),
-                    route: None,
-                    concept_in: None,
-                    concept_out: None,
-                    llm: None,
-                });
-                self.chat_log.push(ChatTurn {
-                    mode: Some(FIELD_MODE.into()),
-                    role: "agent".into(),
-                    text: reply.clone(),
-                    route: Some("sleep".into()),
-                    concept_in: None,
-                    concept_out: None,
-                    llm: None,
-                });
-                return ChatResponse {
-                    llm: String::new(),
-                    llm_id: String::new(),
-                    fallback: false,
-                    mode: FIELD_MODE.into(),
-                    reply,
-                    route: "sleep".into(),
-                    concept_in: 0,
-                    concept_out: 0,
-                    liquid_score: 0.0,
-                    rqm_score: None,
-                    engrams: self.fuse.engram_count(),
-                    decoded: self.decoder.decode_field_concept(1),
-                };
-            }
-            let sleep = self.sleep_now();
-            let reply = format!(
-                "Sueño consolidado: {} episodios → engramas {}→{} ({} ms).",
-                sleep.episodes_consolidated,
-                sleep.engrams_before,
-                sleep.engrams_after,
-                sleep.sleep_ms
-            );
-            self.chat_log.push(ChatTurn {
-                mode: Some(FIELD_MODE.into()),
-                role: "user".into(),
-                text: msg.into(),
-                route: None,
-                concept_in: None,
-                concept_out: None,
-                llm: None,
-            });
-            self.chat_log.push(ChatTurn {
-                mode: Some(FIELD_MODE.into()),
-                role: "agent".into(),
-                text: reply.clone(),
-                route: Some("sleep".into()),
-                concept_in: None,
-                concept_out: None,
-                llm: None,
-            });
-            return ChatResponse {
-                llm: String::new(),
-                llm_id: String::new(),
-                fallback: false,
-                mode: FIELD_MODE.into(),
-                reply,
-                route: "sleep".into(),
-                concept_in: 0,
-                concept_out: 0,
-                liquid_score: 0.0,
-                rqm_score: None,
-                engrams: self.fuse.engram_count(),
-                decoded: self.decoder.decode_field_concept(1),
+            let started = self.begin_sleep_job(None, false, Some(1));
+            let reply = if started.ok {
+                format!(
+                    "Sueño iniciado (job {}): consolidación de la CDT de vigilia ({} experiencias) en el teacher → destilación en Dφ → borrado de la CDT. Mira la pestaña Sueño.",
+                    started.job_id,
+                    self.field.wake.len()
+                )
+            } else {
+                started.message
             };
+            return self.intent_response(msg, reply, "sleep");
         }
 
         if looks_like_status(&lower) {
+            let f = &self.field;
             let reply = format!(
-                "Estado: modo={}, engramas={}, wake={}, RQM infer={}, train={}, \
-                 Liquid%={:.1}, training={}, job={}",
+                "Estado v4: Dφ {} ({} params, hash {}), origen {}, CDT de vigilia {} experiencias, lotes {}, sueños {}, último acc TEST {}, LLM {}, train={}, sueño={}, pruebas={}",
+                if f.trained { "entrenado" } else { "sin entrenar" },
+                crate::v4_controls::Predictor::params(&f.dphi),
+                &f.dphi.weights_hash()[..12],
+                f.origin,
+                f.wake.len(),
+                f.batches_total,
+                f.sleeps_total,
+                f.last_train
+                    .as_ref()
+                    .map(|r| format!("{:.3}", r.metrics.acc))
+                    .unwrap_or_else(|| "—".into()),
                 self.llm_mode().as_str(),
-                self.fuse.engram_count(),
-                self.fuse.wake_buffer_len(),
-                self.fuse.rqm_infer_calls,
-                self.fuse.rqm_train_calls,
-                self.metrics.liquid_route_pct(),
-                self.training,
-                if self.train_job.job_id.is_empty() {
-                    "—"
-                } else {
-                    &self.train_job.job_id
-                }
+                self.train_job.running,
+                self.sleep_job.running,
+                self.tests_job.running,
             );
-            self.chat_log.push(ChatTurn {
-                mode: Some(FIELD_MODE.into()),
-                role: "user".into(),
-                text: msg.into(),
-                route: None,
-                concept_in: None,
-                concept_out: None,
-                llm: None,
-            });
-            self.chat_log.push(ChatTurn {
-                mode: Some(FIELD_MODE.into()),
-                role: "agent".into(),
-                text: reply.clone(),
-                route: Some("status".into()),
-                concept_in: None,
-                concept_out: None,
-                llm: None,
-            });
-            return ChatResponse {
-                llm: String::new(),
-                llm_id: String::new(),
-                fallback: false,
-                mode: FIELD_MODE.into(),
-                reply,
-                route: "status".into(),
-                concept_in: 0,
-                concept_out: 0,
-                liquid_score: self.metrics.liquid_score_last,
-                rqm_score: None,
-                engrams: self.fuse.engram_count(),
-                decoded: self.decoder.decode_field_concept(2),
-            };
+            return self.intent_response(msg, reply, "status");
         }
 
-        // Flujo normal: periferia encode → fuse.infer (líquido) → LLM decoder only.
-        let concept_in = self.probe.encode_concept(msg);
-        let cands = self.candidates();
         let t0 = Instant::now();
-        let report = self.fuse.infer(concept_in, &cands);
+        let field = field_v4::chat_field(&self.field.dphi, self.field.trained, msg);
         let latency_us = t0.elapsed().as_secs_f64() * 1e6;
-        self.metrics.record_fuse(&report, latency_us);
-        self.metrics.sync_fuse_counters(
-            self.fuse.rqm_infer_calls,
-            self.fuse.rqm_train_calls,
-            self.fuse.engram_count(),
-            self.fuse.wake_buffer_len(),
-        );
-        // Observación tokenless (buffer para sueño); no pasa token ids.
-        self.fuse.observe(concept_in, &cands);
-
-        let route = match report.route {
-            InferRoute::Liquid => "Liquid",
-            InferRoute::RqmFallback => "RqmFallback",
-        };
-        let decoded = self.decoder.decode_field_concept(report.predicted);
-        let reply = self.decoder.agent_reply(
-            msg,
-            concept_in,
-            report.predicted,
-            route,
-            report.liquid_score,
-        );
-        let eng = self.fuse.engram_count();
-        let reply = format!(
-            "{reply}\n\n[memoria de campo] engramas={eng} · concepto recordado={} · interpretación decoder-only del modelo de campo (no chat genérico).",
-            decoded
-        );
-
-        self.last_fuse = Some(report.clone());
-        self.chat_log.push(ChatTurn {
-            mode: Some(FIELD_MODE.into()),
-            role: "user".into(),
-            text: msg.into(),
-            route: None,
-            concept_in: Some(concept_in),
-            concept_out: None,
-            llm: None,
-        });
-        self.chat_log.push(ChatTurn {
-            mode: Some(FIELD_MODE.into()),
-            role: "agent".into(),
-            text: reply.clone(),
-            route: Some(route.into()),
-            concept_in: Some(concept_in),
-            concept_out: Some(report.predicted),
-            llm: None,
-        });
-        if self.chat_log.len() > 200 {
-            let drain = self.chat_log.len() - 200;
-            self.chat_log.drain(0..drain);
-        }
-
+        self.metrics
+            .record_field(field.rel_err, field.correct, latency_us);
+        let reply = format!("[campo v4] {}", field.summary());
+        self.push_chat_pair(msg, &reply, FIELD_ROUTE);
         ChatResponse {
+            mode: FIELD_MODE.into(),
+            reply,
+            route: FIELD_ROUTE.into(),
+            decoded: format!("Dφ · {:.0} µs", latency_us),
+            field: Some(field),
             llm: String::new(),
             llm_id: String::new(),
             fallback: false,
-            mode: FIELD_MODE.into(),
-            reply,
-            route: route.into(),
-            concept_in,
-            concept_out: report.predicted,
-            liquid_score: report.liquid_score,
-            rqm_score: report.rqm_score,
-            engrams: self.fuse.engram_count(),
-            decoded,
         }
     }
 
-    /// Prepara job async. El caller debe `spawn` el loop de lotes.
-    /// `batches = None` (o 0) → entrenamiento **infinito** hasta cancel/stop.
+    // ───────────────────────── entrenamiento ─────────────────────────
+
+    /// Prepara el job async. `batches = None` (o 0) → infinito hasta Detener.
     pub fn begin_live_train(
         &mut self,
         batches: Option<usize>,
-        batch_size: usize,
-        epochs: usize,
-    ) -> crate::web::train_job::LiveTrainStartResponse {
-        use crate::web::train_job::LiveTrainStartResponse;
-        if self.training || self.train_job.running {
+        steps: Option<usize>,
+    ) -> LiveTrainStartResponse {
+        if self.train_job.running {
             return LiveTrainStartResponse {
                 ok: false,
                 job_id: self.train_job.job_id.clone(),
@@ -870,14 +709,17 @@ impl AppState {
                 infinite: None,
             };
         }
+        if self.sleep_job.running {
+            return LiveTrainStartResponse {
+                ok: false,
+                job_id: String::new(),
+                message: "hay un sueño en curso; espera a que termine".into(),
+                infinite: None,
+            };
+        }
         let infinite = batches.is_none() || batches == Some(0);
-        let total_batches = if infinite {
-            None
-        } else {
-            Some(batches.unwrap_or(1).clamp(1, 64))
-        };
-        let batch_size = batch_size.clamp(1, 64);
-        let epochs = epochs.clamp(1, 16);
+        let total_batches = (!infinite).then(|| batches.unwrap_or(1).clamp(1, 256));
+        let steps = steps.unwrap_or(APP_TRAIN_STEPS).clamp(10, 64_000);
         let job_id = Uuid::new_v4().to_string();
         self.train_job = TrainJob {
             job_id: job_id.clone(),
@@ -886,55 +728,25 @@ impl AppState {
             current_batch: 0,
             total_batches,
             infinite,
-            epochs,
-            batch_size,
-            events: std::collections::VecDeque::new(),
+            steps,
+            events: Default::default(),
             last_checkpoint: self.train_job.last_checkpoint.clone(),
-            dataset_size: 0,
-            accuracy: None,
-            engrams: self.fuse.engram_count(),
-            last_decoded: None,
-            dataset_source: None,
+            last_report: self.train_job.last_report.clone(),
             event_seq: 0,
-            correct: 0,
-            total: 0,
-            datasets_saved: 0,
-            last_dataset_path: self.train_job.last_dataset_path.clone(),
-            last_dataset_family: None,
-            last_experiment_ids: Vec::new(),
-        };
-        self.training = true;
-        let mode_msg = if infinite {
-            format!("job {job_id}: ∞ infinito × {batch_size}/lote, épocas={epochs}")
-        } else {
-            format!(
-                "job {job_id}: {} lotes × {batch_size}, épocas={epochs}",
-                total_batches.unwrap_or(0)
-            )
+            checkpoints_saved: 0,
         };
         self.train_job.push_event(
-            "dataset",
-            mode_msg,
-            None,
-            Some(self.fuse.engram_count()),
-            json!({
-                "batches": total_batches,
-                "infinite": infinite,
-                "batch_size": batch_size,
-                "epochs": epochs
-            }),
-        );
-        self.push_train(
             "start",
             format!(
-                "live job={job_id} {}",
+                "job {job_id}: {} · {steps} pasos Dφ/lote · receta §16 (gated H136 + replay de confianza τ=1%)",
                 if infinite {
-                    "infinite".into()
+                    "∞ infinito".to_string()
                 } else {
-                    format!("batches={}", total_batches.unwrap_or(0))
+                    format!("{} lote(s)", total_batches.unwrap_or(1))
                 }
             ),
             None,
+            json!({ "batches": total_batches, "infinite": infinite, "steps": steps }),
         );
         LiveTrainStartResponse {
             ok: true,
@@ -942,485 +754,217 @@ impl AppState {
             message: if infinite {
                 "entrenamiento infinito iniciado".into()
             } else {
-                "entrenamiento en vivo iniciado".into()
+                "entrenamiento iniciado".into()
             },
             infinite: Some(infinite),
         }
     }
 
     pub fn request_train_stop(&mut self) -> bool {
-        if !self.train_job.running && !self.training {
+        if !self.train_job.running {
             return false;
         }
         self.train_job.cancelled = true;
         self.train_job.push_event(
-            "error",
-            "cancelación solicitada",
+            "cancel",
+            "cancelación solicitada (termina el lote actual)",
             Some(self.train_job.current_batch),
-            Some(self.fuse.engram_count()),
             json!({ "cancelled": true }),
         );
         true
     }
 
-    /// Un lote/dataset: LLM → encode → líquido → CDT → checkpoint por dataset.
-    /// Devuelve `false` solo si cancelado o (modo finito) se alcanzó el tope.
-    /// En modo infinito nunca termina por conteo de lotes.
-    pub fn run_one_live_batch(&mut self) -> bool {
-        self.run_one_live_batch_with(None)
-    }
-
-    /// Si hay job de train activo y el proveedor activo es una API externa,
-    /// devuelve (proveedor, batch_size, seed) para generar el dataset **fuera
-    /// del lock** con [`crate::web::llm_periphery::generate_train_batch_external`].
-    pub fn external_dataset_plan(&self) -> Option<(ProviderConfig, usize, u64)> {
-        if !self.train_job.running || self.train_job.cancelled {
+    /// Siguiente lote a calcular fuera del lock (`None` = el job terminó).
+    pub fn next_train_plan(&mut self) -> Option<TrainPlan> {
+        if !self.train_job.running {
             return None;
         }
-        let cfg = self.active_external()?;
-        let batch = self.train_job.current_batch;
-        let seed = now_ms().wrapping_add(batch as u64 * 17);
-        Some((cfg, self.train_job.batch_size, seed))
-    }
-
-    /// Un lote con dataset opcional pre-generado por la API externa
-    /// (`Some(Err)` = la API falló → se anota y se genera en local).
-    pub fn run_one_live_batch_with(&mut self, pre: PreGeneratedDataset) -> bool {
-        if !self.train_job.running || self.train_job.cancelled {
-            self.finish_live_train(self.train_job.cancelled);
-            return false;
+        if self.train_job.cancelled {
+            self.finish_live_train(true);
+            return None;
         }
         let batch = self.train_job.current_batch;
-        if !self.train_job.infinite {
-            if let Some(total) = self.train_job.total_batches {
-                if batch >= total {
-                    self.finish_live_train(false);
-                    return false;
-                }
+        if let Some(total) = self.train_job.total_batches {
+            if batch >= total {
+                self.finish_live_train(false);
+                return None;
             }
         }
-
-        let batch_size = self.train_job.batch_size;
-        let epochs = self.train_job.epochs;
-        let gemma = matches!(self.probe.mode(), LlmMode::GemmaGguf);
-        let seed = pre
-            .as_ref()
-            .map(|(s, _)| *s)
-            .unwrap_or_else(|| now_ms().wrapping_add(batch as u64 * 17));
-        let engrams_before = self.fuse.engram_count();
-
-        let batch_label = if self.train_job.infinite {
-            format!("lote {batch} (∞)")
-        } else {
-            format!("lote {batch}/{}", self.train_job.total_batches.unwrap_or(0))
-        };
+        let seed = now_ms()
+            .wrapping_mul(0x9E37_79B9)
+            .wrapping_add(batch as u64);
         self.train_job.push_event(
             "batch_start",
-            batch_label,
+            format!(
+                "lote {batch}{}: dataset v4 sellado seed=0x{seed:X}",
+                if self.train_job.infinite {
+                    " (∞)".to_string()
+                } else {
+                    format!("/{}", self.train_job.total_batches.unwrap_or(0))
+                }
+            ),
             Some(batch),
-            Some(engrams_before),
-            json!({ "infinite": self.train_job.infinite }),
+            json!({ "seed": format!("0x{seed:X}") }),
         );
+        Some(TrainPlan {
+            job_id: self.train_job.job_id.clone(),
+            batch,
+            seed,
+            steps: self.train_job.steps,
+            dphi: self.field.dphi.clone(),
+            wake: self.field.wake.clone(),
+        })
+    }
 
-        let (examples, meta) = match pre {
-            Some((_, Ok(v))) => v,
-            Some((_, Err(e))) => {
-                let (_, label) = self.active_llm_label();
-                self.train_job.push_event(
-                    "error",
-                    format!("{label} no generó el dataset ({e}); se usa generación local"),
-                    Some(batch),
-                    Some(engrams_before),
-                    json!({ "llm_error": e, "fallback": "local" }),
-                );
-                generate_train_batch(batch_size, seed, gemma)
-            }
-            None => generate_train_batch(batch_size, seed, gemma),
-        };
-        let source: &str = &meta.source;
-        let family = meta.dataset_family;
-        let exp_ids: Vec<String> = meta
-            .experiment_ids
-            .iter()
-            .map(|s| (*s).to_string())
-            .collect();
-        self.train_job.dataset_source = Some(source.into());
-        self.train_job.last_dataset_family = Some(family.into());
-        self.train_job.last_experiment_ids = exp_ids.clone();
-        self.train_job.dataset_size = self.train_job.dataset_size.saturating_add(examples.len());
+    /// Ejecuta un plan (sin lock).
+    pub fn compute_train(mut plan: TrainPlan) -> TrainDone {
+        let report = field_v4::train_batch(&mut plan.dphi, &mut plan.wake, plan.seed, plan.steps);
+        TrainDone { plan, report }
+    }
+
+    /// Aplica el resultado de un lote. Devuelve `true` si el loop sigue.
+    pub fn apply_train(&mut self, done: TrainDone) -> bool {
+        let TrainDone { plan, report } = done;
+        if plan.job_id != self.train_job.job_id {
+            return false;
+        }
+        let batch = plan.batch;
+        let r = &report;
         self.train_job.push_event(
             "dataset",
             format!(
-                "dataset lote {batch}: {} ejemplos (source={source}, familia={family}, exps={:?})",
-                examples.len(),
-                meta.experiment_ids
+                "dataset {} ({}): {} ejemplos TRAIN → CDT de vigilia = {} experiencias",
+                &r.dataset_hash[..12],
+                r.audit_status,
+                r.n_train_batch,
+                r.cdt_experiences
             ),
             Some(batch),
-            Some(self.fuse.engram_count()),
-            json!({
-                "source": source,
-                "n": examples.len(),
-                "source_tag": "llm_dataset_decoupled",
-                "dataset_family": family,
-                "experiment_ids": meta.experiment_ids,
-            }),
+            json!({ "dataset_hash": r.dataset_hash, "audit": r.audit_status, "cdt": r.cdt_experiences }),
         );
-
-        let cands = self.candidates();
-        let mut last_pred = 0usize;
-        let mut last_score = 0.0f64;
-        let mut scores: Vec<f64> = Vec::with_capacity(examples.len() * epochs);
-        let mut preds: Vec<usize> = Vec::with_capacity(examples.len() * epochs);
-
-        for _epoch in 0..epochs {
-            for ex in &examples {
-                // Encode periferia (firewall); target de curriculum para teach.
-                let encoded = self.probe.encode_concept(&ex.text);
-                let cue = encoded % NUM_CONCEPTS;
-                let target = ex.concept % NUM_CONCEPTS;
-                // Inferencia líquida (WavePredictCore vía FusedLiquidCdt).
-                let report = self.fuse.infer(cue, &cands);
-                self.metrics.record_fuse(&report, 0.0);
-                self.fuse.observe(cue, &cands);
-                let rel = relation_target(target);
-                self.fuse.teach_relation(cue, rel);
-
-                self.train_job.total = self.train_job.total.wrapping_add(1);
-                if report.predicted == cue || report.predicted == target || report.predicted == rel
-                {
-                    self.train_job.correct = self.train_job.correct.wrapping_add(1);
-                }
-                last_pred = report.predicted;
-                last_score = report.liquid_score;
-                scores.push(report.liquid_score);
-                preds.push(report.predicted);
-                self.last_fuse = Some(report);
-            }
-        }
-
         self.train_job.push_event(
-            "infer",
-            format!("líquido lote {batch}: score={last_score:.3} pred={last_pred}"),
-            Some(batch),
-            Some(self.fuse.engram_count()),
-            batch_metrics(
-                source,
-                examples.len(),
-                self.train_job.correct,
-                self.train_job.total,
-                last_score,
-            ),
-        );
-
-        // CDT consolidation por dataset.
-        let sleep = self.sleep_now();
-        self.train_job.push_event(
-            "cdt_consolidate",
+            "teacher",
             format!(
-                "sueño lote {batch}: {} eps → engramas {}",
-                sleep.episodes_consolidated, sleep.engrams_after
+                "teacher consolidado · familias de confianza (residuo <1%): {}",
+                if r.trusted_families.is_empty() {
+                    "ninguna".to_string()
+                } else {
+                    r.trusted_families.join(", ")
+                }
             ),
             Some(batch),
-            Some(sleep.engrams_after),
-            json!({
-                "episodes": sleep.episodes_consolidated,
-                "engrams_before": sleep.engrams_before,
-                "engrams_after": sleep.engrams_after,
-                "sleep_ms": sleep.sleep_ms,
-            }),
+            json!({ "fit_residual": r.fit_residual, "trusted": r.trusted_families }),
         );
-
-        self.metrics.train_correct = self.train_job.correct;
-        self.metrics.train_total = self.train_job.total;
-        self.metrics.train_epochs_done = self.metrics.train_epochs_done.wrapping_add(1);
-        self.train_job.accuracy = self.metrics.train_accuracy();
-        self.train_job.engrams = self.fuse.engram_count();
-
-        // Decode preview (LLM decoder only).
-        let decoded = self.decoder.decode_field_concept(last_pred);
-        self.train_job.last_decoded = Some(decoded.clone());
         self.train_job.push_event(
-            "decode",
-            format!("decoder: {decoded}"),
+            "dphi",
+            format!(
+                "Dφ {} pasos en {:.1}s · TEST sellado: acc={:.3} rel_err₁={:.4} rollout h{}={:.3} · queries={} leaked={}",
+                r.steps,
+                r.train_ms / 1e3,
+                r.metrics.acc,
+                r.metrics.rel_err_1step,
+                r.metrics.rollout_h,
+                r.metrics.rollout_acc,
+                r.metrics.test_queries,
+                r.metrics.leaked
+            ),
             Some(batch),
-            Some(self.fuse.engram_count()),
-            json!({ "concept": last_pred, "decoded": decoded }),
+            serde_json::to_value(&r.metrics).unwrap_or_default(),
         );
-
-        let ts = crate::web::train_job::now_ms();
-        let dataset_id = format!("ds_{}_{}", self.train_job.job_id, batch);
-        let ds_file = DatasetCheckpointFile {
-            dataset_id: dataset_id.clone(),
-            job_id: self.train_job.job_id.clone(),
-            batch,
-            source: source.into(),
-            dataset_family: Some(family.into()),
-            experiment_ids: exp_ids.clone(),
-            examples: examples.clone(),
-            liquid: LiquidDatasetMetrics {
-                scores,
-                preds,
-                correct: self.train_job.correct,
-                total: self.train_job.total,
-                last_score,
-                last_pred,
-            },
-            sleep: Some(SleepReportDto::from(&sleep)),
-            decoder_preview: Some(decoded.clone()),
-            engrams: self.fuse.engram_count(),
-            accuracy: self.train_job.accuracy,
-            ts_ms: ts,
-        };
-        match write_dataset_checkpoint(&ds_file) {
-            Ok(path) => {
-                let path_s = path.display().to_string();
-                self.train_job.datasets_saved = self.train_job.datasets_saved.saturating_add(1);
-                self.ever_trained = true;
-                self.train_job.last_dataset_path = Some(path_s.clone());
-                let _ = write_latest_index(
-                    &path_s,
-                    &self.train_job.job_id,
-                    batch,
-                    self.train_job.datasets_saved,
-                );
-                self.train_job.push_event(
-                    "checkpoint",
-                    format!("dataset guardado {path_s}"),
-                    Some(batch),
-                    Some(ds_file.engrams),
-                    json!({
-                        "path": path_s,
-                        "dataset_id": dataset_id,
-                        "kind": "dataset"
-                    }),
-                );
-            }
-            Err(e) => {
-                self.train_job.push_event(
+        self.field.dphi = plan.dphi;
+        self.field.wake = plan.wake;
+        self.field.trained = true;
+        self.field.origin = "train".into();
+        self.field.batches_total += 1;
+        self.metrics.train_batches += 1;
+        let ts = now_ms();
+        if self.persist {
+            let file = DphiCheckpointFile {
+                architecture: "v4_dphi_gated_h136_trusted".into(),
+                job_id: self.train_job.job_id.clone(),
+                batch,
+                ts_ms: ts,
+                report: Some(report.clone()),
+                dphi: self.field.dphi.to_ckpt(),
+            };
+            match write_dphi_checkpoint(&file) {
+                Ok(p) => {
+                    let path = p.display().to_string();
+                    self.train_job.checkpoints_saved += 1;
+                    self.train_job.last_checkpoint = Some(CheckpointMeta {
+                        path: path.clone(),
+                        batch,
+                        ts_ms: ts,
+                        accuracy: Some(report.metrics.acc),
+                        weights_hash: report.weights_hash.clone(),
+                    });
+                    self.train_job.push_event(
+                        "checkpoint",
+                        format!("checkpoint Dφ {path}"),
+                        Some(batch),
+                        json!({ "path": path, "weights_hash": report.weights_hash }),
+                    );
+                }
+                Err(e) => self.train_job.push_event(
                     "error",
-                    format!("dataset checkpoint falló: {e}"),
+                    format!("checkpoint falló: {e}"),
                     Some(batch),
-                    Some(self.fuse.engram_count()),
-                    json!({ "error": e.to_string() }),
-                );
+                    json!({}),
+                ),
             }
         }
-
-        // Resumen de lote (compat).
-        let mut cues: Vec<usize> = self.fuse.relational_cues.iter().copied().collect();
-        cues.sort_unstable();
-        let ck = CheckpointFile {
-            job_id: self.train_job.job_id.clone(),
-            batch,
-            engrams: self.fuse.engram_count(),
-            accuracy: self.train_job.accuracy,
-            dataset_size: self.train_job.dataset_size,
-            dataset_source: self.train_job.dataset_source.clone(),
-            sleep: Some(SleepReportDto::from(&sleep)),
-            relational_cues: cues,
-            events_tail: self
-                .train_job
-                .events
-                .iter()
-                .rev()
-                .take(40)
-                .cloned()
-                .collect::<Vec<_>>()
-                .into_iter()
-                .rev()
-                .collect(),
-            ts_ms: ts,
-        };
-        match write_checkpoint(&ck) {
-            Ok(path) => {
-                let path_s = path.display().to_string();
-                self.train_job.last_checkpoint = Some(CheckpointMeta {
-                    path: path_s.clone(),
-                    batch,
-                    engrams: ck.engrams,
-                    ts_ms: ts,
-                    accuracy: ck.accuracy,
-                });
-                self.train_job.push_event(
-                    "checkpoint",
-                    format!("resumen lote {path_s}"),
-                    Some(batch),
-                    Some(ck.engrams),
-                    json!({ "path": path_s, "kind": "batch_summary" }),
-                );
-            }
-            Err(e) => {
-                self.train_job.push_event(
-                    "error",
-                    format!("checkpoint resumen falló: {e}"),
-                    Some(batch),
-                    Some(self.fuse.engram_count()),
-                    json!({ "error": e.to_string() }),
-                );
-            }
-        }
-
-        self.push_train(
-            "batch",
-            format!("lote {batch} ok eng={}", self.fuse.engram_count()),
-            Some(batch as u64),
-        );
-
+        self.field.last_train = Some(report.clone());
+        self.train_job.last_report = Some(report);
         self.train_job.current_batch = batch + 1;
-        // Lote completado (aunque falle checkpoint): evidencia de train para sueño.
-        self.ever_trained = true;
-
         if self.train_job.cancelled {
             self.finish_live_train(true);
             return false;
         }
-        if !self.train_job.infinite {
-            if let Some(total) = self.train_job.total_batches {
-                if self.train_job.current_batch >= total {
-                    self.finish_live_train(false);
-                    return false;
-                }
+        if let Some(total) = self.train_job.total_batches {
+            if self.train_job.current_batch >= total {
+                self.finish_live_train(false);
+                return false;
             }
         }
         true
     }
 
+    /// Compat/tests: ejecuta lotes en el hilo actual hasta terminar.
+    pub fn run_one_live_batch(&mut self) -> bool {
+        match self.next_train_plan() {
+            Some(p) => {
+                let d = Self::compute_train(p);
+                self.apply_train(d)
+            }
+            None => false,
+        }
+    }
+
+    pub fn fail_train(&mut self, why: String) {
+        self.train_job.push_event("error", why, None, json!({}));
+        self.train_job.running = false;
+    }
+
     fn finish_live_train(&mut self, cancelled: bool) {
         self.train_job.running = false;
-        self.training = false;
-        self.train_job.engrams = self.fuse.engram_count();
-        self.train_job.accuracy = self.metrics.train_accuracy();
-        let kind = if cancelled { "error" } else { "done" };
-        let msg = if cancelled {
-            "entrenamiento detenido"
+        let (kind, msg) = if cancelled {
+            ("done", "entrenamiento detenido")
         } else {
-            "entrenamiento completado"
+            ("done", "entrenamiento completado")
         };
         self.train_job.push_event(
             kind,
             msg,
             Some(self.train_job.current_batch),
-            Some(self.fuse.engram_count()),
-            json!({
-                "cancelled": cancelled,
-                "accuracy": self.train_job.accuracy,
-                "engrams": self.train_job.engrams,
-            }),
-        );
-        self.push_train(kind, msg, None);
-        self.metrics.sync_fuse_counters(
-            self.fuse.rqm_infer_calls,
-            self.fuse.rqm_train_calls,
-            self.fuse.engram_count(),
-            self.fuse.wake_buffer_len(),
+            json!({ "cancelled": cancelled, "batches": self.train_job.current_batch }),
         );
     }
 
-    /// Entrenamiento síncrono legacy (tests / compat). Usa el mismo pipeline por lotes.
-    pub fn train_start(
-        &mut self,
-        epochs: Option<u64>,
-        concepts: Option<Vec<usize>>,
-    ) -> TrainStartResponse {
-        let _ = concepts;
-        if self.training || self.train_job.running {
-            return TrainStartResponse {
-                ok: false,
-                epochs: 0,
-                events: self.train_log.iter().rev().take(20).cloned().collect(),
-                engrams: self.fuse.engram_count(),
-                accuracy: self.metrics.train_accuracy(),
-                sleep: None,
-                job_id: None,
-            };
-        }
-        let epochs_u = epochs.unwrap_or(2).clamp(1, 8) as usize;
-        let started = self.begin_live_train(Some(epochs_u), 4, 1);
-        if !started.ok {
-            return TrainStartResponse {
-                ok: false,
-                epochs: 0,
-                events: self.train_log.iter().rev().take(20).cloned().collect(),
-                engrams: self.fuse.engram_count(),
-                accuracy: self.metrics.train_accuracy(),
-                sleep: None,
-                job_id: Some(started.job_id),
-            };
-        }
-        while self.run_one_live_batch() {}
-        TrainStartResponse {
-            ok: true,
-            epochs: epochs_u as u64,
-            events: self.train_log.iter().rev().take(40).cloned().collect(),
-            engrams: self.fuse.engram_count(),
-            accuracy: self.metrics.train_accuracy(),
-            sleep: self.last_sleep.as_ref().map(SleepReportDto::from),
-            job_id: Some(started.job_id),
-        }
-    }
+    // ───────────────────────── sueño ─────────────────────────
 
-    pub fn sleep_now(&mut self) -> SleepReport {
-        let _ = self.sleep_optimize(SleepOptimizeOpts::default());
-        self.last_sleep.clone().unwrap_or(SleepReport {
-            episodes_consolidated: 0,
-            engrams_before: 0,
-            engrams_after: self.fuse.engram_count(),
-            used_rqm: false,
-            rqm_relations_trained: 0,
-            sleep_ms: 0.0,
-        })
-    }
-
-    /// Sueño + poda/compactación + minimización de energía libre (síncrono / tests).
-    pub fn sleep_optimize(&mut self, opts: SleepOptimizeOpts) -> SleepOptimizeReport {
-        self.sleep_optimize_with_progress(opts, |_phase, _msg| {})
-    }
-
-    fn sleep_optimize_with_progress(
-        &mut self,
-        opts: SleepOptimizeOpts,
-        mut on_progress: impl FnMut(&str, &str),
-    ) -> SleepOptimizeReport {
-        let cfg = self
-            .field_hybrid
-            .as_ref()
-            .map(|h| h.cfg)
-            .unwrap_or_default();
-        if self.field_hybrid.is_none() {
-            self.field_hybrid = Some(FieldHybridInfer::new(0x51EE_0001));
-        }
-        let field = &mut self.field_hybrid.as_mut().unwrap().field;
-        let report =
-            run_sleep_optimize_with_progress(&mut self.fuse, field, &cfg, opts, &mut on_progress);
-        let sleep = SleepReport {
-            episodes_consolidated: report.episodes_consolidated,
-            engrams_before: report.engrams_before,
-            engrams_after: report.engrams_after,
-            used_rqm: report.used_rqm,
-            rqm_relations_trained: report.rqm_relations_trained,
-            sleep_ms: report.sleep_ms,
-        };
-        self.metrics.record_sleep(
-            &sleep,
-            self.fuse.engram_count(),
-            self.fuse.wake_buffer_len(),
-        );
-        self.metrics.sync_fuse_counters(
-            self.fuse.rqm_infer_calls,
-            self.fuse.rqm_train_calls,
-            self.fuse.engram_count(),
-            self.fuse.wake_buffer_len(),
-        );
-        self.last_sleep = Some(sleep);
-        self.last_sleep_optimize = Some(report.clone());
-        report
-    }
-
-    /// Arranca job async de sueño si no hay otro en curso.
-    /// `infinite` / `total_cycles = None` → ciclos hasta Detener.
     pub fn begin_sleep_job(
         &mut self,
-        opts: SleepOptimizeOpts,
+        steps: Option<usize>,
         infinite: bool,
         total_cycles: Option<usize>,
     ) -> SleepStartResponse {
@@ -1432,30 +976,32 @@ impl AppState {
                 infinite: None,
             };
         }
+        if self.train_job.running {
+            return SleepStartResponse {
+                ok: false,
+                job_id: String::new(),
+                message: "hay un entrenamiento en curso; detenlo antes de dormir".into(),
+                infinite: None,
+            };
+        }
         if !self.has_training_evidence() {
             return SleepStartResponse {
                 ok: false,
                 job_id: self.sleep_job.job_id.clone(),
-                message: "necesitas entrenar antes de dormir (al menos 1 lote o engramas/datasets_saved > 0)".into(),
+                message: "necesitas entrenar antes de dormir: la CDT de vigilia está vacía (cada sueño la consolida y la borra)".into(),
                 infinite: None,
             };
         }
         let infinite = infinite || total_cycles.is_none() || total_cycles == Some(0);
-        let total_cycles = if infinite {
-            None
-        } else {
-            Some(total_cycles.unwrap_or(1).max(1))
-        };
+        let total_cycles = (!infinite).then(|| total_cycles.unwrap_or(1).max(1));
         let job_id = Uuid::new_v4().to_string();
-        let keep_report = self.sleep_job.last_report.clone();
+        let keep = self.sleep_job.last_report.clone();
         self.sleep_job = SleepJob {
             job_id: job_id.clone(),
             running: true,
             cancelled: false,
             phase: "queued".into(),
-            prune_intensity: opts.prune_intensity,
-            compact_intensity: opts.compact_intensity,
-            consolidate_first: opts.consolidate_first,
+            steps: steps.unwrap_or(APP_SLEEP_STEPS).clamp(10, 128_000),
             current_cycle: 0,
             total_cycles,
             infinite,
@@ -1463,29 +1009,21 @@ impl AppState {
             event_seq: 0,
             started_ms: Some(now_ms()),
             finished_ms: None,
-            last_report: keep_report,
+            last_report: keep,
         };
-        let mode = if infinite {
-            "∞ infinito".to_string()
-        } else {
-            format!("{} ciclo(s)", total_cycles.unwrap_or(1))
-        };
+        let steps = self.sleep_job.steps;
         self.sleep_job.push_event(
             "start",
             format!(
-                "sueño job {job_id} ({mode}; prune={:.2} compact={:.2})",
-                opts.prune_intensity, opts.compact_intensity
+                "sueño job {job_id}: CDT de vigilia {} experiencias · {steps} pasos de destilación",
+                self.field.wake.len()
             ),
-            serde_json::json!({ "infinite": infinite, "total_cycles": total_cycles }),
+            json!({ "infinite": infinite, "total_cycles": total_cycles, "steps": steps }),
         );
         SleepStartResponse {
             ok: true,
             job_id,
-            message: if infinite {
-                "sueño infinito iniciado".into()
-            } else {
-                "sueño iniciado".into()
-            },
+            message: "sueño iniciado".into(),
             infinite: Some(infinite),
         }
     }
@@ -1497,67 +1035,120 @@ impl AppState {
         self.sleep_job.cancelled = true;
         self.sleep_job.phase = "cancelling".into();
         self.sleep_job
-            .push_event("cancel", "cancelación solicitada", serde_json::json!({}));
+            .push_event("cancel", "cancelación solicitada", json!({}));
         true
     }
 
-    /// Un ciclo de sueño. Devuelve `true` si el spawn debe continuar.
-    pub fn run_one_sleep_cycle(&mut self) -> bool {
+    pub fn next_sleep_plan(&mut self) -> Option<SleepPlan> {
         if !self.sleep_job.running {
-            return false;
+            return None;
         }
         if self.sleep_job.cancelled {
             self.finish_sleep_job(true);
-            return false;
+            return None;
         }
-        if !self.sleep_job.infinite {
-            if let Some(total) = self.sleep_job.total_cycles {
-                if self.sleep_job.current_cycle >= total {
-                    self.finish_sleep_job(false);
-                    return false;
+        let cycle = self.sleep_job.current_cycle;
+        if let Some(total) = self.sleep_job.total_cycles {
+            if cycle >= total {
+                self.finish_sleep_job(false);
+                return None;
+            }
+        }
+        if self.field.wake.is_empty() {
+            self.sleep_job.push_event(
+                "idle",
+                "CDT de vigilia vacía: nada que consolidar (entrena más lotes)",
+                json!({}),
+            );
+            self.finish_sleep_job(false);
+            return None;
+        }
+        self.sleep_job.phase = "consolidate".into();
+        self.sleep_job.push_event(
+            "consolidate",
+            format!(
+                "ciclo {cycle}: consolidando {} experiencias en el teacher",
+                self.field.wake.len()
+            ),
+            json!({ "cycle": cycle }),
+        );
+        Some(SleepPlan {
+            cycle,
+            seed: now_ms()
+                .wrapping_mul(0x5851_F42D)
+                .wrapping_add(cycle as u64),
+            steps: self.sleep_job.steps,
+            dphi: self.field.dphi.clone(),
+            wake: std::mem::take(&mut self.field.wake),
+        })
+    }
+
+    pub fn compute_sleep(mut plan: SleepPlan) -> SleepDone {
+        let report =
+            field_v4::sleep_consolidate(&mut plan.dphi, &mut plan.wake, plan.seed, plan.steps);
+        SleepDone { plan, report }
+    }
+
+    pub fn apply_sleep(&mut self, done: SleepDone) -> bool {
+        let SleepDone { plan, report } = done;
+        let cycle = plan.cycle;
+        if let Some(r) = &report {
+            self.field.dphi = plan.dphi;
+            self.field.trained = true;
+            self.field.origin = "sleep".into();
+            self.field.sleeps_total += 1;
+            self.metrics.sleeps += 1;
+            self.sleep_job.phase = "distill".into();
+            self.sleep_job.push_event(
+                "distill",
+                format!(
+                    "teacher {} números · confianza: {} · Dφ destilado {} pasos en {:.1}s",
+                    r.teacher_numbers,
+                    if r.trusted_families.is_empty() {
+                        "ninguna".to_string()
+                    } else {
+                        r.trusted_families.join(", ")
+                    },
+                    r.steps,
+                    r.sleep_ms / 1e3
+                ),
+                json!({ "fit_residual": r.fit_residual }),
+            );
+            self.sleep_job.push_event(
+                "cycle_done",
+                format!(
+                    "ciclo {cycle}: CDT borrada · TEST nuevo acc {:.3}→{:.3} · rel_err₁ {:.4}→{:.4} · queries={} leaked={}",
+                    r.before.acc,
+                    r.after.acc,
+                    r.before.rel_err_1step,
+                    r.after.rel_err_1step,
+                    r.after.test_queries,
+                    r.after.leaked
+                ),
+                json!({ "before": r.before, "after": r.after, "cycle": cycle }),
+            );
+            if self.persist {
+                let file = DphiCheckpointFile {
+                    architecture: "v4_dphi_gated_h136_trusted".into(),
+                    job_id: self.sleep_job.job_id.clone(),
+                    batch: cycle,
+                    ts_ms: now_ms(),
+                    report: self.field.last_train.clone(),
+                    dphi: self.field.dphi.to_ckpt(),
+                };
+                if let Err(e) = write_dphi_checkpoint(&file) {
+                    self.sleep_job
+                        .push_event("error", format!("checkpoint falló: {e}"), json!({}));
                 }
             }
-        }
-
-        let cycle = self.sleep_job.current_cycle;
-        let opts = self.sleep_job.opts();
-        let label = if self.sleep_job.infinite {
-            format!("ciclo {cycle} (∞)")
+            self.field.last_sleep = Some(r.clone());
+            self.sleep_job.last_report = Some(r.clone());
         } else {
-            format!("ciclo {cycle}/{}", self.sleep_job.total_cycles.unwrap_or(1))
-        };
-        self.sleep_job.phase = "running".into();
-        self.sleep_job.push_event(
-            "cycle",
-            format!("inicio {label}"),
-            serde_json::json!({
-                "cycle": cycle,
-                "infinite": self.sleep_job.infinite,
-            }),
-        );
-
-        let mut progress: Vec<(String, String)> = Vec::new();
-        let report = self.sleep_optimize_with_progress(opts, |phase, msg| {
-            progress.push((phase.to_string(), msg.to_string()));
-        });
-        for (phase, msg) in &progress {
-            self.sleep_job.phase = phase.clone();
-            self.sleep_job.push_event(
-                phase,
-                msg.clone(),
-                serde_json::json!({
-                    "cycle": cycle,
-                    "free_energy_after": report.free_energy_after,
-                    "symmetry_after": report.symmetry_after,
-                }),
-            );
-            if self.sleep_job.cancelled {
-                break;
-            }
+            // Nada que consolidar: devolvemos la (vacía) vigilia.
+            self.field.wake = plan.wake;
         }
-        self.sleep_job.last_report = Some(report.clone());
         // Decoder del campo del Spider: el mismo sueño consolida su vigilia
-        // (decisiones Aprobar / Rechazar) en CDT + RQM y reajusta las cabezas.
+        // (decisiones Aprobar / Rechazar) y reajusta sus cabezas.
         match self.spider_field.sleep_if_ready() {
             Some(Ok(rep)) => self.sleep_job.push_event(
                 "spider_field",
@@ -1565,101 +1156,63 @@ impl AppState {
                     "decoder del campo (Spider): {} episodio(s) consolidados",
                     rep.episodes
                 ),
-                serde_json::json!({ "episodes": rep.episodes, "ms": rep.ms }),
+                json!({ "episodes": rep.episodes, "ms": rep.ms }),
             ),
             Some(Err(why)) => self.sleep_job.push_event(
                 "spider_field",
                 format!("decoder del campo (Spider): {why}"),
-                serde_json::json!({}),
+                json!({}),
             ),
             None => {}
         }
-        self.sleep_job.push_event(
-            "cycle_done",
-            format!(
-                "{label} listo ΔF={:.4} Δsym={:.4}",
-                report.free_energy_after - report.free_energy_before,
-                report.symmetry_after - report.symmetry_before
-            ),
-            serde_json::json!({
-                "cycle": cycle,
-                "free_energy_after": report.free_energy_after,
-                "symmetry_after": report.symmetry_after,
-                "handshake": report.handshake,
-            }),
-        );
-        self.sleep_job.current_cycle = cycle.saturating_add(1);
-
+        self.sleep_job.current_cycle = cycle + 1;
         if self.sleep_job.cancelled {
             self.finish_sleep_job(true);
             return false;
         }
-        if !self.sleep_job.infinite {
-            if let Some(total) = self.sleep_job.total_cycles {
-                if self.sleep_job.current_cycle >= total {
-                    self.finish_sleep_job(false);
-                    return false;
-                }
-            }
-        }
         true
+    }
+
+    pub fn fail_sleep(&mut self, why: String) {
+        self.sleep_job.push_event("error", why, json!({}));
+        self.sleep_job.running = false;
+        self.sleep_job.phase = "error".into();
+        self.sleep_job.finished_ms = Some(now_ms());
     }
 
     fn finish_sleep_job(&mut self, cancelled: bool) {
         self.sleep_job.running = false;
         self.sleep_job.finished_ms = Some(now_ms());
-        if cancelled {
-            self.sleep_job.phase = "cancelled".into();
-            self.sleep_job
-                .push_event("done", "sueño cancelado", serde_json::json!({}));
-        } else {
-            self.sleep_job.phase = "done".into();
-            self.sleep_job
-                .push_event("done", "sueño completado", serde_json::json!({}));
+        self.sleep_job.phase = if cancelled { "cancelled" } else { "done" }.into();
+        self.sleep_job.push_event(
+            "done",
+            if cancelled {
+                "sueño cancelado"
+            } else {
+                "sueño completado"
+            },
+            json!({}),
+        );
+    }
+
+    /// Compat/tests: ciclos de sueño en el hilo actual.
+    pub fn execute_sleep_job(&mut self) {
+        while let Some(p) = self.next_sleep_plan() {
+            let d = Self::compute_sleep(p);
+            if !self.apply_sleep(d) {
+                break;
+            }
         }
     }
 
-    /// Compat: ejecuta todos los ciclos finitos en el hilo actual.
-    pub fn execute_sleep_job(&mut self) {
-        while self.run_one_sleep_cycle() {}
-    }
-
-    /// Suite de pruebas síncrona (compat / unit tests).
-    pub fn run_tests(&mut self) -> FieldEvalReport {
-        self.field_eval_running = true;
-        let report = self.run_tests_with_progress(|_s, _t, _m| {});
-        self.field_eval_running = false;
-        report
-    }
-
-    fn run_tests_with_progress(
-        &mut self,
-        mut on_progress: impl FnMut(usize, usize, &str),
-    ) -> FieldEvalReport {
-        let cfg = self
-            .field_hybrid
-            .as_ref()
-            .map(|h| h.cfg)
-            .unwrap_or_default();
-        let field_owned = self.field_hybrid.as_ref().map(|h| h.field.clone());
-        let last_sleep = self.last_sleep_optimize.clone();
-        let report = run_field_eval_with_progress(
-            &mut self.fuse,
-            field_owned.as_ref(),
-            &cfg,
-            last_sleep.as_ref(),
-            &mut on_progress,
-        );
-        self.last_field_eval = Some(report.clone());
-        report
-    }
+    // ───────────────────────── pruebas ─────────────────────────
 
     pub fn begin_tests_job(
         &mut self,
         infinite: bool,
         total_cycles: Option<usize>,
     ) -> TestsStartResponse {
-        if self.tests_job.running || self.field_eval_running {
+        if self.tests_job.running {
             return TestsStartResponse {
                 ok: false,
                 job_id: self.tests_job.job_id.clone(),
@@ -1668,25 +1221,16 @@ impl AppState {
             };
         }
         let infinite = infinite || total_cycles.is_none() || total_cycles == Some(0);
-        let total_cycles = if infinite {
-            None
-        } else {
-            Some(total_cycles.unwrap_or(1).max(1))
-        };
+        let total_cycles = (!infinite).then(|| total_cycles.unwrap_or(1).max(1));
         let job_id = Uuid::new_v4().to_string();
-        let keep = self
-            .tests_job
-            .last_report
-            .clone()
-            .or_else(|| self.last_field_eval.clone());
-        let total = self.fuse.num_labels.max(1);
+        let keep = self.tests_job.last_report.clone();
         self.tests_job = TestsJob {
             job_id: job_id.clone(),
             running: true,
             cancelled: false,
             phase: "queued".into(),
             step: 0,
-            total_steps: total,
+            total_steps: 1,
             current_cycle: 0,
             total_cycles,
             infinite,
@@ -1696,20 +1240,14 @@ impl AppState {
             finished_ms: None,
             last_report: keep,
         };
-        self.field_eval_running = true;
-        let mode = if infinite {
-            "∞ infinito".to_string()
-        } else {
-            format!("{} batería(s)", total_cycles.unwrap_or(1))
-        };
         self.tests_job.push_event(
             "start",
-            format!("pruebas job {job_id} ({mode})"),
-            serde_json::json!({
-                "total": total,
-                "infinite": infinite,
-                "total_cycles": total_cycles,
-            }),
+            format!(
+                "pruebas job {job_id}: smoke v4 (E35 A vs B ×{} seeds + auditoría memoria cero + error a un paso + rollout E33 h{})",
+                field_v4::SMOKE_SEEDS.len(),
+                field_v4::ROLLOUT_H
+            ),
+            json!({ "infinite": infinite, "total_cycles": total_cycles }),
         );
         TestsStartResponse {
             ok: true,
@@ -1724,181 +1262,123 @@ impl AppState {
     }
 
     pub fn request_tests_stop(&mut self) -> bool {
-        if !self.tests_job.running && !self.field_eval_running {
+        if !self.tests_job.running {
             return false;
         }
         self.tests_job.cancelled = true;
         self.tests_job.phase = "cancelling".into();
         self.tests_job
-            .push_event("cancel", "cancelación solicitada", serde_json::json!({}));
+            .push_event("cancel", "cancelación solicitada", json!({}));
         true
     }
 
-    /// Una batería de eval. Devuelve `true` para continuar el loop.
-    pub fn run_one_tests_cycle(&mut self) -> bool {
+    pub fn next_tests_plan(&mut self) -> Option<TestsPlan> {
         if !self.tests_job.running {
-            return false;
+            return None;
         }
         if self.tests_job.cancelled {
             self.finish_tests_job(true);
-            return false;
+            return None;
         }
-        if !self.tests_job.infinite {
-            if let Some(total) = self.tests_job.total_cycles {
-                if self.tests_job.current_cycle >= total {
-                    self.finish_tests_job(false);
-                    return false;
-                }
+        let cycle = self.tests_job.current_cycle;
+        if let Some(total) = self.tests_job.total_cycles {
+            if cycle >= total {
+                self.finish_tests_job(false);
+                return None;
             }
         }
-
-        let cycle = self.tests_job.current_cycle;
-        let label = if self.tests_job.infinite {
-            format!("batería {cycle} (∞)")
-        } else {
-            format!(
-                "batería {cycle}/{}",
-                self.tests_job.total_cycles.unwrap_or(1)
-            )
-        };
         self.tests_job.phase = "running".into();
         self.tests_job.push_event(
             "cycle",
-            format!("inicio {label}"),
-            serde_json::json!({
-                "cycle": cycle,
-                "infinite": self.tests_job.infinite,
-            }),
+            format!("batería {cycle}: smoke v4 en curso…"),
+            json!({ "cycle": cycle }),
         );
+        Some(TestsPlan {
+            cycle,
+            model: self.field.trained.then(|| self.field.dphi.clone()),
+        })
+    }
 
-        // 1) Suite de experimentos (siempre; harness independientes).
-        self.tests_job.phase = "experiment_suite".into();
-        self.tests_job.push_event(
-            "suite_start",
-            "suite experimentos E8–E10 / E13·E15 / Clean-Room v2 smoke",
-            serde_json::json!({ "cycle": cycle }),
-        );
-        let suite = run_ui_experiment_suite();
-        let suite_summary = suite.summarize_counts();
-        self.last_experiment_suite = Some(suite.clone());
-        self.tests_job.push_event(
-            "suite_done",
-            format!(
-                "suite: {} filas · {} · {:.0} ms",
-                suite.rows.len(),
-                suite_summary,
-                suite.elapsed_ms
-            ),
-            serde_json::json!({
-                "cycle": cycle,
-                "verdict_counts": suite.verdict_counts,
-                "elapsed_ms": suite.elapsed_ms,
-                "rows": suite.rows,
-                "notes": suite.notes,
-            }),
-        );
-        if self.tests_job.cancelled {
-            self.finish_tests_job(true);
-            return false;
-        }
+    pub fn compute_tests(plan: &TestsPlan) -> SmokeReport {
+        field_v4::run_smoke(plan.model.as_ref(), 3000)
+    }
 
-        // 2) field_eval del modelo (condicionado a engramas/sueño → notas honestas).
-        let mut progress: Vec<(usize, usize, String)> = Vec::new();
-        let mut report = self.run_tests_with_progress(|step, total, msg| {
-            progress.push((step, total, msg.to_string()));
-        });
-        if !report.had_engrams {
-            report.notes.push(
-                "field_eval sin engramas/sin sueño consolidado: se reporta estado actual; suite de experimentos sí corrió"
-                    .into(),
-            );
-        } else if self.last_sleep_optimize.is_none() && self.last_sleep.is_none() {
-            report
-                .notes
-                .push("había engramas pero no hay informe de sueño optimizado reciente".into());
-        }
-        report.experiment_suite = Some(suite);
-        for (step, total, msg) in progress {
-            self.tests_job.step = step;
-            self.tests_job.total_steps = total;
-            self.tests_job.phase = "running".into();
+    pub fn apply_tests(&mut self, plan: TestsPlan, rep: SmokeReport) -> bool {
+        for r in &rep.rows {
             self.tests_job.push_event(
                 "step",
-                msg,
-                serde_json::json!({
-                    "step": step,
-                    "total": total,
-                    "cycle": cycle,
-                }),
+                format!(
+                    "{} [{}] {} · {} → {}",
+                    r.test, r.seed, r.value, r.threshold, r.verdict
+                ),
+                json!({ "row": r }),
             );
-            if self.tests_job.cancelled {
-                break;
-            }
         }
-        self.tests_job.last_report = Some(report.clone());
-        self.last_field_eval = Some(report);
         self.tests_job.push_event(
             "cycle_done",
-            format!("{label} lista · suite {suite_summary}"),
-            serde_json::json!({ "cycle": cycle, "suite_summary": suite_summary }),
+            format!(
+                "batería {}: {} PASS / {} FAIL · E35 A={:.3} B={:.3} · {:.1}s",
+                plan.cycle,
+                rep.pass,
+                rep.fail,
+                rep.e35_mean_a,
+                rep.e35_mean_b,
+                rep.elapsed_ms / 1e3
+            ),
+            json!({ "pass": rep.pass, "fail": rep.fail }),
         );
-        self.tests_job.current_cycle = cycle.saturating_add(1);
-
+        self.field.last_smoke = Some(rep.clone());
+        self.tests_job.last_report = Some(rep);
+        self.tests_job.step = 1;
+        self.tests_job.current_cycle = plan.cycle + 1;
         if self.tests_job.cancelled {
             self.finish_tests_job(true);
             return false;
         }
-        if !self.tests_job.infinite {
-            if let Some(total) = self.tests_job.total_cycles {
-                if self.tests_job.current_cycle >= total {
-                    self.finish_tests_job(false);
-                    return false;
-                }
-            }
-        }
         true
+    }
+
+    pub fn fail_tests(&mut self, why: String) {
+        self.tests_job.push_event("error", why, json!({}));
+        self.tests_job.running = false;
+        self.tests_job.phase = "error".into();
+        self.tests_job.finished_ms = Some(now_ms());
     }
 
     fn finish_tests_job(&mut self, cancelled: bool) {
         self.tests_job.running = false;
-        self.field_eval_running = false;
         self.tests_job.finished_ms = Some(now_ms());
-        if cancelled {
-            self.tests_job.phase = "cancelled".into();
-            self.tests_job
-                .push_event("done", "pruebas canceladas", serde_json::json!({}));
-        } else {
-            self.tests_job.phase = "done".into();
-            self.tests_job
-                .push_event("done", "pruebas completadas", serde_json::json!({}));
-        }
+        self.tests_job.phase = if cancelled { "cancelled" } else { "done" }.into();
+        self.tests_job.push_event(
+            "done",
+            if cancelled {
+                "pruebas canceladas"
+            } else {
+                "pruebas completadas"
+            },
+            json!({}),
+        );
     }
 
-    /// Compat: ejecuta todas las baterías finitas en el hilo actual.
+    /// Compat/tests: baterías finitas en el hilo actual.
     pub fn execute_tests_job(&mut self) {
-        while self.run_one_tests_cycle() {}
-    }
-
-    pub fn tests_status(&self) -> FieldEvalStatus {
-        FieldEvalStatus {
-            running: self.tests_job.running || self.field_eval_running,
-            last: self
-                .tests_job
-                .last_report
-                .clone()
-                .or_else(|| self.last_field_eval.clone()),
+        while let Some(p) = self.next_tests_plan() {
+            let r = Self::compute_tests(&p);
+            if !self.apply_tests(p, r) {
+                break;
+            }
         }
     }
 
     pub fn processes_snapshot(&self) -> ProcessesSnapshot {
         let mut active = Vec::new();
-        if self.train_job.running || self.training {
+        if self.train_job.running {
             active.push("train".into());
         }
         if self.sleep_job.running {
             active.push("sleep".into());
         }
-        if self.tests_job.running || self.field_eval_running {
+        if self.tests_job.running {
             active.push("tests".into());
         }
         ProcessesSnapshot {
@@ -1907,14 +1387,6 @@ impl AppState {
             tests: self.tests_job.snapshot_for_api(),
             active,
         }
-    }
-
-    pub fn last_fuse_dto(&self) -> Option<FuseReportDto> {
-        self.last_fuse.as_ref().map(FuseReportDto::from)
-    }
-
-    pub fn last_sleep_dto(&self) -> Option<SleepReportDto> {
-        self.last_sleep.as_ref().map(SleepReportDto::from)
     }
 
     pub fn live_events_after(&self, after: u64) -> Vec<TrainLiveEvent> {
@@ -1934,7 +1406,6 @@ fn now_ms() -> u64 {
 
 fn looks_like_train(lower: &str) -> bool {
     lower.contains("entrena")
-        || lower.contains("entrenar")
         || lower.contains("start training")
         || lower.contains("train now")
         || lower == "train"
@@ -1944,8 +1415,8 @@ fn looks_like_sleep(lower: &str) -> bool {
     lower.contains("sueño")
         || lower.contains("sueno")
         || lower.contains("dormir")
-        || lower.contains("consolid")
-        || lower.contains("sleep")
+        || lower.contains("consolida")
+        || lower == "sleep"
 }
 
 fn looks_like_status(lower: &str) -> bool {
@@ -1960,263 +1431,54 @@ mod tests {
     use super::*;
 
     #[test]
-    fn chat_maps_text_to_concept_lexicon() {
+    fn chat_on_runs_field_v4_without_llm() {
         let mut s = AppState::new();
-        s.probe =
-            PeripheralProbe::Lexicon(crate::field_linguistic_layer::GemmaShapedLexicon::new(99));
-        s.decoder = ConceptDecoder::new(LlmMode::Lexicon);
-        let r = s.handle_chat("hola campo líquido");
-        assert!(r.concept_in < NUM_CONCEPTS);
-        assert!(r.concept_out < NUM_CONCEPTS);
-        assert!(!r.reply.is_empty());
-        assert!(!r.decoded.is_empty());
-        assert!(matches!(r.route.as_str(), "Liquid" | "RqmFallback"));
+        let r = s.handle_chat("rota este objeto 0.4");
+        assert_eq!(r.route, FIELD_ROUTE);
+        let f = r.field.as_ref().unwrap();
+        assert_eq!(f.family, "rotate");
+        assert!(r.reply.contains("Dφ v4"));
+        assert!(s.field_decode_job("x", &r).is_none() || s.active_external().is_some());
+        assert_eq!(s.metrics.field_queries, 1);
     }
 
     #[test]
-    fn train_increases_engrams_after_sleep() {
+    fn intents_status_and_sleep_gate() {
         let mut s = AppState::new();
-        s.probe =
-            PeripheralProbe::Lexicon(crate::field_linguistic_layer::GemmaShapedLexicon::new(1));
-        let before = s.fuse.engram_count();
-        let r = s.train_start(Some(2), Some(vec![0, 1, 2, 3]));
-        assert!(r.ok);
-        assert!(r.engrams > before, "engrams {} <= {}", r.engrams, before);
-        assert!(r.sleep.is_some());
-        assert!(!r.events.is_empty());
-        assert!(!s.train_job.events.is_empty());
+        assert_eq!(s.handle_chat("estado").route, "status");
+        let r = s.handle_chat("dormir");
+        assert_eq!(r.route, "sleep");
+        assert!(!s.sleep_job.running, "sin CDT de vigilia no hay sueño");
     }
 
     #[test]
-    fn one_batch_increases_engrams_and_events() {
+    fn train_sleep_tests_pipeline_v4() {
         let mut s = AppState::new();
-        s.probe =
-            PeripheralProbe::Lexicon(crate::field_linguistic_layer::GemmaShapedLexicon::new(3));
-        let before = s.fuse.engram_count();
-        let start = s.begin_live_train(Some(1), 4, 1);
-        assert!(start.ok);
-        let cont = s.run_one_live_batch();
-        assert!(!cont, "un solo lote debe terminar");
-        assert!(s.fuse.engram_count() > before);
-        assert!(s
-            .train_job
-            .events
-            .iter()
-            .any(|e| e.kind == "cdt_consolidate"));
-        assert!(s.train_job.last_checkpoint.is_some());
-        assert!(s
-            .train_job
-            .last_decoded
-            .as_ref()
-            .map(|d| !d.is_empty())
-            .unwrap_or(false));
-    }
-
-    #[test]
-    fn intent_sleep_and_status() {
-        let mut s = AppState::new();
-        s.probe =
-            PeripheralProbe::Lexicon(crate::field_linguistic_layer::GemmaShapedLexicon::new(2));
-        let _ = s.handle_chat("hola");
-        let blocked = s.handle_chat("sueño por favor");
-        assert_eq!(blocked.route, "sleep");
-        assert!(
-            blocked.reply.to_lowercase().contains("entrenar"),
-            "sin train debe pedir entrenar: {}",
-            blocked.reply
-        );
-        // Tras un lote, el sueño de chat sí consolida.
-        let start = s.begin_live_train(Some(1), 2, 1);
-        assert!(start.ok);
+        let st = s.begin_live_train(Some(1), Some(60));
+        assert!(st.ok);
         while s.run_one_live_batch() {}
-        let sleep = s.handle_chat("sueño por favor");
-        assert_eq!(sleep.route, "sleep");
-        assert!(sleep.reply.to_lowercase().contains("consolid"));
-        let st = s.handle_chat("estado");
-        assert_eq!(st.route, "status");
-    }
-
-    #[test]
-    fn sleep_job_rejects_without_training() {
-        let mut s = AppState::new();
-        assert!(!s.has_training_evidence());
-        let r = s.begin_sleep_job(SleepOptimizeOpts::default(), false, Some(1));
-        assert!(!r.ok);
-        assert!(
-            r.message.to_lowercase().contains("entrenar"),
-            "msg={}",
-            r.message
-        );
-    }
-
-    #[test]
-    fn sleep_job_allows_after_one_batch() {
-        let mut s = AppState::new();
-        s.probe =
-            PeripheralProbe::Lexicon(crate::field_linguistic_layer::GemmaShapedLexicon::new(11));
-        let start = s.begin_live_train(Some(1), 2, 1);
-        assert!(start.ok);
-        while s.run_one_live_batch() {}
-        assert!(s.has_training_evidence());
-        assert!(s.ever_trained);
-        let r = s.begin_sleep_job(SleepOptimizeOpts::default(), false, Some(1));
-        assert!(r.ok, "msg={}", r.message);
-        assert!(s.run_one_sleep_cycle() || !s.sleep_job.running);
-    }
-
-    #[test]
-    fn train_status_json_shape() {
-        let mut s = AppState::new();
-        s.probe =
-            PeripheralProbe::Lexicon(crate::field_linguistic_layer::GemmaShapedLexicon::new(5));
-        let _ = s.begin_live_train(Some(1), 2, 1);
-        let snap = s.train_job.snapshot_for_api();
-        let v = serde_json::to_value(&snap).unwrap();
-        assert!(v.get("job_id").is_some());
-        assert!(v.get("running").is_some());
-        assert!(v.get("current_batch").is_some());
-        assert!(v.get("total_batches").is_some());
-        assert!(v.get("infinite").is_some());
-        assert!(v.get("datasets_saved").is_some());
-        assert!(v.get("events").is_some());
-        assert!(v.get("engrams").is_some());
-        while s.run_one_live_batch() {}
-    }
-
-    #[test]
-    fn infinite_train_runs_until_cancel_saves_datasets() {
-        let mut s = AppState::new();
-        s.probe =
-            PeripheralProbe::Lexicon(crate::field_linguistic_layer::GemmaShapedLexicon::new(7));
-        let before = s.fuse.engram_count();
-        let start = s.begin_live_train(None, 4, 1);
-        assert!(start.ok);
-        assert_eq!(start.infinite, Some(true));
-        assert!(s.train_job.infinite);
-        assert!(s.train_job.total_batches.is_none());
-
-        assert!(s.run_one_live_batch());
-        assert!(s.run_one_live_batch());
-        assert!(s.run_one_live_batch());
-        assert!(s.train_job.running);
-        assert_eq!(s.train_job.current_batch, 3);
-        assert_eq!(s.train_job.datasets_saved, 3);
-        assert!(s.fuse.engram_count() > before);
-        assert!(s.train_job.last_dataset_path.is_some());
-
-        let ds_dir = crate::web::train_job::datasets_dir();
-        let n_files = std::fs::read_dir(&ds_dir)
-            .map(|rd| {
-                rd.filter_map(|e| e.ok())
-                    .filter(|e| e.path().extension().map(|x| x == "json").unwrap_or(false))
-                    .count()
-            })
-            .unwrap_or(0);
-        assert!(
-            n_files >= 3,
-            "expected ≥3 dataset files in {:?}, got {n_files}",
-            ds_dir
-        );
-
-        assert!(s.request_train_stop());
-        let cont = s.run_one_live_batch();
-        assert!(!cont, "tras cancel el siguiente lote debe devolver false");
         assert!(!s.train_job.running);
+        let rep = s.train_job.last_report.clone().expect("informe de lote");
+        assert_eq!(rep.metrics.test_queries, 0);
+        assert_eq!(rep.metrics.leaked, 0);
+        assert!(s.field.trained && !s.field.wake.is_empty());
+        let sl = s.begin_sleep_job(Some(60), false, Some(1));
+        assert!(sl.ok, "{}", sl.message);
+        s.execute_sleep_job();
+        let r = s.sleep_job.last_report.clone().expect("informe de sueño");
+        assert!(r.cdt_dropped && s.field.wake.is_empty());
+        assert_eq!(r.after.test_queries, 0);
+        assert!(!s.begin_sleep_job(None, false, Some(1)).ok);
     }
 
     #[test]
-    fn field_decoder_reply_always_present_and_gemma_text_applied() {
+    fn batches_zero_means_infinite_and_stop() {
         let mut s = AppState::new();
-        s.probe =
-            PeripheralProbe::Lexicon(crate::field_linguistic_layer::GemmaShapedLexicon::new(1));
-        s.decoder = ConceptDecoder::new(LlmMode::Lexicon);
-        let resp = s.handle_chat("hola campo");
-        // Sin Gemma no hay job: responde el decoder léxico.
-        assert!(s.field_decode_job("hola campo", &resp).is_none());
-        assert!(!resp.reply.is_empty());
-        // Éxito Gemma: reemplaza reply y el turno del log.
-        let ok = s.apply_field_decoded(
-            resp.clone(),
-            Ok(RawGemmaReply {
-                text: "Hola, el campo lo leyó como épsilon.".into(),
-                prompt_tokens: 10,
-                generated_tokens: 9,
-                seconds: 0.5,
-            }),
-        );
-        assert!(ok.reply.starts_with("Hola, el campo"));
-        assert!(ok.decoded.starts_with("gemma2 decoder"));
-        assert_eq!(s.chat_log.last().unwrap().text, ok.reply);
-        // Error Gemma: conserva el léxico y anota el motivo.
-        let err = s.apply_field_decoded(resp.clone(), Err("timeout".into()));
-        assert!(err.reply.starts_with(&resp.reply));
-        assert!(err.reply.contains("timeout"));
-    }
-
-    #[test]
-    fn field_decoder_prompt_embeds_state_and_message() {
-        let p = crate::field_gemma_probe::render_field_decoder_prompt("hola", "ruta Liquid");
-        assert!(p.starts_with("<start_of_turn>user\n"));
-        assert!(p.starts_with("<start_of_turn>user\nhola"));
-        assert!(p.contains("ruta Liquid"));
-        assert!(p.ends_with("<end_of_turn>\n<start_of_turn>model\n"));
-    }
-
-    #[test]
-    fn chat_does_not_feed_train_dataset() {
-        let mut s = AppState::new();
-        s.probe =
-            PeripheralProbe::Lexicon(crate::field_linguistic_layer::GemmaShapedLexicon::new(3));
-        s.decoder = ConceptDecoder::new(LlmMode::Lexicon);
-        let _ = s.handle_chat("hola campo de prueba único xyz");
-        assert!(
-            s.train_job.events.iter().all(|e| e.kind != "dataset"),
-            "chat must not create train dataset events"
-        );
-        assert!(s.chat_log.len() >= 2);
-    }
-
-    #[test]
-    fn sleep_optimize_report_improves() {
-        let mut s = AppState::new();
-        s.probe =
-            PeripheralProbe::Lexicon(crate::field_linguistic_layer::GemmaShapedLexicon::new(9));
-        let cands = s.candidates();
-        for i in 0..8 {
-            s.fuse.observe(i, &cands);
-            s.fuse.teach_relation(i, (i + 2) % 8);
-        }
-        let report = s.sleep_optimize(SleepOptimizeOpts {
-            prune_intensity: 0.5,
-            compact_intensity: 0.6,
-            consolidate_first: true,
-        });
-        let energy_ok = report.free_energy_after <= report.free_energy_before + 1e-6;
-        let sym_ok = report.symmetry_after + 1e-9 >= report.symmetry_before;
-        assert!(energy_ok || sym_ok);
-        assert!(serde_json::to_value(&report)
-            .unwrap()
-            .get("routes_pruned")
-            .is_some());
-    }
-
-    #[test]
-    fn field_eval_runs_without_engrams() {
-        let mut s = AppState::new();
-        let r = s.run_tests();
-        assert_eq!(r.identity_total, NUM_CONCEPTS);
-        assert!(!r.had_engrams);
-    }
-
-    #[test]
-    fn batches_zero_means_infinite() {
-        let mut s = AppState::new();
-        s.probe =
-            PeripheralProbe::Lexicon(crate::field_linguistic_layer::GemmaShapedLexicon::new(11));
-        let start = s.begin_live_train(Some(0), 2, 1);
-        assert!(start.ok);
-        assert!(s.train_job.infinite);
+        let st = s.begin_live_train(Some(0), Some(20));
+        assert_eq!(st.infinite, Some(true));
+        assert!(s.run_one_live_batch());
         assert!(s.request_train_stop());
         assert!(!s.run_one_live_batch());
+        assert!(!s.train_job.running);
     }
 }

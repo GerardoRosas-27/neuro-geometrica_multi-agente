@@ -1,20 +1,17 @@
-//! App web agentica: chat + telemetría líquido / CDT / RQM + entrenamiento en vivo.
+//! App web agentica sobre el campo v4: chat (decoder del campo / LLM crudo),
+//! entrenamiento (dataset sellado → CDT → teacher → Dφ §16), sueño
+//! (consolidación → destilación → borrado de la CDT), pruebas (smoke v4),
+//! Modelos/API (Gemma local + APIs OpenAI-compatibles) y Prompt Spider.
 //!
-//! Activar con `--features web`. El binario `agentic_web` la consume.
-//! Arquitectura: Líquido = inferencia rápida (`WavePredictCore`); CDT = memoria
-//! post-sueño por lotes; RQM = índice relacional / fallback;
-//! LLM = **decoder only** del campo (+ generación de dataset en periferia).
-//! Los token_ids **nunca** entran a FieldState.
+//! Activar con `--features web`. El binario `agentic_web` la consume. El LLM
+//! es periferia: verbaliza el estado del campo, nunca escribe en Dφ.
 
 pub mod api;
 pub mod auth;
-pub mod experiment_suite;
-pub mod field_eval;
 pub mod llm_periphery;
 pub mod llm_provider;
 pub mod model_fetch;
 pub mod process_job;
-pub mod sleep_optimize;
 pub mod spider_field_job;
 pub mod spider_job;
 pub mod state;
