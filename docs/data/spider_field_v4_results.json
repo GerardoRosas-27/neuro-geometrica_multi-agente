@@ -185,8 +185,8 @@
       "teacher_agreement": 0.2857142857142857,
       "teacher_n": 70,
       "teacher_subset_field_acc": 0.86,
-      "latency_us": 106.278,
-      "train_s": 15.191236575
+      "latency_us": 67.45,
+      "train_s": 17.151965688
     },
     {
       "arm": "V4",
@@ -273,8 +273,8 @@
       "teacher_agreement": 0.32857142857142857,
       "teacher_n": 70,
       "teacher_subset_field_acc": 0.94,
-      "latency_us": 67.852,
-      "train_s": 15.503162788000001
+      "latency_us": 67.896,
+      "train_s": 14.814814617
     },
     {
       "arm": "V4",
@@ -361,8 +361,8 @@
       "teacher_agreement": 0.4,
       "teacher_n": 70,
       "teacher_subset_field_acc": 0.88,
-      "latency_us": 67.493,
-      "train_s": 14.695180593
+      "latency_us": 70.25,
+      "train_s": 14.951836323
     },
     {
       "arm": "V4",
@@ -449,8 +449,8 @@
       "teacher_agreement": 0.3142857142857143,
       "teacher_n": 70,
       "teacher_subset_field_acc": 0.96,
-      "latency_us": 67.18700000000001,
-      "train_s": 14.523195941
+      "latency_us": 78.495,
+      "train_s": 15.552573201
     },
     {
       "arm": "V4",
@@ -537,8 +537,8 @@
       "teacher_agreement": 0.2571428571428571,
       "teacher_n": 70,
       "teacher_subset_field_acc": 0.9,
-      "latency_us": 66.717,
-      "train_s": 14.016821192
+      "latency_us": 67.391,
+      "train_s": 14.645447234
     },
     {
       "arm": "V4FullReplay",
@@ -625,8 +625,8 @@
       "teacher_agreement": 0.3142857142857143,
       "teacher_n": 70,
       "teacher_subset_field_acc": 0.88,
-      "latency_us": 67.52600000000001,
-      "train_s": 14.464131028
+      "latency_us": 69.389,
+      "train_s": 14.587185873
     },
     {
       "arm": "V4FullReplay",
@@ -713,8 +713,8 @@
       "teacher_agreement": 0.37142857142857144,
       "teacher_n": 70,
       "teacher_subset_field_acc": 0.94,
-      "latency_us": 68.947,
-      "train_s": 14.673084341
+      "latency_us": 69.795,
+      "train_s": 14.930245851
     },
     {
       "arm": "V4FullReplay",
@@ -801,8 +801,8 @@
       "teacher_agreement": 0.4,
       "teacher_n": 70,
       "teacher_subset_field_acc": 0.94,
-      "latency_us": 67.74300000000001,
-      "train_s": 14.751321175
+      "latency_us": 67.271,
+      "train_s": 14.482855382
     },
     {
       "arm": "V4FullReplay",
@@ -889,8 +889,8 @@
       "teacher_agreement": 0.38571428571428573,
       "teacher_n": 70,
       "teacher_subset_field_acc": 0.92,
-      "latency_us": 66.968,
-      "train_s": 14.733926671999999
+      "latency_us": 76.629,
+      "train_s": 14.827600466
     },
     {
       "arm": "V4FullReplay",
@@ -977,8 +977,8 @@
       "teacher_agreement": 0.3,
       "teacher_n": 70,
       "teacher_subset_field_acc": 0.92,
-      "latency_us": 67.845,
-      "train_s": 14.198499152
+      "latency_us": 68.693,
+      "train_s": 14.433956141
     },
     {
       "arm": "V4NoOod",
@@ -1065,8 +1065,8 @@
       "teacher_agreement": 0.2857142857142857,
       "teacher_n": 70,
       "teacher_subset_field_acc": 0.86,
-      "latency_us": 67.168,
-      "train_s": 14.156738568
+      "latency_us": 70.191,
+      "train_s": 14.999355211
     },
     {
       "arm": "V4NoOod",
@@ -1153,8 +1153,8 @@
       "teacher_agreement": 0.3142857142857143,
       "teacher_n": 70,
       "teacher_subset_field_acc": 0.94,
-      "latency_us": 68.148,
-      "train_s": 14.978379589
+      "latency_us": 81.80499999999999,
+      "train_s": 15.373377405
     },
     {
       "arm": "V4NoOod",
@@ -1241,8 +1241,8 @@
       "teacher_agreement": 0.4,
       "teacher_n": 70,
       "teacher_subset_field_acc": 0.88,
-      "latency_us": 67.233,
-      "train_s": 14.551801042
+      "latency_us": 67.326,
+      "train_s": 15.163918216
     },
     {
       "arm": "V4NoOod",
@@ -1329,8 +1329,8 @@
       "teacher_agreement": 0.3142857142857143,
       "teacher_n": 70,
       "teacher_subset_field_acc": 0.96,
-      "latency_us": 67.803,
-      "train_s": 14.417067112
+      "latency_us": 69.618,
+      "train_s": 14.771461028000001
     },
     {
       "arm": "V4NoOod",
@@ -1417,8 +1417,8 @@
       "teacher_agreement": 0.24285714285714285,
       "teacher_n": 70,
       "teacher_subset_field_acc": 0.9,
-      "latency_us": 67.178,
-      "train_s": 15.982010758
+      "latency_us": 68.58,
+      "train_s": 14.152454171
     },
     {
       "arm": "Teacher",
@@ -1505,8 +1505,8 @@
       "teacher_agreement": 0.37142857142857144,
       "teacher_n": 70,
       "teacher_subset_field_acc": 0.92,
-      "latency_us": 1.016,
-      "train_s": 6.25954317
+      "latency_us": 1.024,
+      "train_s": 6.4996642399999995
     },
     {
       "arm": "Teacher",
@@ -1593,8 +1593,8 @@
       "teacher_agreement": 0.37142857142857144,
       "teacher_n": 70,
       "teacher_subset_field_acc": 0.92,
-      "latency_us": 1.03,
-      "train_s": 7.316392884
+      "latency_us": 1.018,
+      "train_s": 6.139059351
     },
     {
       "arm": "Teacher",
@@ -1681,8 +1681,8 @@
       "teacher_agreement": 0.35714285714285715,
       "teacher_n": 70,
       "teacher_subset_field_acc": 0.96,
-      "latency_us": 1.0270000000000001,
-      "train_s": 7.594566162
+      "latency_us": 1.03,
+      "train_s": 6.07554286
     },
     {
       "arm": "Teacher",
@@ -1769,8 +1769,8 @@
       "teacher_agreement": 0.38571428571428573,
       "teacher_n": 70,
       "teacher_subset_field_acc": 0.98,
-      "latency_us": 1.028,
-      "train_s": 6.491252644
+      "latency_us": 1.004,
+      "train_s": 6.2812312519999995
     },
     {
       "arm": "Teacher",
@@ -1857,8 +1857,8 @@
       "teacher_agreement": 0.3142857142857143,
       "teacher_n": 70,
       "teacher_subset_field_acc": 0.9,
-      "latency_us": 1.0210000000000001,
-      "train_s": 6.360415364
+      "latency_us": 1.003,
+      "train_s": 6.129066828
     },
     {
       "arm": "V4Steps4x",
@@ -1945,8 +1945,8 @@
       "teacher_agreement": 0.2571428571428571,
       "teacher_n": 70,
       "teacher_subset_field_acc": 0.98,
-      "latency_us": 76.75699999999999,
-      "train_s": 37.772465933
+      "latency_us": 65.54599999999999,
+      "train_s": 35.950987979
     },
     {
       "arm": "V4Steps4x",
@@ -2033,8 +2033,8 @@
       "teacher_agreement": 0.3,
       "teacher_n": 70,
       "teacher_subset_field_acc": 1.0,
-      "latency_us": 78.6,
-      "train_s": 38.911003456
+      "latency_us": 67.085,
+      "train_s": 36.173247735
     },
     {
       "arm": "V4Steps4x",
@@ -2121,8 +2121,8 @@
       "teacher_agreement": 0.3,
       "teacher_n": 70,
       "teacher_subset_field_acc": 1.0,
-      "latency_us": 66.049,
-      "train_s": 37.55612662
+      "latency_us": 65.624,
+      "train_s": 37.500024995
     },
     {
       "arm": "V4Steps4x",
@@ -2209,8 +2209,8 @@
       "teacher_agreement": 0.32857142857142857,
       "teacher_n": 70,
       "teacher_subset_field_acc": 1.0,
-      "latency_us": 65.153,
-      "train_s": 37.553185051
+      "latency_us": 67.52199999999999,
+      "train_s": 37.802046511
     },
     {
       "arm": "V4Steps4x",
@@ -2297,8 +2297,8 @@
       "teacher_agreement": 0.35714285714285715,
       "teacher_n": 70,
       "teacher_subset_field_acc": 0.96,
-      "latency_us": 65.386,
-      "train_s": 35.804897112
+      "latency_us": 65.309,
+      "train_s": 44.093893914
     }
   ],
   "teacher_model": "gemma-2-2b-it-Q3_K_L.gguf",

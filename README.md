@@ -34,7 +34,7 @@ geométrico con pre-registro, DEV y CONFIRM separados.
 | `src/v4_metrics.rs`, `v4_provenance.rs`, `v4_stability.rs`, `v4_e45.rs`, `v4_language.rs`, `v4_qwen2_hidden.rs` | Métricas, procedencia por predicción, E33S, E45, E43/E44 |
 | `src/field_v4.rs` | **Motor de la app**: `train_batch`, `sleep_consolidate`, `run_smoke`, `chat_field`, checkpoints bit-exactos, y el gate científico de CI |
 | `src/web/*`, `web/static/*` | App web (Axum) |
-| `src/prompt_spider.rs`, `spider_field*.rs` (+ `liquid_cdt_*`, `native_thermo*`, `relational_field`, `wave_predict_core` solo como dependencias del router de campo de Prompt Spider) | Prompt Spider |
+| `src/prompt_spider.rs`, `spider_field*.rs` | Prompt Spider |
 | `src/native_gemma2*.rs`, `field_gemma_probe.rs` | Cargador Gemma 2 GGUF (pesos congelados) para chat y decoder de campo |
 
 ## 2. Qué está demostrado y qué no

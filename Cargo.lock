@@ -316,7 +316,6 @@ dependencies = [
  "candle-nn",
  "candle-transformers",
  "futures-util",
- "num-complex",
  "rand 0.8.6",
  "rand_xoshiro",
  "rayon",

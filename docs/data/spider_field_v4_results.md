@@ -5,11 +5,11 @@ Semillas: [11, 22, 33, 44, 55] · prompts de entrenamiento/semilla: 240 en 6 dat
 | brazo | exactitud ok | ECE ok | Brier ok | resuelto % | precisión resuelto | resuelto erróneo % | pendiente % | latencia µs (mediana) |
 |---|---|---|---|---|---|---|---|---|
 | heurística (scorer, piso) | 0.788 | 0.109 | 0.116 | 73.8 | 0.945 | 4.1 | 26.2 | — |
-| V4 · Dφ gated + replay de confianza + OOD | 0.898 ± 0.028 | 0.123 ± 0.010 | 0.070 ± 0.010 | 80.4 ± 3.3 | 0.982 ± 0.009 | 1.4 ± 0.7 | 19.6 ± 3.3 | 75.1 ± 15.6 |
-| V4 replay completo (sin máscara) | 0.912 ± 0.018 | 0.108 ± 0.012 | 0.062 ± 0.004 | 78.6 ± 1.6 | 0.988 ± 0.007 | 0.9 ± 0.6 | 21.4 ± 1.6 | 67.8 ± 0.6 |
-| V4 sin guardia OOD | 0.898 ± 0.028 | 0.123 ± 0.010 | 0.070 ± 0.010 | 80.8 ± 3.2 | 0.982 ± 0.009 | 1.5 ± 0.7 | 19.2 ± 3.2 | 67.5 ± 0.4 |
+| V4 · Dφ gated + replay de confianza + OOD | 0.898 ± 0.028 | 0.123 ± 0.010 | 0.070 ± 0.010 | 80.4 ± 3.3 | 0.982 ± 0.009 | 1.4 ± 0.7 | 19.6 ± 3.3 | 70.3 ± 4.2 |
+| V4 replay completo (sin máscara) | 0.912 ± 0.018 | 0.108 ± 0.012 | 0.062 ± 0.004 | 78.6 ± 1.6 | 0.988 ± 0.007 | 0.9 ± 0.6 | 21.4 ± 1.6 | 70.4 ± 3.3 |
+| V4 sin guardia OOD | 0.898 ± 0.028 | 0.123 ± 0.010 | 0.070 ± 0.010 | 80.8 ± 3.2 | 0.982 ± 0.009 | 1.5 ± 0.7 | 19.2 ± 3.2 | 71.5 ± 5.2 |
 | teacher logístico (sin Dφ) | 0.930 ± 0.008 | 0.091 ± 0.013 | 0.059 ± 0.001 | 78.3 ± 1.3 | 0.986 ± 0.005 | 1.1 ± 0.4 | 21.7 ± 1.3 | 1.0 ± 0.0 |
-| V4 con 4× pasos de Dφ | 0.978 ± 0.022 | 0.105 ± 0.019 | 0.032 ± 0.009 | 81.5 ± 1.3 | 0.994 ± 0.007 | 0.5 ± 0.6 | 18.5 ± 1.3 | 70.4 ± 6.0 |
+| V4 con 4× pasos de Dφ | 0.978 ± 0.022 | 0.105 ± 0.019 | 0.032 ± 0.009 | 81.5 ± 1.3 | 0.994 ± 0.007 | 0.5 ± 0.6 | 18.5 ± 1.3 | 66.2 ± 0.9 |
 
 ### Router en escaladas (H2, vocabulario desplazado)
 
@@ -47,10 +47,10 @@ Semillas: [11, 22, 33, 44, 55] · prompts de entrenamiento/semilla: 240 en 6 dat
 
 | brazo | escaladas del ejemplo resueltas % | acuerdo con maestro | exactitud campo en subset del maestro | entrenamiento s |
 |---|---|---|---|---|
-| V4 · Dφ gated + replay de confianza + OOD | 50.0 ± 10.5 | 0.317 ± 0.048 (n=70) | 0.908 ± 0.037 | 14.8 ± 0.5 |
-| V4 replay completo (sin máscara) | 41.0 ± 6.6 | 0.354 ± 0.040 (n=70) | 0.920 ± 0.022 | 14.6 ± 0.2 |
-| V4 sin guardia OOD | 54.0 ± 13.2 | 0.311 ± 0.051 (n=70) | 0.908 ± 0.037 | 14.8 ± 0.6 |
-| teacher logístico (sin Dφ) | 46.0 ± 4.9 | 0.360 ± 0.025 (n=70) | 0.936 ± 0.029 | 6.8 ± 0.5 |
-| V4 con 4× pasos de Dφ | 44.0 ± 11.1 | 0.309 ± 0.033 (n=70) | 0.988 ± 0.016 | 37.5 ± 1.0 |
+| V4 · Dφ gated + replay de confianza + OOD | 50.0 ± 10.5 | 0.317 ± 0.048 (n=70) | 0.908 ± 0.037 | 15.4 ± 0.9 |
+| V4 replay completo (sin máscara) | 41.0 ± 6.6 | 0.354 ± 0.040 (n=70) | 0.920 ± 0.022 | 14.7 ± 0.2 |
+| V4 sin guardia OOD | 54.0 ± 13.2 | 0.311 ± 0.051 (n=70) | 0.908 ± 0.037 | 14.9 ± 0.4 |
+| teacher logístico (sin Dφ) | 46.0 ± 4.9 | 0.360 ± 0.025 (n=70) | 0.936 ± 0.029 | 6.2 ± 0.2 |
+| V4 con 4× pasos de Dφ | 44.0 ± 11.1 | 0.309 ± 0.033 (n=70) | 0.988 ± 0.016 | 38.3 ± 3.0 |
 
 Maestro (gemma-2-2b-it-Q3_K_L.gguf) solo: {"holdout_words":50,"median_seconds_per_word":10.863405494,"router":{"escalated":50,"ok":{"accuracy":0.34,"brier":0.4586220400000001,"ece":0.53944,"n":50},"pending_pct":96.0,"resolved_pct":4.0,"resolved_precision":1.0,"wrong_resolved_pct":0.0},"sample_resolved_pct":20.0,"sample_words":20}

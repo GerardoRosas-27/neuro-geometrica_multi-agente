@@ -1,61 +1,48 @@
-# Prompt Spider · Decoder del campo (EXPERIMENTAL)
+# Prompt Spider · Decoder del campo (arquitectura v4)
 
-Rama `exp/spider-field-decoder`. Conecta el Prompt Spider al campo
-(líquido + CDT + RQM/EPR) igual que el chat: con el interruptor **Decoder del
-campo** activo, las palabras **escaladas** (`p < umbral`) las decide un
-router del campo entrenado para el Spider **en vez del LLM**. Código, el
-scorer determinista y la cola de aprobación no cambian.
+Con el interruptor **Decoder del campo** activo, las palabras **escaladas**
+(`p < umbral`) las decide el router del campo entrenado para el Spider **en vez
+del LLM**. Código, el scorer determinista y la cola de aprobación no cambian.
+
+Desde esta versión el router corre sobre la **arquitectura v4** (receta §16) y
+se eliminaron todos los módulos legacy (`liquid_cdt_*`, `native_thermo*`,
+`relational_field`, `wave_predict_core`, `entanglement`, `native_rng`) y la
+dependencia `num-complex`. La versión anterior (sustrato «A»: reservorio LTC +
+CDT termodinámica + RQM/EPR) se documenta solo como referencia numérica.
 
 Código: [`src/spider_field.rs`](../src/spider_field.rs) (router puro),
 [`src/web/spider_field_job.rs`](../src/web/spider_field_job.rs) (estado,
 entrenamiento, endpoints), [`src/spider_field_experiment.rs`](../src/spider_field_experiment.rs)
-(experimento de sustrato), integración en [`src/web/spider_job.rs`](../src/web/spider_job.rs).
+(experimento), integración en [`src/web/spider_job.rs`](../src/web/spider_job.rs).
 
-## 1. Cómo funciona el campo del chat (lo que se reutiliza)
+## 1. Arquitectura del router (v4, §16)
 
-El chat (`AppState.fuse = FusedLiquidCdt`, 8 conceptos) codifica el mensaje a
-un concepto, infiere en el líquido (`WavePredictCore`), consulta engramas CDT
-(escritos solo en el sueño) y el índice relacional RQM/EPR; Gemma solo
-verbaliza. El entrenamiento (`/api/train/*`) genera datasets, hace
-`infer/observe/teach_relation`, duerme (`sleep_optimize`) entre datasets y
-guarda checkpoints por dataset. El Spider copia **ese patrón** (vigilia →
-sueño → checkpoint), pero con un sustrato propio (ver §4: decisión por
-experimento).
-
-## 2. Arquitectura del router del campo
-
-Una decisión = un fork escalado.
-
-1. **Codificación** (`encode_decision`): 53 rasgos locales por token (tipo,
-   léxicos del scorer —stopword, ambigüedad, afirmación, aprobación, entidad,
-   pista de fuente—, mayúscula, inicio de frase, longitud, frecuencia, en
-   objetivo/rol, puntuación antes/después, las 4 puntuaciones heurísticas,
-   sección one-hot, hashing con signo de identidad (8) y sufijo (6)) en una
-   **ventana ±3** (7 pasos) + 12 rasgos globales (4 puntuaciones, `p`,
+1. **Rasgos de decisión** (`encode_decision` → `decision_context`): rasgos
+   locales del token (tipo, léxicos del scorer, mayúscula, longitud,
+   frecuencia, sección, puntuación vecina, hashing de identidad/sufijo),
+   media de la ventana ±3 y rasgos globales (4 puntuaciones heurísticas, `p`,
    pregunta decisiva, ruta inicial).
-2. **Inferencia líquida** (`LiquidEncoder`): reservorio LTC de 48 neuronas con
-   constante de tiempo dependiente de la entrada (τ = 1 + 3σ(a·u)), pesos
-   fijos por semilla; lee la ventana token a token. Estado = h(centro) ⊕
-   h(final).
-3. **CDT** (`CdtBasinMemory`): 10 engramas (5 cabezas × sí/no) en bloques
-   disjuntos de un `NativeThermoCdtSubstrate`; se consolidan **solo en el
-   sueño** (8 pasos termodinámicos, plantilla amp/cos/sin). En inferencia se
-   leen similitudes y la **novedad** → guardia fuera de distribución (umbral
-   = percentil 99.5 de la novedad de entrenamiento + 0.02).
-4. **RQM/EPR** (`RqmIndex`): celda LSH de 8 bits del estado líquido → cue de
-   un `NativeThermoRqmEprSubstrate`; `train_observed_transition` en el sueño y
-   destilado a una tabla de priors (la inferencia lee la tabla, no muta).
-5. **Lectura**: 5 cabezas logísticas (relevant, grounded, ambiguous,
-   needs_approval, **ok**) con Adam + L2 y **escalado de temperatura** por
-   cabeza en un split de calibración (~20 % de los prompts, por grupo).
-6. **Decisión**: resuelve (`resolved_by = campo`) solo si está entrenado,
+2. **Vigilia**: cada ejemplo etiquetado entra en la CDT del Spider
+   (experiencia) y en la repetición.
+3. **Sueño = consolidación → teacher**: lectura logística por cabeza
+   (relevant, grounded, ambiguous, needs_approval, ok); la **máscara de
+   confianza** marca pares ejemplo×cabeza donde el teacher acierta con margen.
+4. **Dφ (§16)**: `Dphi::gated_h` (cabeza local-lineal con compuerta)
+   transporta el estado 2-D de cada cabeza `q₀=(0.5,1)` a `(P,1)` condicionado
+   por el contexto; entrenamiento one-step (Adam, coseno) con 50 % etiquetas
+   reales + 50 % **replay de confianza**. Teacher y CDT se descartan tras el
+   sueño: la inferencia no consulta memoria.
+5. **Calibración**: temperatura por cabeza en un split por prompt → `P(ok)`
+   calibrada.
+6. **Guardia OOD/novedad**: radio estandarizado del contexto contra el
+   cuantil 99.5 % visto en el sueño (solo estadísticas; sin módulos legacy).
+7. **Router**: resuelve (`resolved_by = campo`) solo si está entrenado,
    dentro de distribución, `P(aprob) < 0.5`, `P(ambigua) < 0.5` y
-   `P(ok) ≥ piso` (0.70, el mismo del LLM). Si no → **pendiente** con motivo.
-   Nunca inventa: sin entrenar, todo escalado queda pendiente.
+   `P(ok) ≥ piso` (0.70). Si no → **pendiente** con motivo. **Nunca inventa**:
+   sin entrenar, todo escalado queda pendiente.
 
-Persistencia: `data/spider_field/model.json` (lectura, estado CDT, conteos/caché
-RQM; los pesos líquidos se regeneran de la semilla). La repetición no se
-persiste (ver limitaciones).
+Persistencia: `data/spider_field/model.json` (`MODEL_VERSION = 2`; un modelo
+v1 legacy no se carga y hay que reentrenar).
 
 ## 3. Entrenamiento Prompt Spider
 
@@ -85,140 +72,108 @@ Tarjeta al final de la pestaña Prompt Spider (`POST /api/spider/field/train`,
   (`run_one_sleep_cycle`), o se difiere si la repetición es < 400 (tras
   reiniciar la app) o hay un entrenamiento en curso.
 
-## 4. Experimento de sustrato (A vs B vs C)
+## 4. Re-medición en hold-out (v4 vs versión anterior A)
 
-Pregunta: ¿sustrato **en blanco** o **capa externa acoplada** al campo del
-chat? Mismo hold-out, 5 semillas, mismos datos por semilla.
-
-- **A · blanco**: líquido + CDT + RQM propios del Spider.
-- **B1 · núcleo congelado + lectura**: la tabla de respuesta del campo del
-  chat (copia, solo lectura) por cue léxico + lectura.
-- **B2 · núcleo congelado + capa líquido/CDT/RQM**: B1 + la capa de A.
-- **C · ajuste fino del núcleo compartido**: la experiencia del Spider se
-  escribe en el campo del chat (`teach_relation` + sueño) y se lee de vuelta.
-- Ablaciones: A sin CDT, A sin RQM, sin campo (logística sobre rasgos crudos).
-- **Interferencia**: exactitud del mapa relacional del chat
-  (`cue → cue+1`) y máx. |Δscore| antes/después, sobre una copia.
-- **Maestro**: Gemma 2 2B-it **Q3_K_L** (el GGUF por defecto de la app),
-  prompt compacto P(sí) en las dos órdenes, en 20 escaladas del prompt de
-  ejemplo + 50 escaladas de H1 ([`data/spider_field_teacher_gemma.json`](data/spider_field_teacher_gemma.json)).
-
-Reproducir (≈10 min en 8 núcleos):
+Mismo protocolo que la versión anterior: semillas 11, 22, 33, 44, 55; 240
+prompts sintéticos/semilla en 6 datasets; ruido 5 %; hold-out H1 (vocabulario
+visto) y H2 (vocabulario desplazado); maestro Gemma 2 2B-it Q3_K_L en 70
+escaladas. Reproducir (≈8 min en 8 núcleos):
 
 ```bash
 SPIDER_TEACHER=docs/data/spider_field_teacher_gemma.json \
-SPIDER_FIELD_OUT=docs/data/spider_field_substrate_results \
+SPIDER_FIELD_OUT=docs/data/spider_field_v4_results \
 cargo test --release --lib spider_field_substrate_experiment -- --ignored --nocapture
-# etiquetas del maestro (≈15 s/palabra en CPU):
-GEMMA2_GGUF=models/gemma-2-2b-it-Q3_K_L.gguf N=70 OUT=docs/data/spider_field_teacher_gemma.json \
-cargo test --release --features web --lib real_gemma_teacher_labels -- --ignored --nocapture
 ```
 
-### Resultados (media ± desviación sobre 5 semillas)
+Re-ejecutado dos veces (sesión anterior y esta): resultados idénticos salvo
+latencia/tiempo.
 
-Semillas: [11, 22, 33, 44, 55] · prompts de entrenamiento/semilla: 240 en 6 datasets · ruido de etiquetas 5 % · hold-out H1 6854 palabras (1123 escaladas), H2 vocabulario desplazado 6689 (949 escaladas), prompt de ejemplo 20 escaladas · piso 0.70 · umbral 0.95
+### Comparación con la versión anterior (A, líquido+CDT+RQM), escaladas
+
+| métrica | A (anterior) | **v4 (por defecto)** | v4 4× pasos Dφ | teacher solo |
+|---|---|---|---|---|
+| H1 exactitud `ok` | **0.931** | 0.898 ± 0.028 | 0.978 ± 0.022 | 0.930 ± 0.008 |
+| H1 ECE `ok` | **0.079** | 0.123 ± 0.010 | 0.105 ± 0.019 | 0.091 ± 0.013 |
+| H1 resuelto % | 79.1 | **80.4 ± 3.3** | 81.5 ± 1.3 | 78.3 ± 1.3 |
+| H1 resuelto erróneo % | 1.8 | **1.4 ± 0.7** | 0.5 ± 0.6 | 1.1 ± 0.4 |
+| H2 exactitud `ok` | **0.883** | 0.846 ± 0.036 | 0.955 ± 0.023 | 0.880 ± 0.011 |
+| latencia / decisión | ~32 µs | ~70 µs | ~70 µs | ~1 µs |
+| entrenamiento (5 sueños) | 11.9–24.4 s | ~15 s | ~38 s | ~7 s |
+
+**Lectura honesta.** Con el presupuesto pre-registrado, el router v4 por
+defecto es **peor** que A en exactitud de `ok` (−0.033 H1, −0.037 H2) y en
+calibración (ECE 0.123 vs 0.079), aunque resuelve algo más y **se equivoca
+menos al resolver** (1.4 % vs 1.8 %). Las diferencias en exactitud están en
+torno a 1 desviación típica entre semillas. El teacher logístico solo ya
+iguala a A; Dφ con el presupuesto por defecto queda por debajo de su propio
+teacher (infraentrenado). Con 4× pasos de Dφ, v4 supera a A en todo salvo ECE
+(0.105 vs 0.079), a ~2.5× tiempo de entrenamiento. Ese brazo se midió en este
+mismo hold-out, por lo que **no** se adopta como defecto aquí (sería ajustar
+sobre el test); es la candidata obvia para un próximo pre-registro con
+semillas nuevas. La guardia OOD casi no cambia las cifras en H1/H2 (marca
+≈0.4 % de escaladas como pendientes).
+
+### Tablas completas (v4)
 
 ### Router en escaladas (H1, en distribución)
 
 | brazo | exactitud ok | ECE ok | Brier ok | resuelto % | precisión resuelto | resuelto erróneo % | pendiente % | latencia µs (mediana) |
 |---|---|---|---|---|---|---|---|---|
 | heurística (scorer, piso) | 0.788 | 0.109 | 0.116 | 73.8 | 0.945 | 4.1 | 26.2 | — |
-| A · blanco (líquido+CDT+RQM) | 0.931 ± 0.006 | 0.079 ± 0.010 | 0.057 ± 0.002 | 79.1 ± 2.2 | 0.978 ± 0.007 | 1.8 ± 0.6 | 20.9 ± 2.2 | 31.7 ± 0.3 |
-| B1 · núcleo congelado + lectura | 0.897 ± 0.002 | 0.094 ± 0.009 | 0.073 ± 0.001 | 79.3 ± 2.6 | 0.968 ± 0.010 | 2.5 ± 0.8 | 20.7 ± 2.6 | 0.7 ± 0.1 |
-| B2 · núcleo congelado + capa líquido/CDT/RQM | 0.931 ± 0.008 | 0.080 ± 0.011 | 0.056 ± 0.002 | 79.4 ± 2.0 | 0.976 ± 0.006 | 1.9 ± 0.6 | 20.6 ± 2.0 | 31.5 ± 0.4 |
-| C · ajuste fino del núcleo compartido | 0.929 ± 0.006 | 0.079 ± 0.010 | 0.058 ± 0.002 | 79.4 ± 2.1 | 0.977 ± 0.007 | 1.8 ± 0.6 | 20.6 ± 2.1 | 29.2 ± 0.4 |
-| A sin CDT | 0.930 ± 0.006 | 0.078 ± 0.009 | 0.057 ± 0.002 | 79.4 ± 2.0 | 0.977 ± 0.007 | 1.8 ± 0.6 | 20.6 ± 2.0 | 30.1 ± 0.2 |
-| A sin RQM | 0.930 ± 0.004 | 0.079 ± 0.009 | 0.058 ± 0.002 | 78.8 ± 2.2 | 0.978 ± 0.008 | 1.8 ± 0.7 | 21.2 ± 2.2 | 32.0 ± 3.0 |
-| sin campo (logística cruda) | 0.898 ± 0.004 | 0.090 ± 0.004 | 0.073 ± 0.001 | 79.1 ± 2.3 | 0.971 ± 0.008 | 2.3 ± 0.8 | 20.9 ± 2.3 | 0.5 ± 0.0 |
+| V4 · Dφ gated + replay de confianza + OOD | 0.898 ± 0.028 | 0.123 ± 0.010 | 0.070 ± 0.010 | 80.4 ± 3.3 | 0.982 ± 0.009 | 1.4 ± 0.7 | 19.6 ± 3.3 | 70.3 ± 4.2 |
+| V4 replay completo (sin máscara) | 0.912 ± 0.018 | 0.108 ± 0.012 | 0.062 ± 0.004 | 78.6 ± 1.6 | 0.988 ± 0.007 | 0.9 ± 0.6 | 21.4 ± 1.6 | 70.4 ± 3.3 |
+| V4 sin guardia OOD | 0.898 ± 0.028 | 0.123 ± 0.010 | 0.070 ± 0.010 | 80.8 ± 3.2 | 0.982 ± 0.009 | 1.5 ± 0.7 | 19.2 ± 3.2 | 71.5 ± 5.2 |
+| teacher logístico (sin Dφ) | 0.930 ± 0.008 | 0.091 ± 0.013 | 0.059 ± 0.001 | 78.3 ± 1.3 | 0.986 ± 0.005 | 1.1 ± 0.4 | 21.7 ± 1.3 | 1.0 ± 0.0 |
+| V4 con 4× pasos de Dφ | 0.978 ± 0.022 | 0.105 ± 0.019 | 0.032 ± 0.009 | 81.5 ± 1.3 | 0.994 ± 0.007 | 0.5 ± 0.6 | 18.5 ± 1.3 | 66.2 ± 0.9 |
 
 ### Router en escaladas (H2, vocabulario desplazado)
 
 | brazo | exactitud ok | ECE ok | resuelto % | precisión resuelto | resuelto erróneo % |
 |---|---|---|---|---|---|
 | heurística | 0.710 | 0.092 | 70.2 | 0.872 | 9.0 |
-| A · blanco (líquido+CDT+RQM) | 0.883 ± 0.014 | 0.064 ± 0.006 | 74.3 ± 2.7 | 0.934 ± 0.009 | 4.9 ± 0.7 |
-| B1 · núcleo congelado + lectura | 0.835 ± 0.005 | 0.059 ± 0.010 | 75.9 ± 2.6 | 0.908 ± 0.010 | 7.0 ± 1.0 |
-| B2 · núcleo congelado + capa líquido/CDT/RQM | 0.884 ± 0.015 | 0.061 ± 0.007 | 74.7 ± 2.9 | 0.934 ± 0.009 | 4.9 ± 0.7 |
-| C · ajuste fino del núcleo compartido | 0.879 ± 0.012 | 0.063 ± 0.005 | 74.9 ± 2.6 | 0.935 ± 0.012 | 4.9 ± 1.0 |
-| A sin CDT | 0.882 ± 0.014 | 0.065 ± 0.008 | 74.5 ± 2.5 | 0.935 ± 0.009 | 4.9 ± 0.7 |
-| A sin RQM | 0.881 ± 0.014 | 0.064 ± 0.008 | 74.0 ± 3.0 | 0.935 ± 0.010 | 4.8 ± 0.8 |
-| sin campo (logística cruda) | 0.838 ± 0.007 | 0.063 ± 0.007 | 75.9 ± 2.1 | 0.910 ± 0.009 | 6.9 ± 0.9 |
+| V4 · Dφ gated + replay de confianza + OOD | 0.846 ± 0.036 | 0.126 ± 0.018 | 76.1 ± 4.0 | 0.950 ± 0.017 | 3.9 ± 1.5 |
+| V4 replay completo (sin máscara) | 0.873 ± 0.021 | 0.108 ± 0.020 | 74.1 ± 1.1 | 0.957 ± 0.008 | 3.2 ± 0.6 |
+| V4 sin guardia OOD | 0.846 ± 0.036 | 0.126 ± 0.018 | 76.5 ± 3.9 | 0.950 ± 0.017 | 3.9 ± 1.5 |
+| teacher logístico (sin Dφ) | 0.880 ± 0.011 | 0.083 ± 0.010 | 72.6 ± 3.0 | 0.952 ± 0.013 | 3.5 ± 1.1 |
+| V4 con 4× pasos de Dφ | 0.955 ± 0.023 | 0.112 ± 0.025 | 74.6 ± 1.7 | 0.987 ± 0.011 | 0.9 ± 0.8 |
 
 ### Por pregunta (todas las palabras de H1): exactitud / ECE / Brier
 
 | brazo | relevant | grounded | ambiguous | needs_approval | ok |
 |---|---|---|---|---|---|
 | heurística | 0.987 / 0.022 / 0.013 | 0.980 / 0.034 / 0.012 | 0.987 / 0.038 / 0.008 | 1.000 / 0.005 / 0.002 | 0.954 / 0.031 / 0.033 |
-| A · blanco (líquido+CDT+RQM) | 0.991 / 0.059 / 0.009 | 0.997 / 0.052 / 0.006 | 0.997 / 0.055 / 0.006 | 1.000 / 0.048 / 0.003 | 0.980 / 0.060 / 0.018 |
-| B1 · núcleo congelado + lectura | 0.987 / 0.051 / 0.013 | 0.992 / 0.052 / 0.008 | 0.994 / 0.056 / 0.007 | 1.000 / 0.048 / 0.002 | 0.972 / 0.060 / 0.023 |
-| B2 · núcleo congelado + capa líquido/CDT/RQM | 0.991 / 0.060 / 0.009 | 0.997 / 0.052 / 0.006 | 0.997 / 0.055 / 0.006 | 1.000 / 0.050 / 0.003 | 0.980 / 0.059 / 0.018 |
-| C · ajuste fino del núcleo compartido | 0.991 / 0.059 / 0.009 | 0.997 / 0.052 / 0.006 | 0.997 / 0.055 / 0.006 | 1.000 / 0.048 / 0.003 | 0.980 / 0.059 / 0.018 |
-| A sin CDT | 0.991 / 0.059 / 0.009 | 0.997 / 0.052 / 0.006 | 0.997 / 0.055 / 0.006 | 1.000 / 0.050 / 0.003 | 0.979 / 0.059 / 0.018 |
-| A sin RQM | 0.991 / 0.059 / 0.009 | 0.997 / 0.052 / 0.006 | 0.997 / 0.055 / 0.006 | 1.000 / 0.048 / 0.003 | 0.979 / 0.060 / 0.018 |
-| sin campo (logística cruda) | 0.987 / 0.051 / 0.013 | 0.992 / 0.052 / 0.008 | 0.994 / 0.056 / 0.007 | 1.000 / 0.048 / 0.002 | 0.972 / 0.058 / 0.024 |
+| V4 · Dφ gated + replay de confianza + OOD | 0.990 / 0.066 / 0.011 | 0.993 / 0.062 / 0.009 | 0.994 / 0.068 / 0.010 | 1.000 / 0.060 / 0.005 | 0.973 / 0.075 / 0.022 |
+| V4 replay completo (sin máscara) | 0.990 / 0.070 / 0.011 | 0.995 / 0.067 / 0.009 | 0.992 / 0.068 / 0.010 | 1.000 / 0.062 / 0.006 | 0.975 / 0.073 / 0.021 |
+| V4 sin guardia OOD | 0.990 / 0.066 / 0.011 | 0.993 / 0.062 / 0.009 | 0.994 / 0.068 / 0.010 | 1.000 / 0.060 / 0.005 | 0.973 / 0.075 / 0.022 |
+| teacher logístico (sin Dφ) | 0.990 / 0.059 / 0.010 | 0.997 / 0.055 / 0.006 | 0.997 / 0.059 / 0.006 | 1.000 / 0.048 / 0.003 | 0.978 / 0.063 / 0.019 |
+| V4 con 4× pasos de Dφ | 0.999 / 0.058 / 0.006 | 0.998 / 0.057 / 0.005 | 0.996 / 0.061 / 0.007 | 1.000 / 0.055 / 0.004 | 0.995 / 0.065 / 0.010 |
 
 ### Exactitud de `ok` por ruta inicial (H1)
 
 | brazo | code | llm (escaladas) | tú |
 |---|---|---|---|
-| A · blanco (líquido+CDT+RQM) | 0.989 ± 0.001 | 0.931 ± 0.006 | 1.000 ± 0.000 |
-| B1 · núcleo congelado + lectura | 0.986 ± 0.000 | 0.897 ± 0.002 | 1.000 ± 0.000 |
-| B2 · núcleo congelado + capa líquido/CDT/RQM | 0.990 ± 0.001 | 0.931 ± 0.008 | 1.000 ± 0.000 |
-| C · ajuste fino del núcleo compartido | 0.989 ± 0.001 | 0.929 ± 0.006 | 1.000 ± 0.000 |
-| A sin CDT | 0.989 ± 0.001 | 0.930 ± 0.006 | 1.000 ± 0.000 |
-| A sin RQM | 0.989 ± 0.001 | 0.930 ± 0.004 | 1.000 ± 0.000 |
-| sin campo (logística cruda) | 0.986 ± 0.000 | 0.898 ± 0.004 | 1.000 ± 0.000 |
+| V4 · Dφ gated + replay de confianza + OOD | 0.988 ± 0.002 | 0.898 ± 0.028 | 1.000 ± 0.000 |
+| V4 replay completo (sin máscara) | 0.987 ± 0.002 | 0.912 ± 0.018 | 1.000 ± 0.000 |
+| V4 sin guardia OOD | 0.988 ± 0.002 | 0.898 ± 0.028 | 1.000 ± 0.000 |
+| teacher logístico (sin Dφ) | 0.987 ± 0.000 | 0.930 ± 0.008 | 1.000 ± 0.000 |
+| V4 con 4× pasos de Dφ | 0.998 ± 0.002 | 0.978 ± 0.022 | 1.000 ± 0.000 |
 
-### Interferencia sobre el campo del chat, prompt real y maestro
+### Prompt real y maestro
 
-| brazo | chat exactitud antes → después | máx. |Δ score| chat | escaladas del ejemplo resueltas % | acuerdo con maestro | exactitud campo en subset del maestro | entrenamiento s |
-|---|---|---|---|---|---|---|
-| A · blanco (líquido+CDT+RQM) | 1.000 ± 0.000 → 1.000 ± 0.000 | 0.000 ± 0.000 | 55.0 ± 8.9 | 0.349 ± 0.047 (n=70) | 0.936 ± 0.023 | 24.4 ± 0.5 |
-| B1 · núcleo congelado + lectura | 1.000 ± 0.000 → 1.000 ± 0.000 | 0.000 ± 0.000 | 50.0 ± 0.0 | 0.349 ± 0.023 (n=70) | 0.908 ± 0.010 | 4.6 ± 0.1 |
-| B2 · núcleo congelado + capa líquido/CDT/RQM | 1.000 ± 0.000 → 1.000 ± 0.000 | 0.000 ± 0.000 | 54.0 ± 7.3 | 0.351 ± 0.043 (n=70) | 0.928 ± 0.030 | 24.5 ± 0.6 |
-| C · ajuste fino del núcleo compartido | 1.000 ± 0.000 → 0.100 ± 0.094 | 8.499 ± 0.085 | 57.0 ± 10.8 | 0.343 ± 0.053 (n=70) | 0.936 ± 0.027 | 25.4 ± 0.6 |
-| A sin CDT | 1.000 ± 0.000 → 1.000 ± 0.000 | 0.000 ± 0.000 | 55.0 ± 9.5 | 0.349 ± 0.045 (n=70) | 0.936 ± 0.023 | 23.3 ± 0.4 |
-| A sin RQM | 1.000 ± 0.000 → 1.000 ± 0.000 | 0.000 ± 0.000 | 55.0 ± 8.9 | 0.349 ± 0.047 (n=70) | 0.936 ± 0.027 | 11.9 ± 0.4 |
-| sin campo (logística cruda) | 1.000 ± 0.000 → 1.000 ± 0.000 | 0.000 ± 0.000 | 49.0 ± 2.0 | 0.357 ± 0.018 (n=70) | 0.904 ± 0.008 | 3.9 ± 0.1 |
+| brazo | escaladas del ejemplo resueltas % | acuerdo con maestro | exactitud campo en subset del maestro | entrenamiento s |
+|---|---|---|---|---|
+| V4 · Dφ gated + replay de confianza + OOD | 50.0 ± 10.5 | 0.317 ± 0.048 (n=70) | 0.908 ± 0.037 | 15.4 ± 0.9 |
+| V4 replay completo (sin máscara) | 41.0 ± 6.6 | 0.354 ± 0.040 (n=70) | 0.920 ± 0.022 | 14.7 ± 0.2 |
+| V4 sin guardia OOD | 54.0 ± 13.2 | 0.311 ± 0.051 (n=70) | 0.908 ± 0.037 | 14.9 ± 0.4 |
+| teacher logístico (sin Dφ) | 46.0 ± 4.9 | 0.360 ± 0.025 (n=70) | 0.936 ± 0.029 | 6.2 ± 0.2 |
+| V4 con 4× pasos de Dφ | 44.0 ± 11.1 | 0.309 ± 0.033 (n=70) | 0.988 ± 0.016 | 38.3 ± 3.0 |
 
 Maestro (gemma-2-2b-it-Q3_K_L.gguf) solo: {"holdout_words":50,"median_seconds_per_word":10.863405494,"router":{"escalated":50,"ok":{"accuracy":0.34,"brier":0.4586220400000001,"ece":0.53944,"n":50},"pending_pct":96.0,"resolved_pct":4.0,"resolved_precision":1.0,"wrong_resolved_pct":0.0},"sample_resolved_pct":20.0,"sample_words":20}
 
-Datos crudos: [`data/spider_field_substrate_results.json`](data/spider_field_substrate_results.json).
 
-### Lectura de los números
-
-- **El campo supera a la heurística** en las escaladas: exactitud de `ok`
-  0.931 vs 0.788 (H1) y 0.883 vs 0.710 (H2, vocabulario nuevo); resuelve más
-  (79 % vs 74 %) con menos errores (1.8 % vs 4.1 % de escaladas resueltas mal
-  en H1; 4.9 % vs 9.0 % en H2).
-- **La ganancia la aporta el líquido**: sin campo 0.898 → A 0.931 (+0.033,
-  ≫ desviación). **CDT y RQM no mueven la exactitud** de forma medible (A sin
-  CDT 0.930, A sin RQM 0.930, dentro de ±0.006). Se mantienen por diseño:
-  CDT da la guardia de novedad y ambos son la vía de consolidación en el
-  sueño; RQM duplica el tiempo de entrenamiento (11.9 s → 24.4 s) sin coste
-  de latencia.
-- **B (núcleo congelado)**: B1 (solo el núcleo del chat) ≈ sin campo
-  (0.897): el campo del chat (8 conceptos relacionales) **no aporta
-  información** sobre las preguntas del Spider. B2 empata con A (0.931) — la
-  ganancia es la capa propia, no el acoplamiento.
-- **C (ajuste fino compartido)**: misma exactitud (0.929) pero **olvido
-  catastrófico** del chat: exactitud relacional 1.000 → 0.100, |Δscore| 8.5.
-- **Maestro Gemma**: con el piso 0.70 resuelve 4 % de las escaladas de H1
-  (exactitud de `ok` vs verdad 0.34, ~10.9 s/palabra); el acuerdo del campo
-  con el maestro es bajo (~0.35) porque Gemma 2B casi nunca supera el piso,
-  no porque el campo falle: en ese mismo subconjunto el campo acierta 0.936
-  frente a la verdad.
-- **Latencia**: ~32 µs por decisión (A) frente a ~10.9 s por palabra con
-  Gemma local en CPU.
-
-### Decisión
-
-**Por defecto: A · sustrato en blanco (líquido + CDT + RQM/EPR).** Empata con
-la mejor variante acoplada (B2) en exactitud, calibración y % resuelto, no
-depende del estado del chat (que no se restaura de checkpoints al arrancar)
-y tiene **interferencia cero**. B1 no aporta y C destruye el chat, así que
-se descartan. La capa externa (B2) queda soportada en código
-(`Coupling::FrozenCore`) pero sin beneficio medido.
+Datos crudos: [`data/spider_field_v4_results.json`](data/spider_field_v4_results.json).
+Los números de A provienen de la versión anterior de este documento
+(experimento de sustrato A/B/C; código eliminado).
 
 ## 5. Uso (UI)
 
@@ -239,17 +194,12 @@ API: `POST /api/spider/start {"field_decoder": true}`; métricas en
 ## 6. Limitaciones
 
 - La verdad de los sintéticos la define el generador: H1/H2 miden
-  generalización dentro de esa gramática (H2 con vocabulario disjunto), no
-  sobre prompts reales arbitrarios. En el prompt de ejemplo el campo resuelve
-  ~55 % de las escaladas sin verdad con la que puntuarlas.
-- La ECE de `ok` en escaladas (~0.08) es mayor que en todas las palabras
-  (~0.06): las escaladas son la parte difícil y la temperatura se ajusta con
-  todas las palabras.
-- CDT/RQM no mejoran la exactitud medida; su valor es la consolidación y la
-  guardia de novedad, no el acierto.
-- La repetición no se guarda: tras reiniciar, el primer dataset reajusta con
-  sus propios ejemplos y el sueño de la pestaña Sueño se difiere hasta tener
-  ≥ 400.
-- El maestro Gemma 2B (Q3_K_L, CPU) es muy conservador y lento; las etiquetas
-  de maestro son pocas (70).
+  generalización dentro de esa gramática, no sobre prompts reales.
+- v4 por defecto es menos exacto y peor calibrado que A (ver §4); el beneficio
+  de esta versión es arquitectónico (una sola arquitectura v4, ~6 000 líneas
+  legacy menos, inferencia sin memoria), no de métricas.
+- La repetición no se guarda: tras reiniciar, el sueño de la pestaña Sueño se
+  difiere hasta tener ≥ 400 ejemplos.
+- El maestro Gemma 2B (Q3_K_L, CPU) es muy conservador y lento; pocas
+  etiquetas (70).
 - Los tests web (`--features web`) no corren en CI; se ejecutaron en local.
