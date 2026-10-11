@@ -552,6 +552,7 @@ impl Dphi {
 
     /// Add one episode's multi-horizon gradient into `g`. Returns the loss sum
     /// (the parameter gradient is already divided by `batch`).
+    #[allow(clippy::too_many_arguments)]
     fn accum_horizon(
         &self,
         ws: &mut HorizonScratch,
