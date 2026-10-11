@@ -28,3 +28,13 @@ cargo run --release --bin run_predictive_field_v5 -- run --phase confirm
 ```
 
 Artefactos en `artifacts/v5/<phase>/`. Smoke no es evidencia.
+
+## Estado: prueba pendiente
+
+DEV y CONFIRM están **pendientes**. No hay métricas de esas fases.
+
+El 10 de octubre de 2026 se arrancó DEV (`0xA400–0xA40F`, 256 000 pasos, tres brazos) y se cortó antes de que terminara ninguna seed. No se escribió `artifacts/v5/dev/`. Ese arranque no es un resultado: no se leyó accuracy, región ni comparación con E3, y no autoriza a cambiar el pre-registro.
+
+El smoke `ec72f3e` (`0x5A00`, 200 pasos) sólo comprobó que el binario corre, con fugas 0 y proceso nuevo intacto. Sigue sin ser evidencia.
+
+Para retomar, el mismo comando de DEV y después CONFIRM, sin retocar umbrales ni presupuesto.

@@ -55,3 +55,7 @@ Meta secundaria, no sustituye al gate: media de accuracy en h16 ≥ 0.50 en las 
 ## 6. Parada
 
 No hay barrido de hiperparámetros. Si el gradiente del smoke de 200 pasos no es finito, se para y se documenta: no se recorta el gradiente ni se cambia el horizonte después de ver DEV. CONFIRM usa el mismo binario que DEV.
+
+## 7. Corrida
+
+**Pendiente.** DEV se interrumpió el 10 de octubre de 2026 antes de completar una seed. No hay `artifacts/v5/dev/` ni `artifacts/v5/confirm/`. El smoke no sustituye esta corrida. Los umbrales de arriba siguen cerrados.
