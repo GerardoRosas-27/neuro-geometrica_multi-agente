@@ -1,0 +1,19 @@
+E43 gemma_psi64     E3_dphi_gated_trusted    es/en/fr/ja = 0.368 / 0.187 / 0.281 / 0.148
+E43 gemma_psi64     M_mlp_gated_trusted      es/en/fr/ja = 0.333 / 0.153 / 0.246 / 0.148
+E43 gemma_psi64     P_dphi_plain_trusted     es/en/fr/ja = 0.354 / 0.194 / 0.295 / 0.171
+E43 gemma_psi64     offset                   es/en/fr/ja = 0.396 / 0.118 / 0.210 / 0.153
+E43 gemma_psi64     static                   es/en/fr/ja = 0.000 / 0.000 / 0.000 / 0.000
+E43 random_psi64    E3_dphi_gated_trusted    es/en/fr/ja = 0.368 / 0.139 / 0.239 / 0.009
+E44 gemma_aligned   E3                       es/en/fr/ja = 0.167 / 0.007 / 0.029 / 0.176
+E44 qwen_aligned    E3                       es/en/fr/ja = 0.097 / 0.028 / 0.069 / 0.062
+E44 random_aligned  E3                       es/en/fr/ja = 0.062 / 0.062 / 0.121 / 0.021
+pooled gemma_E3: 0.255
+pooled qwen_aligned: 0.064
+pooled random_aligned: 0.070
+pooled gemma_aligned: 0.090
+E43 PASS 8 / 16  wins dist [1, 2, 1, 1, 2, 1, 0, 3, 1, 2, 2, 2, 2, 1, 2, 1]
+E44 PASS 1 / 16
+leakage total 0  fresh ok 16  queries 0
+encoder gemma: words=42.0 loss 12.05->6.70e-06 train_concept_acc=1.000 transition_form_acc=1.000
+encoder random: words=42.0 loss 12.11->1.34e-05 train_concept_acc=1.000 transition_form_acc=1.000
+teacher LOO gemma 0.683 trusted any: 0
