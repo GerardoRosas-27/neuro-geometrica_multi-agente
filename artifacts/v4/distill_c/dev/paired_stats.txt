@@ -1,0 +1,31 @@
+== DIST_C
+  C0_lock_budget                 params=962    acc=0.3386 rel_err1=0.0705 t2m=0.0659 sigma=1.095 wall_s=0.00
+  C1_onestep_recipe              params=962    acc=0.8076 rel_err1=0.0374 t2m=0.0298 sigma=1.059 wall_s=15.70
+  M1_mlp_onestep_recipe          params=962    acc=0.8079 rel_err1=0.0369 t2m=0.0296 sigma=1.055 wall_s=15.52
+  leakage=0 queries=0 gate_seeds_PASS=16/16
+  C1_onestep_recipe - C0_lock_budget: diff=+0.4690 CI95=[+0.4226,+0.5139] wins=16/16
+  C1_onestep_recipe - M1_mlp_onestep_recipe: diff=-0.0002 CI95=[-0.0068,+0.0066] wins=5/16
+  C1_onestep_recipe rel_err1 mean=0.0374 CI95=[0.0358,0.0390] seeds<0.05: 16/16
+  M1_mlp_onestep_recipe rel_err1 mean=0.0369 CI95=[0.0357,0.0383] seeds<0.05: 16/16
+  breakdown C0_lock_budget:
+    translate          rel=0.0514 abs=0.1072 cos=0.9816 manif=0.0315
+    rotate             rel=0.0565 abs=0.1080 cos=0.8966 manif=0.0311
+    reflect            rel=0.1289 abs=0.2580 cos=0.9958 manif=0.9774
+    scale              rel=0.0589 abs=0.1156 cos=0.9129 manif=0.0951
+    shear              rel=0.0655 abs=0.1289 cos=0.9233 manif=0.1220
+    affine             rel=0.0551 abs=0.1112 cos=0.9763 manif=0.0314
+    compose_rot_scale  rel=0.0657 abs=0.1283 cos=0.9639 manif=0.0351
+    radial_warp        rel=0.0818 abs=0.1608 cos=0.6275 manif=0.0934
+    in_dist            rel=0.0727 abs=0.1436 cos=0.9148 manif=0.1815
+    interp_hole        rel=0.0682 abs=0.1359 cos=0.9047 manif=0.1728
+  breakdown C1_onestep_recipe:
+    translate          rel=0.0202 abs=0.0427 cos=0.9968 manif=0.0166
+    rotate             rel=0.0212 abs=0.0412 cos=0.9593 manif=0.0156
+    reflect            rel=0.1009 abs=0.2029 cos=0.9971 manif=0.9780
+    scale              rel=0.0222 abs=0.0452 cos=0.9861 manif=0.0903
+    shear              rel=0.0225 abs=0.0456 cos=0.9903 manif=0.1179
+    affine             rel=0.0233 abs=0.0485 cos=0.9956 manif=0.0166
+    compose_rot_scale  rel=0.0277 abs=0.0573 cos=0.9943 manif=0.0177
+    radial_warp        rel=0.0610 abs=0.1220 cos=0.7294 manif=0.0871
+    in_dist            rel=0.0393 abs=0.0791 cos=0.9546 manif=0.1722
+    interp_hole        rel=0.0355 abs=0.0723 cos=0.9574 manif=0.1628

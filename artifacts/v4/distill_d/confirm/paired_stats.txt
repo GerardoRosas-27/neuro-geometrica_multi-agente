@@ -1,0 +1,40 @@
+V0_pure_C1               PASS 0/16 region mean=1.12 max=2 sigma_med=1.030
+   h1   acc=0.594 rel=0.058 norm=0.997 energy=0.994 manif=0.477 pert_growth=0.990
+   h2   acc=0.414 rel=0.084 norm=0.993 energy=0.987 manif=0.040 pert_growth=0.982
+   h4   acc=0.075 rel=0.158 norm=0.989 energy=0.978 manif=0.073 pert_growth=0.972
+   h8   acc=0.009 rel=0.290 norm=0.989 energy=0.978 manif=0.124 pert_growth=0.966
+   h16  acc=0.001 rel=0.493 norm=0.995 energy=0.992 manif=0.204 pert_growth=0.967
+   h32  acc=0.000 rel=0.763 norm=1.012 energy=1.032 manif=0.334 pert_growth=0.970
+   h64  acc=0.000 rel=1.077 norm=1.068 energy=1.158 manif=0.498 pert_growth=0.920
+V1_reproj_C1             PASS 0/16 region mean=1.88 max=2 sigma_med=1.033
+   h1   acc=0.647 rel=0.052 norm=0.997 energy=0.994 manif=0.457 pert_growth=0.539
+   h2   acc=0.558 rel=0.071 norm=0.993 energy=0.986 manif=0.000 pert_growth=0.528
+   h4   acc=0.246 rel=0.133 norm=0.986 energy=0.972 manif=0.000 pert_growth=0.503
+   h8   acc=0.053 rel=0.239 norm=0.980 energy=0.962 manif=0.000 pert_growth=0.483
+   h16  acc=0.014 rel=0.420 norm=0.968 energy=0.939 manif=0.000 pert_growth=0.459
+   h32  acc=0.002 rel=0.687 norm=0.966 energy=0.938 manif=0.000 pert_growth=0.434
+   h64  acc=0.000 rel=0.999 norm=0.995 energy=1.003 manif=0.000 pert_growth=0.378
+V3_reproj_spectral_C1    PASS 0/16 region mean=0.69 max=1 sigma_med=1.033
+   h1   acc=0.509 rel=0.065 norm=0.980 energy=0.961 manif=0.457 pert_growth=0.525
+   h2   acc=0.392 rel=0.101 norm=0.961 energy=0.924 manif=0.000 pert_growth=0.502
+   h4   acc=0.175 rel=0.178 norm=0.935 energy=0.874 manif=0.000 pert_growth=0.469
+   h8   acc=0.038 rel=0.303 norm=0.908 energy=0.826 manif=0.000 pert_growth=0.433
+   h16  acc=0.005 rel=0.520 norm=0.886 energy=0.788 manif=0.000 pert_growth=0.396
+   h32  acc=0.000 rel=0.829 norm=0.856 energy=0.738 manif=0.000 pert_growth=0.354
+   h64  acc=0.000 rel=1.156 norm=0.874 energy=0.779 manif=0.000 pert_growth=0.277
+V0_pure_M1_mlp           PASS 0/16 region mean=1.19 max=2 sigma_med=1.030
+   h1   acc=0.599 rel=0.058 norm=0.996 energy=0.992 manif=0.475 pert_growth=0.992
+   h2   acc=0.429 rel=0.083 norm=0.993 energy=0.986 manif=0.038 pert_growth=0.986
+   h4   acc=0.104 rel=0.154 norm=0.988 energy=0.976 manif=0.068 pert_growth=0.974
+   h8   acc=0.012 rel=0.275 norm=0.984 energy=0.968 manif=0.114 pert_growth=0.972
+   h16  acc=0.003 rel=0.450 norm=0.986 energy=0.974 manif=0.194 pert_growth=0.974
+   h32  acc=0.000 rel=0.678 norm=1.002 energy=1.007 manif=0.317 pert_growth=0.975
+   h64  acc=0.000 rel=0.948 norm=1.029 energy=1.067 manif=0.478 pert_growth=0.908
+V0_pure_C0_lock          PASS 0/16 region mean=0.00 max=0 sigma_med=1.052
+   h1   acc=0.205 rel=0.094 norm=0.993 energy=0.987 manif=0.492 pert_growth=0.983
+   h2   acc=0.015 rel=0.148 norm=0.990 energy=0.981 manif=0.075 pert_growth=0.974
+   h4   acc=0.000 rel=0.274 norm=0.995 energy=0.990 manif=0.130 pert_growth=0.964
+   h8   acc=0.000 rel=0.490 norm=1.015 energy=1.033 manif=0.216 pert_growth=0.971
+   h16  acc=0.000 rel=0.797 norm=1.054 energy=1.118 manif=0.340 pert_growth=0.993
+   h32  acc=0.000 rel=1.182 norm=1.119 energy=1.271 manif=0.514 pert_growth=0.978
+   h64  acc=0.000 rel=1.513 norm=1.183 energy=1.429 manif=0.646 pert_growth=0.757

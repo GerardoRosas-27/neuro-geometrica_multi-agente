@@ -1,0 +1,59 @@
+E0_faseC_H64           params=962 acc=0.8135 rel_err1=0.0367 leak=0 q=0
+    translate=0.0201 rotate=0.0228 reflect=0.0941 scale=0.0235 shear=0.0222 affine=0.0227 compose_rot_scale=0.0285 radial_warp=0.0595 in_dist=0.0392 interp_hole=0.0341
+E1_plain_trusted       params=2042 acc=0.9070 rel_err1=0.0193 leak=0 q=0
+    translate=0.0071 rotate=0.0101 reflect=0.0541 scale=0.0083 shear=0.0082 affine=0.0080 compose_rot_scale=0.0164 radial_warp=0.0421 in_dist=0.0206 interp_hole=0.0180
+E2_gated_consol        params=2590 acc=0.8716 rel_err1=0.0231 leak=0 q=0
+    translate=0.0073 rotate=0.0085 reflect=0.0906 scale=0.0060 shear=0.0057 affine=0.0065 compose_rot_scale=0.0118 radial_warp=0.0483 in_dist=0.0234 interp_hole=0.0227
+E3_gated_trusted       params=2590 acc=0.9864 rel_err1=0.0089 leak=0 q=0
+    translate=0.0043 rotate=0.0069 reflect=0.0120 scale=0.0032 shear=0.0030 affine=0.0039 compose_rot_scale=0.0112 radial_warp=0.0265 in_dist=0.0095 interp_hole=0.0083
+M3_mlp_gated_trusted   params=2590 acc=0.9837 rel_err1=0.0093 leak=0 q=0
+    translate=0.0044 rotate=0.0068 reflect=0.0121 scale=0.0034 shear=0.0030 affine=0.0037 compose_rot_scale=0.0110 radial_warp=0.0299 in_dist=0.0099 interp_hole=0.0087
+R_E0_V0          PASS 0/16 region mean=1.12 median=1.0 regions=[1, 1, 1, 2, 1, 2, 1, 2, 1, 1, 1, 1, 1, 1, 1, 0]
+    h1:acc=0.594(rot 0.96/refl 0.23) rel=0.058 pert=0.99
+    h2:acc=0.414(rot 0.74/refl 0.09) rel=0.084 pert=0.98
+    h4:acc=0.075(rot 0.15/refl 0.00) rel=0.158 pert=0.97
+    h8:acc=0.009(rot 0.02/refl 0.00) rel=0.290 pert=0.97
+    h16:acc=0.001(rot 0.00/refl 0.00) rel=0.493 pert=0.97
+    h32:acc=0.000(rot 0.00/refl 0.00) rel=0.763 pert=0.97
+    h64:acc=0.000(rot 0.00/refl 0.00) rel=1.077 pert=0.92
+R_E1_V0          PASS 0/16 region mean=2.50 median=2.0 regions=[2, 2, 2, 2, 2, 4, 2, 4, 4, 2, 2, 2, 4, 2, 2, 2]
+    h1:acc=0.777(rot 1.00/refl 0.55) rel=0.032 pert=1.00
+    h2:acc=0.627(rot 0.98/refl 0.27) rel=0.049 pert=0.99
+    h4:acc=0.430(rot 0.82/refl 0.04) rel=0.091 pert=0.99
+    h8:acc=0.167(rot 0.33/refl 0.00) rel=0.164 pert=0.98
+    h16:acc=0.041(rot 0.08/refl 0.00) rel=0.291 pert=0.98
+    h32:acc=0.006(rot 0.01/refl 0.00) rel=0.500 pert=0.98
+    h64:acc=0.001(rot 0.00/refl 0.00) rel=0.778 pert=0.94
+R_E2_V0          PASS 0/16 region mean=2.75 median=2.0 regions=[4, 2, 2, 4, 2, 4, 2, 4, 4, 4, 2, 2, 2, 2, 2, 2]
+    h1:acc=0.663(rot 1.00/refl 0.33) rel=0.050 pert=1.00
+    h2:acc=0.623(rot 0.99/refl 0.25) rel=0.063 pert=0.99
+    h4:acc=0.471(rot 0.88/refl 0.06) rel=0.129 pert=0.98
+    h8:acc=0.235(rot 0.47/refl 0.00) rel=0.277 pert=0.97
+    h16:acc=0.079(rot 0.16/refl 0.00) rel=0.529 pert=0.95
+    h32:acc=0.021(rot 0.04/refl 0.00) rel=0.918 pert=0.91
+    h64:acc=0.004(rot 0.01/refl 0.00) rel=1.333 pert=0.83
+R_E3_V0_pure     PASS 9/16 region mean=6.25 median=8.0 regions=[8, 4, 4, 8, 4, 8, 4, 8, 4, 8, 4, 4, 8, 8, 8, 8]
+    h1:acc=0.991(rot 1.00/refl 0.98) rel=0.009 pert=1.00
+    h2:acc=0.978(rot 0.99/refl 0.96) rel=0.015 pert=1.00
+    h4:acc=0.869(rot 0.89/refl 0.85) rel=0.031 pert=1.00
+    h8:acc=0.551(rot 0.60/refl 0.51) rel=0.061 pert=0.99
+    h16:acc=0.217(rot 0.25/refl 0.19) rel=0.125 pert=0.99
+    h32:acc=0.044(rot 0.07/refl 0.02) rel=0.262 pert=0.97
+    h64:acc=0.008(rot 0.02/refl 0.00) rel=0.634 pert=0.95
+R_E3_V1_reproj   PASS 12/16 region mean=7.00 median=8.0 regions=[8, 8, 8, 8, 8, 8, 4, 8, 4, 8, 4, 4, 8, 8, 8, 8]
+    h1:acc=0.991(rot 1.00/refl 0.98) rel=0.009 pert=0.55
+    h2:acc=0.979(rot 0.99/refl 0.96) rel=0.014 pert=0.55
+    h4:acc=0.876(rot 0.89/refl 0.86) rel=0.028 pert=0.55
+    h8:acc=0.586(rot 0.61/refl 0.56) rel=0.057 pert=0.55
+    h16:acc=0.276(rot 0.26/refl 0.29) rel=0.115 pert=0.55
+    h32:acc=0.086(rot 0.08/refl 0.09) rel=0.243 pert=0.54
+    h64:acc=0.020(rot 0.02/refl 0.02) rel=0.521 pert=0.53
+R_M3_V0          PASS 10/16 region mean=6.50 median=8.0 regions=[8, 8, 4, 8, 4, 4, 8, 8, 4, 8, 4, 4, 8, 8, 8, 8]
+    h1:acc=0.994(rot 1.00/refl 0.99) rel=0.009 pert=1.00
+    h2:acc=0.981(rot 0.99/refl 0.97) rel=0.015 pert=1.00
+    h4:acc=0.878(rot 0.91/refl 0.84) rel=0.030 pert=1.00
+    h8:acc=0.558(rot 0.59/refl 0.53) rel=0.059 pert=0.99
+    h16:acc=0.210(rot 0.24/refl 0.18) rel=0.119 pert=0.99
+    h32:acc=0.055(rot 0.08/refl 0.03) rel=0.254 pert=0.97
+    h64:acc=0.011(rot 0.02/refl 0.00) rel=0.594 pert=0.95
+fresh-process E3 OK 16/16

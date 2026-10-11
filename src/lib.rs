@@ -24,6 +24,7 @@ pub mod entanglement;
 pub mod field_autonomy_stage2;
 /// Clean-Room v2 (§29+): independent generator, sealed TEST, anti-contamination.
 pub mod field_autonomy_stage2_v2;
+pub mod field_autonomy_v4;
 pub mod field_encoder;
 pub mod field_gemma_probe;
 /// Eval completa train+infer+CDT vs main RQM.
@@ -102,6 +103,16 @@ pub mod transformation_family_discovery;
 /// Orquestador CDT–spin–RQM–EPR. Compila porque el entrenador gated lo
 /// invoca; no es el paper de cuenca. Tests detrás de `research`.
 pub mod unified_spin_cognitive_engine;
+pub mod v4_controls;
+pub mod v4_dataset;
+pub mod v4_distill;
+pub mod v4_e45;
+pub mod v4_language;
+pub mod v4_metrics;
+pub mod v4_provenance;
+#[allow(clippy::all)]
+pub mod v4_qwen2_hidden;
+pub mod v4_stability;
 /// VMC Jastrow complejo. Compila porque el unificado lo invoca; no justifica
 /// el módulo en el crate público. Tests detrás de `research`. Ver docs/archive.md.
 pub mod variational_spin_liquid_vmc;

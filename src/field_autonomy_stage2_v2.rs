@@ -905,8 +905,6 @@ impl PointDecoder {
     }
 }
 
-// Cheap multi-family curriculum (rot/scale/affine/translation) for action-conditioning.
-
 /// Cheap linear ψ→(x,y) probe: extrapolates OOD better than deep MLP alone.
 #[derive(Clone, Debug)]
 struct LinearPointProbe {
@@ -3429,6 +3427,276 @@ pub fn rows_to_csv(rows: &[ResultRowV2]) -> String {
 
 pub fn confirmation_deferred_note() -> &'static str {
     "Confirmation seeds 0xB300–0xB30F reserved; not run (hyperparams locked on DEV only)."
+}
+
+// ───────────── v4 E32/E23 diagnostic (additive; does not change E23) ─────────────
+
+fn jac_sigma_field(dynm: &FieldDynamics, z: &[f64]) -> f64 {
+    let n = z.len();
+    let h = 1e-6;
+    let mut cols = Vec::with_capacity(n);
+    for j in 0..n {
+        let mut zp = z.to_vec();
+        let mut zm = z.to_vec();
+        zp[j] += h;
+        zm[j] -= h;
+        let (a, b) = (dynm.step(&zp), dynm.step(&zm));
+        cols.push(
+            a.iter()
+                .zip(&b)
+                .map(|(x, y)| (x - y) / (2.0 * h))
+                .collect::<Vec<f64>>(),
+        );
+    }
+    // power iteration on JᵀJ, J[i][j] = cols[j][i]
+    let mut v: Vec<f64> = (0..n).map(|i| 1.0 + 0.01 * i as f64).collect();
+    let mut s = 0.0;
+    for _ in 0..60 {
+        let jv: Vec<f64> = (0..n)
+            .map(|i| (0..n).map(|j| cols[j][i] * v[j]).sum())
+            .collect();
+        let w: Vec<f64> = (0..n)
+            .map(|j| (0..n).map(|i| cols[j][i] * jv[i]).sum())
+            .collect();
+        let nn = w.iter().map(|x| x * x).sum::<f64>().sqrt();
+        if nn < 1e-15 {
+            return 0.0;
+        }
+        s = nn.sqrt();
+        v = w.iter().map(|x| x / nn).collect();
+    }
+    s
+}
+
+/// Pre-normalisation norm of tanh(Wψ+b) (Dφ's raw output before the sphere projection).
+fn raw_norm(dynm: &FieldDynamics, psi: &[f64]) -> f64 {
+    let mut acc2 = 0.0;
+    for i in 0..dynm.dim {
+        let mut a = dynm.b[i];
+        for j in 0..dynm.dim {
+            a += dynm.w[i * dynm.dim + j] * psi.get(j).copied().unwrap_or(0.0);
+        }
+        acc2 += a.tanh().powi(2);
+    }
+    acc2.sqrt()
+}
+
+/// v4 diagnosis of v3 E23 (h1..h64 free-run). Trains *exactly* like `run_e23`
+/// (same seed derivations, same lock) and records per step:
+/// `seed,step,cos_target,raw_norm,sigma_max_J,true_step_cos,pt_norm,manifold_dist,
+/// one_step_err_on_true,pert_growth@eps(0.001;0.01;0.05;0.10;0.20)`.
+pub fn diagnose_e23(seed: u64, hp: &HyperparamLock) -> Vec<String> {
+    let path = FeatPath::SoftScale;
+    let rule = ContRule::Translation { dx: 0.35, dy: -0.2 };
+    let bundle = match generate_and_seal(seed ^ 0xE23, rule, hp) {
+        Ok(b) => b,
+        Err(_) => return vec![],
+    };
+    let (mut enc, mut dynm) = fresh_models(seed, hp);
+    let mut train_aug = bundle.dataset.train.clone();
+    {
+        let mut rng_mf = Xoshiro256StarStar::seed_from_u64(seed ^ 0xE23F);
+        train_aug.extend(multifamily_curriculum(&mut rng_mf, 3));
+    }
+    let _ = train_consistency(&mut enc, &train_aug, hp.enc_epochs, seed, path);
+    let _ = train_dynamics(
+        &mut enc,
+        &mut dynm,
+        &train_aug,
+        hp.dyn_epochs,
+        hp.dyn_updates,
+        None,
+        seed ^ 2,
+        path,
+    );
+    let eps = [0.001, 0.01, 0.05, 0.10, 0.20];
+    let test = &bundle.dataset.test;
+    // manifold = encoder image of the plane; coarse grid over the trajectory box.
+    let mut grid = Vec::new();
+    for gx in 0..=60 {
+        for gy in 0..=40 {
+            let p = (
+                -3.0 + 35.0 * gx as f64 / 60.0,
+                -18.0 + 26.0 * gy as f64 / 40.0,
+            );
+            grid.push(encode_xy(&enc, p, None, path));
+        }
+    }
+    let mut zs: Vec<Vec<f64>> = test
+        .iter()
+        .map(|s| encode_xy(&enc, s.x, s.action, path))
+        .collect();
+    let mut pts: Vec<(f64, f64)> = test.iter().map(|s| s.x).collect();
+    let mut pert: Vec<Vec<Vec<f64>>> = test
+        .iter()
+        .enumerate()
+        .map(|(i, s)| {
+            let z0 = encode_xy(&enc, s.x, s.action, path);
+            let mut r = Xoshiro256StarStar::seed_from_u64(seed ^ (i as u64) ^ 0x9E);
+            let mut u: Vec<f64> = (0..z0.len()).map(|_| r.gen::<f64>() - 0.5).collect();
+            normalize(&mut u);
+            eps.iter()
+                .map(|e| {
+                    let mut z = z0
+                        .iter()
+                        .zip(&u)
+                        .map(|(a, b)| a + e * b)
+                        .collect::<Vec<f64>>();
+                    normalize(&mut z);
+                    z
+                })
+                .collect()
+        })
+        .collect();
+    let mut out = Vec::new();
+    for t in 1..=64usize {
+        let (mut cs, mut rn, mut sg, mut tsc, mut pn, mut md, mut ose) =
+            (vec![], vec![], vec![], vec![], vec![], vec![], vec![]);
+        let mut pg: Vec<Vec<f64>> = vec![vec![]; eps.len()];
+        for i in 0..test.len() {
+            let a = test[i].action;
+            let prev_true = encode_xy(&enc, pts[i], a, path);
+            sg.push(jac_sigma_field(&dynm, &zs[i]));
+            rn.push(raw_norm(&dynm, &zs[i]));
+            zs[i] = dynm.step(&zs[i]);
+            pts[i] = rule.apply(pts[i]);
+            let tgt = encode_xy(&enc, pts[i], a, path);
+            cs.push(cosine(&zs[i], &tgt));
+            tsc.push(cosine(&prev_true, &tgt));
+            pn.push((pts[i].0.powi(2) + pts[i].1.powi(2)).sqrt());
+            ose.push(1.0 - cosine(&dynm.step(&prev_true), &tgt));
+            let geo: Vec<f64> = zs[i].clone();
+            md.push(
+                grid.iter()
+                    .map(|g| 1.0 - cosine(&geo, g))
+                    .fold(f64::MAX, f64::min),
+            );
+            for (k, e) in eps.iter().enumerate() {
+                pert[i][k] = dynm.step(&pert[i][k]);
+                pg[k].push(l2(&pert[i][k], &zs[i]) / e);
+            }
+        }
+        out.push(format!(
+            "0x{:X},{},{:.4},{:.4},{:.4},{:.4},{:.3},{:.4},{:.4},{}",
+            seed,
+            t,
+            mean(&cs),
+            mean(&rn),
+            median(sg.clone()),
+            mean(&tsc),
+            mean(&pn),
+            mean(&md),
+            mean(&ose),
+            pg.iter()
+                .map(|v| format!("{:.3}", median(v.clone())))
+                .collect::<Vec<_>>()
+                .join(";")
+        ));
+    }
+    out
+}
+
+/// Follow-up 2: E23 rollout variants on the v3.7 model (diagnostic).
+/// V0 baseline; V1 re-projection each step onto the encoder manifold
+/// (nearest grid point + pattern-search refine of the decoded point);
+/// V2 tangent spectral limit (δ scaled by 1/max(1,σ_max(J))); V3 both.
+/// Returns `seed,variant,cos@h1,h2,h4,h8,h16,h32,h64`.
+pub fn e23_variants(seed: u64, hp: &HyperparamLock) -> Vec<String> {
+    let path = FeatPath::SoftScale;
+    let rule = ContRule::Translation { dx: 0.35, dy: -0.2 };
+    let bundle = match generate_and_seal(seed ^ 0xE23, rule, hp) {
+        Ok(b) => b,
+        Err(_) => return vec![],
+    };
+    let (mut enc, mut dynm) = fresh_models(seed, hp);
+    let mut train_aug = bundle.dataset.train.clone();
+    {
+        let mut rng_mf = Xoshiro256StarStar::seed_from_u64(seed ^ 0xE23F);
+        train_aug.extend(multifamily_curriculum(&mut rng_mf, 3));
+    }
+    let _ = train_consistency(&mut enc, &train_aug, hp.enc_epochs, seed, path);
+    let _ = train_dynamics(
+        &mut enc,
+        &mut dynm,
+        &train_aug,
+        hp.dyn_epochs,
+        hp.dyn_updates,
+        None,
+        seed ^ 2,
+        path,
+    );
+    let mut grid = Vec::new();
+    for gx in 0..=70 {
+        for gy in 0..=50 {
+            let p = (
+                -3.0 + 35.0 * gx as f64 / 70.0,
+                -18.0 + 26.0 * gy as f64 / 50.0,
+            );
+            grid.push((p, encode_xy(&enc, p, None, path)));
+        }
+    }
+    let reproj = |z: &[f64], action: Option<(f64, f64)>| -> Vec<f64> {
+        let mut best = grid
+            .iter()
+            .map(|(p, g)| (*p, cosine(z, g)))
+            .fold(((0.0, 0.0), f64::MIN), |a, b| if b.1 > a.1 { b } else { a });
+        let mut stp = 0.5;
+        for _ in 0..24 {
+            let mut improved = false;
+            for (dx, dy) in [(stp, 0.0), (-stp, 0.0), (0.0, stp), (0.0, -stp)] {
+                let p = (best.0 .0 + dx, best.0 .1 + dy);
+                let c = cosine(z, &encode_xy(&enc, p, None, path));
+                if c > best.1 {
+                    best = (p, c);
+                    improved = true;
+                }
+            }
+            if !improved {
+                stp *= 0.5;
+            }
+        }
+        encode_xy(&enc, best.0, action, path)
+    };
+    let hs = [1usize, 2, 4, 8, 16, 32, 64];
+    let names = [
+        "V0_baseline",
+        "V1_manifold_reproj",
+        "V2_spectral_limit",
+        "V3_reproj+spectral",
+    ];
+    let mut out = vec![];
+    for (v, name) in names.iter().enumerate() {
+        let mut cos_h = vec![vec![]; hs.len()];
+        for s in &bundle.dataset.test {
+            let mut fp = encode_xy(&enc, s.x, s.action, path);
+            let mut pt = s.x;
+            for t in 1..=64usize {
+                let mut nxt = dynm.step(&fp);
+                if v >= 2 {
+                    let sg = jac_sigma_field(&dynm, &fp).max(1.0);
+                    nxt = fp.iter().zip(&nxt).map(|(a, b)| a + (b - a) / sg).collect();
+                    normalize(&mut nxt);
+                }
+                if v == 1 || v == 3 {
+                    nxt = reproj(&nxt, s.action);
+                }
+                fp = nxt;
+                pt = rule.apply(pt);
+                if let Some(i) = hs.iter().position(|&h| h == t) {
+                    cos_h[i].push(cosine(&fp, &encode_xy(&enc, pt, s.action, path)));
+                }
+            }
+        }
+        out.push(format!(
+            "0x{seed:X},{name},{}",
+            cos_h
+                .iter()
+                .map(|c| format!("{:.4}", mean(c)))
+                .collect::<Vec<_>>()
+                .join(",")
+        ));
+    }
+    out
 }
 
 #[cfg(test)]
