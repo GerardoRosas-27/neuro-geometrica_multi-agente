@@ -1100,7 +1100,12 @@ fn map_ureq_error(e: ureq::Error, cfg: &ProviderConfig) -> String {
         ureq::Error::Transport(t) => {
             let msg = redact(t.to_string());
             let lower = msg.to_ascii_lowercase();
-            if lower.contains("timed out") || lower.contains("timeout") {
+            // Windows reporta el read-timeout del socket como WSAETIMEDOUT (os error 10060).
+            if lower.contains("timed out")
+                || lower.contains("timeout")
+                || lower.contains("os error 10060")
+                || lower.contains("failed to respond")
+            {
                 format!(
                     "tiempo de espera agotado hablando con {} ({msg})",
                     cfg.base_url
