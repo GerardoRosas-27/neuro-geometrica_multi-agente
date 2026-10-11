@@ -2325,7 +2325,11 @@ mod tests {
         let e = crate::web::llm_provider::OpenAiClient::new(&down, Duration::from_secs(2))
             .list_models()
             .unwrap_err();
-        assert!(e.contains("no se pudo conectar"), "{e}");
+        // En Windows un puerto cerrado puede agotar el connect-timeout en vez de RST.
+        assert!(
+            e.contains("no se pudo conectar") || e.contains("tiempo de espera"),
+            "{e}"
+        );
         assert!(!e.contains(GOOD_KEY));
     }
 
