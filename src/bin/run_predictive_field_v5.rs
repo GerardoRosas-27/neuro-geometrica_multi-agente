@@ -51,12 +51,35 @@ fn main() {
         exe: std::env::current_exe().ok(),
     };
     let t0 = std::time::Instant::now();
-    let results: Vec<(u64, v5_predict::SeedOut)> = seeds
+    // Per-seed cache so an interrupted run resumes without recomputing
+    // finished seeds (same binary/SHA required; see `sha` in each file).
+    let cache = out.join("seeds");
+    fs::create_dir_all(&cache).expect("cache dir");
+    let results: Vec<(u64, serde_json::Value)> = seeds
         .par_iter()
         .map(|&s| {
+            let f = cache.join(format!("0x{s:X}.json"));
+            if let Some(v) = fs::read_to_string(&f)
+                .ok()
+                .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
+                .filter(|v| v["sha"] == sha.as_str() && v["steps"] == steps)
+            {
+                eprintln!("seed 0x{s:X} cached");
+                return (s, v);
+            }
             let r = v5_predict::run_seed(s, steps, &opts);
+            let v = serde_json::json!({
+                "sha": sha,
+                "steps": steps,
+                "manifest": r.manifest_json,
+                "rows": r.rows.iter().map(|x| x.csv()).collect::<Vec<_>>(),
+                "gates": r.rows.iter().filter(|x| x.condition == "GATE")
+                    .map(|x| vec![x.partition.clone(), x.status.clone(), x.notes.clone()])
+                    .collect::<Vec<_>>(),
+            });
+            fs::write(&f, v.to_string()).ok();
             eprintln!("seed 0x{s:X} done ({:.0}s)", t0.elapsed().as_secs_f64());
-            (s, r)
+            (s, v)
         })
         .collect();
     let mut csv = String::from(v5_predict::csv_header());
@@ -64,18 +87,15 @@ fn main() {
     let mut manifests = String::new();
     let mut gates: BTreeMap<String, Vec<(u64, String, String)>> = BTreeMap::new();
     for (s, r) in &results {
-        for row in &r.rows {
-            csv.push_str(&row.csv());
+        for row in r["rows"].as_array().into_iter().flatten() {
+            csv.push_str(row.as_str().unwrap_or(""));
             csv.push('\n');
-            if row.condition == "GATE" {
-                gates.entry(row.partition.clone()).or_default().push((
-                    *s,
-                    row.status.clone(),
-                    row.notes.clone(),
-                ));
-            }
         }
-        let _ = writeln!(manifests, "{}", r.manifest_json);
+        for g in r["gates"].as_array().into_iter().flatten() {
+            let f = |i: usize| g[i].as_str().unwrap_or("").to_string();
+            gates.entry(f(0)).or_default().push((*s, f(1), f(2)));
+        }
+        let _ = writeln!(manifests, "{}", r["manifest"].as_str().unwrap_or(""));
     }
     fs::write(out.join("metrics.csv"), &csv).unwrap();
     fs::write(out.join("dataset_manifest.jsonl"), &manifests).unwrap();

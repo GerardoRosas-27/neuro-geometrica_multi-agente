@@ -11,13 +11,15 @@
 #![allow(clippy::too_many_arguments)]
 
 use crate::field_autonomy_v4::{
-    evaluate, target_h, Auditor, Row, RunOpts, CSV_HEADER, HORIZONS, ITERABLE_FAMS, K_POINTS,
+    evaluate, target_h, AuditFlags, Auditor, Row, RunOpts, CSV_HEADER, HORIZONS, ITERABLE_FAMS,
+    K_POINTS,
 };
 use crate::v4_controls::{Dphi, Predictor, TrainBudget};
 use crate::v4_dataset::{
     apply_rule, generate_and_seal, l2, sha256_hex, DatasetConfig, Example, Sealed, CTX_DIM,
     FAMILIES, N_FAM,
 };
+use crate::v4_distill::{onestep_breakdown, train_onestep_trusted_b, TRUST_TAU};
 use crate::v4_metrics as m;
 use crate::v4_provenance::{count_query, snapshot, QueryCounters, Store};
 use rand::Rng;
@@ -253,12 +255,12 @@ fn e33(
     (region, rows, notes.join(" "))
 }
 
-fn fresh_eval(opts: &RunOpts, s: &Sealed, seed: u64, d: &Dphi) -> (f64, f64) {
+fn fresh_eval(opts: &RunOpts, s: &Sealed, seed: u64, d: &Dphi, tag: &str) -> (f64, f64) {
     let (Some(dir), Some(exe)) = (&opts.ckpt_dir, &opts.exe) else {
         return (f64::NAN, f64::NAN);
     };
     std::fs::create_dir_all(dir).ok();
-    let p = dir.join(format!("dphi_V5_P2_0x{seed:X}.json"));
+    let p = dir.join(format!("dphi_{tag}_0x{seed:X}.json"));
     std::fs::write(&p, d.to_ckpt()).ok();
     let o = std::process::Command::new(exe)
         .args([
@@ -281,6 +283,39 @@ fn fresh_eval(opts: &RunOpts, s: &Sealed, seed: u64, d: &Dphi) -> (f64, f64) {
     (g("acc"), g("queries_total"))
 }
 
+#[derive(Clone, Copy)]
+enum ArmKind {
+    V5 { residual: bool, shuf: bool },
+    E3,
+}
+
+struct Trained {
+    name: String,
+    d: Dphi,
+    loss: f64,
+    max_g: f64,
+    reads: u64,
+    ev: crate::field_autonomy_v4::EvalOut,
+    train_s: f64,
+    lat: f64,
+    steps: usize,
+    note: String,
+}
+
+/// Median single-step inference latency (µs) over TEST, 5 passes.
+fn latency_us(d: &Dphi, test: &[Example]) -> f64 {
+    let mut v = Vec::with_capacity(test.len() * 5);
+    for _ in 0..5 {
+        for e in test {
+            let t = std::time::Instant::now();
+            let p = d.step(&e.input, &e.context);
+            std::hint::black_box(p);
+            v.push(t.elapsed().as_secs_f64() * 1e6);
+        }
+    }
+    m::median(&v)
+}
+
 pub struct SeedOut {
     pub rows: Vec<Row>,
     pub manifest_json: String,
@@ -298,59 +333,145 @@ pub fn run_seed(seed: u64, steps: usize, opts: &RunOpts) -> SeedOut {
     let cdt_real = CdtEpisodes { eps: real };
     let cdt_shuf = CdtEpisodes { eps: shuffled };
 
-    let arms = [
-        ("P2_gated", true, false, 0x71u64),
-        ("P2_mlp", false, false, 0x73),
-        ("P2_shuffled", true, true, 0x72),
+    // Equal-terms comparison (docs/comparacion_v4_v5.md): same seed, same
+    // sealed split, same net (gated_h H=136, init seed^0xD0), same audit and
+    // the same E33 harness for every arm. `E3_v4` is main's §16 recipe
+    // retrained here with the same optimizer-step budget; `P2_gated_eqc` is
+    // v5 with steps/EPISODE_H so its Dφ forward+backward count matches E3.
+    let arms: [(&str, ArmKind, u64, usize); 5] = [
+        (
+            "P2_gated",
+            ArmKind::V5 {
+                residual: true,
+                shuf: false,
+            },
+            0x71,
+            steps,
+        ),
+        (
+            "P2_mlp",
+            ArmKind::V5 {
+                residual: false,
+                shuf: false,
+            },
+            0x73,
+            steps,
+        ),
+        (
+            "P2_shuffled",
+            ArmKind::V5 {
+                residual: true,
+                shuf: true,
+            },
+            0x72,
+            steps,
+        ),
+        ("E3_v4", ArmKind::E3, 0x7A, steps),
+        (
+            "P2_gated_eqc",
+            ArmKind::V5 {
+                residual: true,
+                shuf: false,
+            },
+            0x74,
+            (steps / EPISODE_H).max(1),
+        ),
     ];
-    let mut trained: Vec<(
-        String,
-        Dphi,
-        f64,
-        f64,
-        u64,
-        crate::field_autonomy_v4::EvalOut,
-    )> = vec![];
-    for (name, residual, shuf, salt) in arms {
-        let store = if shuf { &cdt_shuf } else { &cdt_real };
-        let (d, loss, max_g, reads) = train_arm(residual, store, seed, steps, salt);
+    let mut trained: Vec<Trained> = vec![];
+    for (name, kind, salt, st) in arms {
+        let t0 = std::time::Instant::now();
+        let (d, loss, max_g, reads, flags, note) = match kind {
+            ArmKind::V5 { residual, shuf } => {
+                let store = if shuf { &cdt_shuf } else { &cdt_real };
+                let (d, l, g, r) = train_arm(residual, store, seed, st, salt);
+                (
+                    d,
+                    l,
+                    g,
+                    r,
+                    AuditFlags::default(),
+                    String::from("route=v5_horizon"),
+                )
+            }
+            ArmKind::E3 => {
+                let mut d = Dphi::gated_h(2 * K_POINTS, CTX_DIM, V5_HIDDEN, true, seed ^ 0xD0);
+                let before = snapshot();
+                let (f, mask) =
+                    train_onestep_trusted_b(&mut d, &s, seed, &aud, TRUST_TAU, budget(st));
+                let reads = snapshot().delta(&before).cdt;
+                let ms: String = mask.iter().map(|b| if *b { '1' } else { '0' }).collect();
+                (
+                    d,
+                    f64::NAN,
+                    f64::NAN,
+                    reads,
+                    f,
+                    format!("route=v4_trusted mask={ms}"),
+                )
+            }
+        };
+        let train_s = t0.elapsed().as_secs_f64();
         s.verify_test().expect("TEST sealed");
-        let ev = evaluate(&d, &s.ds.test, 1, Some((&aud, &Default::default())), None);
-        trained.push((name.into(), d, loss, max_g, reads, ev));
+        let ev = evaluate(&d, &s.ds.test, 1, Some((&aud, &flags)), None);
+        let lat = latency_us(&d, &s.ds.test);
+        trained.push(Trained {
+            name: name.into(),
+            d,
+            loss,
+            max_g,
+            reads,
+            ev,
+            train_s,
+            lat,
+            steps: st,
+            note,
+        });
     }
     // Buffer is not readable past this point.
     drop(cdt_real);
     drop(cdt_shuf);
 
-    let (fp_acc, fp_q) = fresh_eval(opts, &s, seed, &trained[0].1);
-    let fresh_ok = (fp_acc - trained[0].5.acc).abs() < 1e-9 && fp_q == 0.0;
+    let fresh: Vec<(f64, f64, bool)> = trained
+        .iter()
+        .map(|t| {
+            let (a, q) = fresh_eval(opts, &s, seed, &t.d, &t.name);
+            (a, q, (a - t.ev.acc).abs() < 1e-9 && q == 0.0)
+        })
+        .collect();
 
     let mut rows = Vec::new();
-    for (name, d, loss, max_g, reads, ev) in &trained {
-        let q_test = ev.queries.total();
+    for t in &trained {
+        let q_test = t.ev.queries.total();
         rows.push(Row {
             experiment: "V5_P2".into(),
             seed,
-            condition: name.clone(),
+            condition: t.name.clone(),
             partition: "TEST".into(),
-            n_examples: ev.n,
-            params: d.params(),
-            compute: steps,
-            accuracy: ev.acc,
-            cosine: ev.disp_cos,
-            energy: ev.energy_ratio,
-            manifold_distance: ev.manifold,
-            stability: ev.rel_err,
-            leakage: leaks + ev.leaked,
-            q: ev.queries,
-            status: if leaks == 0 && q_test == 0 {
+            n_examples: t.ev.n,
+            params: t.d.params(),
+            compute: t.steps,
+            accuracy: t.ev.acc,
+            cosine: t.ev.disp_cos,
+            energy: t.ev.energy_ratio,
+            manifold_distance: t.ev.manifold,
+            stability: t.ev.rel_err,
+            leakage: leaks + t.ev.leaked,
+            q: t.ev.queries,
+            status: if leaks == 0 && q_test == 0 && t.ev.leaked == 0 {
                 "CLEAN".into()
             } else {
                 "LEAKED".into()
             },
             notes: format!(
-                "loss={loss:.6} max_g={max_g:.4} train_cdt_reads={reads} q_test={q_test} {}",
-                fam_rel_notes(d, &s.ds.test)
+                "{} loss={:.6} max_g={:.4} train_cdt_reads={} q_test={q_test} train_s={:.2} lat_us={:.3} {} {}",
+                t.note,
+                t.loss,
+                t.max_g,
+                t.reads,
+                t.train_s,
+                t.lat,
+                fam_rel_notes(&t.d, &s.ds.test),
+                onestep_breakdown(&t.d, &s.ds.test)
             ),
         });
     }
@@ -372,22 +493,22 @@ pub fn run_seed(seed: u64, steps: usize, opts: &RunOpts) -> SeedOut {
         })
         .collect();
 
-    let labels = ["R_P2_gated", "R_P2_mlp", "R_P2_shuffled"];
-    for (i, label) in labels.iter().enumerate() {
-        let (region, rr, notes) = e33(seed, label, &trained[i].1, &iter_ex, &deltas);
+    for (i, t) in trained.iter().enumerate() {
+        let label = format!("R_{}", t.name);
+        let (region, rr, notes) = e33(seed, &label, &t.d, &iter_ex, &deltas);
         rows.extend(rr);
-        let ev = &trained[i].5;
+        let ev = &t.ev;
         let clean = leaks == 0 && ev.queries.total() == 0 && ev.leaked == 0;
-        let extra = if i == 0 { fresh_ok } else { true };
-        let pass = region >= 8 && clean && extra;
+        let (fp_acc, fp_q, fresh_ok) = fresh[i];
+        let pass = region >= 8 && clean && fresh_ok;
         rows.push(Row {
             experiment: "V5_P2".into(),
             seed,
             condition: "GATE".into(),
-            partition: (*label).into(),
+            partition: label.clone(),
             n_examples: iter_ex.len(),
-            params: trained[i].1.params(),
-            compute: steps,
+            params: t.d.params(),
+            compute: t.steps,
             accuracy: ev.acc,
             cosine: 0.0,
             energy: 0.0,
@@ -403,8 +524,8 @@ pub fn run_seed(seed: u64, steps: usize, opts: &RunOpts) -> SeedOut {
                 "FAIL".into()
             },
             notes: format!(
-                "{label} region={region} rel_err1={:.4} clean={clean} fresh_ok={fresh_ok} fresh_acc={fp_acc:.4}(q={fp_q:.0}) leaks={leaks} {notes}",
-                ev.rel_err
+                "{label} region={region} rel_err1={:.4} clean={clean} fresh_ok={fresh_ok} fresh_acc={fp_acc:.4}(q={fp_q:.0}) leaks={leaks} train_s={:.2} lat_us={:.3} {notes}",
+                ev.rel_err, t.train_s, t.lat
             ),
         });
     }
