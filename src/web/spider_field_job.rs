@@ -3,18 +3,17 @@
 //! entre datasets, evaluación hold-out y checkpoint por dataset), vigilia
 //! online (Aprobar / Rechazar) y endpoints `/api/spider/field/*`.
 //!
-//! El router puro está en [`crate::spider_field`]. Configuración por defecto
-//! = brazo (A) sustrato en blanco (líquido + CDT + RQM), elegido por el
-//! experimento de sustrato (`docs/prompt_spider_decoder_campo.md`).
+//! El router puro está en [`crate::spider_field`]: arquitectura v4 (CDT del
+//! Spider → teacher consolidado → Dφ gated con replay de confianza, §16),
+//! medido en `docs/prompt_spider_decoder_campo.md`.
 
 use crate::prompt_spider::{
     word_context, EscalationItem, Route, DEFAULT_LLM_FLOOR, DEFAULT_THRESHOLD, SAMPLE_PROMPT,
 };
 use crate::spider_field::{
     evaluate_router, scorer_examples, synth_examples, synth_prompt, teacher_labels, text_group,
-    user_labels, AnalyzedPrompt, Coupling, FieldConfig, FieldEval, FieldModelFile,
-    FieldSleepReport, LabelSource, Sm, SpiderExample, SpiderFieldRouter, MODEL_VERSION,
-    VOCAB_SHIFT, VOCAB_TRAIN,
+    user_labels, AnalyzedPrompt, FieldConfig, FieldEval, FieldModelFile, FieldSleepReport,
+    LabelSource, Sm, SpiderExample, SpiderFieldRouter, MODEL_VERSION, VOCAB_SHIFT, VOCAB_TRAIN,
 };
 use crate::spider_field_experiment::{holdout_seed, shift_seed};
 use crate::web::api::SharedState;
@@ -39,7 +38,7 @@ use std::time::Instant;
 pub const MIN_REFIT: usize = 400;
 /// Prompts del hold-out H1 / H2 en la app (el experimento usa 80).
 pub const APP_HOLDOUT_PROMPTS: usize = 24;
-/// Semilla del reservorio líquido del modelo por defecto.
+/// Semilla de Dφ del modelo por defecto.
 pub const DEFAULT_SEED: u64 = 7;
 const MAX_EVENTS: usize = 800;
 const MAX_ONLINE_PENDING: usize = 4000;
@@ -60,9 +59,9 @@ fn fnv(s: &str) -> u64 {
     h
 }
 
-/// Configuración por defecto: (A) sustrato en blanco.
+/// Configuración por defecto: router v4 (§16).
 pub fn default_config() -> FieldConfig {
-    FieldConfig::blank(DEFAULT_SEED)
+    FieldConfig::v4(DEFAULT_SEED)
 }
 
 /// Directorio del modelo. Env `SPIDER_FIELD_DIR`; si no, `data/spider_field`.
@@ -81,20 +80,19 @@ pub fn default_ckpt_dir() -> PathBuf {
 /// Nombre legible del modelo.
 pub fn model_name(r: &SpiderFieldRouter) -> String {
     let c = &r.cfg;
-    let arm = match c.coupling {
-        Coupling::Blank => "A·blanco",
-        Coupling::FrozenCore => "B·núcleo congelado",
-        Coupling::SharedCore => "C·núcleo compartido",
-    };
-    let mut parts = vec![format!("spider-field v{MODEL_VERSION} {arm}")];
-    if c.liquid {
-        parts.push(format!("líquido {}", c.n_liquid));
+    let mut parts = vec![format!("spider-field v{MODEL_VERSION} · campo v4")];
+    if c.dphi {
+        parts.push(format!("Dφ gated H{}", c.hidden));
+        parts.push(if c.trusted {
+            format!("replay de confianza τ={}", c.tau)
+        } else {
+            "replay completo".into()
+        });
+    } else {
+        parts.push("teacher logístico (sin Dφ)".into());
     }
-    if c.cdt {
-        parts.push("CDT".into());
-    }
-    if c.rqm {
-        parts.push("RQM/EPR".into());
+    if c.ood {
+        parts.push("guardia OOD".into());
     }
     parts.join(" + ")
 }
@@ -307,8 +305,8 @@ impl SpiderFieldState {
         self.router.observe(ex);
     }
 
-    /// Sueño compatible con la pestaña Sueño: consolida la vigilia (CDT +
-    /// RQM + reajuste) si hay episodios y suficiente repetición. `None` si
+    /// Sueño compatible con la pestaña Sueño: consolida la vigilia (CDT →
+    /// teacher → Dφ) si hay episodios y suficiente repetición. `None` si
     /// no hay nada que consolidar o se difiere.
     pub fn sleep_if_ready(&mut self) -> Option<Result<FieldSleepReport, String>> {
         if self.router.wake_len() == 0 {
@@ -621,8 +619,8 @@ fn source_name(s: LabelSource) -> &'static str {
     }
 }
 
-/// Bucle del entrenamiento: dataset → vigilia (observe) → sueño (CDT + RQM
-/// + reajuste) → evaluación hold-out → checkpoint + modelo.
+/// Bucle del entrenamiento: dataset → vigilia (observe) → sueño (CDT → teacher → Dφ)
+/// → evaluación hold-out → checkpoint + modelo.
 async fn train_loop(st: SharedState, stop: Arc<AtomicBool>, opts: TrainOpts) {
     let (runs_dir, current, job_id, ckpt_dir) = {
         let g = lock(&st);
@@ -791,8 +789,8 @@ async fn train_loop(st: SharedState, stop: Arc<AtomicBool>, opts: TrainOpts) {
             j.push(
             "sleep",
             format!(
-                "dataset {n}: {ds_len} ejemplos ({} episodios cabeza×ejemplo) → sueño CDT {} clases · RQM {} celdas · repetición {} ({:.1}s)",
-                rep.episodes, rep.cdt_classes, rep.rqm_cells, rep.replay, secs
+                "dataset {n}: {ds_len} ejemplos ({} experiencias) → sueño: teacher → Dφ ({} pares, {} de confianza, pérdida {:.4}) · repetición {} ({:.1}s)",
+                rep.episodes, rep.replay_pairs, rep.trusted_pairs, rep.dphi_loss, rep.replay, secs
             ),
             json!(rep),
         );

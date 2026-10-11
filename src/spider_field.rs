@@ -4,50 +4,44 @@
 //! interruptor «Decoder del campo» está activo, igual que en el chat: el campo
 //! produce el estado y la decisión; ningún LLM opina.
 //!
-//! Pipeline de una decisión (palabra = fork):
+//! Pipeline (arquitectura v4, receta §16):
 //!
-//! 1. **Codificación** ([`encode_decision`]): rasgos del token (tipo, léxicos
-//!    del scorer, mayúscula/inicio de frase, longitud, frecuencia, sección,
-//!    puntuación vecina, hashing de identidad y sufijo), ventana de contexto
-//!    ±3 tokens y rasgos globales de la decisión (las 4 puntuaciones
-//!    heurísticas, `p`, pregunta decisiva y ruta inicial).
-//! 2. **Inferencia líquida** ([`LiquidEncoder`]): reservorio de constante de
-//!    tiempo dependiente de la entrada (LTC) que lee la ventana token a token;
-//!    el estado (centro ⊕ final) es el estado del campo. Pesos fijos por
-//!    semilla (no se entrenan).
-//! 3. **CDT** ([`CdtBasinMemory`]): engramas por clase (pregunta × sí/no)
-//!    consolidados **solo en el sueño** sobre un `NativeThermoCdtSubstrate`
-//!    (bloques de nodos disjuntos, piloto amp/fase del prototipo, 8 pasos
-//!    termodinámicos, plantilla amp/cos/sin). En inferencia solo se leen las
-//!    plantillas: similitudes + **novedad** (guardia fuera de distribución).
-//! 4. **RQM/EPR** ([`RqmIndex`]): índice relacional celda→etiqueta en un
-//!    `NativeThermoRqmEprSubstrate` (entrelazamiento EPR incluido). Celda =
-//!    hash LSH (8 bits) del estado líquido. Se escribe en el sueño y se
-//!    destila a una tabla de priors; la inferencia lee la tabla (sin mutar).
-//! 5. **Lectura** ([`Readout`]): 5 cabezas logísticas (relevant, grounded,
-//!    ambiguous, needs_approval, ok) + escalado de temperatura por cabeza
-//!    (calibración en un split de calibración por prompt).
-//! 6. **Router**: `ok` es la cabeza de ruta (resolver vs. pendiente). Una
-//!    escalada se resuelve por el campo solo si `P(ok) ≥ piso`, `P(aprob) <
-//!    0.5`, `P(ambigua) < 0.5` y la novedad está dentro de lo visto en
-//!    entrenamiento. Si no, **pendiente** (nunca se inventa).
+//! 1. **Codificación** ([`encode_decision`] → [`decision_context`]): rasgos
+//!    del token (tipo, léxicos del scorer, mayúscula, longitud, frecuencia,
+//!    sección, puntuación vecina, hashing), media de la ventana ±3 y rasgos
+//!    globales de la decisión (4 puntuaciones heurísticas, `p`, pregunta,
+//!    ruta inicial).
+//! 2. **Vigilia**: cada ejemplo etiquetado entra en la CDT del Spider
+//!    (experiencia) y en el reservorio de repetición.
+//! 3. **Sueño = consolidación → teacher**: [`Readout`] logístico por cabeza
+//!    (relevant, grounded, ambiguous, needs_approval, ok) sobre la
+//!    experiencia; la **máscara de confianza** marca los pares
+//!    ejemplo×cabeza donde el teacher acierta con margen (|P−y| < τ).
+//! 4. **Dφ** (`v4_controls::Dphi::gated_h`, cabeza local-lineal con
+//!    compuerta, H136): el estado de cada cabeza es un punto 2-D del campo
+//!    `q₀ = (0.5, 1)`; Dφ lo transporta en un paso, condicionado por el
+//!    contexto, hasta `(P, 1)`. Entrenamiento one-step (Adam, coseno) con
+//!    50 % etiquetas reales y 50 % **replay de confianza** del teacher. El
+//!    teacher y la CDT se descartan tras el sueño.
+//! 5. **Calibración**: temperatura por cabeza en un split por prompt.
+//! 6. **Guardia de novedad**: radio estandarizado del contexto contra el
+//!    cuantil 99.5 % visto en el sueño (solo estadísticas, sin ejemplos).
+//! 7. **Router**: una escalada se resuelve solo si `P(ok) ≥ piso`,
+//!    `P(aprob) < 0.5`, `P(ambigua) < 0.5` y dentro de distribución. Si no,
+//!    **pendiente** (nunca se inventa). La inferencia no consulta memoria.
 //!
 //! Ver `docs/prompt_spider_decoder_campo.md`.
 
 #![allow(clippy::needless_range_loop)]
 #![allow(clippy::too_many_arguments)]
 
-use crate::entanglement::EntanglementConfig;
-use crate::liquid_cdt_rqm_fuse::FusedLiquidCdt;
-use crate::native_thermo_rqm_epr::{NativeThermoRqmConfig, NativeThermoRqmEprSubstrate};
-use crate::native_thermodynamic_cdt::{NativeThermoCdtConfig, NativeThermoCdtSubstrate};
 use crate::prompt_spider::{
     approval_prior, route, score_token, tokenize, Assessment, LlmVerdict, PromptContext, Question,
     Route, Token, TokenKind, AMBIGUITY_MARKERS, CLAIM_MARKERS, KNOWN_ENTITIES, STOPWORDS,
 };
-use crate::relational_field::ObserverId;
+use crate::v4_controls::{Dphi, TrainBudget};
+use rand::Rng;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::time::Instant;
 
 // ---------------------------------------------------------------------------
@@ -72,9 +66,8 @@ pub const LOCAL_DIM: usize = 53;
 /// Rasgos globales de la decisión.
 pub const GLOBAL_DIM: usize = 12;
 /// Rasgos del núcleo de chat (acoplamiento B/C).
-pub const CORE_DIM: usize = 12;
 /// Versión del formato del modelo persistido.
-pub const MODEL_VERSION: u32 = 1;
+pub const MODEL_VERSION: u32 = 2;
 
 /// Marcadores de fuente (para el rasgo «cue de fuente» en la ventana).
 pub const SOURCE_CUES: &[&str] = &[
@@ -514,484 +507,29 @@ pub fn encode_decision(
 }
 
 // ---------------------------------------------------------------------------
-// Inferencia líquida (reservorio LTC)
+// Contexto de la decisión (entrada de Dφ)
 // ---------------------------------------------------------------------------
 
-/// Reservorio líquido de constante de tiempo dependiente de la entrada:
-/// `τ_i(u) = 1 + 3·σ(a_i·u)`, `h ← h + (−h + tanh(W_in u + W h + b)) / τ`.
-#[derive(Clone, Debug)]
-pub struct LiquidEncoder {
-    pub n: usize,
-    pub in_dim: usize,
-    w_in: Vec<f32>,
-    w_rec: Vec<f32>,
-    w_tau: Vec<f32>,
-    bias: Vec<f32>,
-}
+/// Dimensión del contexto: centro ⊕ globales ⊕ media de la ventana vecina.
+pub const CTX_DIM: usize = LOCAL_DIM + GLOBAL_DIM + LOCAL_DIM;
 
-impl LiquidEncoder {
-    pub fn new(n: usize, seed: u64) -> Self {
-        let in_dim = LOCAL_DIM + GLOBAL_DIM;
-        let mut rng = Sm(seed ^ 0x11C0_1D00);
-        let s_in = 1.0 / (in_dim as f64).sqrt();
-        let w_in = (0..n * in_dim)
-            .map(|_| (rng.normal() * s_in * 1.5) as f32)
-            .collect();
-        let density = 0.2;
-        let s_rec = 0.9 / (n as f64 * density).sqrt();
-        let w_rec = (0..n * n)
-            .map(|_| {
-                if rng.chance(density) {
-                    (rng.normal() * s_rec) as f32
-                } else {
-                    0.0
-                }
-            })
-            .collect();
-        let w_tau = (0..n * in_dim)
-            .map(|_| (rng.normal() * s_in) as f32)
-            .collect();
-        let bias = (0..n).map(|_| (rng.normal() * 0.1) as f32).collect();
-        Self {
-            n,
-            in_dim,
-            w_in,
-            w_rec,
-            w_tau,
-            bias,
+/// Rasgos de la decisión: token central, rasgos globales y media de los
+/// vecinos de la ventana ±3 (contexto local sin estado recurrente).
+pub fn decision_context(ex: &SpiderExample) -> Vec<f32> {
+    let mut v = ex.center_local().to_vec();
+    v.extend_from_slice(&ex.global);
+    let mut nb = [0f32; LOCAL_DIM];
+    for k in (0..WINDOW).filter(|k| *k != WINDOW_RADIUS) {
+        for d in 0..LOCAL_DIM {
+            nb[d] += ex.window[k * LOCAL_DIM + d] / (WINDOW - 1) as f32;
         }
     }
-
-    /// Dimensión del estado (centro ⊕ final).
-    pub fn state_dim(&self) -> usize {
-        2 * self.n
-    }
-
-    /// Lee la ventana token a token; devuelve `[h_centro, h_final]`.
-    pub fn run(&self, ex: &SpiderExample) -> Vec<f32> {
-        let n = self.n;
-        let mut h = vec![0f32; n];
-        let mut u = vec![0f32; self.in_dim];
-        let mut out = vec![0f32; 2 * n];
-        let mut nh = vec![0f32; n];
-        for k in 0..WINDOW {
-            u[..LOCAL_DIM].copy_from_slice(&ex.window[k * LOCAL_DIM..(k + 1) * LOCAL_DIM]);
-            u[LOCAL_DIM..].copy_from_slice(&ex.global);
-            for i in 0..n {
-                let wi = &self.w_in[i * self.in_dim..(i + 1) * self.in_dim];
-                let wt = &self.w_tau[i * self.in_dim..(i + 1) * self.in_dim];
-                let mut pre = self.bias[i];
-                let mut at = 0f32;
-                for d in 0..self.in_dim {
-                    pre += wi[d] * u[d];
-                    at += wt[d] * u[d];
-                }
-                let wr = &self.w_rec[i * n..(i + 1) * n];
-                for j in 0..n {
-                    pre += wr[j] * h[j];
-                }
-                let tau = 1.0 + 3.0 * sigmoid(at as f64) as f32;
-                nh[i] = h[i] + (-h[i] + pre.tanh()) / tau;
-            }
-            h.copy_from_slice(&nh);
-            if k == WINDOW_RADIUS {
-                out[..n].copy_from_slice(&h);
-            }
-        }
-        out[n..].copy_from_slice(&h);
-        out
-    }
+    v.extend_from_slice(&nb);
+    v
 }
 
 // ---------------------------------------------------------------------------
-// CDT: engramas por clase consolidados en el sueño
-// ---------------------------------------------------------------------------
-
-const CDT_BLOCK: usize = 12;
-const CDT_STEPS: usize = 8;
-
-/// Estado persistible de la memoria CDT.
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-pub struct CdtState {
-    pub protos: Vec<Vec<f32>>,
-    pub counts: Vec<u64>,
-    pub templates: Vec<Vec<f32>>,
-}
-
-/// Memoria CDT: prototipos por clase → plantillas tras relajación
-/// termodinámica (solo en el sueño). La inferencia solo lee plantillas.
-#[derive(Clone, Debug)]
-pub struct CdtBasinMemory {
-    pub substrate: NativeThermoCdtSubstrate,
-    dim: usize,
-    p1: Vec<f32>,
-    p2: Vec<f32>,
-    pub state: CdtState,
-    pending: Vec<(usize, Vec<f32>)>,
-    pub sleep_steps: u64,
-}
-
-impl CdtBasinMemory {
-    pub fn new(dim: usize, seed: u64) -> Self {
-        let nodes = CLASSES * CDT_BLOCK;
-        let cfg = NativeThermoCdtConfig {
-            slices: 2,
-            nodes_per_slice: nodes.div_ceil(2).max(64),
-            spatial_degree: 3,
-            temporal_degree: 1,
-            temperature: 0.2,
-            seed: seed ^ 0xCD7_5F1D,
-            ..NativeThermoCdtConfig::default()
-        };
-        let mut rng = Sm(seed ^ 0xCD7_0001);
-        let s = 1.0 / (dim as f64).sqrt();
-        let p1 = (0..CDT_BLOCK * dim)
-            .map(|_| (rng.normal() * s) as f32)
-            .collect();
-        let p2 = (0..CDT_BLOCK * dim)
-            .map(|_| (rng.normal() * s) as f32)
-            .collect();
-        Self {
-            substrate: NativeThermoCdtSubstrate::new(cfg),
-            dim,
-            p1,
-            p2,
-            state: CdtState {
-                protos: vec![vec![0.0; dim]; CLASSES],
-                counts: vec![0; CLASSES],
-                templates: vec![Vec::new(); CLASSES],
-            },
-            pending: Vec::new(),
-            sleep_steps: 0,
-        }
-    }
-
-    /// Proyección (amp, fase) por nodo del bloque.
-    fn pilot(&self, s: &[f32]) -> Vec<(f32, f32)> {
-        (0..CDT_BLOCK)
-            .map(|j| {
-                let (mut v, mut w) = (0f32, 0f32);
-                let r1 = &self.p1[j * self.dim..(j + 1) * self.dim];
-                let r2 = &self.p2[j * self.dim..(j + 1) * self.dim];
-                for d in 0..self.dim.min(s.len()) {
-                    v += r1[d] * s[d];
-                    w += r2[d] * s[d];
-                }
-                (0.5 + 0.5 * v.tanh(), std::f32::consts::PI * w.tanh())
-            })
-            .collect()
-    }
-
-    fn signature(&self, s: &[f32]) -> Vec<f32> {
-        let mut sig = Vec::with_capacity(CDT_BLOCK * 3);
-        for (amp, ph) in self.pilot(s) {
-            sig.push(amp - 0.5);
-            sig.push(ph.cos());
-            sig.push(ph.sin());
-        }
-        sig
-    }
-
-    /// Vigilia: bufferiza el estado bajo sus clases etiquetadas.
-    pub fn buffer(&mut self, state: &[f32], labels: &Labels) {
-        for (h, l) in labels.iter().enumerate() {
-            if let Some(b) = l {
-                self.pending.push((2 * h + *b as usize, state.to_vec()));
-            }
-        }
-    }
-
-    pub fn pending_len(&self) -> usize {
-        self.pending.len()
-    }
-
-    /// Sueño: actualiza prototipos (incremental, sin borrar engramas) y
-    /// re-codifica las clases tocadas en el sustrato termodinámico.
-    pub fn consolidate(&mut self) -> usize {
-        let pend = std::mem::take(&mut self.pending);
-        let mut touched = [false; CLASSES];
-        for (c, s) in pend.iter() {
-            let n = self.state.counts[*c] as f32;
-            let p = &mut self.state.protos[*c];
-            for d in 0..self.dim.min(s.len()) {
-                p[d] = (p[d] * n + s[d]) / (n + 1.0);
-            }
-            self.state.counts[*c] += 1;
-            touched[*c] = true;
-        }
-        for c in 0..CLASSES {
-            if !touched[c] {
-                continue;
-            }
-            let nodes: Vec<usize> = (c * CDT_BLOCK..(c + 1) * CDT_BLOCK).collect();
-            let target = self.pilot(&self.state.protos[c].clone());
-            for (k, &node) in nodes.iter().enumerate() {
-                if node < self.substrate.node_count() {
-                    self.substrate.amplitude[node] = 0.5;
-                    self.substrate.phase[node] = 0.0;
-                    self.substrate.thermal_state[node] = 0.0;
-                    self.substrate.pilot_force[node] = 0.0;
-                    let (amp, ph) = target[k];
-                    self.substrate.inject_local_node(node, amp, ph, 1.0);
-                }
-            }
-            for _ in 0..CDT_STEPS {
-                let _ = self.substrate.step();
-                self.sleep_steps += 1;
-            }
-            let mut tpl = Vec::with_capacity(CDT_BLOCK * 3);
-            for &node in &nodes {
-                let (a, ph) = if node < self.substrate.node_count() {
-                    (self.substrate.amplitude[node], self.substrate.phase[node])
-                } else {
-                    (0.5, 0.0)
-                };
-                tpl.push(a.clamp(0.0, 1.0) - 0.5);
-                tpl.push(ph.cos());
-                tpl.push(ph.sin());
-            }
-            self.state.templates[c] = tpl;
-        }
-        pend.len()
-    }
-
-    /// Similitud coseno a cada plantilla (0 si la clase no existe) + novedad
-    /// (`1 − máx` sobre las clases con plantilla).
-    pub fn read(&self, state: &[f32]) -> (Vec<f32>, f32) {
-        let sig = self.signature(state);
-        let mut sims = vec![0f32; CLASSES];
-        let mut best = f32::NEG_INFINITY;
-        for c in 0..CLASSES {
-            let t = &self.state.templates[c];
-            if t.is_empty() {
-                continue;
-            }
-            let (mut dot, mut na, mut nb) = (0f32, 0f32, 0f32);
-            for k in 0..t.len().min(sig.len()) {
-                dot += sig[k] * t[k];
-                na += sig[k] * sig[k];
-                nb += t[k] * t[k];
-            }
-            let s = dot / (na.sqrt() * nb.sqrt()).max(1e-6);
-            sims[c] = s;
-            best = best.max(s);
-        }
-        let novelty = if best.is_finite() { 1.0 - best } else { 1.0 };
-        (sims, novelty)
-    }
-
-    pub fn restore(&mut self, st: CdtState) {
-        if st.protos.len() == CLASSES && st.templates.len() == CLASSES {
-            self.state = st;
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// RQM/EPR: índice relacional celda → etiqueta
-// ---------------------------------------------------------------------------
-
-const RQM_BITS: usize = 8;
-const RQM_CUE_BASE: usize = 16;
-const RQM_OBSERVER: ObserverId = ObserverId(0x5_91DE_F1E1);
-
-/// Estado persistible del índice RQM.
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-pub struct RqmState {
-    /// celda → conteo por clase.
-    pub counts: HashMap<u32, Vec<u32>>,
-    /// celda → (prior P(sí) por cabeza, soporte).
-    pub cache: HashMap<u32, Vec<f32>>,
-}
-
-/// Índice relacional (RQM + EPR) de celdas del estado líquido a clases.
-#[derive(Clone, Debug)]
-pub struct RqmIndex {
-    pub substrate: NativeThermoRqmEprSubstrate,
-    dim: usize,
-    lsh: Vec<f32>,
-    pub state: RqmState,
-    pending: Vec<(u32, Labels)>,
-    pub train_calls: u64,
-    pub query_calls: u64,
-}
-
-fn rqm_substrate(seed: u64) -> NativeThermoRqmEprSubstrate {
-    let nodes = RQM_CUE_BASE + (1 << RQM_BITS);
-    let thermal = NativeThermoCdtConfig {
-        slices: 2,
-        nodes_per_slice: nodes,
-        seed: seed ^ 0x5F1E_0D00,
-        ..NativeThermoCdtConfig::default()
-    };
-    let cfg = NativeThermoRqmConfig {
-        max_candidates: CLASSES * 2,
-        thermal_steps_per_train: 1,
-        thermal_steps_per_query: 2,
-        thermal_activation_margin: 0.05,
-        collect_query_diagnostics: false,
-        ..Default::default()
-    };
-    let epr = EntanglementConfig {
-        create_threshold: 0.4,
-        max_syncs_per_step: 64,
-        ..EntanglementConfig::default()
-    };
-    NativeThermoRqmEprSubstrate::new(thermal, cfg, epr)
-}
-
-impl RqmIndex {
-    pub fn new(dim: usize, seed: u64) -> Self {
-        let mut rng = Sm(seed ^ 0x5_0001);
-        let lsh = (0..RQM_BITS * dim).map(|_| rng.normal() as f32).collect();
-        Self {
-            substrate: rqm_substrate(seed),
-            dim,
-            lsh,
-            state: RqmState::default(),
-            pending: Vec::new(),
-            train_calls: 0,
-            query_calls: 0,
-        }
-    }
-
-    pub fn cell(&self, s: &[f32]) -> u32 {
-        let mut c = 0u32;
-        for bit in 0..RQM_BITS {
-            let r = &self.lsh[bit * self.dim..(bit + 1) * self.dim];
-            let mut v = 0f32;
-            for d in 0..self.dim.min(s.len()) {
-                v += r[d] * s[d];
-            }
-            if v > 0.0 {
-                c |= 1 << bit;
-            }
-        }
-        c
-    }
-
-    pub fn buffer(&mut self, state: &[f32], labels: &Labels) {
-        let c = self.cell(state);
-        self.pending.push((c, *labels));
-    }
-
-    pub fn pending_len(&self) -> usize {
-        self.pending.len()
-    }
-
-    fn train_one(&mut self, cell: u32, class: usize) {
-        self.substrate.train_observed_transition(
-            RQM_OBSERVER,
-            0.0,
-            &[RQM_CUE_BASE + cell as usize],
-            &[class],
-            0.95,
-        );
-        self.train_calls += 1;
-    }
-
-    fn refresh(&mut self, cell: u32) {
-        let rep = self
-            .substrate
-            .query(RQM_OBSERVER, 0.0, &[RQM_CUE_BASE + cell as usize]);
-        self.query_calls += 1;
-        let mut sc = [0f32; CLASSES];
-        for c in rep.candidates.iter() {
-            if c.agent < CLASSES {
-                sc[c.agent] = c.score.max(0.0);
-            }
-        }
-        let mut out = Vec::with_capacity(HEADS + 1);
-        let mut support = 0f32;
-        for h in 0..HEADS {
-            let (no, yes) = (sc[2 * h], sc[2 * h + 1]);
-            out.push((yes + 1e-3) / (yes + no + 2e-3));
-            support += yes + no;
-        }
-        out.push((support / HEADS as f32).tanh());
-        self.state.cache.insert(cell, out);
-    }
-
-    /// Sueño: entrena el índice con lo bufferizado y destila la tabla de priors.
-    pub fn consolidate(&mut self) -> usize {
-        let pend = std::mem::take(&mut self.pending);
-        let mut touched: Vec<u32> = Vec::new();
-        for (cell, labels) in pend.iter() {
-            for (h, l) in labels.iter().enumerate() {
-                if let Some(b) = l {
-                    let class = 2 * h + *b as usize;
-                    self.train_one(*cell, class);
-                    let e = self
-                        .state
-                        .counts
-                        .entry(*cell)
-                        .or_insert_with(|| vec![0; CLASSES]);
-                    e[class] += 1;
-                }
-            }
-            touched.push(*cell);
-        }
-        touched.sort_unstable();
-        touched.dedup();
-        for c in touched {
-            self.refresh(c);
-        }
-        pend.len()
-    }
-
-    /// Priors (P(sí) por cabeza + soporte); celda no vista → 0.5 / 0.
-    pub fn read(&self, state: &[f32]) -> Vec<f32> {
-        let c = self.cell(state);
-        self.state.cache.get(&c).cloned().unwrap_or_else(|| {
-            let mut v = vec![0.5; HEADS];
-            v.push(0.0);
-            v
-        })
-    }
-
-    /// Reconstruye el sustrato desde los conteos (al cargar un modelo).
-    pub fn restore(&mut self, st: RqmState) {
-        let mut cells: Vec<(u32, Vec<u32>)> = st.counts.clone().into_iter().collect();
-        cells.sort_by_key(|(c, _)| *c);
-        for (cell, counts) in cells {
-            for (class, n) in counts.iter().enumerate() {
-                for _ in 0..(*n).min(4) {
-                    self.train_one(cell, class);
-                }
-            }
-        }
-        self.state = st;
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Acoplamiento con el núcleo de chat (brazos B/C del experimento)
-// ---------------------------------------------------------------------------
-
-/// Respuesta del núcleo de chat (`FusedLiquidCdt`) para cada cue 0..8:
-/// one-hot del concepto predicho + líquido + RQM + margen + ruta.
-pub fn core_response_table(fuse: &mut FusedLiquidCdt) -> Vec<[f32; CORE_DIM]> {
-    let cands: Vec<usize> = (0..fuse.num_labels).collect();
-    (0..8)
-        .map(|cue| {
-            let r = fuse.infer(cue, &cands);
-            let mut v = [0f32; CORE_DIM];
-            v[r.predicted % 8] = 1.0;
-            v[8] = r.liquid_score as f32;
-            v[9] = r.rqm_score.unwrap_or(0.0) as f32;
-            v[10] = r.margin.clamp(-5.0, 5.0) as f32;
-            v[11] = if matches!(r.route, crate::liquid_cdt_rqm_fuse::InferRoute::RqmFallback) {
-                1.0
-            } else {
-                0.0
-            };
-            v
-        })
-        .collect()
-}
-
-// ---------------------------------------------------------------------------
-// Lectura (cabezas logísticas + temperatura)
+// Lectura (cabezas logísticas + temperatura) = teacher consolidado
 // ---------------------------------------------------------------------------
 
 /// Cabezas logísticas con estandarización y temperatura por cabeza.
@@ -1161,30 +699,26 @@ impl Readout {
 }
 
 // ---------------------------------------------------------------------------
-// Router del campo
+// Router del campo v4
 // ---------------------------------------------------------------------------
 
-/// Cómo se acopla el router al núcleo de chat existente.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Coupling {
-    /// (A) sustrato en blanco: solo datos del Spider.
-    Blank,
-    /// (B) núcleo de chat congelado (solo lectura) + capa externa.
-    FrozenCore,
-    /// (C) ajuste fino del núcleo compartido (escribe en el campo del chat).
-    SharedCore,
-}
-
-/// Configuración del router (componentes activos + entrenamiento).
+/// Configuración del router (receta §16 + controles del experimento).
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct FieldConfig {
     pub seed: u64,
-    pub liquid: bool,
-    pub cdt: bool,
-    pub rqm: bool,
-    pub coupling: Coupling,
-    pub n_liquid: usize,
+    /// `false` = control sin campo: decide el teacher logístico directamente.
+    pub dphi: bool,
+    /// Máscara de confianza en el replay (§16). `false` = replay completo.
+    pub trusted: bool,
+    /// Guardia de novedad/OOD.
+    pub ood: bool,
+    /// Ancho oculto de Dφ (§16: 136).
+    pub hidden: usize,
+    /// Pasos de Adam por sueño (batch 16).
+    pub steps: usize,
+    /// Umbral de confianza: |P_teacher − etiqueta| < τ.
+    pub tau: f64,
+    /// Épocas del teacher logístico.
     pub epochs: usize,
     pub l2: f32,
     /// Ejemplos máximos en el buffer de repetición (reservorio).
@@ -1192,15 +726,16 @@ pub struct FieldConfig {
 }
 
 impl FieldConfig {
-    /// (A) por defecto: líquido + CDT + RQM en sustrato en blanco.
-    pub fn blank(seed: u64) -> Self {
+    /// Router v4 por defecto: Dφ gated H136 + replay de confianza + OOD.
+    pub fn v4(seed: u64) -> Self {
         Self {
             seed,
-            liquid: true,
-            cdt: true,
-            rqm: true,
-            coupling: Coupling::Blank,
-            n_liquid: 48,
+            dphi: true,
+            trusted: true,
+            ood: true,
+            hidden: crate::v4_distill::E_HIDDEN,
+            steps: 3000,
+            tau: 0.25,
             epochs: 120,
             l2: 1e-3,
             replay_cap: 24_000,
@@ -1214,7 +749,6 @@ pub struct FieldPrediction {
     /// `P(sí)` calibrada por cabeza.
     pub probs: [f64; HEADS],
     pub novelty: f64,
-    pub cell: Option<u32>,
 }
 
 impl FieldPrediction {
@@ -1237,21 +771,29 @@ pub struct FieldDecision {
 /// Informe de un sueño del router.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct FieldSleepReport {
+    /// Experiencias de vigilia consolidadas (CDT del Spider, luego borrada).
     pub episodes: usize,
-    pub cdt_classes: usize,
-    pub rqm_cells: usize,
+    /// Pares ejemplo×cabeza del replay y cuántos son de confianza.
+    pub replay_pairs: usize,
+    pub trusted_pairs: usize,
+    /// Pérdida final de Dφ (MSE de un paso).
+    pub dphi_loss: f64,
     pub replay: usize,
     pub ms: f64,
 }
 
-/// Modelo persistido (pesos líquidos = semilla; CDT/RQM = estado; lectura).
+/// Modelo persistido: Dφ (checkpoint bit-exacto) + calibración + guardia.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FieldModelFile {
     pub version: u32,
     pub cfg: FieldConfig,
-    pub readout: Readout,
-    pub cdt: Option<CdtState>,
-    pub rqm: Option<RqmState>,
+    pub dphi: Option<String>,
+    /// Solo en el control sin campo (`cfg.dphi = false`).
+    pub teacher: Option<Readout>,
+    pub mean: Vec<f32>,
+    pub std: Vec<f32>,
+    pub temp: Vec<f32>,
+    pub n_labeled: Vec<usize>,
     pub novelty_max: f64,
     pub examples_seen: u64,
     pub sleeps: u64,
@@ -1259,16 +801,24 @@ pub struct FieldModelFile {
     pub holdout: Option<serde_json::Value>,
 }
 
-/// Router del campo para Prompt Spider.
+/// Router del campo v4 para Prompt Spider.
+///
+/// Vigilia: cada ejemplo etiquetado entra en la CDT del Spider (experiencias
+/// pendientes) y en el reservorio de repetición. Sueño: consolida la
+/// repetición en un teacher logístico por cabeza → máscara de confianza →
+/// destila Dφ (cabeza local-lineal con compuerta) con replay de confianza →
+/// calibra por temperatura → borra la CDT. Inferencia: solo Dφ + temperatura
+/// + guardia de novedad (0 consultas a memoria).
 #[derive(Clone, Debug)]
 pub struct SpiderFieldRouter {
     pub cfg: FieldConfig,
-    pub liquid: LiquidEncoder,
-    pub cdt: Option<CdtBasinMemory>,
-    pub rqm: Option<RqmIndex>,
-    /// Tabla de respuesta del núcleo de chat por cue (B/C).
-    pub core: Option<Vec<[f32; CORE_DIM]>>,
-    pub readout: Readout,
+    pub dphi: Option<Dphi>,
+    teacher: Option<Readout>,
+    mean: Vec<f32>,
+    std: Vec<f32>,
+    temp: Vec<f32>,
+    n_labeled: Vec<usize>,
+    wake: usize,
     replay: Vec<SpiderExample>,
     replay_seen: u64,
     rng: Sm,
@@ -1279,24 +829,28 @@ pub struct SpiderFieldRouter {
     pub holdout: Option<serde_json::Value>,
 }
 
+/// Estado inicial de cada cabeza (punto 2-D del campo): (P previa, 1).
+const Q0: [f64; 2] = [0.5, 1.0];
+
+fn logit(p: f64) -> f64 {
+    let p = p.clamp(1e-3, 1.0 - 1e-3);
+    (p / (1.0 - p)).ln()
+}
+
 impl SpiderFieldRouter {
     pub fn new(cfg: FieldConfig) -> Self {
-        let liquid = LiquidEncoder::new(cfg.n_liquid, cfg.seed);
-        let enc_dim = if cfg.liquid {
-            liquid.state_dim()
-        } else {
-            LOCAL_DIM + GLOBAL_DIM
-        };
         Self {
-            cdt: cfg.cdt.then(|| CdtBasinMemory::new(enc_dim, cfg.seed)),
-            rqm: cfg.rqm.then(|| RqmIndex::new(enc_dim, cfg.seed)),
-            liquid,
-            core: None,
-            readout: Readout::default(),
+            dphi: None,
+            teacher: None,
+            mean: Vec::new(),
+            std: Vec::new(),
+            temp: vec![1.0; HEADS],
+            n_labeled: vec![0; HEADS],
+            wake: 0,
             replay: Vec::new(),
             replay_seen: 0,
             rng: Sm(cfg.seed ^ 0xBEEF),
-            novelty_max: 1.0,
+            novelty_max: f64::INFINITY,
             examples_seen: 0,
             sleeps: 0,
             holdout: None,
@@ -1305,7 +859,7 @@ impl SpiderFieldRouter {
     }
 
     pub fn is_trained(&self) -> bool {
-        self.readout.n_labeled.get(H_OK).copied().unwrap_or(0) > 0
+        self.n_labeled.get(H_OK).copied().unwrap_or(0) > 0
     }
 
     pub fn replay_len(&self) -> usize {
@@ -1314,61 +868,51 @@ impl SpiderFieldRouter {
 
     /// Episodios en vigilia pendientes de sueño.
     pub fn wake_len(&self) -> usize {
-        self.cdt
-            .as_ref()
-            .map(|c| c.pending_len())
-            .or_else(|| self.rqm.as_ref().map(|r| r.pending_len()))
-            .unwrap_or(0)
+        self.wake
     }
 
-    /// Estado del encoder: líquido o rasgos crudos (centro + globales).
-    pub fn encode_state(&self, ex: &SpiderExample) -> Vec<f32> {
-        if self.cfg.liquid {
-            self.liquid.run(ex)
-        } else {
-            let mut v = ex.center_local().to_vec();
-            v.extend_from_slice(&ex.global);
-            v
-        }
+    fn standardize(&self, ctx: &[f32]) -> Vec<f64> {
+        ctx.iter()
+            .enumerate()
+            .map(|(d, x)| ((x - self.mean[d]) / self.std[d]).clamp(-6.0, 6.0) as f64)
+            .collect()
     }
 
-    /// Vector de lectura: salto crudo ⊕ estado ⊕ CDT ⊕ RQM ⊕ núcleo.
-    fn features(&self, ex: &SpiderExample, state: &[f32]) -> (Vec<f32>, f32, Option<u32>) {
-        let mut z = ex.center_local().to_vec();
-        z.extend_from_slice(&ex.global);
-        if self.cfg.liquid {
-            z.extend_from_slice(state);
+    fn head_ctx(x: &[f64], h: usize) -> Vec<f64> {
+        let mut c = x.to_vec();
+        c.extend((0..HEADS).map(|k| if k == h { 1.0 } else { 0.0 }));
+        c
+    }
+
+    fn novelty_of(x: &[f64]) -> f64 {
+        (x.iter().map(|v| v * v).sum::<f64>() / x.len().max(1) as f64).sqrt()
+    }
+
+    /// Logit sin calibrar por cabeza (Dφ, o el teacher en el control).
+    fn raw_logits(&self, ex: &SpiderExample) -> ([f64; HEADS], f64) {
+        let ctx = decision_context(ex);
+        let mut out = [0.0; HEADS];
+        if self.mean.is_empty() {
+            return (out, 0.0);
         }
-        let mut novelty = 0f32;
-        if let Some(c) = &self.cdt {
-            let (sims, nov) = c.read(state);
-            z.extend_from_slice(&sims);
-            z.push(nov);
-            novelty = nov;
-        }
-        let mut cell = None;
-        if let Some(r) = &self.rqm {
-            z.extend_from_slice(&r.read(state));
-            cell = Some(r.cell(state));
-        }
-        if self.cfg.coupling != Coupling::Blank {
-            match &self.core {
-                Some(t) => z.extend_from_slice(&t[ex.core_cue % t.len()]),
-                None => z.extend_from_slice(&[0f32; CORE_DIM]),
+        let x = self.standardize(&ctx);
+        let nov = Self::novelty_of(&x);
+        if let Some(d) = &self.dphi {
+            for (h, o) in out.iter_mut().enumerate() {
+                *o = logit(d.step(&Q0, &Self::head_ctx(&x, h))[0]);
+            }
+        } else if let Some(t) = &self.teacher {
+            let p = t.probs(&ctx);
+            for h in 0..HEADS {
+                out[h] = logit(p[h]);
             }
         }
-        (z, novelty, cell)
+        (out, nov)
     }
 
-    /// Vigilia: observa un ejemplo etiquetado (buffer CDT/RQM + repetición).
+    /// Vigilia: observa un ejemplo etiquetado (CDT + repetición).
     pub fn observe(&mut self, ex: SpiderExample) {
-        let state = self.encode_state(&ex);
-        if let Some(c) = self.cdt.as_mut() {
-            c.buffer(&state, &ex.labels);
-        }
-        if let Some(r) = self.rqm.as_mut() {
-            r.buffer(&state, &ex.labels);
-        }
+        self.wake += 1;
         self.examples_seen += 1;
         self.replay_seen += 1;
         if self.replay.len() < self.cfg.replay_cap {
@@ -1381,63 +925,152 @@ impl SpiderFieldRouter {
         }
     }
 
-    /// Sueño: CDT + RQM y reajuste de las cabezas sobre la repetición.
+    /// Sueño: consolidación → teacher → Dφ (§16) → calibración; borra la CDT.
     pub fn sleep(&mut self) -> FieldSleepReport {
         let t0 = Instant::now();
         let mut rep = FieldSleepReport {
-            episodes: self.wake_len(),
+            episodes: self.wake,
             ..Default::default()
         };
-        if let Some(c) = self.cdt.as_mut() {
-            c.consolidate();
-            rep.cdt_classes = c.state.templates.iter().filter(|t| !t.is_empty()).count();
-        }
-        if let Some(r) = self.rqm.as_mut() {
-            r.consolidate();
-            rep.rqm_cells = r.state.cache.len();
-        }
-        self.refit();
+        let (pairs, trusted, loss) = self.refit();
+        rep.replay_pairs = pairs;
+        rep.trusted_pairs = trusted;
+        rep.dphi_loss = loss;
+        self.wake = 0;
         self.sleeps += 1;
         rep.replay = self.replay.len();
         rep.ms = t0.elapsed().as_secs_f64() * 1e3;
         rep
     }
 
-    /// Reajusta las cabezas (calibración = ~20 % de los prompts, por grupo).
-    pub fn refit(&mut self) {
+    /// Consolida la repetición y re-destila Dφ. Devuelve (pares, de
+    /// confianza, pérdida final).
+    pub fn refit(&mut self) -> (usize, usize, f64) {
         if self.replay.is_empty() {
-            return;
+            return (0, 0, 0.0);
         }
-        let mut zs = Vec::with_capacity(self.replay.len());
-        let mut labels = Vec::with_capacity(self.replay.len());
-        let mut cal = Vec::with_capacity(self.replay.len());
-        let mut novs = Vec::new();
-        for ex in &self.replay {
-            let s = self.encode_state(ex);
-            let (z, nov, _) = self.features(ex, &s);
-            zs.push(z);
-            labels.push(ex.labels);
-            cal.push(fnv(&format!("cal{}", ex.group)).is_multiple_of(5));
-            novs.push(nov as f64);
-        }
+        let ctxs: Vec<Vec<f32>> = self.replay.iter().map(decision_context).collect();
+        let labels: Vec<Labels> = self.replay.iter().map(|e| e.labels).collect();
+        let mut cal: Vec<bool> = self
+            .replay
+            .iter()
+            .map(|e| fnv(&format!("cal{}", e.group)).is_multiple_of(5))
+            .collect();
         if cal.iter().all(|c| *c) || cal.iter().all(|c| !*c) {
             cal.iter_mut().for_each(|c| *c = false);
         }
-        self.readout = Readout::fit(&zs, &labels, &cal, self.cfg.epochs, self.cfg.l2);
-        if self.cdt.is_some() && !novs.is_empty() {
-            novs.sort_by(|a, b| a.total_cmp(b));
-            let k = ((novs.len() as f64) * 0.995) as usize;
-            self.novelty_max = novs[k.min(novs.len() - 1)] + 0.02;
+        // 1. Consolidación: teacher logístico por cabeza sobre la experiencia.
+        let teacher = Readout::fit(&ctxs, &labels, &cal, self.cfg.epochs, self.cfg.l2);
+        self.mean = teacher.mean.clone();
+        self.std = teacher.std.clone();
+        self.n_labeled = teacher.n_labeled.clone();
+        let xs: Vec<Vec<f64>> = ctxs.iter().map(|c| self.standardize(c)).collect();
+        // 2. Guardia de novedad: cuantil 99.5 % del radio estandarizado.
+        let mut novs: Vec<f64> = xs.iter().map(|x| Self::novelty_of(x)).collect();
+        novs.sort_by(|a, b| a.total_cmp(b));
+        let k = ((novs.len() as f64) * 0.995) as usize;
+        self.novelty_max = novs[k.min(novs.len() - 1)] * 1.05 + 0.02;
+        if !self.cfg.dphi {
+            self.temp = teacher.temp.clone();
+            self.teacher = Some(teacher);
+            return (0, 0, 0.0);
         }
+        // 3. Máscara de confianza + pares (ejemplo, cabeza) de entrenamiento.
+        let mut real: Vec<(usize, usize, f64)> = Vec::new();
+        let mut replay: Vec<(usize, usize, f64)> = Vec::new();
+        for i in 0..xs.len() {
+            if cal[i] {
+                continue;
+            }
+            let pt = teacher.probs(&ctxs[i]);
+            for h in 0..HEADS {
+                if let Some(y) = labels[i][h] {
+                    let yf = y as u8 as f64;
+                    real.push((i, h, yf));
+                    if !self.cfg.trusted || (pt[h] - yf).abs() < self.cfg.tau {
+                        replay.push((i, h, pt[h]));
+                    }
+                }
+            }
+        }
+        drop(teacher);
+        if real.is_empty() {
+            return (0, 0, 0.0);
+        }
+        // 4. Dφ gated local-lineal + replay de confianza (§16).
+        let mut d = self.dphi.take().unwrap_or_else(|| {
+            Dphi::gated_h(2, CTX_DIM + HEADS, self.cfg.hidden, true, self.cfg.seed)
+        });
+        let budget = TrainBudget {
+            steps: self.cfg.steps,
+            batch: 16,
+            lr: 3e-3,
+        };
+        let any = !replay.is_empty();
+        let loss = d.train_onestep(
+            budget,
+            self.cfg.seed ^ self.sleeps ^ 0x7A,
+            crate::v4_distill::ONESTEP_LR_FINAL,
+            false,
+            |r| {
+                let (i, h, t) = if any && r.gen::<f64>() < crate::field_autonomy_v4::REPLAY_FRACTION
+                {
+                    replay[r.gen_range(0..replay.len())]
+                } else {
+                    real[r.gen_range(0..real.len())]
+                };
+                (Q0.to_vec(), Self::head_ctx(&xs[i], h), vec![t, 1.0])
+            },
+        );
+        // 5. Calibración por temperatura en el split de calibración.
+        let mut temp = vec![1f32; HEADS];
+        for h in 0..HEADS {
+            let rows: Vec<(f64, bool)> = (0..xs.len())
+                .filter(|&i| cal[i])
+                .filter_map(|i| {
+                    labels[i][h].map(|y| (logit(d.step(&Q0, &Self::head_ctx(&xs[i], h))[0]), y))
+                })
+                .collect();
+            if rows.len() < 10 {
+                continue;
+            }
+            let mut best = (f64::INFINITY, 1f32);
+            let mut t = 0.25f32;
+            while t <= 6.0 {
+                let nll: f64 = rows
+                    .iter()
+                    .map(|(s, y)| {
+                        let p = sigmoid(s / t as f64).clamp(1e-6, 1.0 - 1e-6);
+                        if *y {
+                            -p.ln()
+                        } else {
+                            -(1.0 - p).ln()
+                        }
+                    })
+                    .sum();
+                if nll < best.0 {
+                    best = (nll, t);
+                }
+                t += 0.05;
+            }
+            temp[h] = best.1;
+        }
+        self.temp = temp;
+        self.dphi = Some(d);
+        (real.len(), replay.len(), loss)
     }
 
     pub fn predict(&self, ex: &SpiderExample) -> FieldPrediction {
-        let s = self.encode_state(ex);
-        let (z, nov, cell) = self.features(ex, &s);
+        let (lg, nov) = self.raw_logits(ex);
+        let mut probs = [0.5; HEADS];
+        for h in 0..HEADS {
+            if self.n_labeled.get(h).copied().unwrap_or(0) > 0 {
+                probs[h] = sigmoid(lg[h] / self.temp[h].max(0.05) as f64);
+            }
+        }
         FieldPrediction {
-            probs: self.readout.probs(&z),
-            novelty: nov as f64,
-            cell,
+            probs,
+            novelty: nov,
         }
     }
 
@@ -1450,7 +1083,7 @@ impl SpiderFieldRouter {
         let r3 = |x: f64| (x.clamp(0.0, 1.0) * 1000.0).round() / 1000.0;
         let pr = pred.probs;
         let p_ok = r3(pred.p_ok());
-        let ood = self.cdt.is_some() && pred.novelty > self.novelty_max;
+        let ood = self.cfg.ood && pred.novelty > self.novelty_max;
         let trained = self.is_trained();
         let needs_approval = pr[H_APR] >= 0.5;
         let ambiguous = pr[H_AMB] >= 0.5;
@@ -1479,7 +1112,7 @@ impl SpiderFieldRouter {
             needs_approval,
             p: p_ok,
             note: format!(
-                "campo · rel {:.2} · fund {:.2} · amb {:.2} · aprob {:.2} · ok {:.3} · novedad {:.3}",
+                "campo v4 · rel {:.2} · fund {:.2} · amb {:.2} · aprob {:.2} · ok {:.3} · novedad {:.3}",
                 pr[H_REL], pr[H_GRD], pr[H_AMB], pr[H_APR], p_ok, pred.novelty
             ),
         };
@@ -1492,18 +1125,16 @@ impl SpiderFieldRouter {
         }
     }
 
-    /// Instala la tabla de respuesta del núcleo de chat (B/C).
-    pub fn set_core_table(&mut self, t: Vec<[f32; CORE_DIM]>) {
-        self.core = Some(t);
-    }
-
     pub fn to_file(&self) -> FieldModelFile {
         FieldModelFile {
             version: MODEL_VERSION,
             cfg: self.cfg,
-            readout: self.readout.clone(),
-            cdt: self.cdt.as_ref().map(|c| c.state.clone()),
-            rqm: self.rqm.as_ref().map(|r| r.state.clone()),
+            dphi: self.dphi.as_ref().map(|d| d.to_ckpt()),
+            teacher: self.teacher.clone(),
+            mean: self.mean.clone(),
+            std: self.std.clone(),
+            temp: self.temp.clone(),
+            n_labeled: self.n_labeled.clone(),
             novelty_max: self.novelty_max,
             examples_seen: self.examples_seen,
             sleeps: self.sleeps,
@@ -1518,13 +1149,15 @@ impl SpiderFieldRouter {
             return Err(format!("versión de modelo {} no soportada", f.version));
         }
         let mut r = Self::new(f.cfg);
-        if let (Some(c), Some(st)) = (r.cdt.as_mut(), f.cdt) {
-            c.restore(st);
-        }
-        if let (Some(q), Some(st)) = (r.rqm.as_mut(), f.rqm) {
-            q.restore(st);
-        }
-        r.readout = f.readout;
+        r.dphi = match f.dphi {
+            Some(s) => Some(Dphi::from_ckpt(&s).ok_or("checkpoint Dφ inválido")?),
+            None => None,
+        };
+        r.teacher = f.teacher;
+        r.mean = f.mean;
+        r.std = f.std;
+        r.temp = f.temp;
+        r.n_labeled = f.n_labeled;
         r.novelty_max = f.novelty_max;
         r.examples_seen = f.examples_seen;
         r.sleeps = f.sleeps;
@@ -2266,14 +1899,13 @@ mod tests {
         assert_eq!(a.window.len(), WINDOW * LOCAL_DIM);
         assert_eq!(a.global.len(), GLOBAL_DIM);
         assert_eq!(a.window, b.window);
-        let enc = LiquidEncoder::new(16, 7);
-        assert_eq!(enc.run(&a), enc.run(&b));
-        assert_eq!(enc.run(&a).len(), 32);
+        assert_eq!(decision_context(&a), decision_context(&b));
+        assert_eq!(decision_context(&a).len(), CTX_DIM);
     }
 
     #[test]
     fn untrained_router_never_resolves() {
-        let r = SpiderFieldRouter::new(FieldConfig::blank(1));
+        let r = SpiderFieldRouter::new(FieldConfig::v4(1));
         let ap = AnalyzedPrompt::new(SAMPLE_PROMPT, DEFAULT_THRESHOLD);
         for i in 0..ap.tokens.len() {
             if let Some(ex) = ap.encode(i, [None; HEADS], LabelSource::Scorer, 0) {
@@ -2326,9 +1958,9 @@ mod tests {
     /// guardado reproduce las predicciones.
     #[test]
     fn small_router_learns_and_roundtrips() {
-        let mut cfg = FieldConfig::blank(3);
-        cfg.n_liquid = 24;
+        let mut cfg = FieldConfig::v4(3);
         cfg.epochs = 60;
+        cfg.steps = 1500;
         let mut r = SpiderFieldRouter::new(cfg);
         let mut rng = Sm(9);
         for seed in 0..40 {
@@ -2338,8 +1970,11 @@ mod tests {
             }
         }
         let rep = r.sleep();
-        assert!(rep.cdt_classes >= 8, "{rep:?}");
-        assert!(rep.rqm_cells > 0);
+        assert!(
+            rep.trusted_pairs > 0 && rep.trusted_pairs <= rep.replay_pairs,
+            "{rep:?}"
+        );
+        assert_eq!(r.wake_len(), 0, "el sueño borra la CDT");
         assert!(r.is_trained());
         let mut rows = Vec::new();
         let mut hold = Vec::new();
