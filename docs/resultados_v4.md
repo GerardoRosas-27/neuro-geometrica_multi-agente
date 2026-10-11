@@ -358,3 +358,29 @@ El gate §16 habilita este paso, pero el plan §6 pide usar "el Ψ64 obtenido en
 - Los embeddings de Gemma de E43/E44 (`artifacts/v4/lang/emb_gemma.json`) tienen 2304 dimensiones. No hay una entrada Gemma→Ψ64 compatible: cualquier proyección 2304→512 o un Ψ64 re-entrenado sobre Gemma sería un componente **nuevo**, no "el Ψ64 de E45 congelado".
 
 Para no cambiar el diseño sin aprobación, E43/E44 con Ψ64 quedan **NOT_RUN** y el ciclo se detiene aquí. Opciones para decidir: (a) re-entrenar un bottleneck Ψ64 con la receta E45 sobre hidden de Gemma (pre-registro nuevo, encoder entrenado sólo con palabras TRAIN y luego congelado); (b) E55 de la rama token-free (Ψ64 sobre Gemma real) y después importarlo; (c) una proyección fija 2304→512 + Ψ64 E45 como control negativo de transferencia.
+
+## §18 — E43/E44 sobre un Ψ64 nuevo entrenado con Gemma y congelado (`training/v4_psi64/e43_psi64.py`)
+
+Pre-registro §18 (`918cbed`). DEV corrido en `918cbed`, CONFIRM en `defb74d` (sólo añade artefactos DEV; código idéntico), git_dirty=false. El primer intento de CONFIRM se perdió por una caída del box y se re-corrió sin cambios. Artefactos: `artifacts/v4/psi64/{dev,confirm}/` (`metrics.csv`, `encoder_manifest.jsonl` con sha256 de cada encoder, `config.json` con sha256 de los caches, `ckpt/`, `summary.txt`).
+
+**Encoder (por seed, DEV/CONF):** entrenado sólo con las 42 palabras de los 21 pares españoles de conceptos TRAIN. Loss 12.1 → ~1e-5, acc de concepto en TRAIN 1.000 y acc de forma de la transición 1.000 (memoriza su set). Leakage (palabras de conceptos novedosos en el entrenamiento) = 0 en 32/32, queries=0, proceso nuevo idéntico 32/32. El teacher lineal tiene LOO ≈0.67–0.68 ≫ τ=1 %, así que el replay de confianza nunca se activó (Dφ entrenado sólo con pares TRAIN reales).
+
+**E43 — accuracy en conceptos novedosos (es / en / fr / ja), medias de 16 seeds:**
+
+| Método | §18 DEV | §18 CONF | §11 DEV | §11 CONF |
+|---|---|---|---|---|
+| E3 Dφ gated (Gemma-Ψ64) | 0.368 / 0.187 / 0.281 / 0.148 | 0.333 / 0.264 / 0.349 / 0.084 | 0.194 / 0.042 / 0.064 / 0.077 | 0.167 / 0.056 / 0.086 / 0.058 |
+| MLP gated (control) | 0.333 / 0.153 / 0.246 / 0.148 | 0.382 / 0.187 / 0.319 / 0.064 | — | — |
+| Dφ plain | 0.354 / 0.194 / 0.295 / 0.171 | 0.326 / 0.257 / 0.341 / 0.103 | — | — |
+| OFFSET lineal | 0.396 / 0.118 / 0.210 / 0.153 | 0.410 / 0.167 / 0.254 / 0.083 | 0.319 / 0.069 / 0.177 / 0.030 | 0.264 / 0.090 / 0.214 / 0.010 |
+| R: E3 sobre Ψ64 del encoder aleatorio | 0.368 / 0.139 / 0.239 / 0.009 | 0.465 / 0.187 / 0.327 / 0.000 | 0.076 / 0.035 / 0.062 / 0.054 | 0.181 / 0.076 / 0.141 / 0.042 |
+| STATIC | 0 | 0 | 0 | 0 |
+
+**E44 — pooled sobre novedosos, Dφ entrenado con Gemma-Ψ64 (DEV / CONF):** Gemma directo 0.255 / 0.275; Qwen alineado por 96 anclas 0.064 / 0.067; aleatorio alineado 0.070 / 0.106; Gemma alineado por anclas (techo de la alineación) 0.090 / 0.076.
+
+| Gate | DEV | CONF | Estado |
+|---|---|---|---|
+| E43 (≥2 de en/fr/ja ≥ max(STATIC, R)+0.05) | 8/16 | 6/16 | **FAIL** (PARTIAL por §5: 5–8/16) |
+| E44 (Qwen ≥ R+0.05 y ≥ 0.5·Gemma) | 1/16 | 1/16 | **FAIL** |
+
+Lectura honesta: el Ψ64 entrenado sobre Gemma sube la accuracy absoluta frente a §11 (en/fr ×3–4), pero el control aleatorio sube casi lo mismo: el encoder de trigramas + su Ψ64 capta los sufijos ortográficos compartidos ("-s", "-a/-e"). La única ventaja clara de Gemma está en japonés, donde la ortografía no ayuda (0.15/0.08 vs 0.01/0.00). E3 no supera al control MLP, al Dφ plain ni al OFFSET lineal de forma consistente → nada atribuible a la dinámica ni a la receta §16 (el replay de confianza no se activó). E44 sigue fallando porque la alineación por anclas destruye la estructura (incluso Gemma→Gemma por anclas cae de 0.26 a 0.08–0.09). Limitación principal: 21 pares de entrenamiento; el encoder memoriza. Estado del ciclo: **E43/E44 FAIL; el plan se detiene aquí.**
