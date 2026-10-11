@@ -685,3 +685,19 @@ pub fn run_seed(seed: u64, ga: &Emb, gb: &Emb) -> LangOut {
         note44,
     }
 }
+
+/// §18: the exact §11 concept split for one seed (TRAIN concepts), so the
+/// JAX Ψ64 pipeline reuses identical splits.
+pub fn train_concepts(seed: u64) -> Vec<&'static str> {
+    let mut rng = Xoshiro256StarStar::seed_from_u64(seed ^ 0x43);
+    let mut concepts: Vec<&'static str> = PLURAL
+        .iter()
+        .map(|c| c.0)
+        .chain(FEMININE.iter().map(|c| c.0))
+        .collect();
+    for i in (1..concepts.len()).rev() {
+        concepts.swap(i, rng.gen_range(0..=i));
+    }
+    let ntr = (concepts.len() as f64 * 0.7).round() as usize;
+    concepts[..ntr].to_vec()
+}
