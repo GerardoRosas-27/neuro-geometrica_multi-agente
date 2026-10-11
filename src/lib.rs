@@ -109,6 +109,8 @@ pub mod v4_provenance;
 #[allow(clippy::all)]
 pub mod v4_qwen2_hidden;
 pub mod v4_stability;
+/// v5: multi-horizon field prediction. Episodes in CDT, no rule teacher.
+pub mod v5_predict;
 /// VMC Jastrow complejo. Compila porque el unificado lo invoca; no justifica
 /// el módulo en el crate público. Tests detrás de `research`. Ver docs/archive.md.
 pub mod variational_spin_liquid_vmc;

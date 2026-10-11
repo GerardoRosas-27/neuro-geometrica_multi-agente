@@ -122,6 +122,69 @@ impl Mlp {
             }
         }
     }
+
+    /// d(out) → d(input), same tanh backward as [`backward`] without parameter accumulation.
+    pub fn input_grad(&self, h: &[f64], d_out: &[f64]) -> Vec<f64> {
+        let mut dh = vec![0.0; self.dh];
+        for k in 0..self.dout {
+            let dk = d_out[k];
+            if dk == 0.0 {
+                continue;
+            }
+            for j in 0..self.dh {
+                dh[j] += dk * self.w2[k * self.dh + j];
+            }
+        }
+        let mut din = vec![0.0; self.din];
+        for j in 0..self.dh {
+            let dz = dh[j] * (1.0 - h[j] * h[j]);
+            for i in 0..self.din {
+                din[i] += dz * self.w1[j * self.din + i];
+            }
+        }
+        din
+    }
+
+    /// Same as [`forward`] without allocating the activations.
+    pub fn forward_into(&self, inp: &[f64], h: &mut [f64], o: &mut [f64]) {
+        for j in 0..self.dh {
+            let row = &self.w1[j * self.din..(j + 1) * self.din];
+            let mut a = self.b1[j];
+            for i in 0..self.din {
+                a += row[i] * inp[i];
+            }
+            h[j] = a.tanh();
+        }
+        for k in 0..self.dout {
+            let row = &self.w2[k * self.dh..(k + 1) * self.dh];
+            let mut a = self.b2[k];
+            for j in 0..self.dh {
+                a += row[j] * h[j];
+            }
+            o[k] = a;
+        }
+    }
+
+    /// Same as [`input_grad`] into caller buffers.
+    pub fn input_grad_into(&self, h: &[f64], d_out: &[f64], din: &mut [f64], dh: &mut [f64]) {
+        dh.fill(0.0);
+        for k in 0..self.dout {
+            let dk = d_out[k];
+            if dk == 0.0 {
+                continue;
+            }
+            for j in 0..self.dh {
+                dh[j] += dk * self.w2[k * self.dh + j];
+            }
+        }
+        din.fill(0.0);
+        for j in 0..self.dh {
+            let dz = dh[j] * (1.0 - h[j] * h[j]);
+            for i in 0..self.din {
+                din[i] += dz * self.w1[j * self.din + i];
+            }
+        }
+    }
 }
 
 /// Adam optimiser state for a flat parameter vector.
@@ -195,6 +258,66 @@ pub struct Dphi {
 
 /// Point dimension of the field.
 pub const PD: usize = 2;
+
+/// Reused buffers for multi-horizon backprop. Training calls this once per seed.
+struct HorizonScratch {
+    zdim: usize,
+    npts: usize,
+    hmax: usize,
+    state: Vec<f64>,
+    hid: Vec<f64>,
+    raw: Vec<f64>,
+    inp: Vec<f64>,
+    d_state: Vec<f64>,
+    d_prev: Vec<f64>,
+    d_inp: Vec<f64>,
+    dh: Vec<f64>,
+}
+
+impl HorizonScratch {
+    fn new() -> Self {
+        Self {
+            zdim: 0,
+            npts: 0,
+            hmax: 0,
+            state: Vec::new(),
+            hid: Vec::new(),
+            raw: Vec::new(),
+            inp: Vec::new(),
+            d_state: Vec::new(),
+            d_prev: Vec::new(),
+            d_inp: Vec::new(),
+            dh: Vec::new(),
+        }
+    }
+
+    fn prepare(
+        &mut self,
+        zdim: usize,
+        hmax: usize,
+        npts: usize,
+        dh: usize,
+        dout: usize,
+        din: usize,
+    ) {
+        if self.zdim == zdim && self.hmax == hmax && self.npts == npts && self.dh.len() == dh {
+            self.d_state.fill(0.0);
+            return;
+        }
+        self.zdim = zdim;
+        self.npts = npts;
+        self.hmax = hmax;
+        self.state.resize((hmax + 1) * zdim, 0.0);
+        self.hid.resize(hmax * npts * dh, 0.0);
+        self.raw.resize(hmax * npts * dout, 0.0);
+        self.inp.resize(din, 0.0);
+        self.d_state.resize(zdim, 0.0);
+        self.d_prev.resize(zdim, 0.0);
+        self.d_inp.resize(din, 0.0);
+        self.dh.resize(dh, 0.0);
+        self.d_state.fill(0.0);
+    }
+}
 
 pub const HIDDEN: usize = 64;
 
@@ -402,6 +525,180 @@ impl Dphi {
             last = loss / budget.batch as f64;
         }
         last
+    }
+
+    /// `dL/d raw` and `dL/d q` through one field step, into `d_raw` (length `dout`).
+    fn step_grad_into(&self, q: &[f64], raw: &[f64], d_qp: &[f64], d_raw: &mut [f64]) -> [f64; PD] {
+        if self.is_gated() {
+            let (g0, g1) = (d_qp[0], d_qp[1]);
+            d_raw[0] = g0 * q[0];
+            d_raw[1] = g0 * q[1];
+            d_raw[2] = g1 * q[0];
+            d_raw[3] = g1 * q[1];
+            d_raw[4] = g0;
+            d_raw[5] = g1;
+            let r = if self.residual { 1.0 } else { 0.0 };
+            [
+                g0 * (r + raw[0]) + g1 * raw[2],
+                g0 * raw[1] + g1 * (r + raw[3]),
+            ]
+        } else {
+            let r = if self.residual { 1.0 } else { 0.0 };
+            d_raw[0] = d_qp[0];
+            d_raw[1] = d_qp[1];
+            [r * d_qp[0], r * d_qp[1]]
+        }
+    }
+
+    /// Add one episode's multi-horizon gradient into `g`. Returns the loss sum
+    /// (the parameter gradient is already divided by `batch`).
+    fn accum_horizon(
+        &self,
+        ws: &mut HorizonScratch,
+        x0: &[f64],
+        c: &[f64],
+        future: &[Vec<f64>],
+        loss_at: &[usize],
+        batch: usize,
+        g: &mut [f64],
+    ) -> f64 {
+        let hmax = future.len();
+        let zdim = x0.len();
+        let npts = zdim / PD;
+        let dh = self.net.dh;
+        let dout = self.net.dout;
+        let din = self.net.din;
+        ws.prepare(zdim, hmax, npts, dh, dout, din);
+        ws.state[..zdim].copy_from_slice(x0);
+        for t in 0..hmax {
+            for p in 0..npts {
+                let q_off = t * zdim + p * PD;
+                let q0 = ws.state[q_off];
+                let q1 = ws.state[q_off + 1];
+                ws.inp[0] = q0;
+                ws.inp[1] = q1;
+                ws.inp[PD..din].copy_from_slice(c);
+                let h_off = (t * npts + p) * dh;
+                let r_off = (t * npts + p) * dout;
+                let y = {
+                    let h = &mut ws.hid[h_off..h_off + dh];
+                    let o = &mut ws.raw[r_off..r_off + dout];
+                    self.net.forward_into(&ws.inp, h, o);
+                    self.combine(&[q0, q1], o)
+                };
+                let n_off = (t + 1) * zdim + p * PD;
+                ws.state[n_off] = y[0];
+                ws.state[n_off + 1] = y[1];
+            }
+        }
+        let bscale = batch.max(1) as f64;
+        let mut loss = 0.0;
+        let mut d_raw = [0.0f64; 6];
+        for t in (1..=hmax).rev() {
+            if loss_at.contains(&t) {
+                let y = &future[t - 1];
+                let base = t * zdim;
+                let scale = 1.0 / y.iter().map(|v| v * v).sum::<f64>().max(1e-6);
+                let mut se = 0.0;
+                for i in 0..zdim {
+                    let diff = ws.state[base + i] - y[i];
+                    se += diff * diff;
+                    ws.d_state[i] += 2.0 * diff * scale / bscale;
+                }
+                loss += se * scale;
+            }
+            ws.d_prev.fill(0.0);
+            for p in 0..npts {
+                let q_off = (t - 1) * zdim + p * PD;
+                let q = [ws.state[q_off], ws.state[q_off + 1]];
+                let d_qp = [ws.d_state[p * PD], ws.d_state[p * PD + 1]];
+                let h_off = ((t - 1) * npts + p) * dh;
+                let r_off = ((t - 1) * npts + p) * dout;
+                let raw_l = {
+                    let mut tmp = [0.0f64; 6];
+                    tmp[..dout].copy_from_slice(&ws.raw[r_off..r_off + dout]);
+                    tmp
+                };
+                let d_q = self.step_grad_into(&q, &raw_l[..dout], &d_qp, &mut d_raw[..dout]);
+                ws.inp[0] = q[0];
+                ws.inp[1] = q[1];
+                ws.inp[PD..din].copy_from_slice(c);
+                self.net
+                    .backward(&ws.inp, &ws.hid[h_off..h_off + dh], &d_raw[..dout], g);
+                self.net.input_grad_into(
+                    &ws.hid[h_off..h_off + dh],
+                    &d_raw[..dout],
+                    &mut ws.d_inp,
+                    &mut ws.dh,
+                );
+                ws.d_prev[p * PD] = d_q[0] + ws.d_inp[0];
+                ws.d_prev[p * PD + 1] = d_q[1] + ws.d_inp[1];
+            }
+            for i in 0..zdim {
+                ws.d_state[i] = ws.d_prev[i];
+            }
+        }
+        loss
+    }
+
+    /// Relative multi-horizon loss of one episode and its parameter gradient.
+    /// `future[k - 1]` is the true field at step `k`. Scale matches
+    /// `train_onestep`: `2 (ŷ − y) / ‖y‖²`, divided by `batch`.
+    pub fn horizon_grad(
+        &self,
+        x0: &[f64],
+        c: &[f64],
+        future: &[Vec<f64>],
+        loss_at: &[usize],
+        batch: usize,
+    ) -> (f64, Vec<f64>) {
+        let mut ws = HorizonScratch::new();
+        let mut g = vec![0.0; self.net.n_params()];
+        let loss = self.accum_horizon(&mut ws, x0, c, future, loss_at, batch, &mut g);
+        (loss, g)
+    }
+
+    /// Iterated-field training. Same cosine schedule as [`train_onestep`].
+    /// Returns `(last mean loss, max batch-gradient L2)`.
+    pub fn train_horizon<F>(
+        &mut self,
+        budget: TrainBudget,
+        seed: u64,
+        lr_final: f64,
+        loss_at: &[usize],
+        mut sampler: F,
+    ) -> (f64, f64)
+    where
+        F: FnMut(&mut Xoshiro256StarStar) -> (Vec<f64>, Vec<f64>, Vec<Vec<f64>>),
+    {
+        let mut rng = Xoshiro256StarStar::seed_from_u64(seed);
+        let n = self.net.n_params();
+        let mut opt = Adam::new(n, budget.lr);
+        let mut p = self.net.flat();
+        let mut ws = HorizonScratch::new();
+        let mut g = vec![0.0; n];
+        let mut last = 0.0;
+        let mut max_gn = 0.0;
+        for step in 0..budget.steps {
+            let t = step as f64 / budget.steps.max(1) as f64;
+            opt.lr =
+                lr_final + 0.5 * (budget.lr - lr_final) * (1.0 + (std::f64::consts::PI * t).cos());
+            g.fill(0.0);
+            let mut loss = 0.0;
+            for _ in 0..budget.batch {
+                let (x0, c, future) = sampler(&mut rng);
+                loss +=
+                    self.accum_horizon(&mut ws, &x0, &c, &future, loss_at, budget.batch, &mut g);
+            }
+            let gn = g.iter().map(|v| v * v).sum::<f64>().sqrt();
+            if gn > max_gn {
+                max_gn = gn;
+            }
+            opt.step(&mut p, &g);
+            self.net.set_flat(&p);
+            last = loss / budget.batch as f64;
+        }
+        (last, max_gn)
     }
 
     /// E45-L1: predictive-error-gated plasticity. Examples whose one-step
