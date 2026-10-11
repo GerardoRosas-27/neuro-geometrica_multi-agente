@@ -1,113 +1,46 @@
-pub mod adaptive_gemma2;
-/// Protocolo cognitivo al 100 %. Feature `research`, fuera de smoke.
-#[cfg(feature = "research")]
-pub mod advanced_cognitive_validation;
-pub mod agent_graph;
-pub mod basin_external_baselines;
-/// Protocolo cognitivo al 100 %. Feature `research`, fuera de smoke.
-#[cfg(feature = "research")]
-pub mod cognitive_generalization_benchmark;
-pub mod cognitive_logistics;
-/// SO cognitivo de laboratorio. Feature `research`, fuera de smoke.
-#[cfg(feature = "research")]
-pub mod cognitive_os;
-pub mod consolidation_basin_experiment;
-/// Gate de cognición emergente. El entrenador infinito no lo usa; sale del
-/// crate público (feature `research`). Ver docs/archive.md.
-#[cfg(feature = "research")]
-pub mod emergent_cognition_training;
-/// Comparador huérfano. Feature `research`. Ver docs/archive.md.
-#[cfg(feature = "research")]
-pub mod engine_comparison;
-pub mod entanglement;
-/// Etapa 2: autonomía del campo / aprendizaje de reglas (E18–E30).
-pub mod field_autonomy_stage2;
-/// Clean-Room v2 (§29+): independent generator, sealed TEST, anti-contamination.
-pub mod field_autonomy_stage2_v2;
-pub mod field_encoder;
+//! neuro-geométrica · arquitectura v4 (única en `main`).
+//!
+//! * **Campo v4** — `field_autonomy_v4` (harness E31–E45), `v4_*` (dataset
+//!   sellado, controles, Dφ, procedencia, métricas, destilación §16, lenguaje
+//!   E43/E44) y `field_v4` (motor que usa la app).
+//! * **Periferia LLM** — `native_gemma2*` + `field_gemma_probe` (Gemma 2 GGUF
+//!   congelado; sólo verbaliza / responde en modo crudo).
+//! * **Prompt Spider** — `prompt_spider`, `spider_field*` y su router de campo
+//!   (que conserva su sustrato líquido/CDT/RQM propio: `liquid_cdt_*`,
+//!   `wave_predict_core`, `native_thermo*`, `entanglement`, `relational_field`).
+//! * **Web** (`--features web`) — app agentica Axum.
+
+// Campo v4
+pub mod field_autonomy_v4;
+pub mod field_v4;
+pub mod v4_controls;
+pub mod v4_dataset;
+pub mod v4_distill;
+pub mod v4_e45;
+pub mod v4_language;
+pub mod v4_metrics;
+pub mod v4_provenance;
+#[allow(clippy::all)]
+pub mod v4_qwen2_hidden;
+pub mod v4_stability;
+
+// Periferia LLM (Gemma 2 GGUF)
 pub mod field_gemma_probe;
-/// Eval completa train+infer+CDT vs main RQM.
-pub mod field_hybrid_full_eval;
-/// Campo sin tokens + híbrido onda/RQM; LLM solo decode periférico.
-pub mod field_hybrid_infer;
-pub mod field_linguistic_layer;
-pub mod field_substrate;
-/// Entrenamiento donde un prior generativo propone futuros y F postselecciona
-/// qué trayectoria puede pasar al gate de consolidación CDT.
-pub mod future_guided_training;
-pub mod gemma2_circadian_bridge;
-pub mod gemma2_thermo_hybrid_llm;
-pub mod gemma2_thermo_hybrid_session;
-pub mod gemma_future_generator;
-pub mod gemma_operator_bridge;
-pub mod gemma_phasor_coupling;
-pub mod hybrid_thermo_attention;
-pub mod hybrid_thermo_attention_comparison;
-/// Híbrido: ondas (cue nuevo) + RQM (cue entrenado).
-pub mod hybrid_wave_rqm_infer;
-pub mod layer_route_benchmark;
-pub mod layer_route_cache;
-/// Dos secciones: líquido (inferencia) + Thermo CDT (memoria tras sueño); RQM solo en sueño.
-pub mod liquid_cdt_memory;
-/// Híbrido fusionado: líquido (infer) + CDT (sueño) + RQM índice relacional (fallback).
-pub mod liquid_cdt_rqm_fuse;
-/// Bench detallado: LiquidCdt (NEW) vs NativeThermoRqm estilo MAIN.
-pub mod liquid_cdt_vs_main_bench;
-/// Experimentos 11–17: campo entrenable (encoder θ + dinámica φ).
-pub mod liquid_experiments_11_17;
-/// Experimentos 8/9/10: invariancia, composición, predicción futura (rama exp).
-pub mod liquid_experiments_8_9_10;
-pub mod matrix_free_cognitive_substrate;
-pub mod native_checkpoint;
-pub mod native_cognitive_closed_loop;
 pub mod native_gemma2;
 pub mod native_gemma2_runtime;
-pub mod native_hybrid_phasor_cdt_engine;
-pub mod native_multi_operator_core;
-pub mod native_phasor_thermodynamic_engine;
-/// Red plástica de simetría. Nadie la consume. Feature `research`.
-/// Ver docs/archive.md.
-#[cfg(feature = "research")]
-pub mod native_plastic_symmetry_network;
+
+// Prompt Spider + sustrato de su router de campo
+pub mod entanglement;
+pub mod liquid_cdt_memory;
+pub mod liquid_cdt_rqm_fuse;
 pub mod native_rng;
 pub mod native_thermo_rqm_epr;
 pub mod native_thermodynamic_cdt;
-pub mod native_thermodynamic_engine;
-pub mod oxicuda_peps3d_backend;
-pub mod oxicuda_pyrochlore_backend;
-pub mod plasticity_controller;
-/// POC: WavePredictCore vs NativeThermoCdt — latencia/acc núcleo inferencia.
-pub mod poc_liquid_vs_thermo;
-/// Prompt Spider: crawler determinista de prompts (cada palabra, un fork).
 pub mod prompt_spider;
-pub mod pyrochlore_graph_tensor_network;
-pub mod quantum_spin_thermodynamic_engine;
 pub mod relational_field;
-pub mod residue_budget;
-pub mod residue_vacuum_bridge;
-pub mod residue_vacuum_fluctuation;
-pub mod simplicial_thermodynamic_engine;
 pub mod spider_field;
 pub mod spider_field_experiment;
-pub mod symmetry_guided_rqm_epr;
-pub mod symmetry_thermodynamic_substrate;
-pub mod thermo_router;
-pub mod thermodynamic_attractor_comparison;
-/// Comparación de estructuras temporales de inferencia: evidencia sola,
-/// evidencia como frontera y dos vectores de estado con post-selección.
-pub mod transactional_training_experiment;
-/// Familias de transformación. Feature `research`, fuera de smoke.
-#[cfg(feature = "research")]
-pub mod transformation_family_discovery;
-/// Orquestador CDT–spin–RQM–EPR. Compila porque el entrenador gated lo
-/// invoca; no es el paper de cuenca. Tests detrás de `research`.
-pub mod unified_spin_cognitive_engine;
-/// VMC Jastrow complejo. Compila porque el unificado lo invoca; no justifica
-/// el módulo en el crate público. Tests detrás de `research`. Ver docs/archive.md.
-pub mod variational_spin_liquid_vmc;
-/// Predicción por interferencia pasado×futuro (líquido de ondas).
 pub mod wave_predict_core;
 
-/// App web agentica (chat + telemetría). Feature `web`.
 #[cfg(feature = "web")]
 pub mod web;

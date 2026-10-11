@@ -1,18 +1,14 @@
-//! Job de entrenamiento en vivo: dataset LLM (periferia) → líquido → CDT por lotes.
+//! Job de entrenamiento en vivo del campo v4.
 //!
-//! Pipeline por lote/dataset:
-//! 1. Generar dataset (Gemma o curriculum `lexicon_synth`) — solo periferia.
-//! 2. Encode texto → features → concept_id (firewall; sin tokens en FieldState).
-//! 3. `fuse.observe` / `fuse.infer` (ruta líquida / WavePredictCore).
-//! 4. `sleep_consolidate` → engramas CDT + checkpoint **por dataset** en
-//!    `data/checkpoints/datasets/`.
-//! 5. Decode opcional concepto→texto (LLM decoder only).
+//! Por lote: dataset v4 sellado (generador geométrico, TEST con SHA-256) →
+//! experiencia en la CDT de vigilia → consolidación (teacher) → Dφ con la
+//! receta §16 (cabeza local-lineal con compuerta + replay de confianza) →
+//! evaluación limpia en el TEST sellado del lote → checkpoint bit-exacto de Dφ
+//! en `data/checkpoints/v4/`.
 //!
 //! Por defecto el entrenamiento es **infinito** (solo para con cancel/stop).
 
-use crate::web::llm_periphery::{generate_train_batch, TrainExample, NUM_CONCEPTS};
-
-use crate::web::telemetry::SleepReportDto;
+use crate::field_v4::TrainBatchReport;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::VecDeque;
@@ -28,7 +24,6 @@ pub struct TrainLiveEvent {
     pub kind: String,
     pub message: String,
     pub batch: Option<usize>,
-    pub engrams: Option<usize>,
     #[serde(default)]
     pub metrics: Value,
 }
@@ -37,39 +32,28 @@ pub struct TrainLiveEvent {
 pub struct CheckpointMeta {
     pub path: String,
     pub batch: usize,
-    pub engrams: usize,
     pub ts_ms: u64,
     pub accuracy: Option<f64>,
+    pub weights_hash: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug)]
 pub struct TrainJob {
     pub job_id: String,
     pub running: bool,
     pub cancelled: bool,
-    /// Contador monotónico de datasets/lotes completados (0, 1, 2…).
+    /// Lotes completados (0, 1, 2…).
     pub current_batch: usize,
     /// `None` cuando `infinite == true`.
     pub total_batches: Option<usize>,
     pub infinite: bool,
-    pub epochs: usize,
-    pub batch_size: usize,
+    /// Pasos de optimización de Dφ por lote.
+    pub steps: usize,
     pub events: VecDeque<TrainLiveEvent>,
     pub last_checkpoint: Option<CheckpointMeta>,
-    pub dataset_size: usize,
-    pub accuracy: Option<f64>,
-    pub engrams: usize,
-    pub last_decoded: Option<String>,
-    pub dataset_source: Option<String>,
+    pub last_report: Option<TrainBatchReport>,
     pub event_seq: u64,
-    pub correct: u64,
-    pub total: u64,
-    pub datasets_saved: usize,
-    pub last_dataset_path: Option<String>,
-    /// Última familia de dataset generada (E8–E30 / core).
-    pub last_dataset_family: Option<String>,
-    /// IDs de experimento del último lote.
-    pub last_experiment_ids: Vec<String>,
+    pub checkpoints_saved: usize,
 }
 
 impl Default for TrainJob {
@@ -81,22 +65,12 @@ impl Default for TrainJob {
             current_batch: 0,
             total_batches: None,
             infinite: true,
-            epochs: 1,
-            batch_size: 8,
+            steps: crate::field_v4::APP_TRAIN_STEPS,
             events: VecDeque::new(),
             last_checkpoint: None,
-            dataset_size: 0,
-            accuracy: None,
-            engrams: 0,
-            last_decoded: None,
-            dataset_source: None,
+            last_report: None,
             event_seq: 0,
-            correct: 0,
-            total: 0,
-            datasets_saved: 0,
-            last_dataset_path: None,
-            last_dataset_family: None,
-            last_experiment_ids: Vec::new(),
+            checkpoints_saved: 0,
         }
     }
 }
@@ -107,20 +81,17 @@ impl TrainJob {
         kind: &str,
         message: impl Into<String>,
         batch: Option<usize>,
-        engrams: Option<usize>,
         metrics: Value,
     ) {
         self.event_seq = self.event_seq.wrapping_add(1);
-        let ev = TrainLiveEvent {
+        self.events.push_back(TrainLiveEvent {
             seq: self.event_seq,
             ts_ms: now_ms(),
             kind: kind.into(),
             message: message.into(),
             batch,
-            engrams,
             metrics,
-        };
-        self.events.push_back(ev);
+        });
         while self.events.len() > MAX_EVENTS {
             self.events.pop_front();
         }
@@ -142,20 +113,12 @@ impl TrainJob {
             current_batch: self.current_batch,
             total_batches: self.total_batches,
             infinite: self.infinite,
-            epochs: self.epochs,
-            batch_size: self.batch_size,
+            steps: self.steps,
             events: self.events.iter().cloned().collect(),
             last_checkpoint: self.last_checkpoint.clone(),
-            dataset_size: self.dataset_size,
-            accuracy: self.accuracy,
-            engrams: self.engrams,
-            last_decoded: self.last_decoded.clone(),
-            dataset_source: self.dataset_source.clone(),
+            last_report: self.last_report.clone(),
             event_seq: self.event_seq,
-            datasets_saved: self.datasets_saved,
-            last_dataset_path: self.last_dataset_path.clone(),
-            last_dataset_family: self.last_dataset_family.clone(),
-            last_experiment_ids: self.last_experiment_ids.clone(),
+            checkpoints_saved: self.checkpoints_saved,
         }
     }
 }
@@ -168,20 +131,12 @@ pub struct TrainJobSnapshot {
     pub current_batch: usize,
     pub total_batches: Option<usize>,
     pub infinite: bool,
-    pub epochs: usize,
-    pub batch_size: usize,
+    pub steps: usize,
     pub events: Vec<TrainLiveEvent>,
     pub last_checkpoint: Option<CheckpointMeta>,
-    pub dataset_size: usize,
-    pub accuracy: Option<f64>,
-    pub engrams: usize,
-    pub last_decoded: Option<String>,
-    pub dataset_source: Option<String>,
+    pub last_report: Option<TrainBatchReport>,
     pub event_seq: u64,
-    pub datasets_saved: usize,
-    pub last_dataset_path: Option<String>,
-    pub last_dataset_family: Option<String>,
-    pub last_experiment_ids: Vec<String>,
+    pub checkpoints_saved: usize,
 }
 
 /// Request de arranque. `batches` acepta número, null, 0 o `"infinite"`.
@@ -189,10 +144,8 @@ pub struct TrainJobSnapshot {
 pub struct LiveTrainStartRequest {
     #[serde(default)]
     pub batches: Option<Value>,
-    pub batch_size: Option<usize>,
-    pub epochs: Option<usize>,
-    /// Compat con API antigua.
-    pub concepts: Option<Vec<usize>>,
+    /// Pasos de Dφ por lote (def. [`crate::field_v4::APP_TRAIN_STEPS`]).
+    pub steps: Option<usize>,
 }
 
 /// Interpreta el campo `batches` del body.
@@ -237,125 +190,51 @@ pub struct LiveTrainStartResponse {
     pub infinite: Option<bool>,
 }
 
-#[derive(Clone, Debug, Serialize)]
-pub struct CheckpointFile {
+/// Checkpoint bit-exacto de Dφ + informe del lote que lo produjo.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct DphiCheckpointFile {
+    pub architecture: String,
     pub job_id: String,
     pub batch: usize,
-    pub engrams: usize,
-    pub accuracy: Option<f64>,
-    pub dataset_size: usize,
-    pub dataset_source: Option<String>,
-    pub sleep: Option<SleepReportDto>,
-    pub relational_cues: Vec<usize>,
-    pub events_tail: Vec<TrainLiveEvent>,
     pub ts_ms: u64,
-}
-
-/// Checkpoint rico **por dataset** (ejemplos + métricas líquido + sueño + decoder).
-#[derive(Clone, Debug, Serialize)]
-pub struct DatasetCheckpointFile {
-    pub dataset_id: String,
-    pub job_id: String,
-    pub batch: usize,
-    pub source: String,
-    #[serde(default)]
-    pub dataset_family: Option<String>,
-    #[serde(default)]
-    pub experiment_ids: Vec<String>,
-    pub examples: Vec<TrainExample>,
-    pub liquid: LiquidDatasetMetrics,
-    pub sleep: Option<SleepReportDto>,
-    pub decoder_preview: Option<String>,
-    pub engrams: usize,
-    pub accuracy: Option<f64>,
-    pub ts_ms: u64,
-}
-
-#[derive(Clone, Debug, Serialize)]
-pub struct LiquidDatasetMetrics {
-    pub scores: Vec<f64>,
-    pub preds: Vec<usize>,
-    pub correct: u64,
-    pub total: u64,
-    pub last_score: f64,
-    pub last_pred: usize,
+    pub report: Option<TrainBatchReport>,
+    /// `Dphi::to_ckpt()` (f64 como bits u64).
+    pub dphi: String,
 }
 
 pub fn checkpoints_dir() -> PathBuf {
-    let candidates = [
-        PathBuf::from("data/checkpoints"),
-        PathBuf::from("./data/checkpoints"),
-        PathBuf::from("/app/data/checkpoints"),
-    ];
-    for c in &candidates {
-        if c.parent().map(|p| p.exists()).unwrap_or(false) || c.exists() {
-            return c.clone();
+    if let Ok(d) = std::env::var("NGM_CHECKPOINT_DIR") {
+        return PathBuf::from(d);
+    }
+    for c in ["data/checkpoints/v4", "/app/data/checkpoints/v4"] {
+        let p = PathBuf::from(c);
+        if p.parent().map(|p| p.exists()).unwrap_or(false) || p.exists() {
+            return p;
         }
     }
-    PathBuf::from("data/checkpoints")
+    PathBuf::from("data/checkpoints/v4")
 }
 
-pub fn datasets_dir() -> PathBuf {
-    checkpoints_dir().join("datasets")
-}
-
-pub fn ensure_checkpoints_dir() -> std::io::Result<PathBuf> {
+pub fn write_dphi_checkpoint(file: &DphiCheckpointFile) -> std::io::Result<PathBuf> {
     let dir = checkpoints_dir();
     fs::create_dir_all(&dir)?;
-    Ok(dir)
-}
-
-pub fn ensure_datasets_dir() -> std::io::Result<PathBuf> {
-    let dir = datasets_dir();
-    fs::create_dir_all(&dir)?;
-    Ok(dir)
-}
-
-pub fn write_checkpoint(file: &CheckpointFile) -> std::io::Result<PathBuf> {
-    let dir = ensure_checkpoints_dir()?;
-    let name = format!("train_{}_batch_{}.json", file.ts_ms, file.batch);
-    let path = dir.join(name);
-    let json = serde_json::to_vec_pretty(file)
+    let path = dir.join(format!("dphi_{}_b{}.json", file.ts_ms, file.batch));
+    let json = serde_json::to_vec(file)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
     fs::write(&path, json)?;
+    let latest =
+        json!({ "path": path.display().to_string(), "batch": file.batch, "ts_ms": file.ts_ms });
+    fs::write(dir.join("latest.json"), serde_json::to_vec_pretty(&latest)?)?;
     Ok(path)
 }
 
-pub fn write_dataset_checkpoint(file: &DatasetCheckpointFile) -> std::io::Result<PathBuf> {
-    let dir = ensure_datasets_dir()?;
-    let name = format!("train_{}_ds_{}.json", file.ts_ms, file.batch);
-    let path = dir.join(name);
-    let json = serde_json::to_vec_pretty(file)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-    fs::write(&path, json)?;
-    Ok(path)
-}
-
-/// Índice pequeño apuntando al último checkpoint de dataset.
-pub fn write_latest_index(
-    dataset_path: &str,
-    job_id: &str,
-    batch: usize,
-    datasets_saved: usize,
-) -> std::io::Result<PathBuf> {
-    let dir = ensure_checkpoints_dir()?;
-    let path = dir.join("latest.json");
-    let body = json!({
-        "last_dataset_path": dataset_path,
-        "job_id": job_id,
-        "batch": batch,
-        "datasets_saved": datasets_saved,
-        "ts_ms": now_ms(),
-    });
-    fs::write(&path, serde_json::to_vec_pretty(&body)?)?;
-    Ok(path)
-}
-
-/// Curriculum sintético público para tests (mismo que `generate_train_batch` léxico).
-pub fn synth_dataset(batch_size: usize, seed: u64) -> Vec<TrainExample> {
-    let (items, _) = generate_train_batch(batch_size, seed, false);
-    // meta descartada: solo ejemplos para tests unitarios
-    items
+/// Último checkpoint de Dφ (persistencia entre reinicios, como E38).
+pub fn read_latest_dphi() -> Option<(PathBuf, DphiCheckpointFile)> {
+    let dir = checkpoints_dir();
+    let idx: Value = serde_json::from_slice(&fs::read(dir.join("latest.json")).ok()?).ok()?;
+    let path = PathBuf::from(idx.get("path")?.as_str()?);
+    let file: DphiCheckpointFile = serde_json::from_slice(&fs::read(&path).ok()?).ok()?;
+    Some((path, file))
 }
 
 pub fn now_ms() -> u64 {
@@ -365,103 +244,30 @@ pub fn now_ms() -> u64 {
         .unwrap_or(0)
 }
 
-/// Relación ligera para ejercitar buffer + RQM en sueño (tokenless).
-pub fn relation_target(concept: usize) -> usize {
-    (concept + 1) % NUM_CONCEPTS
-}
-
-pub fn batch_metrics(
-    source: &str,
-    examples: usize,
-    correct: u64,
-    total: u64,
-    liquid_score: f64,
-) -> Value {
-    json!({
-        "source": source,
-        "examples": examples,
-        "correct": correct,
-        "total": total,
-        "liquid_score": liquid_score,
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn synth_generates_n_items() {
-        let items = synth_dataset(5, 42);
-        assert_eq!(items.len(), 5);
-        for it in &items {
-            assert!(!it.text.is_empty());
-            assert!(it.concept < NUM_CONCEPTS);
-        }
-    }
-
-    #[test]
-    fn checkpoint_file_written() {
-        let dir = ensure_checkpoints_dir().expect("mkdir");
-        let file = CheckpointFile {
-            job_id: "test-job".into(),
+    fn dphi_checkpoint_roundtrip() {
+        let dir = std::env::temp_dir().join(format!("ngm_ckpt_{}", now_ms()));
+        std::env::set_var("NGM_CHECKPOINT_DIR", &dir);
+        let d = crate::field_v4::new_dphi(5);
+        let f = DphiCheckpointFile {
+            architecture: "v4".into(),
+            job_id: "t".into(),
             batch: 0,
-            engrams: 3,
-            accuracy: Some(0.5),
-            dataset_size: 8,
-            dataset_source: Some("lexicon_synth".into()),
-            sleep: None,
-            relational_cues: vec![0, 1],
-            events_tail: vec![],
-            ts_ms: 1_700_000_000_000,
+            ts_ms: now_ms(),
+            report: None,
+            dphi: d.to_ckpt(),
         };
-        let path = write_checkpoint(&file).expect("write");
-        assert!(path.exists());
-        assert!(path.starts_with(&dir) || path.to_string_lossy().contains("checkpoints"));
-        let raw = fs::read_to_string(&path).unwrap();
-        let v: Value = serde_json::from_str(&raw).unwrap();
-        assert_eq!(v["job_id"], "test-job");
-        assert_eq!(v["engrams"], 3);
-        let _ = fs::remove_file(&path);
-    }
-
-    #[test]
-    fn dataset_checkpoint_and_latest() {
-        let file = DatasetCheckpointFile {
-            dataset_id: "ds_test_0".into(),
-            job_id: "test-job".into(),
-            batch: 0,
-            source: "lexicon_synth".into(),
-            dataset_family: Some("core_agentic".into()),
-            experiment_ids: vec!["core".into()],
-            examples: vec![TrainExample {
-                text: "hola".into(),
-                concept: 1,
-            }],
-            liquid: LiquidDatasetMetrics {
-                scores: vec![0.9],
-                preds: vec![1],
-                correct: 1,
-                total: 1,
-                last_score: 0.9,
-                last_pred: 1,
-            },
-            sleep: None,
-            decoder_preview: Some("hola".into()),
-            engrams: 2,
-            accuracy: Some(1.0),
-            ts_ms: 1_700_000_000_001,
-        };
-        let path = write_dataset_checkpoint(&file).expect("write ds");
-        assert!(path.exists());
-        assert!(path.to_string_lossy().contains("datasets"));
-        let latest = write_latest_index(path.to_str().unwrap(), "test-job", 0, 1).expect("latest");
-        assert!(latest.exists());
-        let raw = fs::read_to_string(&latest).unwrap();
-        let v: Value = serde_json::from_str(&raw).unwrap();
-        assert_eq!(v["datasets_saved"], 1);
-        let _ = fs::remove_file(&path);
-        let _ = fs::remove_file(&latest);
+        let p = write_dphi_checkpoint(&f).unwrap();
+        assert!(p.exists());
+        let (_, back) = read_latest_dphi().unwrap();
+        let d2 = crate::field_v4::from_checkpoint(&back.dphi).unwrap();
+        assert_eq!(d.weights_hash(), d2.weights_hash());
+        std::env::remove_var("NGM_CHECKPOINT_DIR");
+        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]
@@ -483,8 +289,8 @@ mod tests {
     #[test]
     fn events_after_filters() {
         let mut job = TrainJob::default();
-        job.push_event("dataset", "a", Some(0), Some(0), json!({}));
-        job.push_event("batch_start", "b", Some(0), Some(0), json!({}));
+        job.push_event("dataset", "a", Some(0), json!({}));
+        job.push_event("batch_start", "b", Some(0), json!({}));
         let after = job.events_after(1);
         assert_eq!(after.len(), 1);
         assert_eq!(after[0].kind, "batch_start");

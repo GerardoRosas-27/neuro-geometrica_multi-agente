@@ -18,7 +18,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-/// Id reservado del LLM local (Gemma 2 GGUF / léxico).
+/// Id reservado del LLM local (Gemma 2 GGUF).
 pub const LOCAL_ID: &str = "gemma_local";
 /// Id del proveedor definido por variables de entorno.
 pub const ENV_ID: &str = "env";
@@ -1100,7 +1100,12 @@ fn map_ureq_error(e: ureq::Error, cfg: &ProviderConfig) -> String {
         ureq::Error::Transport(t) => {
             let msg = redact(t.to_string());
             let lower = msg.to_ascii_lowercase();
-            if lower.contains("timed out") || lower.contains("timeout") {
+            // Windows reporta el read-timeout del socket como WSAETIMEDOUT (os error 10060).
+            if lower.contains("timed out")
+                || lower.contains("timeout")
+                || lower.contains("os error 10060")
+                || lower.contains("failed to respond")
+            {
                 format!(
                     "tiempo de espera agotado hablando con {} ({msg})",
                     cfg.base_url
@@ -1223,7 +1228,7 @@ pub fn field_decoder_messages(user_msg: &str, field_state: &str) -> Vec<ChatMess
     vec![
         ChatMessage::new(
             "system",
-            "Eres el decoder de un modelo de campo (líquido/CDT/RQM). No inventes el estado: \
+            "Eres el decoder de un modelo de campo v4 (Dφ). No inventes el estado: \
              verbaliza en español, en 1-3 frases, la respuesta al usuario y cierra mencionando \
              el estado del campo que se te da.",
         ),

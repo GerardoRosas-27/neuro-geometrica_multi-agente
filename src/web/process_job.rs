@@ -4,8 +4,7 @@
 //! `running`/`cancelled`, y snapshot completo en status para que un refresh
 //! reconstruya la consola sin reiniciar el trabajo.
 
-use crate::web::field_eval::FieldEvalReport;
-use crate::web::sleep_optimize::{SleepOptimizeOpts, SleepOptimizeReport};
+use crate::field_v4::{SleepReport, SmokeReport};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::VecDeque;
@@ -83,9 +82,8 @@ pub struct SleepJob {
     pub running: bool,
     pub cancelled: bool,
     pub phase: String,
-    pub prune_intensity: f64,
-    pub compact_intensity: f64,
-    pub consolidate_first: bool,
+    /// Pasos de destilación Dφ por ciclo de sueño.
+    pub steps: usize,
     /// Ciclos de optimización completados (se incrementa al terminar cada uno).
     pub current_cycle: usize,
     /// `None` cuando `infinite == true`.
@@ -95,7 +93,7 @@ pub struct SleepJob {
     pub event_seq: u64,
     pub started_ms: Option<u64>,
     pub finished_ms: Option<u64>,
-    pub last_report: Option<SleepOptimizeReport>,
+    pub last_report: Option<SleepReport>,
 }
 
 impl Default for SleepJob {
@@ -105,9 +103,7 @@ impl Default for SleepJob {
             running: false,
             cancelled: false,
             phase: "idle".into(),
-            prune_intensity: 0.55,
-            compact_intensity: 0.55,
-            consolidate_first: true,
+            steps: crate::field_v4::APP_SLEEP_STEPS,
             current_cycle: 0,
             total_cycles: None,
             infinite: true,
@@ -135,24 +131,13 @@ impl SleepJob {
         events_after(&self.events, after)
     }
 
-    pub fn opts(&self) -> SleepOptimizeOpts {
-        SleepOptimizeOpts {
-            prune_intensity: self.prune_intensity,
-            compact_intensity: self.compact_intensity,
-            // Solo consolidar wake buffer en el primer ciclo.
-            consolidate_first: self.consolidate_first && self.current_cycle == 0,
-        }
-    }
-
     pub fn snapshot_for_api(&self) -> SleepJobSnapshot {
         SleepJobSnapshot {
             job_id: self.job_id.clone(),
             running: self.running,
             cancelled: self.cancelled,
             phase: self.phase.clone(),
-            prune_intensity: self.prune_intensity,
-            compact_intensity: self.compact_intensity,
-            consolidate_first: self.consolidate_first,
+            steps: self.steps,
             current_cycle: self.current_cycle,
             total_cycles: self.total_cycles,
             infinite: self.infinite,
@@ -173,9 +158,8 @@ pub struct SleepJobSnapshot {
     pub running: bool,
     pub cancelled: bool,
     pub phase: String,
-    pub prune_intensity: f64,
-    pub compact_intensity: f64,
-    pub consolidate_first: bool,
+    /// Pasos de destilación Dφ por ciclo de sueño.
+    pub steps: usize,
     pub current_cycle: usize,
     pub total_cycles: Option<usize>,
     pub infinite: bool,
@@ -186,7 +170,7 @@ pub struct SleepJobSnapshot {
     pub event_seq: u64,
     pub started_ms: Option<u64>,
     pub finished_ms: Option<u64>,
-    pub last_report: Option<SleepOptimizeReport>,
+    pub last_report: Option<SleepReport>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -216,7 +200,7 @@ pub struct TestsJob {
     pub event_seq: u64,
     pub started_ms: Option<u64>,
     pub finished_ms: Option<u64>,
-    pub last_report: Option<FieldEvalReport>,
+    pub last_report: Option<SmokeReport>,
 }
 
 impl Default for TestsJob {
@@ -294,7 +278,7 @@ pub struct TestsJobSnapshot {
     pub event_seq: u64,
     pub started_ms: Option<u64>,
     pub finished_ms: Option<u64>,
-    pub last_report: Option<FieldEvalReport>,
+    pub last_report: Option<SmokeReport>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -371,9 +355,11 @@ mod tests {
 
     #[test]
     fn sleep_snapshot_exposes_cycle_aliases() {
-        let mut job = SleepJob::default();
-        job.current_cycle = 2;
-        job.infinite = true;
+        let job = SleepJob {
+            current_cycle: 2,
+            infinite: true,
+            ..Default::default()
+        };
         let snap = job.snapshot_for_api();
         assert_eq!(snap.current_batch, 2);
         assert!(snap.infinite);

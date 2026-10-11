@@ -1,0 +1,42 @@
+{
+ "git_sha": "defb74d3ef9dee855bee622fa6770d50881b09b6",
+ "git_dirty": false,
+ "phase": "confirm",
+ "seeds": [
+  "0xB400",
+  "0xB401",
+  "0xB402",
+  "0xB403",
+  "0xB404",
+  "0xB405",
+  "0xB406",
+  "0xB407",
+  "0xB408",
+  "0xB409",
+  "0xB40A",
+  "0xB40B",
+  "0xB40C",
+  "0xB40D",
+  "0xB40E",
+  "0xB40F"
+ ],
+ "wall_s": 774.6097431182861,
+ "emb_gemma_sha256": "9f91f68a010ff8aee83adabfe8fc08e27ce48e95f57c8dd3fea4444f7cce4ece",
+ "emb_qwen_sha256": "4d48a877d9ebeb37c3df7c173e3c8cf093ae1a8c71931fee084cfd904927048f",
+ "emb_random_sha256": "b3bead0afa7e022d95497a45da9f5fbaed66f8e5256c604b155bafe4d35b06de",
+ "task_sha256": "dcaba1ef0e1ab3a93bdeb8fa36426fb476300d848780e23cd0850f32859b7ab0",
+ "constants": {
+  "N_PSI": 64,
+  "ENC_H": 256,
+  "ENC_STEPS": 1500,
+  "ENC_LR": 0.002,
+  "D_H": 136,
+  "D_STEPS": 24000,
+  "D_BATCH": 8,
+  "LR0": 0.003,
+  "LR1": 3e-05,
+  "WD": 0.0001,
+  "TAU": 0.01,
+  "REPLAY": 0.5
+ }
+}

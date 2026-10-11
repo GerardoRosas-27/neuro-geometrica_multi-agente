@@ -3,7 +3,7 @@
 # público con sha256 verificado. Si falta en runtime (DOWNLOAD_GGUF=0 o volumen
 # vacío), el binario lo descarga al arrancar en segundo plano (GEMMA2_GGUF_URL).
 
-# sysinfo 0.39 / zip 8.x requieren rustc >= 1.95 / 1.88 (no usar 1.85).
+# Requiere rustc estable reciente (rust:bookworm).
 FROM rust:bookworm AS builder
 WORKDIR /src
 RUN apt-get update && apt-get install -y --no-install-recommends \

@@ -1,0 +1,8 @@
+experiment,seed,condition,partition,n_examples,params,compute,accuracy,cosine,energy,manifold_distance,stability,leakage,cdt_queries,rqm_queries,table_queries,nn_queries,attractor_queries,direct_memory_queries,status,notes
+DIST_A,0x5A00,A_train_only,TEST,256,962,128000,0.2188,0.8717,0.9912,0.1811,0.0826,0,0,0,0,0,0,0,CLEAN,"teacher_to_model_rel=0.0925 sigma_med=1.1089 capture=0.275"
+DIST_A,0x5A00,B_consolidation_route,TEST,256,962,128000,0.2891,0.9039,0.9680,0.1774,0.0781,0,0,0,0,0,0,0,CLEAN,"teacher_to_model_rel=0.0694 sigma_med=1.0786 capture=0.363"
+DIST_A,0x5A00,D1_teacher_distill,TEST,256,962,128000,0.2656,0.8991,0.9699,0.1765,0.0836,0,0,0,0,0,0,0,CLEAN,"teacher_to_model_rel=0.0703 sigma_med=1.0749 capture=0.333"
+DIST_A,0x5A00,M1_mlp_direct_distill,TEST,256,962,128000,0.2266,0.9132,0.9679,0.1788,0.0847,0,0,0,0,0,0,0,CLEAN,"teacher_to_model_rel=0.0687 sigma_med=1.0682 capture=0.284"
+DIST_A,0x5A00,D4_teacher_distill_4xsteps,TEST,256,962,512000,0.3438,0.9063,0.9901,0.1721,0.0837,0,0,0,0,0,0,0,CLEAN,"teacher_to_model_rel=0.0707 sigma_med=1.0575 capture=0.431"
+DIST_A,0x5A00,T_teacher_direct,TEST,256,384,0,0.7969,0.9658,0.9984,0.1583,0.0374,0,0,0,0,0,0,0,CLEAN,"posthoc auditor-side; structured hypothesis class"
+DIST_A,0x5A00,GATE,TEST,0,0,0,0.0000,0.0000,0.0000,0.0000,0.0000,0,0,0,0,0,0,0,FAIL,"T=0.7969 A=0.2188 B=0.2891 D1=0.2656 M1=0.2266 D4=0.3438 relerr_B=0.0781 relerr_D1=0.0836 relerr_T=0.0374 fresh_D1=0.2656(q=0,pid=621854) clean=true ckpt=fe94b9782bfd"

@@ -1,0 +1,19 @@
+== DIST_B
+  DPHI_H64                       params=962    acc=0.3674 rel_err1=0.0693 t2m=0.0626 sigma=1.098 wall_s=2.00
+  MLP_H64                        params=962    acc=0.3342 rel_err1=0.0708 t2m=0.0639 sigma=1.095 wall_s=1.97
+  DPHI_H136                      params=2042   acc=0.4138 rel_err1=0.0668 t2m=0.0598 sigma=1.087 wall_s=3.96
+  MLP_H136                       params=2042   acc=0.4211 rel_err1=0.0668 t2m=0.0594 sigma=1.086 wall_s=3.96
+  DPHI_H272                      params=4082   acc=0.3413 rel_err1=0.0727 t2m=0.0660 sigma=1.087 wall_s=7.58
+  MLP_H272                       params=4082   acc=0.3569 rel_err1=0.0720 t2m=0.0651 sigma=1.079 wall_s=7.67
+  DPHI_H544                      params=8162   acc=0.3193 rel_err1=0.0770 t2m=0.0704 sigma=1.087 wall_s=14.60
+  MLP_H544                       params=8162   acc=0.3369 rel_err1=0.0778 t2m=0.0711 sigma=1.081 wall_s=15.02
+  B_consolidation_route_H64      params=962    acc=0.3774 rel_err1=0.0690 t2m=0.0643 sigma=1.098
+  T_teacher_direct               params=384    acc=0.8308 rel_err1=0.0253
+  leakage=0 queries=0 gate_seeds_PASS=9/16
+  DPHI_H136 - DPHI_H64: diff=+0.0464 CI95=[-0.0239,+0.1121] wins=12/16
+  DPHI_H272 - DPHI_H64: diff=-0.0261 CI95=[-0.0940,+0.0425] wins=6/16
+  DPHI_H544 - DPHI_H64: diff=-0.0481 CI95=[-0.1155,+0.0144] wins=4/16
+  DPHI_H64 - MLP_H64: diff=+0.0332 CI95=[-0.0117,+0.0725] wins=11/16
+  DPHI_H136 - MLP_H136: diff=-0.0073 CI95=[-0.0596,+0.0398] wins=8/16
+  DPHI_H272 - MLP_H272: diff=-0.0156 CI95=[-0.0850,+0.0535] wins=8/16
+  DPHI_H544 - MLP_H544: diff=-0.0176 CI95=[-0.0794,+0.0449] wins=7/16

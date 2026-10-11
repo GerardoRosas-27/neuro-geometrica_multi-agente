@@ -1,0 +1,17 @@
+seed 0xB400 done 40s e43=False e44=False pooled={'gemma_E3': 0.2727272727272727, 'qwen_aligned': 0.06060606060606061, 'random_aligned': 0.12121212121212122, 'gemma_aligned': 0.09090909090909091}
+seed 0xB401 done 71s e43=True e44=False pooled={'gemma_E3': 0.2647058823529412, 'qwen_aligned': 0.029411764705882353, 'random_aligned': 0.0, 'gemma_aligned': 0.14705882352941177}
+seed 0xB402 done 99s e43=False e44=False pooled={'gemma_E3': 0.23333333333333334, 'qwen_aligned': 0.03333333333333333, 'random_aligned': 0.2, 'gemma_aligned': 0.06666666666666667}
+seed 0xB403 done 126s e43=False e44=True pooled={'gemma_E3': 0.22580645161290322, 'qwen_aligned': 0.12903225806451613, 'random_aligned': 0.06451612903225806, 'gemma_aligned': 0.12903225806451613}
+seed 0xB404 done 152s e43=True e44=False pooled={'gemma_E3': 0.18181818181818182, 'qwen_aligned': 0.09090909090909091, 'random_aligned': 0.09090909090909091, 'gemma_aligned': 0.09090909090909091}
+seed 0xB405 done 181s e43=False e44=False pooled={'gemma_E3': 0.22580645161290322, 'qwen_aligned': 0.12903225806451613, 'random_aligned': 0.12903225806451613, 'gemma_aligned': 0.0}
+seed 0xB406 done 208s e43=False e44=False pooled={'gemma_E3': 0.34375, 'qwen_aligned': 0.125, 'random_aligned': 0.09375, 'gemma_aligned': 0.03125}
+seed 0xB407 done 234s e43=False e44=False pooled={'gemma_E3': 0.30303030303030304, 'qwen_aligned': 0.06060606060606061, 'random_aligned': 0.18181818181818182, 'gemma_aligned': 0.06060606060606061}
+seed 0xB408 done 260s e43=False e44=False pooled={'gemma_E3': 0.1875, 'qwen_aligned': 0.03125, 'random_aligned': 0.15625, 'gemma_aligned': 0.0625}
+seed 0xB409 done 621s e43=True e44=False pooled={'gemma_E3': 0.3333333333333333, 'qwen_aligned': 0.09090909090909091, 'random_aligned': 0.06060606060606061, 'gemma_aligned': 0.09090909090909091}
+seed 0xB40A done 649s e43=True e44=False pooled={'gemma_E3': 0.24242424242424243, 'qwen_aligned': 0.030303030303030304, 'random_aligned': 0.06060606060606061, 'gemma_aligned': 0.030303030303030304}
+seed 0xB40B done 674s e43=False e44=False pooled={'gemma_E3': 0.3235294117647059, 'qwen_aligned': 0.08823529411764706, 'random_aligned': 0.14705882352941177, 'gemma_aligned': 0.11764705882352941}
+seed 0xB40C done 698s e43=False e44=False pooled={'gemma_E3': 0.30303030303030304, 'qwen_aligned': 0.0, 'random_aligned': 0.12121212121212122, 'gemma_aligned': 0.12121212121212122}
+seed 0xB40D done 723s e43=True e44=False pooled={'gemma_E3': 0.3870967741935484, 'qwen_aligned': 0.03225806451612903, 'random_aligned': 0.03225806451612903, 'gemma_aligned': 0.03225806451612903}
+seed 0xB40E done 749s e43=True e44=False pooled={'gemma_E3': 0.2571428571428571, 'qwen_aligned': 0.08571428571428572, 'random_aligned': 0.08571428571428572, 'gemma_aligned': 0.08571428571428572}
+seed 0xB40F done 774s e43=False e44=False pooled={'gemma_E3': 0.3125, 'qwen_aligned': 0.0625, 'random_aligned': 0.15625, 'gemma_aligned': 0.0625}
+E43 PASS 6/16  E44 PASS 1/16

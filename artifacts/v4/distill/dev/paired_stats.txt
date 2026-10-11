@@ -1,0 +1,13 @@
+== DIST_A
+  A_train_only                   params=962    acc=0.2314 rel_err1=0.0790 t2m=0.0812 sigma=1.121
+  B_consolidation_route          params=962    acc=0.3386 rel_err1=0.0705 t2m=0.0659 sigma=1.095
+  D1_teacher_distill             params=962    acc=0.3342 rel_err1=0.0725 t2m=0.0651 sigma=1.092
+  M1_mlp_direct_distill          params=962    acc=0.3181 rel_err1=0.0729 t2m=0.0651 sigma=1.089
+  D4_teacher_distill_4xsteps     params=962    acc=0.6096 rel_err1=0.0570 t2m=0.0449 sigma=1.066
+  T_teacher_direct               params=384    acc=0.8291 rel_err1=0.0274
+  leakage=0 queries=0 gate_seeds_PASS=3/16
+  D1_teacher_distill - B_consolidation_route: diff=-0.0044 CI95=[-0.0298,+0.0190] wins=8/16
+  D1_teacher_distill - A_train_only: diff=+0.1028 CI95=[+0.0508,+0.1541] wins=11/16
+  D1_teacher_distill - M1_mlp_direct_distill: diff=+0.0161 CI95=[-0.0330,+0.0693] wins=7/16
+  D4_teacher_distill_4xsteps - D1_teacher_distill: diff=+0.2754 CI95=[+0.1980,+0.3501] wins=16/16
+  fresh-process OK 16/16

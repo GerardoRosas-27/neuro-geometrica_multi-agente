@@ -6,16 +6,16 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <title>Neuro-Geométrica · Campo agentico</title>
-  <link rel="stylesheet" href="/styles.css?v=37" />
+  <link rel="stylesheet" href="/styles.css?v=100" />
 </head>
 <body>
   <header class="top">
     <div>
-      <h1>Campo agentico · Líquido / CDT / RQM</h1>
-      <p class="sub">Chat = decoder del campo (bandera) o Gemma 2 original · Train desacoplado · Sueño optimiza F y simetría · Pruebas evalúan el modelo</p>
+      <h1>Campo agentico · v4 (Dφ + CDT + teacher)</h1>
+      <p class="sub">Chat = decoder del campo v4 (bandera) o LLM directo · Entrenamiento: dataset sellado → CDT → teacher → Dφ (§16) · Sueño consolida y borra la CDT · Pruebas: smoke v4 con auditoría de memoria cero</p>
     </div>
     <div class="badges">
-      <label class="llm-global" title="LLM que usa toda la app (chat, decoder del campo y datasets de entrenamiento)">
+      <label class="llm-global" title="LLM que usa la app (chat crudo, verbalización del decoder del campo y Prompt Spider)">
         <span>LLM activo</span>
         <select id="llm-select" aria-label="LLM activo de la aplicación">
           <option value="gemma_local">Gemma local</option>
@@ -43,18 +43,18 @@
     <!-- CHAT -->
     <section id="main-chat" class="main-panel active">
       <div class="chat-toolbar">
-        <label class="switch" title="Activo: el campo (líquido/CDT/RQM) responde y Gemma solo interpreta (decoder). Inactivo: Gemma 2 congelado original, sin campo.">
+        <label class="switch" title="Activo: el campo v4 (Dφ) calcula la transformación pedida y el LLM solo la verbaliza (decoder). Inactivo: LLM directo, sin campo.">
           <input type="checkbox" id="chk-field-decoder" checked />
           <span class="slider" aria-hidden="true"></span>
           <span class="switch-label">Decoder del campo</span>
         </label>
-        <span id="chat-mode-hint" class="chat-mode-hint">Activo · campo líquido/CDT/RQM → Gemma interpreta (decoder-only)</span>
+        <span id="chat-mode-hint" class="chat-mode-hint">Activo · campo v4 (Dφ) → Gemma verbaliza (decoder-only)</span>
         <span id="chat-llm" class="llm-chip" title="LLM activo (cámbialo arriba o en Modelos / API)">LLM: Gemma local</span>
         <button type="button" id="btn-new-chat" class="btn-new-chat" title="Borra la conversación en esta pantalla y el historial del servidor (contexto Gemma OFF)">Nuevo chat</button>
       </div>
       <div id="messages" class="messages" aria-live="polite"></div>
       <form id="chat-form" class="composer">
-        <input id="chat-input" type="text" placeholder="Pregunta al campo (decoder de engramas/conceptos)…" autocomplete="off" />
+        <input id="chat-input" type="text" placeholder="Pide una transformación al campo: «rota 0.3», «refleja», «escala»…" autocomplete="off" />
         <button type="submit">Enviar</button>
       </form>
     </section>
@@ -63,10 +63,11 @@
     <section id="main-train" class="main-panel">
       <div class="panel-grid">
         <div>
-          <h2>Entrenamiento en vivo</h2>
-      <p class="hint">El LLM activo (Gemma local o la API elegida en <strong>Modelos / API</strong>) genera datasets por familia: core / líquido E8–E10 / campo E11–E17 / autonomía E18–E30. Con <strong>Infinito</strong> rota familias indefinidamente; cada lote se guarda en checkpoints/datasets.</p>
+          <h2>Entrenamiento v4 en vivo</h2>
+      <p class="hint">Cada lote genera un <strong>dataset v4 sellado</strong> (8 familias geométricas; TEST con SHA-256 y auditoría anti-contaminación), añade su TRAIN a la <strong>CDT de vigilia</strong>, consolida un <strong>teacher</strong> y ajusta <strong>Dφ</strong> con la receta §16 (cabeza local-lineal con compuerta H136 + replay de confianza τ=1 %). La CDT y el teacher se descartan antes de evaluar el TEST del lote; cualquier consulta a memoria en TEST se marca LEAKED. Cada lote guarda un checkpoint bit-exacto de Dφ.</p>
           <div class="actions">
             <button type="button" id="btn-train">Iniciar</button>
+            <label class="chk-infinite" title="Pasos de optimización de Dφ por lote">pasos <input type="number" id="tr-steps-in" min="10" max="64000" step="500" value="4000" style="width:6em" /></label>
             <label class="chk-infinite" title="Sin tope de lotes; solo Detener">
               <input type="checkbox" id="chk-infinite" checked /> Infinito
             </label>
@@ -81,40 +82,34 @@
             <dt>LLM activo</dt><dd id="tr-llm">Gemma local</dd>
             <dt>Estado</dt><dd id="tr-status">—</dd>
             <dt>Job</dt><dd id="tr-job">—</dd>
-            <dt>Lote · ép/lote</dt><dd id="tr-epochs">—</dd>
-            <dt>Precisión</dt><dd id="tr-acc">—</dd>
-            <dt>Engramas</dt><dd id="tr-eng">—</dd>
-            <dt>Dataset</dt><dd id="tr-dataset">—</dd>
-            <dt>Familia dataset</dt><dd id="tr-family">—</dd>
-            <dt>Datasets guardados</dt><dd id="tr-ds-saved">—</dd>
-            <dt>Último dataset</dt><dd id="tr-ckpt">—</dd>
-            <dt>Decoder (preview)</dt><dd id="tr-decoded">—</dd>
+            <dt>Presupuesto</dt><dd id="tr-steps">—</dd>
+            <dt>Dataset (seed · hash · auditoría)</dt><dd id="tr-dataset">—</dd>
+            <dt>CDT de vigilia</dt><dd id="tr-cdt">—</dd>
+            <dt>Familias de confianza</dt><dd id="tr-trusted">—</dd>
+            <dt>Accuracy TEST (1 paso, &lt;5 %)</dt><dd id="tr-acc">—</dd>
+            <dt>Error relativo 1 paso</dt><dd id="tr-relerr">—</dd>
+            <dt>Rollout E33</dt><dd id="tr-rollout">—</dd>
+            <dt>Auditoría memoria</dt><dd id="tr-audit">—</dd>
+            <dt>Accuracy por familia</dt><dd id="tr-fam">—</dd>
+            <dt>Último checkpoint Dφ</dt><dd id="tr-ckpt">—</dd>
           </dl>
           <h3>Consola de eventos</h3>
           <pre id="tr-log" class="log"></pre>
         </div>
         <aside>
-          <h2>Líquido</h2>
+          <h2>Campo v4 (Dφ)</h2>
           <dl class="kv">
-            <dt>Queries</dt><dd id="li-q">—</dd>
-            <dt>Score último</dt><dd id="li-score">—</dd>
-            <dt>Score medio</dt><dd id="li-avg">—</dd>
-            <dt>Latencia µs</dt><dd id="li-lat">—</dd>
-            <dt>Ruta Liquid %</dt><dd id="li-pct">—</dd>
-            <dt>Última ruta</dt><dd id="li-route">—</dd>
+            <dt>Estado</dt><dd id="fv-state">—</dd>
+            <dt>Parámetros</dt><dd id="fv-params">—</dd>
+            <dt>Hash pesos</dt><dd id="fv-hash">—</dd>
+            <dt>CDT de vigilia</dt><dd id="fv-wake">—</dd>
+            <dt>Lotes / sueños</dt><dd><span id="fv-batches">—</span> / <span id="fv-sleeps">—</span></dd>
           </dl>
-          <h2>CDT</h2>
+          <h2>Chat → campo</h2>
           <dl class="kv">
-            <dt>Engramas</dt><dd id="cd-eng">—</dd>
-            <dt>Wake buffer</dt><dd id="cd-wake">—</dd>
-            <dt>Sueños</dt><dd id="cd-sleeps">—</dd>
-          </dl>
-          <h2>RQM</h2>
-          <dl class="kv">
-            <dt>Infer calls</dt><dd id="rq-inf">—</dd>
-            <dt>Train calls</dt><dd id="rq-tr">—</dd>
-            <dt>Ruta RQM %</dt><dd id="rq-pct">—</dd>
-            <dt>Cues relacionales</dt><dd id="rq-cues">—</dd>
+            <dt>Pasos servidos</dt><dd id="fv-chat">—</dd>
+            <dt>Error rel. medio</dt><dd id="fv-relerr">—</dd>
+            <dt>Latencia µs</dt><dd id="fv-lat">—</dd>
           </dl>
         </aside>
       </div>
@@ -122,8 +117,8 @@
 
     <!-- SUEÑO -->
     <section id="main-sleep" class="main-panel">
-      <h2>Sueño / consolidar + optimizar</h2>
-      <p class="hint"><strong>Requiere entrenamiento previo</strong> (al menos 1 lote completado o engramas/datasets_saved &gt; 0). Poda rutas RQM débiles, compacta geometría fasorial y minimiza energía libre hacia más simetría. El job sigue en el servidor tras refrescar; solo Detener cancela.</p>
+      <h2>Sueño · consolidar → destilar → borrar</h2>
+      <p class="hint"><strong>Requiere entrenamiento previo</strong> (CDT de vigilia no vacía). Consolida toda la experiencia acumulada en el <strong>teacher</strong>, destila Dφ con replay de confianza y <strong>borra la CDT</strong> (E37: borrado tras aprender). Mide antes/después en un TEST sellado nuevo. Infinito repite ciclos mientras haya experiencia; el job sigue en el servidor tras refrescar.</p>
       <div class="actions">
         <button type="button" id="btn-sleep">Iniciar</button>
         <label class="chk-infinite" title="Sin tope de ciclos; solo Detener">
@@ -136,29 +131,19 @@
         <div id="sl-progress-bar" class="progress-bar" style="width:0%"></div>
       </div>
       <p id="sl-progress-label" class="progress-label">Ciclo — / —</p>
-      <div class="sliders">
-        <label>Intensidad poda
-          <input type="range" id="sl-prune" min="0" max="100" value="55" />
-          <span id="sl-prune-val">0.55</span>
-        </label>
-        <label>Intensidad compactación
-          <input type="range" id="sl-compact" min="0" max="100" value="55" />
-          <span id="sl-compact-val">0.55</span>
-        </label>
-      </div>
+      <div class="sliders"><label>pasos de destilación <input type="number" id="sl-steps-in" min="10" max="128000" step="1000" value="8000" style="width:7em" /></label></div>
       <dl class="kv metrics-sleep">
         <dt>Estado</dt><dd id="sl-status">idle</dd>
         <dt>Job</dt><dd id="sl-job">—</dd>
         <dt>Fase</dt><dd id="sl-phase">—</dd>
-        <dt>F antes</dt><dd id="sl-f-before">—</dd>
-        <dt>F después</dt><dd id="sl-f-after">—</dd>
-        <dt>Simetría antes</dt><dd id="sl-sym-before">—</dd>
-        <dt>Simetría después</dt><dd id="sl-sym-after">—</dd>
-        <dt>Handshake</dt><dd id="sl-hs">—</dd>
-        <dt>Rutas podadas</dt><dd id="sl-pruned">—</dd>
-        <dt>Fasores compactados</dt><dd id="sl-phasors">—</dd>
-        <dt>Aristas/nodos</dt><dd id="sl-edges">—</dd>
-        <dt>Engramas</dt><dd id="sl-eng">—</dd>
+        <dt>Experiencias consolidadas</dt><dd id="sl-exp">—</dd>
+        <dt>Teacher (números)</dt><dd id="sl-teacher">—</dd>
+        <dt>Familias de confianza</dt><dd id="sl-trusted">—</dd>
+        <dt>Accuracy TEST antes → después</dt><dd id="sl-acc">—</dd>
+        <dt>Error 1 paso antes → después</dt><dd id="sl-relerr">—</dd>
+        <dt>Rollout antes → después</dt><dd id="sl-rollout">—</dd>
+        <dt>Auditoría</dt><dd id="sl-audit">—</dd>
+        <dt>Duración</dt><dd id="sl-ms">—</dd>
       </dl>
       <h3>Consola en vivo</h3>
       <pre id="sl-log" class="log"></pre>
@@ -170,7 +155,7 @@
     <!-- MODELOS / API -->
     <section id="main-llm" class="main-panel">
       <h2>Modelos / API</h2>
-      <p class="hint">Añade un LLM externo compatible con OpenAI (por ejemplo <strong>docker-llm</strong>) pegando el <code>curl</code> que te da su panel. El LLM activo se usa en toda la app: chat (Decoder del campo y modo crudo) y generación de datasets de entrenamiento. Sueño y Pruebas no usan LLM.</p>
+      <p class="hint">Añade un LLM externo compatible con OpenAI (por ejemplo <strong>docker-llm</strong>) pegando el <code>curl</code> que te da su panel. El LLM activo se usa en toda la app: chat (Decoder del campo, solo para verbalizar el estado de Dφ, y modo crudo) y Prompt Spider. Entrenamiento, Sueño y Pruebas v4 no usan LLM (datasets geométricos sellados).</p>
       <div class="llm-grid">
         <div class="llm-card">
           <h3>1 · Pega aquí el curl</h3>
@@ -215,8 +200,8 @@
 
     <!-- PRUEBAS -->
     <section id="main-tests" class="main-panel">
-      <h2>Pruebas del modelo de campo</h2>
-      <p class="hint">Siempre corre la <strong>suite de experimentos</strong> (smokes E8–E10, E13/E15, Clean-Room v2). Además evalúa fuse/campo/CDT; si no hay train+sueño, field_eval lo anota con honestidad. Infinito repite la batería hasta Detener.</p>
+      <h2>Pruebas · smoke v4</h2>
+      <p class="hint">Smoke rápido de la arquitectura v4: <strong>E35 A vs B</strong> (Dφ sin vs con experiencia CDT consolidada) en 3 seeds DEV con <strong>auditoría de memoria cero</strong> (CDT borrada, 0 consultas, 0 LEAKED), <strong>error a un paso</strong> del Dφ de la app (o uno entrenado al vuelo) y <strong>rollout E33 corto</strong> (h8, informativo: E33 es marginal). Infinito repite hasta Detener.</p>
       <div class="actions">
         <button type="button" id="btn-tests">Iniciar</button>
         <label class="chk-infinite" title="Repite la batería hasta Detener">
@@ -233,22 +218,14 @@
         <dt>Estado</dt><dd id="te-status">idle</dd>
         <dt>Job</dt><dd id="te-job">—</dd>
         <dt>Progreso</dt><dd id="te-progress">—</dd>
-        <dt>Engramas</dt><dd id="te-eng">—</dd>
-        <dt>Había engramas</dt><dd id="te-had">—</dd>
-        <dt>Accuracy identidad</dt><dd id="te-id-acc">—</dd>
-        <dt>Accuracy shifted</dt><dd id="te-sh-acc">—</dd>
-        <dt>Latencia líquido µs (media)</dt><dd id="te-lat">—</dd>
-        <dt>Recall engramas</dt><dd id="te-recall">—</dd>
-        <dt>Energía libre</dt><dd id="te-f">—</dd>
-        <dt>Simetría</dt><dd id="te-sym">—</dd>
-        <dt>Handshake</dt><dd id="te-hs">—</dd>
-        <dt>Histograma rutas</dt><dd id="te-routes">—</dd>
-        <dt>Suite experimentos</dt><dd id="te-suite">—</dd>
+        <dt>Veredicto</dt><dd id="te-verdict">—</dd>
+        <dt>E35 (acc TEST)</dt><dd id="te-e35">—</dd>
+        <dt>Duración</dt><dd id="te-elapsed">—</dd>
       </dl>
       <h3>Consola en vivo</h3>
       <pre id="te-log" class="log"></pre>
-      <h3>Desglose por concepto</h3>
-      <pre id="te-concepts" class="log">—</pre>
+      <h3>Filas</h3>
+      <pre id="te-rows" class="log">—</pre>
       <h3>Informe JSON completo</h3>
       <pre id="te-report" class="log tall">{}</pre>
     </section>
@@ -445,6 +422,6 @@
     </div>
   </div>
 
-  <script src="/auth.js?v=37"></script>
+  <script src="/auth.js?v=100"></script>
 </body>
 </html>
