@@ -425,7 +425,7 @@ impl AppState {
     }
 
     /// Prepara chat crudo (OFF): handle al Gemma original + historial crudo.
-    /// `Err` si no hay GGUF. No toca fuse/campo/telemetría líquida.
+    /// `Err` si no hay GGUF. No toca el campo ni su telemetría.
     pub fn raw_chat_prepare(&self) -> Result<(RawGemmaHandle, Vec<(String, String)>), String> {
         let handle = self.probe.raw_handle().ok_or_else(|| {
             format!(

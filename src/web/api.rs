@@ -1281,8 +1281,6 @@ mod tests {
         ("GET", "/api/processes"),
         ("GET", "/api/telemetry"),
         ("GET", "/api/telemetry/field"),
-        ("GET", "/api/telemetry/cdt"),
-        ("GET", "/api/telemetry/rqm"),
         ("GET", "/api/telemetry/train"),
         ("GET", "/api/llm/providers"),
         ("POST", "/api/llm/providers"),

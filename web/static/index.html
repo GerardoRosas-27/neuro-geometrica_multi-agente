@@ -268,7 +268,7 @@
               <option value="completa">completa</option>
             </select>
           </label>
-          <label class="switch sp-field-switch" title="Activo: las palabras escaladas (p &lt; umbral) las decide el decoder del campo (líquido + CDT + RQM/EPR entrenado en «Entrenamiento Prompt Spider») en vez del LLM, sin llamadas al modelo. Si la confianza calibrada no alcanza el piso, o pide aprobación / es ambigua / fuera de distribución → pendiente (no inventa).">
+          <label class="switch sp-field-switch" title="Activo: las palabras escaladas (p &lt; umbral) las decide el decoder del campo v4 (Dφ destilado de la CDT/teacher, entrenado en «Entrenamiento Prompt Spider») en vez del LLM, sin llamadas al modelo. Si la confianza calibrada no alcanza el piso, o pide aprobación / es ambigua / fuera de distribución → pendiente (no inventa).">
             <input type="checkbox" id="sp-field-decoder" />
             <span class="slider" aria-hidden="true"></span>
             <span class="switch-label">Decoder del campo</span>
@@ -375,7 +375,7 @@
         <div class="sp-card sp-field-train" id="sp-field-train">
           <div class="sp-card-h">● entrenamiento prompt spider <span class="sp-pink">decoder del campo</span> <span class="sp-muted" id="sp-ft-model">—</span></div>
           <div class="sp-ft-controls">
-            <label class="sp-pace" title="Datasets (cada uno: vigilia → sueño CDT + RQM → evaluación hold-out → checkpoint). ∞ = hasta Detener.">datasets
+            <label class="sp-pace" title="Datasets (cada uno: vigilia → sueño CDT → teacher → Dφ → evaluación hold-out → checkpoint). ∞ = hasta Detener.">datasets
               <select id="sp-ft-datasets"><option value="2">2</option><option value="6" selected>6</option><option value="12">12</option><option value="0">∞</option></select>
             </label>
             <label class="sp-pace" title="Prompts sintéticos con verdad por construcción por dataset">prompts/dataset

@@ -1,27 +1,22 @@
-//! Experimento de sustrato para el decoder del campo del Prompt Spider:
-//! **(A) sustrato en blanco** vs **(B) capa externa sobre el núcleo de chat
-//! congelado** vs **(C) ajuste fino del núcleo compartido**, más ablaciones
-//! de (A). Mismo hold-out, varias semillas. Mide exactitud y calibración
-//! (ECE/Brier) por pregunta y por ruta, % resuelto vs pendiente, precisión de
-//! lo resuelto, latencia e **interferencia** sobre el campo del chat.
+//! Experimento del decoder del campo del Prompt Spider sobre la arquitectura
+//! v4: **V4** (Dφ gated + replay de confianza + guardia OOD) frente a sus
+//! ablaciones (replay completo sin máscara, sin guardia OOD) y al control
+//! **teacher** (lectura logística sin Dφ). Mismo hold-out, varias semillas.
+//! Mide exactitud y calibración (ECE/Brier) por pregunta y por ruta,
+//! % resuelto vs pendiente, precisión de lo resuelto y latencia.
 //!
 //! Resultados y decisión: `docs/prompt_spider_decoder_campo.md`.
 
 #![allow(clippy::needless_range_loop)]
 
-use crate::liquid_cdt_rqm_fuse::FusedLiquidCdt;
-use crate::prompt_spider::{Question, Route, DEFAULT_LLM_FLOOR, DEFAULT_THRESHOLD, SAMPLE_PROMPT};
+use crate::prompt_spider::{Route, DEFAULT_LLM_FLOOR, DEFAULT_THRESHOLD, SAMPLE_PROMPT};
 use crate::spider_field::{
-    bin_metrics, core_response_table, router_metrics, scorer_examples, synth_examples,
-    synth_prompt, text_group, AnalyzedPrompt, BinMetrics, Coupling, FieldConfig, LabelSource,
-    RouterMetrics, Sm, SpiderExample, SpiderFieldRouter, HEADS, HEAD_NAMES, H_OK, VOCAB_SHIFT,
-    VOCAB_TRAIN,
+    bin_metrics, router_metrics, scorer_examples, synth_examples, synth_prompt, text_group,
+    AnalyzedPrompt, BinMetrics, FieldConfig, LabelSource, RouterMetrics, Sm, SpiderExample,
+    SpiderFieldRouter, HEADS, HEAD_NAMES, H_OK, VOCAB_SHIFT, VOCAB_TRAIN,
 };
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
-
-/// Conceptos del campo de chat (igual que `web::llm_periphery::NUM_CONCEPTS`).
-pub const CHAT_CONCEPTS: usize = 8;
 
 /// Semilla del prompt `k` del hold-out en distribución (H1).
 pub fn holdout_seed(k: usize) -> u64 {
@@ -36,58 +31,37 @@ pub fn shift_seed(k: usize) -> u64 {
 /// Brazos del experimento.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Arm {
-    /// (A) blanco: líquido + CDT + RQM propios, solo datos del Spider.
-    A,
-    /// (B1) núcleo de chat congelado + lectura entrenable (adaptador lineal).
-    B1,
-    /// (B2) núcleo de chat congelado + capa externa líquido/CDT/RQM.
-    B2,
-    /// (C) ajuste fino del núcleo compartido (escribe en el campo del chat).
-    C,
-    /// Ablación de (A) sin CDT.
-    ANoCdt,
-    /// Ablación de (A) sin RQM.
-    ANoRqm,
-    /// Sin campo: lectura logística sobre rasgos crudos.
-    Raw,
+    /// Router v4 por defecto (receta §16 + guardia OOD).
+    V4,
+    /// Ablación: replay del teacher sin máscara de confianza.
+    V4FullReplay,
+    /// Ablación: sin guardia de novedad.
+    V4NoOod,
+    /// Control sin campo: decide el teacher logístico (sin Dφ).
+    Teacher,
+    /// Sensibilidad al presupuesto: V4 con 4× pasos de Dφ por sueño.
+    V4Steps4x,
 }
 
 impl Arm {
     pub fn label(self) -> &'static str {
         match self {
-            Arm::A => "A · blanco (líquido+CDT+RQM)",
-            Arm::B1 => "B1 · núcleo congelado + lectura",
-            Arm::B2 => "B2 · núcleo congelado + capa líquido/CDT/RQM",
-            Arm::C => "C · ajuste fino del núcleo compartido",
-            Arm::ANoCdt => "A sin CDT",
-            Arm::ANoRqm => "A sin RQM",
-            Arm::Raw => "sin campo (logística cruda)",
+            Arm::V4 => "V4 · Dφ gated + replay de confianza + OOD",
+            Arm::V4FullReplay => "V4 replay completo (sin máscara)",
+            Arm::V4NoOod => "V4 sin guardia OOD",
+            Arm::Teacher => "teacher logístico (sin Dφ)",
+            Arm::V4Steps4x => "V4 con 4× pasos de Dφ",
         }
     }
 
     pub fn config(self, seed: u64) -> FieldConfig {
-        let mut c = FieldConfig::blank(seed);
+        let mut c = FieldConfig::v4(seed);
         match self {
-            Arm::A => {}
-            Arm::B1 => {
-                c.liquid = false;
-                c.cdt = false;
-                c.rqm = false;
-                c.coupling = Coupling::FrozenCore;
-            }
-            Arm::B2 => c.coupling = Coupling::FrozenCore,
-            Arm::C => {
-                c.cdt = false;
-                c.rqm = false;
-                c.coupling = Coupling::SharedCore;
-            }
-            Arm::ANoCdt => c.cdt = false,
-            Arm::ANoRqm => c.rqm = false,
-            Arm::Raw => {
-                c.liquid = false;
-                c.cdt = false;
-                c.rqm = false;
-            }
+            Arm::V4 => {}
+            Arm::V4FullReplay => c.trusted = false,
+            Arm::V4NoOod => c.ood = false,
+            Arm::Teacher => c.dphi = false,
+            Arm::V4Steps4x => {}
         }
         c
     }
@@ -107,8 +81,8 @@ pub struct ExperimentConfig {
     pub noise: f64,
     pub threshold: f64,
     pub floor: f64,
-    /// Neuronas del reservorio líquido.
-    pub n_liquid: usize,
+    /// Pasos de Dφ por sueño.
+    pub steps: usize,
     pub epochs: usize,
 }
 
@@ -118,13 +92,11 @@ impl ExperimentConfig {
         Self {
             seeds: vec![11, 22, 33, 44, 55],
             arms: vec![
-                Arm::A,
-                Arm::B1,
-                Arm::B2,
-                Arm::C,
-                Arm::ANoCdt,
-                Arm::ANoRqm,
-                Arm::Raw,
+                Arm::V4,
+                Arm::V4FullReplay,
+                Arm::V4NoOod,
+                Arm::Teacher,
+                Arm::V4Steps4x,
             ],
             train_prompts: 240,
             datasets: 6,
@@ -132,7 +104,7 @@ impl ExperimentConfig {
             noise: 0.05,
             threshold: DEFAULT_THRESHOLD,
             floor: DEFAULT_LLM_FLOOR,
-            n_liquid: 48,
+            steps: 3000,
             epochs: 120,
         }
     }
@@ -145,7 +117,7 @@ impl ExperimentConfig {
             train_prompts: 60,
             datasets: 2,
             holdout_prompts: 24,
-            n_liquid: 32,
+            steps: 1500,
             epochs: 60,
             ..Self::full()
         }
@@ -195,51 +167,6 @@ pub struct ArmRun {
     pub teacher_subset_field_acc: Option<f64>,
     pub latency_us: f64,
     pub train_s: f64,
-    /// Exactitud del campo de chat antes/después y |Δscore| máx.
-    pub chat_acc_before: f64,
-    pub chat_acc_after: f64,
-    pub chat_max_dscore: f64,
-}
-
-/// Campo de chat «existente» entrenado con el currículo relacional de la
-/// app (`cue → (cue+1) mod 8`, 3 rondas de teach + observe + sueño).
-pub fn trained_chat_field() -> FusedLiquidCdt {
-    let mut f = FusedLiquidCdt::new(CHAT_CONCEPTS);
-    let cands: Vec<usize> = (0..CHAT_CONCEPTS).collect();
-    for _ in 0..3 {
-        for cue in 0..CHAT_CONCEPTS {
-            f.observe(cue, &cands);
-            f.teach_relation(cue, (cue + 1) % CHAT_CONCEPTS);
-        }
-        f.sleep_consolidate();
-    }
-    f
-}
-
-/// Sonda del chat sobre una **copia** (no perturba el campo): exactitud del
-/// mapa relacional y puntuaciones por cue.
-pub fn chat_probe(f: &FusedLiquidCdt) -> (f64, Vec<f64>) {
-    let mut c = f.clone();
-    let cands: Vec<usize> = (0..CHAT_CONCEPTS).collect();
-    let mut ok = 0;
-    let mut scores = Vec::new();
-    for cue in 0..CHAT_CONCEPTS {
-        let r = c.infer(cue, &cands);
-        if r.predicted == (cue + 1) % CHAT_CONCEPTS {
-            ok += 1;
-        }
-        scores.push(r.top1_score);
-    }
-    (ok as f64 / CHAT_CONCEPTS as f64, scores)
-}
-
-fn q_idx(q: Question) -> usize {
-    match q {
-        Question::Relevant => 0,
-        Question::Grounded => 1,
-        Question::Ambiguous => 2,
-        Question::Approval => 3,
-    }
 }
 
 /// Hold-out codificado (etiquetas limpias).
@@ -313,42 +240,21 @@ pub fn run_arm(
     teacher: Option<&TeacherFile>,
 ) -> ArmRun {
     let mut fcfg = arm.config(seed);
-    fcfg.n_liquid = cfg.n_liquid;
+    fcfg.steps = if arm == Arm::V4Steps4x {
+        4 * cfg.steps
+    } else {
+        cfg.steps
+    };
     fcfg.epochs = cfg.epochs;
     let mut router = SpiderFieldRouter::new(fcfg);
-    let mut chat = trained_chat_field();
-    let (chat_acc_before, scores_before) = chat_probe(&chat);
-    let coupled = fcfg.coupling != Coupling::Blank;
-    if coupled {
-        // Congelado: la tabla se lee de una copia; el campo vivo no se toca.
-        router.set_core_table(core_response_table(&mut chat.clone()));
-    }
     let t0 = Instant::now();
     for set in training_sets(cfg, seed) {
         for ex in set {
-            if arm == Arm::C {
-                // Ajuste fino: la experiencia del Spider se escribe en el
-                // campo compartido (cue léxico → pregunta×ok).
-                if let Some(ok) = ex.labels[H_OK] {
-                    let label = 2 * q_idx(ex.question) + ok as usize;
-                    chat.teach_relation(ex.core_cue, label % CHAT_CONCEPTS);
-                }
-            }
             router.observe(ex);
-        }
-        if arm == Arm::C {
-            chat.sleep_consolidate();
-            router.set_core_table(core_response_table(&mut chat.clone()));
         }
         router.sleep();
     }
     let train_s = t0.elapsed().as_secs_f64();
-    let (chat_acc_after, scores_after) = chat_probe(&chat);
-    let chat_max_dscore = scores_before
-        .iter()
-        .zip(scores_after.iter())
-        .map(|(a, b)| (a - b).abs())
-        .fold(0.0, f64::max);
 
     // Cabezas en todas las palabras de H1 + ok por ruta.
     let mut per_head: Vec<Vec<(f64, bool)>> = vec![Vec::new(); HEADS];
@@ -458,9 +364,6 @@ pub fn run_arm(
             lat[lat.len() / 2]
         },
         train_s,
-        chat_acc_before,
-        chat_acc_after,
-        chat_max_dscore,
     }
 }
 
@@ -698,7 +601,7 @@ pub fn format_markdown(r: &ExperimentResults) -> String {
             agg(&rs, |x| x.ok_by_route_h1[2].accuracy),
         ));
     }
-    s.push_str("\n### Interferencia sobre el campo del chat, prompt real y maestro\n\n| brazo | chat exactitud antes → después | máx. |Δ score| chat | escaladas del ejemplo resueltas % | acuerdo con maestro | exactitud campo en subset del maestro | entrenamiento s |\n|---|---|---|---|---|---|---|\n");
+    s.push_str("\n### Prompt real y maestro\n\n| brazo | escaladas del ejemplo resueltas % | acuerdo con maestro | exactitud campo en subset del maestro | entrenamiento s |\n|---|---|---|---|---|\n");
     for &arm in &r.config.arms {
         let rs: Vec<&ArmRun> = r.runs.iter().filter(|x| x.arm == Some(arm)).collect();
         let ta: Vec<f64> = rs.iter().filter_map(|x| x.teacher_agreement).collect();
@@ -707,11 +610,8 @@ pub fn format_markdown(r: &ExperimentResults) -> String {
             .filter_map(|x| x.teacher_subset_field_acc)
             .collect();
         s.push_str(&format!(
-            "| {} | {} → {} | {} | {} | {} | {} | {} |\n",
+            "| {} | {} | {} | {} | {} |\n",
             arm.label(),
-            agg(&rs, |x| x.chat_acc_before),
-            agg(&rs, |x| x.chat_acc_after),
-            agg(&rs, |x| x.chat_max_dscore),
             agg_pct(&rs, |x| x.sample_resolved_pct),
             if ta.is_empty() {
                 "—".into()
@@ -742,23 +642,20 @@ pub fn format_markdown(r: &ExperimentResults) -> String {
 mod tests {
     use super::*;
 
-    /// Smoke (CI): A aprende por encima de la heurística en escaladas y no
-    /// toca el campo del chat; B congelado tampoco.
+    /// Smoke (CI): el router v4 aprende por encima de la heurística en
+    /// escaladas y lo que resuelve es mayoritariamente correcto.
     #[test]
     fn spider_field_smoke_experiment() {
-        let cfg = ExperimentConfig::small(vec![1], vec![Arm::A, Arm::B1]);
+        let cfg = ExperimentConfig::small(vec![1], vec![Arm::V4]);
         let r = run_experiment(&cfg, None);
-        let a = r.runs.iter().find(|x| x.arm == Some(Arm::A)).unwrap();
-        let b1 = r.runs.iter().find(|x| x.arm == Some(Arm::B1)).unwrap();
+        let a = r.runs.iter().find(|x| x.arm == Some(Arm::V4)).unwrap();
         assert!(
             a.router_h1.ok.accuracy > r.baseline.router_h1.ok.accuracy + 0.1,
             "A {:?} vs heurística {:?}",
             a.router_h1.ok,
             r.baseline.router_h1.ok
         );
-        assert_eq!(a.chat_acc_before, a.chat_acc_after);
-        assert_eq!(a.chat_max_dscore, 0.0);
-        assert_eq!(b1.chat_max_dscore, 0.0);
+        assert!(a.router_h1.wrong_resolved_pct < 10.0, "{:?}", a.router_h1);
     }
 
     /// Experimento completo (≈ minutos). `SPIDER_TEACHER=<json>` añade el
