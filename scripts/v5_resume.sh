@@ -8,6 +8,10 @@ BIN=./target/release/run_predictive_field_v5
 if pgrep -f "run_predictive_field_v5 run --phase" >/dev/null; then
   echo "v5 already running"; exit 0
 fi
+n=$(ls artifacts/v5/confirm/seeds/*.json 2>/dev/null | wc -l)
+if [ "$n" -ge 16 ] && [ -f artifacts/v5/confirm/metrics.csv ]; then
+  echo "v5 DEV+CONFIRM complete"; exit 0
+fi
 [ -x "$BIN" ] || cargo build --release --bin run_predictive_field_v5 || exit 1
 nohup sh -c "$BIN run --phase dev >> /tmp/v5dev.log 2>&1 && \
   $BIN run --phase confirm >> /tmp/v5conf.log 2>&1" >/dev/null 2>&1 &
