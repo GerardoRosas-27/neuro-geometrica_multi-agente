@@ -755,6 +755,20 @@ pub fn train_onestep_trusted_b(
     tau: f64,
     budget: TrainBudget,
 ) -> (AuditFlags, Vec<bool>) {
+    train_onestep_trusted_b_ck(d, s, seed, aud, tau, budget, None)
+}
+
+/// [`train_onestep_trusted_b`] with optional bit-exact checkpoint (infra only).
+/// `hits` is kept as a set (order-free: it only feeds a HashSet/flag below).
+pub fn train_onestep_trusted_b_ck(
+    d: &mut Dphi,
+    s: &Sealed,
+    seed: u64,
+    aud: &Auditor,
+    tau: f64,
+    budget: TrainBudget,
+    ck: Option<(std::path::PathBuf, String)>,
+) -> (AuditFlags, Vec<bool>) {
     let k = K_POINTS;
     let tr = triples(&s.ds.train);
     let n = tr.len();
@@ -765,19 +779,40 @@ pub fn train_onestep_trusted_b(
     let res = family_fit_residual(&sig, cdt.read_all());
     let trusted: Vec<bool> = res.iter().map(|r| *r < tau).collect();
     let any = trusted.iter().any(|t| *t);
-    let mut hits: Vec<u64> = vec![];
-    d.train_onestep(budget, seed ^ 0x7A, ONESTEP_LR_FINAL, true, |r| {
-        if any && r.gen::<f64>() < REPLAY_FRACTION {
-            loop {
-                let t = replay_sample(&sig, r, k);
-                if trusted[fam_params(&t.1).0] {
-                    hits.extend(aud.hits(&t.2));
-                    return t;
+    let hits: std::cell::RefCell<std::collections::BTreeSet<u64>> = Default::default();
+    let save = || serde_json::json!(hits.borrow().iter().copied().collect::<Vec<u64>>());
+    let load = |v: &serde_json::Value| {
+        let mut h = hits.borrow_mut();
+        h.clear();
+        h.extend(
+            v.as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|x| x.as_u64()),
+        );
+    };
+    let tc = ck.map(|(p, key)| crate::train_ckpt::TrainCkpt::new(p, key, &save, &load));
+    d.train_onestep_ck(
+        budget,
+        seed ^ 0x7A,
+        ONESTEP_LR_FINAL,
+        true,
+        |r| {
+            if any && r.gen::<f64>() < REPLAY_FRACTION {
+                loop {
+                    let t = replay_sample(&sig, r, k);
+                    if trusted[fam_params(&t.1).0] {
+                        hits.borrow_mut().extend(aud.hits(&t.2));
+                        return t;
+                    }
                 }
             }
-        }
-        tr[r.gen_range(0..n)].clone()
-    });
+            tr[r.gen_range(0..n)].clone()
+        },
+        tc.as_ref(),
+    );
+    drop(tc);
+    let hits = hits.into_inner();
     drop(sig);
     drop(cdt);
     for h in hits {

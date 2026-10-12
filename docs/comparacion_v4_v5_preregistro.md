@@ -50,3 +50,23 @@ retocar nada entre fases. Smoke `0x5A00` (200 pasos) solo comprueba que corre.
 
 Análisis: `scripts/v5_compare.py` sobre `artifacts/v5/{dev,confirm}/metrics.csv`. Resultado en
 `docs/comparacion_v4_v5.md`.
+
+## Enmienda de infraestructura (2026-10-12) — sin cambios metodológicos
+
+Cambio **solo de infraestructura**; ninguna constante, semilla, muestreador, schedule, arquitectura, métrica,
+criterio ni script de análisis cambia. Motivo: el box se reinicia cada pocas horas y las seeds (~2.4 h) no
+terminaban.
+
+- Checkpoint intra-seed determinista (`src/train_ckpt.rs`): cada `V5_CKPT_SECS` (300 s por defecto) y al final de
+  cada brazo se guarda el estado completo del bucle (paso siguiente, RNG xoshiro, Adam m/v/t, parámetros, pérdida,
+  max-grad, contadores de consultas del bucle y los `hits` del auditor de E3) en bits f64 exactos, en
+  `artifacts/v5/<fase>/train_ckpt/`. Al reanudar el resultado es bit-idéntico al de una ejecución sin interrumpir
+  (verificado en smoke con 8 kills aleatorios: `metrics.csv`, manifest y summary idénticos salvo `train_s`/`lat_us`,
+  que son tiempos de pared). Los `hits` de E3 se acumulan como conjunto (solo alimentan un `HashSet`/flag).
+- `train_s` de un brazo reanudado mide solo el tramo final (tiempo de pared); el criterio 4 (coste) debe leerse
+  con seeds no interrumpidas o como aproximado. `lat_us` no se ve afectado.
+- La caché por seed acepta resultados de los commits `0ecd4e9` y `3cdf733` (`RESULT_COMPAT_SHAS`), cuyo código de
+  resultados es idéntico (solo difieren en un `#[allow(clippy)]` y el script de comparación).
+- `V5_JOBS` opcional fija el nº de seeds en paralelo (cada seed es independiente y monohilo; no afecta resultados).
+  Medido: 8 trabajos dan el mayor throughput en 8 núcleos, se mantiene el valor por defecto.
+- `scripts/v5_resume.sh` relanza DEV→CONFIRM si no está corriendo.

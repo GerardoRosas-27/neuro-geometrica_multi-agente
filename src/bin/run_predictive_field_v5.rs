@@ -15,6 +15,14 @@ use std::fmt::Write as _;
 use std::fs;
 use std::path::PathBuf;
 
+/// Commits whose per-seed results are bit-identical to HEAD's (only infra
+/// changed after them: checkpointing, job count). Cached seeds from these
+/// SHAs are reused. See docs/comparacion_v4_v5_preregistro.md.
+const RESULT_COMPAT_SHAS: &[&str] = &[
+    "0ecd4e9917cc8a533f18f0afe70bae0fba97b3c5", // v5 equal-terms arms
+    "3cdf733ead9c77b421332c6f30fdb8e27ac98700", // + clippy allow, compare script
+];
+
 fn git(args: &[&str]) -> String {
     std::process::Command::new("git")
         .args(args)
@@ -49,7 +57,21 @@ fn main() {
         exps: std::collections::HashSet::new(),
         ckpt_dir: Some(out.join("checkpoints")),
         exe: std::env::current_exe().ok(),
+        // Infra only: intra-seed checkpoints (every V5_CKPT_SECS, default 300 s).
+        train_ckpt: Some(out.join("train_ckpt")),
     };
+    // Infra only: number of seeds trained concurrently (V5_JOBS, default all
+    // cores). Each seed is single-threaded and independent; results do not
+    // depend on this.
+    if let Some(j) = std::env::var("V5_JOBS")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+    {
+        rayon::ThreadPoolBuilder::new()
+            .num_threads(j)
+            .build_global()
+            .ok();
+    }
     let t0 = std::time::Instant::now();
     // Per-seed cache so an interrupted run resumes without recomputing
     // finished seeds (same binary/SHA required; see `sha` in each file).
@@ -62,7 +84,11 @@ fn main() {
             if let Some(v) = fs::read_to_string(&f)
                 .ok()
                 .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
-                .filter(|v| v["sha"] == sha.as_str() && v["steps"] == steps)
+                .filter(|v| {
+                    v["steps"] == steps
+                        && (v["sha"] == sha.as_str()
+                            || RESULT_COMPAT_SHAS.contains(&v["sha"].as_str().unwrap_or("")))
+                })
             {
                 eprintln!("seed 0x{s:X} cached");
                 return (s, v);
@@ -78,6 +104,16 @@ fn main() {
                     .collect::<Vec<_>>(),
             });
             fs::write(&f, v.to_string()).ok();
+            if let Some(dir) = &opts.train_ckpt {
+                for e in fs::read_dir(dir).into_iter().flatten().flatten() {
+                    if e.file_name()
+                        .to_string_lossy()
+                        .starts_with(&format!("0x{s:X}_"))
+                    {
+                        fs::remove_file(e.path()).ok();
+                    }
+                }
+            }
             eprintln!("seed 0x{s:X} done ({:.0}s)", t0.elapsed().as_secs_f64());
             (s, v)
         })

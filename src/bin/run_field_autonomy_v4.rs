@@ -48,6 +48,7 @@ fn main() {
         exps: exps.clone(),
         ckpt_dir: Some(out.join("checkpoints")),
         exe: std::env::current_exe().ok(),
+        train_ckpt: None,
     };
     let t0 = std::time::Instant::now();
     let results: Vec<(u64, SeedOut)> = seeds

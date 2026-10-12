@@ -19,7 +19,7 @@ use crate::v4_dataset::{
     apply_rule, generate_and_seal, l2, sha256_hex, DatasetConfig, Example, Sealed, CTX_DIM,
     FAMILIES, N_FAM,
 };
-use crate::v4_distill::{onestep_breakdown, train_onestep_trusted_b, TRUST_TAU};
+use crate::v4_distill::{onestep_breakdown, train_onestep_trusted_b_ck, TRUST_TAU};
 use crate::v4_metrics as m;
 use crate::v4_provenance::{count_query, snapshot, QueryCounters, Store};
 use rand::Rng;
@@ -146,11 +146,15 @@ fn train_arm(
     seed: u64,
     steps: usize,
     rng_salt: u64,
+    ck: Option<(std::path::PathBuf, String)>,
 ) -> (Dphi, f64, f64, u64) {
     let z = 2 * K_POINTS;
     let mut d = Dphi::gated_h(z, CTX_DIM, V5_HIDDEN, residual, seed ^ 0xD0);
     let before = snapshot();
-    let (loss, max_g) = d.train_horizon(
+    let nosave = || serde_json::Value::Null;
+    let noload = |_: &serde_json::Value| {};
+    let tc = ck.map(|(p, k)| crate::train_ckpt::TrainCkpt::new(p, k, &nosave, &noload));
+    let (loss, max_g) = d.train_horizon_ck(
         budget(steps),
         seed ^ rng_salt,
         V5_LR_FINAL,
@@ -159,6 +163,7 @@ fn train_arm(
             let ep = store.sample(rng);
             (ep.states[0].clone(), ep.context.clone(), future_of(&ep))
         },
+        tc.as_ref(),
     );
     let reads = snapshot().delta(&before).cdt;
     (d, loss, max_g, reads)
@@ -380,10 +385,17 @@ pub fn run_seed(seed: u64, steps: usize, opts: &RunOpts) -> SeedOut {
     let mut trained: Vec<Trained> = vec![];
     for (name, kind, salt, st) in arms {
         let t0 = std::time::Instant::now();
+        // Infra-only training checkpoint (see crate::train_ckpt).
+        let ck = opts.train_ckpt.as_ref().map(|dir| {
+            (
+                dir.join(format!("0x{seed:X}_{name}.json")),
+                format!("v5ck1 seed={seed} arm={name} steps={st} salt={salt}"),
+            )
+        });
         let (d, loss, max_g, reads, flags, note) = match kind {
             ArmKind::V5 { residual, shuf } => {
                 let store = if shuf { &cdt_shuf } else { &cdt_real };
-                let (d, l, g, r) = train_arm(residual, store, seed, st, salt);
+                let (d, l, g, r) = train_arm(residual, store, seed, st, salt, ck);
                 (
                     d,
                     l,
@@ -397,7 +409,7 @@ pub fn run_seed(seed: u64, steps: usize, opts: &RunOpts) -> SeedOut {
                 let mut d = Dphi::gated_h(2 * K_POINTS, CTX_DIM, V5_HIDDEN, true, seed ^ 0xD0);
                 let before = snapshot();
                 let (f, mask) =
-                    train_onestep_trusted_b(&mut d, &s, seed, &aud, TRUST_TAU, budget(st));
+                    train_onestep_trusted_b_ck(&mut d, &s, seed, &aud, TRUST_TAU, budget(st), ck);
                 let reads = snapshot().delta(&before).cdt;
                 let ms: String = mask.iter().map(|b| if *b { '1' } else { '0' }).collect();
                 (

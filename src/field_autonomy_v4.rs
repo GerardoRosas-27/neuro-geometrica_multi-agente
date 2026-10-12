@@ -968,6 +968,8 @@ pub struct RunOpts {
     pub exps: HashSet<String>,
     pub ckpt_dir: Option<std::path::PathBuf>,
     pub exe: Option<std::path::PathBuf>,
+    /// Infra only: directory for intra-seed training checkpoints (v5).
+    pub train_ckpt: Option<std::path::PathBuf>,
 }
 
 impl RunOpts {

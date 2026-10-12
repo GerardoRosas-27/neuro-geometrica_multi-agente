@@ -189,9 +189,9 @@ impl Mlp {
 
 /// Adam optimiser state for a flat parameter vector.
 pub struct Adam {
-    m: Vec<f64>,
-    v: Vec<f64>,
-    t: i32,
+    pub(crate) m: Vec<f64>,
+    pub(crate) v: Vec<f64>,
+    pub(crate) t: i32,
     pub lr: f64,
 }
 
@@ -482,7 +482,23 @@ impl Dphi {
         seed: u64,
         lr_final: f64,
         rel_loss: bool,
+        sampler: F,
+    ) -> f64
+    where
+        F: FnMut(&mut Xoshiro256StarStar) -> Triple,
+    {
+        self.train_onestep_ck(budget, seed, lr_final, rel_loss, sampler, None)
+    }
+
+    /// [`train_onestep`] with optional bit-exact checkpoint/resume (infra only).
+    pub fn train_onestep_ck<F>(
+        &mut self,
+        budget: TrainBudget,
+        seed: u64,
+        lr_final: f64,
+        rel_loss: bool,
         mut sampler: F,
+        ck: Option<&crate::train_ckpt::TrainCkpt>,
     ) -> f64
     where
         F: FnMut(&mut Xoshiro256StarStar) -> Triple,
@@ -492,7 +508,19 @@ impl Dphi {
         let mut opt = Adam::new(n, budget.lr);
         let mut p = self.net.flat();
         let mut last = 0.0;
-        for step in 0..budget.steps {
+        let base = crate::v4_provenance::snapshot();
+        let mut start = 0;
+        if let Some(st) = ck.and_then(crate::train_ckpt::load) {
+            start = st.next_step;
+            rng = st.rng;
+            opt.m = st.m;
+            opt.v = st.v;
+            opt.t = st.t;
+            p = st.p;
+            self.net.set_flat(&p);
+            last = st.last;
+        }
+        for step in start..budget.steps {
             let t = step as f64 / budget.steps.max(1) as f64;
             opt.lr =
                 lr_final + 0.5 * (budget.lr - lr_final) * (1.0 + (std::f64::consts::PI * t).cos());
@@ -523,6 +551,21 @@ impl Dphi {
             opt.step(&mut p, &g);
             self.net.set_flat(&p);
             last = loss / budget.batch as f64;
+            if let Some(c) = ck {
+                if step + 1 == budget.steps || c.due() {
+                    let st = crate::train_ckpt::LoopState {
+                        next_step: step + 1,
+                        rng: rng.clone(),
+                        m: opt.m.clone(),
+                        v: opt.v.clone(),
+                        t: opt.t,
+                        p: p.clone(),
+                        last,
+                        max_gn: 0.0,
+                    };
+                    crate::train_ckpt::save(c, &st, &base);
+                }
+            }
         }
         last
     }
@@ -667,7 +710,23 @@ impl Dphi {
         seed: u64,
         lr_final: f64,
         loss_at: &[usize],
+        sampler: F,
+    ) -> (f64, f64)
+    where
+        F: FnMut(&mut Xoshiro256StarStar) -> (Vec<f64>, Vec<f64>, Vec<Vec<f64>>),
+    {
+        self.train_horizon_ck(budget, seed, lr_final, loss_at, sampler, None)
+    }
+
+    /// [`train_horizon`] with optional bit-exact checkpoint/resume (infra only).
+    pub fn train_horizon_ck<F>(
+        &mut self,
+        budget: TrainBudget,
+        seed: u64,
+        lr_final: f64,
+        loss_at: &[usize],
         mut sampler: F,
+        ck: Option<&crate::train_ckpt::TrainCkpt>,
     ) -> (f64, f64)
     where
         F: FnMut(&mut Xoshiro256StarStar) -> (Vec<f64>, Vec<f64>, Vec<Vec<f64>>),
@@ -680,7 +739,20 @@ impl Dphi {
         let mut g = vec![0.0; n];
         let mut last = 0.0;
         let mut max_gn = 0.0;
-        for step in 0..budget.steps {
+        let base = crate::v4_provenance::snapshot();
+        let mut start = 0;
+        if let Some(st) = ck.and_then(crate::train_ckpt::load) {
+            start = st.next_step;
+            rng = st.rng;
+            opt.m = st.m;
+            opt.v = st.v;
+            opt.t = st.t;
+            p = st.p;
+            self.net.set_flat(&p);
+            last = st.last;
+            max_gn = st.max_gn;
+        }
+        for step in start..budget.steps {
             let t = step as f64 / budget.steps.max(1) as f64;
             opt.lr =
                 lr_final + 0.5 * (budget.lr - lr_final) * (1.0 + (std::f64::consts::PI * t).cos());
@@ -698,6 +770,21 @@ impl Dphi {
             opt.step(&mut p, &g);
             self.net.set_flat(&p);
             last = loss / budget.batch as f64;
+            if let Some(c) = ck {
+                if step + 1 == budget.steps || c.due() {
+                    let st = crate::train_ckpt::LoopState {
+                        next_step: step + 1,
+                        rng: rng.clone(),
+                        m: opt.m.clone(),
+                        v: opt.v.clone(),
+                        t: opt.t,
+                        p: p.clone(),
+                        last,
+                        max_gn,
+                    };
+                    crate::train_ckpt::save(c, &st, &base);
+                }
+            }
         }
         (last, max_gn)
     }

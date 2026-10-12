@@ -100,6 +100,7 @@ pub mod transformation_family_discovery;
 /// invoca; no es el paper de cuenca. Tests detrás de `research`.
 pub mod unified_spin_cognitive_engine;
 pub mod v4_controls;
+pub mod train_ckpt;
 pub mod v4_dataset;
 pub mod v4_distill;
 pub mod v4_e45;
