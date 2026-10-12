@@ -90,6 +90,7 @@ pub mod symmetry_guided_rqm_epr;
 pub mod symmetry_thermodynamic_substrate;
 pub mod thermo_router;
 pub mod thermodynamic_attractor_comparison;
+pub mod train_ckpt;
 /// Comparación de estructuras temporales de inferencia: evidencia sola,
 /// evidencia como frontera y dos vectores de estado con post-selección.
 pub mod transactional_training_experiment;
@@ -100,7 +101,6 @@ pub mod transformation_family_discovery;
 /// invoca; no es el paper de cuenca. Tests detrás de `research`.
 pub mod unified_spin_cognitive_engine;
 pub mod v4_controls;
-pub mod train_ckpt;
 pub mod v4_dataset;
 pub mod v4_distill;
 pub mod v4_e45;
