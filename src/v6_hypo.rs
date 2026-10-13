@@ -527,16 +527,28 @@ pub fn train_onestep_v6(
             hits.borrow_mut().extend(aud.hits(&t.2));
         }
     }
-    let save = || serde_json::json!(hits.borrow().iter().copied().collect::<Vec<u64>>());
+    // Extra checkpoint state: auditor hits + last-step diagnostics (bit-exact).
+    let aux_cell: RefCell<[f64; 5]> = RefCell::new([0.0; 5]);
+    let save = || {
+        serde_json::json!({
+            "hits": hits.borrow().iter().copied().collect::<Vec<u64>>(),
+            "aux": crate::train_ckpt::bits(&aux_cell.borrow()[..]),
+        })
+    };
     let load = |v: &serde_json::Value| {
         let mut h = hits.borrow_mut();
         h.clear();
         h.extend(
-            v.as_array()
+            v["hits"]
+                .as_array()
                 .into_iter()
                 .flatten()
                 .filter_map(|x| x.as_u64()),
         );
+        let a = crate::train_ckpt::unbits(&v["aux"]);
+        if a.len() == 5 {
+            aux_cell.borrow_mut().copy_from_slice(&a);
+        }
     };
     let tc = mk_ckpt(&ck, &save, &load);
 
@@ -548,7 +560,6 @@ pub fn train_onestep_v6(
     let base = snapshot();
     let start = try_resume(tc.as_ref(), &mut rng, &mut opt, &mut p, &mut last);
     net.set_flat(&p);
-    let mut aux = [0.0f64; 5];
     let bsz = bud.batch as f64;
     let mut g = vec![0.0; np];
     for step in start..bud.steps {
@@ -769,9 +780,10 @@ pub fn train_onestep_v6(
         opt.step(&mut p, &g);
         net.set_flat(&p);
         last = loss / bsz;
-        aux.copy_from_slice(&a_step);
+        aux_cell.borrow_mut().copy_from_slice(&a_step);
         maybe_save(tc.as_ref(), step, bud.steps, &rng, &opt, &p, last, &base);
     }
+    let aux_final: [f64; 5] = *aux_cell.borrow();
     drop(sig);
     drop(cdt);
     for h in hits.borrow().iter() {
@@ -786,7 +798,7 @@ pub fn train_onestep_v6(
         mask: trusted,
         fit_res: res,
         loss: last,
-        aux,
+        aux: aux_final,
         leak_frames: 0,
     }
 }
@@ -938,8 +950,13 @@ fn train_horizon_v6(
     bud: TrainBudget,
     ck: Option<(std::path::PathBuf, String)>,
 ) -> (f64, f64) {
-    let save = || serde_json::Value::Null;
-    let load = |_: &serde_json::Value| {};
+    let mf: RefCell<f64> = RefCell::new(0.0);
+    let save = || serde_json::json!(mf.borrow().to_bits());
+    let load = |v: &serde_json::Value| {
+        if let Some(b) = v.as_u64() {
+            *mf.borrow_mut() = f64::from_bits(b);
+        }
+    };
     let tc = mk_ckpt(&ck, &save, &load);
     let np = net.n_params();
     let mut rng = Xoshiro256StarStar::seed_from_u64(seed ^ SALT_HORIZON);
@@ -950,7 +967,6 @@ fn train_horizon_v6(
     let start = try_resume(tc.as_ref(), &mut rng, &mut opt, &mut p, &mut last);
     net.set_flat(&p);
     let mut g = vec![0.0; np];
-    let mut masked_frac = 0.0;
     for step in start..bud.steps {
         opt.lr = cosine_lr(step, bud.steps, bud.lr, ONESTEP_LR_FINAL);
         g.fill(0.0);
@@ -965,9 +981,10 @@ fn train_horizon_v6(
         opt.step(&mut p, &g);
         net.set_flat(&p);
         last = loss / bud.batch as f64;
-        masked_frac = masked as f64 / (bud.batch * LOSS_AT.len()) as f64;
+        *mf.borrow_mut() = masked as f64 / (bud.batch * LOSS_AT.len()) as f64;
         maybe_save(tc.as_ref(), step, bud.steps, &rng, &opt, &p, last, &base);
     }
+    let masked_frac = *mf.borrow();
     (last, masked_frac)
 }
 
