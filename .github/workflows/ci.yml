@@ -7,6 +7,10 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  # `.cargo/config.toml` fija target-cpu=native. En runners Windows la caché
+  # (Swatinem) puede traer binarios de otra CPU y el test aborta con
+  # STATUS_ILLEGAL_INSTRUCTION. En CI se compila para x86-64-v2 en todos los jobs.
+  RUSTFLAGS: "-C target-cpu=x86-64-v2"
 
 jobs:
   smoke:
@@ -38,10 +42,6 @@ jobs:
     name: gate científico v4
     runs-on: windows-latest
     needs: smoke
-    # target-cpu=native (.cargo/config.toml) hace que rustc aborte con
-    # STATUS_ILLEGAL_INSTRUCTION al compilar `pulp` en algunos runners Windows.
-    env:
-      RUSTFLAGS: "-C target-cpu=x86-64-v2"
     steps:
       - uses: actions/checkout@v4
 
