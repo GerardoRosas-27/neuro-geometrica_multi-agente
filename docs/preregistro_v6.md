@@ -91,3 +91,6 @@ Diferencias pareadas por semilla, IC95 bootstrap percentil (10 000 remuestreos, 
 4. H4: J por diferencias finitas en vez de derivadas exactas (evita segundas derivadas de la red).
 5. H6: s entra como input sólo durante el entrenamiento (+136 parámetros), plegado exacto en inferencia.
 6. H7: ‖P⊥JP⊥‖ se estima con una dirección normal aleatoria por muestra (cota inferior estocástica de la norma espectral), no con la norma espectral exacta.
+
+## 7. Smoke y costo estimado (no es evidencia)
+Smoke 0x5A60, 200 pasos, 23 brazos: 16 s de pared en total, todos `clean=true leak=0 q_test=0 fresh_ok=true`; dos corridas idénticas byte a byte (sin contar tiempos); interrumpir y reanudar desde checkpoint (`V6_CKPT_STEPS=50`, `V6_ABORT_AT_STEP=100`) da métricas bit-idénticas. La suma de train_s es ≈ 11.6 s por 200 pasos → ≈ 4.1 h por semilla con el presupuesto completo (×1280) → con 8 núcleos (16 semillas = 2 tandas) ≈ 8–9 h por fase, **≈ 17–19 h DEV+CONFIRM**.
