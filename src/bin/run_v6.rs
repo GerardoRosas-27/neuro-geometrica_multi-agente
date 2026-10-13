@@ -7,7 +7,9 @@
 //! in `docs/preregistro_v6.md` and refuse any override.
 
 use cdt_rqm_epr::field_autonomy_v4::eval_checkpoint_cli;
-use cdt_rqm_epr::v6_hypo::{self as v6, CONFIRM_SEEDS_V6, DEV_SEEDS_V6, SMOKE_SEED_V6, SMOKE_STEPS};
+use cdt_rqm_epr::v6_hypo::{
+    self as v6, CONFIRM_SEEDS_V6, DEV_SEEDS_V6, SMOKE_SEED_V6, SMOKE_STEPS,
+};
 use rayon::prelude::*;
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
@@ -40,14 +42,19 @@ fn main() {
             .cloned()
     };
     let phase = get("--phase").unwrap_or_else(|| "smoke".into());
-    let smoke_steps = std::env::var("V6_SMOKE_STEPS").ok().and_then(|v| v.parse().ok()).unwrap_or(SMOKE_STEPS);
+    let smoke_steps = std::env::var("V6_SMOKE_STEPS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(SMOKE_STEPS);
     let (seeds, steps): (Vec<u64>, usize) = match phase.as_str() {
         "dev" => (DEV_SEEDS_V6.to_vec(), v6::V6_STEPS),
         "confirm" => (CONFIRM_SEEDS_V6.to_vec(), v6::V6_STEPS),
         "smoke" => (vec![SMOKE_SEED_V6], smoke_steps),
         p => panic!("unknown phase {p}"),
     };
-    let only: Option<Vec<String>> = std::env::var("V6_ARMS").ok().map(|v| v.split(',').map(String::from).collect());
+    let only: Option<Vec<String>> = std::env::var("V6_ARMS")
+        .ok()
+        .map(|v| v.split(',').map(String::from).collect());
     if phase != "smoke" && (only.is_some() || std::env::var("V6_SMOKE_STEPS").is_ok()) {
         panic!("V6_ARMS / V6_SMOKE_STEPS are smoke-only (pre-registered DEV/CONFIRM)");
     }

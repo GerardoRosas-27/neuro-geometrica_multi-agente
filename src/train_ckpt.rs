@@ -38,7 +38,9 @@ impl<'a> TrainCkpt<'a> {
     ) -> Self {
         let env = |k: &str| std::env::var(k).ok().and_then(|v| v.parse::<f64>().ok());
         let every_secs = env("V6_CKPT_SECS").or(env("V5_CKPT_SECS")).unwrap_or(300.0);
-        let every_steps = std::env::var("V6_CKPT_STEPS").ok().and_then(|v| v.parse().ok());
+        let every_steps = std::env::var("V6_CKPT_STEPS")
+            .ok()
+            .and_then(|v| v.parse().ok());
         Self {
             path,
             every_secs,
@@ -52,7 +54,7 @@ impl<'a> TrainCkpt<'a> {
     /// `next_step` = number of optimizer steps completed.
     pub fn due_at(&self, next_step: usize) -> bool {
         match self.every_steps {
-            Some(n) if n > 0 => next_step % n == 0,
+            Some(n) if n > 0 => next_step.is_multiple_of(n),
             _ => self.due(),
         }
     }

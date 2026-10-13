@@ -12,6 +12,8 @@
 // Campo v4
 pub mod field_autonomy_v4;
 pub mod field_v4;
+/// Infra: deterministic intra-seed training checkpoints (v5 design).
+pub mod train_ckpt;
 pub mod v4_controls;
 pub mod v4_dataset;
 pub mod v4_distill;
@@ -22,8 +24,6 @@ pub mod v4_provenance;
 #[allow(clippy::all)]
 pub mod v4_qwen2_hidden;
 pub mod v4_stability;
-/// Infra: deterministic intra-seed training checkpoints (v5 design).
-pub mod train_ckpt;
 /// v6: hipótesis H1–H7 (docs/hipotesis_math.md) sobre la receta v4 §16.
 pub mod v6_hypo;
 

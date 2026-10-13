@@ -18,8 +18,8 @@
 
 use crate::field_autonomy_v4::{
     collect_experience, consolidate, evaluate, replay_sample, target_h, triples, AuditFlags,
-    Auditor, ConsolidateMode, EvalOut, ExpMode, LearningSignal, Row, RunOpts, CSV_HEADER,
-    HORIZONS, ITERABLE_FAMS, K_POINTS, REPLAY_FRACTION,
+    Auditor, ConsolidateMode, EvalOut, ExpMode, Row, RunOpts, CSV_HEADER, HORIZONS, ITERABLE_FAMS,
+    K_POINTS, REPLAY_FRACTION,
 };
 use crate::train_ckpt::{LoopState, TrainCkpt};
 use crate::v4_controls::{Dphi, Mlp, Predictor, TrainBudget, PD};
@@ -125,7 +125,9 @@ impl Hyp {
 pub enum Route {
     OneStep(Hyp),
     /// H2: multi-horizon on TRAIN episodes with steps/EPISODE_H (equal Dφ evals).
-    Horizon { prm: bool },
+    Horizon {
+        prm: bool,
+    },
     /// v6 + H2: half the Dφ evaluations one-step(Hyp), half PRM horizon.
     OneThenPrm(Hyp),
 }
@@ -183,19 +185,16 @@ pub fn arms() -> Vec<Arm> {
         ));
     }
     v.push(a("H4_sobolev", true, one(Hyp { h4: true, ..d }), false));
-    v.push(a("H4_sobolev_mlp", false, one(Hyp { h4: true, ..d }), false));
+    v.push(a(
+        "H4_sobolev_mlp",
+        false,
+        one(Hyp { h4: true, ..d }),
+        false,
+    ));
     v.push(a("H5_soft", true, one(Hyp { h5_soft: true, ..d }), false));
     for (i, eta) in H5_ETAS.iter().enumerate() {
         let n = ["H5_eta1", "H5_eta2", "H5_eta4", "H5_eta8"][i];
-        v.push(a(
-            n,
-            true,
-            one(Hyp {
-                h5_eta: *eta,
-                ..d
-            }),
-            false,
-        ));
+        v.push(a(n, true, one(Hyp { h5_eta: *eta, ..d }), false));
     }
     v.push(a("H6_semigroup", true, one(Hyp { h6: true, ..d }), false));
     v.push(a("H7_normal", true, one(Hyp { h7: true, ..d }), false));
@@ -463,7 +462,13 @@ fn maybe_save(
     }
 }
 
-fn try_resume(ck: Option<&TrainCkpt>, rng: &mut Xoshiro256StarStar, opt: &mut Opt, p: &mut Vec<f64>, last: &mut f64) -> usize {
+fn try_resume(
+    ck: Option<&TrainCkpt>,
+    rng: &mut Xoshiro256StarStar,
+    opt: &mut Opt,
+    p: &mut Vec<f64>,
+    last: &mut f64,
+) -> usize {
     if let Some(st) = ck.and_then(crate::train_ckpt::load) {
         *rng = st.rng;
         opt.m = st.m;
@@ -526,7 +531,12 @@ pub fn train_onestep_v6(
     let load = |v: &serde_json::Value| {
         let mut h = hits.borrow_mut();
         h.clear();
-        h.extend(v.as_array().into_iter().flatten().filter_map(|x| x.as_u64()));
+        h.extend(
+            v.as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|x| x.as_u64()),
+        );
     };
     let tc = mk_ckpt(&ck, &save, &load);
 
@@ -623,7 +633,10 @@ pub fn train_onestep_v6(
                     2.0 * (o[0] - y[pt * PD]) * scale / bud.batch as f64,
                     2.0 * (o[1] - y[pt * PD + 1]) * scale / bud.batch as f64,
                 ];
-                loss += (0..PD).map(|i| (o[i] - y[pt * PD + i]).powi(2)).sum::<f64>() * scale;
+                loss += (0..PD)
+                    .map(|i| (o[i] - y[pt * PD + i]).powi(2))
+                    .sum::<f64>()
+                    * scale;
                 pt_bwd(net, residual, &ptc, 1.0, d, &mut g, false);
                 main_pts.push(ptc);
             }
@@ -699,7 +712,8 @@ pub fn train_onestep_v6(
                     let xp: Vec<f64> = x.iter().zip(&v).map(|(a, b)| a + FD_EPS * b).collect();
                     let pp = state_fwd(net, residual, s_in, &xp, &c, 1.0);
                     let fp = outs(&pp);
-                    let mut wv: Vec<f64> = fp.iter().zip(&fx).map(|(a, b)| (a - b) / FD_EPS).collect();
+                    let mut wv: Vec<f64> =
+                        fp.iter().zip(&fx).map(|(a, b)| (a - b) / FD_EPS).collect();
                     proj_out(&mut wv, &tb);
                     let nn = sq(&wv).sqrt();
                     if nn > RHO_H7 {
@@ -708,7 +722,15 @@ pub fn train_onestep_v6(
                         for pt in 0..npts {
                             let gp = [f * wv[pt * PD], f * wv[pt * PD + 1]];
                             pt_bwd(net, residual, &pp[pt], 1.0, gp, &mut g, false);
-                            pt_bwd(net, residual, &main_pts[pt], 1.0, [-gp[0], -gp[1]], &mut g, false);
+                            pt_bwd(
+                                net,
+                                residual,
+                                &main_pts[pt],
+                                1.0,
+                                [-gp[0], -gp[1]],
+                                &mut g,
+                                false,
+                            );
                         }
                     }
                 }
@@ -732,16 +754,22 @@ pub fn train_onestep_v6(
             for (pts, _, ny) in &h1_cache {
                 for (pt, ptc) in pts.iter().enumerate() {
                     let f = 2.0 * LAMBDA_H1 / (bsz * ny);
-                    pt_bwd(net, residual, ptc, 1.0, [f * eb[pt * PD], f * eb[pt * PD + 1]], &mut g, false);
+                    pt_bwd(
+                        net,
+                        residual,
+                        ptc,
+                        1.0,
+                        [f * eb[pt * PD], f * eb[pt * PD + 1]],
+                        &mut g,
+                        false,
+                    );
                 }
             }
         }
         opt.step(&mut p, &g);
         net.set_flat(&p);
         last = loss / bsz;
-        for i in 0..5 {
-            aux[i] = a_step[i];
-        }
+        aux.copy_from_slice(&a_step);
         maybe_save(tc.as_ref(), step, bud.steps, &rng, &opt, &p, last, &base);
     }
     drop(sig);
@@ -822,7 +850,12 @@ fn episodes(train: &[Example]) -> Vec<(Vec<f64>, Vec<Vec<f64>>)> {
 
 fn future_leak_frames(eps: &[(Vec<f64>, Vec<Vec<f64>>)], aud: &Auditor) -> usize {
     eps.iter()
-        .map(|(_, st)| st.iter().skip(2).filter(|s| !aud.hits(s).is_empty()).count())
+        .map(|(_, st)| {
+            st.iter()
+                .skip(2)
+                .filter(|s| !aud.hits(s).is_empty())
+                .count()
+        })
         .sum()
 }
 
@@ -1101,7 +1134,8 @@ fn dstep(a: &Dphi, b: &Dphi, test: &[Example]) -> f64 {
         .iter()
         .map(|e| {
             let (pa, pb) = (a.step(&e.input, &e.context), b.step(&e.input, &e.context));
-            sq(&pa.iter().zip(&pb).map(|(x, y)| x - y).collect::<Vec<_>>()) / sq(&e.expected).max(1e-12)
+            sq(&pa.iter().zip(&pb).map(|(x, y)| x - y).collect::<Vec<_>>())
+                / sq(&e.expected).max(1e-12)
         })
         .collect();
     m::mean(&v).sqrt()
@@ -1153,7 +1187,13 @@ struct Trained {
     note: String,
 }
 
-pub fn run_seed(seed: u64, steps: usize, opts: &RunOpts, ck_dir: Option<&std::path::Path>, only: Option<&[String]>) -> SeedOut {
+pub fn run_seed(
+    seed: u64,
+    steps: usize,
+    opts: &RunOpts,
+    ck_dir: Option<&std::path::Path>,
+    only: Option<&[String]>,
+) -> SeedOut {
     let s = generate_and_seal(seed, &DatasetConfig::standard(K_POINTS));
     s.verify_test().expect("TEST sealed");
     let aud = Auditor::new(&s);
@@ -1173,11 +1213,18 @@ pub fn run_seed(seed: u64, steps: usize, opts: &RunOpts, ck_dir: Option<&std::pa
             ck_dir.map(|dir| {
                 (
                     dir.join(format!("0x{seed:X}_{}{phase}.json", arm.name)),
-                    format!("v6ck1 seed={seed} arm={} phase={phase} steps={st}", arm.name),
+                    format!(
+                        "v6ck1 seed={seed} arm={} phase={phase} steps={st}",
+                        arm.name
+                    ),
                 )
             })
         };
-        let train: &[Example] = if arm.shuffled { &shuf_train } else { &s.ds.train };
+        let train: &[Example] = if arm.shuffled {
+            &shuf_train
+        } else {
+            &s.ds.train
+        };
         let (d, train_params, flags, leak, note) = match arm.route {
             Route::OneStep(h) => {
                 let mut net = Dphi::gated_h(z, CTX_DIM, V6_HIDDEN, arm.residual, seed ^ 0xD0).net;
@@ -1185,7 +1232,16 @@ pub fn run_seed(seed: u64, steps: usize, opts: &RunOpts, ck_dir: Option<&std::pa
                     net = Mlp::new(PD + CTX_DIM + 1, V6_HIDDEN, 3 * PD, 0.1, seed ^ 0xD0);
                 }
                 let tp = net.n_params();
-                let o = train_onestep_v6(&mut net, arm.residual, train, seed, &aud, h, budget(steps), ckp("", steps));
+                let o = train_onestep_v6(
+                    &mut net,
+                    arm.residual,
+                    train,
+                    seed,
+                    &aud,
+                    h,
+                    budget(steps),
+                    ckp("", steps),
+                );
                 let ms: String = o.mask.iter().map(|b| if *b { '1' } else { '0' }).collect();
                 let note = format!(
                     "route=onestep {} mask={ms} fit_res={} loss={:.6} aux_h1={:.3e} aux_h4={:.3e} aux_h6={:.3e} aux_h7={:.3e}",
@@ -1197,25 +1253,70 @@ pub fn run_seed(seed: u64, steps: usize, opts: &RunOpts, ck_dir: Option<&std::pa
                     o.aux[2],
                     o.aux[3]
                 );
-                (export(&net, arm.residual, h.h6, arm.name), tp, o.flags, o.leak_frames, note)
+                (
+                    export(&net, arm.residual, h.h6, arm.name),
+                    tp,
+                    o.flags,
+                    o.leak_frames,
+                    note,
+                )
             }
             Route::Horizon { prm } => {
                 let mut net = Dphi::gated_h(z, CTX_DIM, V6_HIDDEN, arm.residual, seed ^ 0xD0).net;
                 let tp = net.n_params();
                 let st = (steps / EPISODE_H).max(1);
-                let (l, mf) = train_horizon_v6(&mut net, arm.residual, &eps, seed, prm, budget(st), ckp("", st));
-                let note = format!("route=horizon prm={prm} steps={st} loss={l:.6} masked_frac_last={mf:.3}");
-                (export(&net, arm.residual, false, arm.name), tp, AuditFlags::default(), ep_leaks, note)
+                let (l, mf) = train_horizon_v6(
+                    &mut net,
+                    arm.residual,
+                    &eps,
+                    seed,
+                    prm,
+                    budget(st),
+                    ckp("", st),
+                );
+                let note = format!(
+                    "route=horizon prm={prm} steps={st} loss={l:.6} masked_frac_last={mf:.3}"
+                );
+                (
+                    export(&net, arm.residual, false, arm.name),
+                    tp,
+                    AuditFlags::default(),
+                    ep_leaks,
+                    note,
+                )
             }
             Route::OneThenPrm(h) => {
-                let mut net = Mlp::new(PD + CTX_DIM + h.h6 as usize, V6_HIDDEN, 3 * PD, 0.1, seed ^ 0xD0);
+                let mut net = Mlp::new(
+                    PD + CTX_DIM + h.h6 as usize,
+                    V6_HIDDEN,
+                    3 * PD,
+                    0.1,
+                    seed ^ 0xD0,
+                );
                 let tp = net.n_params();
                 let sa = (steps / 2).max(1);
-                let o = train_onestep_v6(&mut net, arm.residual, train, seed, &aud, h, budget(sa), ckp("_A", sa));
+                let o = train_onestep_v6(
+                    &mut net,
+                    arm.residual,
+                    train,
+                    seed,
+                    &aud,
+                    h,
+                    budget(sa),
+                    ckp("_A", sa),
+                );
                 // phase B on the exported (s = 1 folded) net
                 let mut d = export(&net, arm.residual, h.h6, arm.name);
                 let sb = (steps / (2 * EPISODE_H)).max(1);
-                let (l, mf) = train_horizon_v6(&mut d.net, arm.residual, &eps, seed, true, budget(sb), ckp("_B", sb));
+                let (l, mf) = train_horizon_v6(
+                    &mut d.net,
+                    arm.residual,
+                    &eps,
+                    seed,
+                    true,
+                    budget(sb),
+                    ckp("_B", sb),
+                );
                 let note = format!("route=onestep+prm {} stepsA={sa} stepsB={sb} lossA={:.6} lossB={l:.6} masked_frac_last={mf:.3}", h.tag(), o.loss);
                 (d, tp, o.flags, ep_leaks, note)
             }
@@ -1223,7 +1324,10 @@ pub fn run_seed(seed: u64, steps: usize, opts: &RunOpts, ck_dir: Option<&std::pa
         let train_s = t0.elapsed().as_secs_f64();
         s.verify_test().expect("TEST sealed");
         let ev = evaluate(&d, &s.ds.test, 1, Some((&aud, &flags)), None);
-        eprintln!("seed 0x{seed:X} arm {} acc1={:.4} ({train_s:.1}s)", arm.name, ev.acc);
+        eprintln!(
+            "seed 0x{seed:X} arm {} acc1={:.4} ({train_s:.1}s)",
+            arm.name, ev.acc
+        );
         trained.push(Trained {
             arm,
             d,
@@ -1235,17 +1339,26 @@ pub fn run_seed(seed: u64, steps: usize, opts: &RunOpts, ck_dir: Option<&std::pa
         });
     }
 
-    let iter_ex: Vec<&Example> = s.ds.test.iter().filter(|e| ITERABLE_FAMS.contains(&e.family_id)).collect();
+    let iter_ex: Vec<&Example> =
+        s.ds.test
+            .iter()
+            .filter(|e| ITERABLE_FAMS.contains(&e.family_id))
+            .collect();
     let mut rng = Xoshiro256StarStar::seed_from_u64(seed ^ 0xD33);
     let deltas: Vec<Vec<f64>> = iter_ex
         .iter()
         .map(|e| {
             let v: Vec<f64> = e.input.iter().map(|_| rng.gen_range(-1.0..1.0)).collect();
             let nv = m::norm(&v).max(1e-12);
-            v.iter().map(|x| x / nv * 0.01 * m::norm(&e.input)).collect()
+            v.iter()
+                .map(|x| x / nv * 0.01 * m::norm(&e.input))
+                .collect()
         })
         .collect();
-    let e3 = trained.iter().find(|t| t.arm.name == "E3_v4").map(|t| t.d.clone());
+    let e3 = trained
+        .iter()
+        .find(|t| t.arm.name == "E3_v4")
+        .map(|t| t.d.clone());
     let mut rows = vec![];
     for t in &trained {
         let (fa, fq) = fresh_eval(opts, &s, seed, &t.d, t.arm.name);
@@ -1268,7 +1381,11 @@ pub fn run_seed(seed: u64, steps: usize, opts: &RunOpts, ck_dir: Option<&std::pa
             stability: t.ev.rel_err,
             leakage: leak,
             q: t.ev.queries,
-            status: if clean { "CLEAN".into() } else { "LEAKED".into() },
+            status: if clean {
+                "CLEAN".into()
+            } else {
+                "LEAKED".into()
+            },
             notes: format!(
                 "{} train_params={} train_s={:.2} q_test={q_test} {} {}",
                 t.note,
@@ -1280,12 +1397,19 @@ pub fn run_seed(seed: u64, steps: usize, opts: &RunOpts, ck_dir: Option<&std::pa
         });
         let variants: &[usize] = if t.arm.reproj { &[0, 1] } else { &[0] };
         for &vi in variants {
-            let label = if vi == 1 { format!("R_{}_V1reproj", t.arm.name) } else { format!("R_{}", t.arm.name) };
+            let label = if vi == 1 {
+                format!("R_{}_V1reproj", t.arm.name)
+            } else {
+                format!("R_{}", t.arm.name)
+            };
             let (region, rr, notes, key) = e33(seed, &label, &t.d, vi, &iter_ex, &deltas);
             rows.extend(rr);
             let (nb, ab, br) = signed_bias(&t.d, &iter_ex);
             let sg = sigma_gap(&t.d, &iter_ex);
-            let ds = e3.as_ref().map(|r| dstep(&t.d, r, &s.ds.test)).unwrap_or(f64::NAN);
+            let ds = e3
+                .as_ref()
+                .map(|r| dstep(&t.d, r, &s.ds.test))
+                .unwrap_or(f64::NAN);
             let pass = region >= 8 && clean && fresh_ok;
             rows.push(Row {
                 experiment: "V6".into(),
@@ -1315,7 +1439,10 @@ pub fn run_seed(seed: u64, steps: usize, opts: &RunOpts, ck_dir: Option<&std::pa
         s.ds.train.len(),
         s.manifest.test_sha256
     );
-    SeedOut { rows, manifest_json }
+    SeedOut {
+        rows,
+        manifest_json,
+    }
 }
 
 pub fn csv_header() -> &'static str {
@@ -1335,7 +1462,16 @@ mod tests {
         let mut a = Dphi::gated_h(z, CTX_DIM, V6_HIDDEN, true, seed ^ 0xD0);
         crate::v4_distill::train_onestep_trusted_b(&mut a, &s, seed, &aud, TRUST_TAU, budget(30));
         let mut net = Dphi::gated_h(z, CTX_DIM, V6_HIDDEN, true, seed ^ 0xD0).net;
-        train_onestep_v6(&mut net, true, &s.ds.train, seed, &aud, Hyp::default(), budget(30), None);
+        train_onestep_v6(
+            &mut net,
+            true,
+            &s.ds.train,
+            seed,
+            &aud,
+            Hyp::default(),
+            budget(30),
+            None,
+        );
         assert_eq!(a.net.flat(), net.flat());
     }
 
