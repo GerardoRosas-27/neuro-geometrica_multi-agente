@@ -22,6 +22,10 @@ pub mod v4_provenance;
 #[allow(clippy::all)]
 pub mod v4_qwen2_hidden;
 pub mod v4_stability;
+/// Infra: deterministic intra-seed training checkpoints (v5 design).
+pub mod train_ckpt;
+/// v6: hipótesis H1–H7 (docs/hipotesis_math.md) sobre la receta v4 §16.
+pub mod v6_hypo;
 
 // Periferia LLM (Gemma 2 GGUF)
 pub mod field_gemma_probe;
