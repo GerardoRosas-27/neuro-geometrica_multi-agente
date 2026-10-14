@@ -16,10 +16,15 @@ KS = [1, 2, 4, 8]
 
 
 class Orbita(torch.nn.Module):
-    def __init__(s, cdim=10, hh=24, hg=16, kc=16, r=2, eta=0.5):
+    def __init__(s, cdim=10, hh=24, hg=16, kc=16, r=2, eta=0.5, variant="full"):
         super().__init__()
+        # variant: full | A (sin núcleo K) | B (K libre 8x8 por paso, dependiente de c) | C (sin corrector)
+        s.variant = variant
+        if variant == "C": r = 0
         s.hh, s.hg, s.kc, s.r, s.eta = hh, hg, kc, r, eta
-        s.nout = NB + NB + NSKEW + M + kc + kc
+        nk = M * M if variant == "B" else (0 if variant == "A" else NB + NB + NSKEW)
+        s.nk = nk
+        s.nout = nk + M + kc + kc
         s.l1 = torch.nn.Linear(cdim, hh)
         s.l2 = torch.nn.Linear(hh, s.nout)
         s.l3 = torch.nn.Linear(2 + cdim, hg)
@@ -37,6 +42,13 @@ class Orbita(torch.nn.Module):
 
     def ctx(s, c):                                   # c: [B,10]
         o = s.l2(torch.tanh(s.l1(c)))
+        if s.variant in ("A", "B"):
+            k = s.nk
+            Kf = o[:, :k].reshape(-1, M, M) if s.variant == "B" else None
+            beta = o[:, k:k + M]; k += M
+            bk = o[:, k:k + s.kc]; k += s.kc
+            ak = F.softplus(o[:, k:k + s.kc])
+            return Kf, None, None, beta, bk, ak
         k = 0
         om = o[:, k:k + NB]; k += NB
         sv = o[:, k:k + NB]; k += NB
@@ -58,6 +70,14 @@ class Orbita(torch.nn.Module):
         return torch.cat([q, g], -1)                 # [B,P,8]
 
     def core(s, cp, z, k=1):
+        if s.variant == "A":
+            return z
+        if s.variant == "B":
+            Kf, beta = cp[0], cp[3]
+            I = torch.eye(M, dtype=z.dtype)
+            for _ in range(k):
+                z = torch.einsum("bij,bpj->bpi", Kf + I, z) + beta[:, None, :]
+            return z
         Q, rho, om, beta, _, _ = cp
         for _ in range(k):
             y = torch.einsum("bji,bpj->bpi", Q, z)   # Qᵀ z
@@ -87,7 +107,7 @@ class Orbita(torch.nn.Module):
 
     def to_json(s):
         t = lambda p: p.detach().tolist()
-        return {"arch": "ORBITA-v1", "hh": s.hh, "hg": s.hg, "kc": s.kc, "r": s.r, "eta": s.eta,
+        return {"arch": "ORBITA-v1", "variant": s.variant, "hh": s.hh, "hg": s.hg, "kc": s.kc, "r": s.r, "eta": s.eta,
                 "w1": t(s.l1.weight), "b1": t(s.l1.bias), "w2": t(s.l2.weight), "b2": t(s.l2.bias),
                 "w3": t(s.l3.weight), "b3": t(s.l3.bias), "w4": t(s.l4.weight), "b4": t(s.l4.bias),
                 "wc": t(s.wc), "n_params": s.n_params()}
@@ -111,12 +131,13 @@ def main():
     ap.add_argument("--lam_h", type=float, default=0.1); ap.add_argument("--gamma", type=float, default=0.9)
     ap.add_argument("--lam_b", type=float, default=1.0); ap.add_argument("--lam_c", type=float, default=0.01)
     ap.add_argument("--mh_x", type=int, default=0)
+    ap.add_argument("--variant", default="full")
     ap.add_argument("--ckpt_every", type=int, default=20000)
     a = ap.parse_args()
     seed = int(a.seed, 16) if a.seed.startswith("0x") else int(a.seed)
     meta, (tx, tc, ty), (rx, rc, ry, rw) = load(a.data)
     torch.manual_seed(seed ^ 0x0B)
-    model = Orbita()
+    model = Orbita(variant=a.variant)
     opt = torch.optim.Adam(model.parameters(), lr=a.lr)
     gen = torch.Generator().manual_seed(seed ^ 0x7A)
     any_trusted = bool((rw > 1e-12).any())
@@ -143,7 +164,7 @@ def main():
         lb = (dp.mean(0) ** 2).sum() / (y.view(-1, 2) ** 2).sum(1).mean()
         lc = ((u - u0) ** 2).sum(-1).mean()
         lh = torch.zeros(())
-        if a.lam_h > 0 and nrep:
+        if a.lam_h > 0 and nrep and a.variant != "A":
             sl = slice(a.batch - nrep, a.batch)
             cpr = tuple(p[sl] for p in cp)
             zr = z[sl]; zk = zr; prev = 0

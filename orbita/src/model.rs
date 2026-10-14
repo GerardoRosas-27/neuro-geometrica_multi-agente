@@ -25,6 +25,7 @@ pub struct Orbita {
     pub w4: Vec<Vec<f64>>, pub b4: Vec<f64>,
     pub wc: Vec<Vec<f64>>,
     pub raw: String,
+    pub variant: String,
 }
 
 fn mat(v: &Value) -> Vec<Vec<f64>> {
@@ -61,7 +62,7 @@ fn cayley(s: &[[f64; M]; M]) -> [[f64; M]; M] {
     b
 }
 
-pub struct CtxParams { pub q: [[f64; M]; M], pub rho: [f64; NB], pub om: [f64; NB], pub beta: Vec<f64>, pub bk: Vec<f64>, pub ak: Vec<f64> }
+pub struct CtxParams { pub kf: Vec<f64>, pub q: [[f64; M]; M], pub rho: [f64; NB], pub om: [f64; NB], pub beta: Vec<f64>, pub bk: Vec<f64>, pub ak: Vec<f64> }
 
 impl Orbita {
     pub fn from_json(t: &str) -> Self {
@@ -73,7 +74,7 @@ impl Orbita {
             eta: g("eta").as_f64().unwrap(),
             w1: mat(g("w1")), b1: vecf(g("b1")), w2: mat(g("w2")), b2: vecf(g("b2")),
             w3: mat(g("w3")), b3: vecf(g("b3")), w4: mat(g("w4")), b4: vecf(g("b4")),
-            wc: mat(g("wc")), raw: t.to_string(),
+            wc: mat(g("wc")), raw: t.to_string(), variant: g("variant").as_str().unwrap_or("full").to_string(),
         }
     }
     pub fn n_params(&self) -> usize {
@@ -83,6 +84,14 @@ impl Orbita {
     pub fn ctx(&self, c: &[f64]) -> CtxParams {
         let h: Vec<f64> = lin(&self.w1, Some(&self.b1), c).into_iter().map(f64::tanh).collect();
         let o = lin(&self.w2, Some(&self.b2), &h);
+        if self.variant == "A" || self.variant == "B" {
+            let mut k = if self.variant == "B" { M * M } else { 0 };
+            let kf = o[..k].to_vec();
+            let beta = o[k..k + M].to_vec(); k += M;
+            let bk = o[k..k + self.kc].to_vec(); k += self.kc;
+            let ak: Vec<f64> = o[k..k + self.kc].iter().map(|x| softplus(*x)).collect();
+            return CtxParams { kf, q: [[0.0; M]; M], rho: [0.0; NB], om: [0.0; NB], beta, bk, ak };
+        }
         let mut k = 0;
         let mut om = [0.0; NB]; for j in 0..NB { om[j] = o[k]; k += 1; }
         let mut rho = [0.0; NB];
@@ -92,7 +101,7 @@ impl Orbita {
         let beta = o[k..k + M].to_vec(); k += M;
         let bk = o[k..k + self.kc].to_vec(); k += self.kc;
         let ak: Vec<f64> = o[k..k + self.kc].iter().map(|x| softplus(*x)).collect();
-        CtxParams { q: cayley(&s), rho, om, beta, bk, ak }
+        CtxParams { kf: vec![], q: cayley(&s), rho, om, beta, bk, ak }
     }
     pub fn encode(&self, q: &[f64], c: &[f64]) -> Vec<f64> {
         let mut inp = q.to_vec(); inp.extend_from_slice(c);
@@ -101,6 +110,10 @@ impl Orbita {
         let mut z = q.to_vec(); z.extend(g); z
     }
     pub fn core(&self, cp: &CtxParams, z: &[f64]) -> Vec<f64> {
+        if self.variant == "A" { return z.to_vec(); }
+        if self.variant == "B" {
+            return (0..M).map(|i| z[i] + (0..M).map(|j| cp.kf[i * M + j] * z[j]).sum::<f64>() + cp.beta[i]).collect();
+        }
         // y = Qᵀ z
         let mut y = [0.0; M];
         for i in 0..M { y[i] = (0..M).map(|j| cp.q[j][i] * z[j]).sum(); }

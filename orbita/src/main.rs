@@ -203,6 +203,7 @@ fn main() {
         Some("fresh") => fresh(&a),
         Some("parity") => parity(&a),
         Some("bench") => bench(&a),
+        Some("extrap") => extrap(&a),
         _ => eprintln!("uso: orbita export|eval|fresh|parity ..."),
     }
 }
@@ -237,5 +238,52 @@ fn bench(a: &[String]) {
         let rm = ro.iter().sum::<f64>() / ro.len() as f64; ro.sort_by(|x, y| x.total_cmp(y));
         println!("{name},{},{mean:.2},{:.2},{:.2},{:.0},{tp_big:.0},{rm:.1},{:.1}", mdl.params(), sl[reps / 2], sl[reps * 95 / 100], 1e6 / mean, ro[ro.len() * 95 / 100]);
         if sink == 12345.678 { println!("x"); }
+    }
+}
+
+/// Experimento D (docs/ablaciones_orbita.md §5): rollout free-run en TEST iterable (rotate+reflect)
+/// hasta h=256, incluidos horizontes no potencia de dos. Sin entrenamiento nuevo.
+fn extrap(a: &[String]) {
+    use cdt_rqm_epr::v4_controls::{Dphi, Predictor};
+    let seed = seed_of(a);
+    let s = sealed(seed);
+    let iter_ex: Vec<&Example> = s.ds.test.iter().filter(|e| ITERABLE_FAMS.contains(&e.family_id)).collect();
+    let cdt = collect_experience(&s.ds.train, ExpMode::Real, seed);
+    let sig = consolidate(&cdt, ConsolidateMode::Full);
+    let mut models: Vec<(String, Box<dyn Predictor>)> = vec![];
+    if let Some(w) = arg(a, "--weights") { models.push((arg(a, "--label").unwrap_or("ORBITA".into()), Box::new(Orbita::from_json(&std::fs::read_to_string(w).unwrap())))); }
+    if let Some(e) = arg(a, "--e3") { models.push(("v4_E3".into(), Box::new(Dphi::from_ckpt(&std::fs::read_to_string(e).unwrap()).unwrap()))); }
+    let hs: [usize; 16] = [1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64, 96, 128, 192, 256];
+    println!("seed,model,h,acc,rel_err_mean,rel_err_median,norm_ratio_median,collapse_rate,nonfinite,teacher_div_median,teacher_acc");
+    for (name, mdl) in &models {
+        let before = snapshot();
+        let mut zs: Vec<Vec<f64>> = iter_ex.iter().map(|e| e.input.clone()).collect();
+        let mut ts: Vec<Vec<f64>> = zs.clone();
+        let mut ys: Vec<Vec<f64>> = zs.clone();
+        for t in 1..=256usize {
+            for (i, e) in iter_ex.iter().enumerate() {
+                zs[i] = mdl.predict(&zs[i], &e.context);
+                ts[i] = sig.predict(e.family_id, e.params, &ts[i]).unwrap();
+                ys[i] = cdt_rqm_epr::v4_dataset::apply_rule(e.family_id, e.params, &ys[i]);
+            }
+            if hs.contains(&t) {
+                let n = iter_ex.len() as f64;
+                let (mut ok, mut tok, mut col, mut nf) = (0.0, 0.0, 0.0, 0.0);
+                let (mut re, mut nr, mut td) = (vec![], vec![], vec![]);
+                for i in 0..iter_ex.len() {
+                    let fin = zs[i].iter().all(|v| v.is_finite());
+                    if !fin { nf += 1.0; col += 1.0; re.push(10.0); continue; }
+                    ok += m::correct(&zs[i], &ys[i]) as u8 as f64;
+                    tok += m::correct(&ts[i], &ys[i]) as u8 as f64;
+                    let r = m::norm(&zs[i]) / m::norm(&ys[i]).max(1e-12);
+                    if !(0.1..=10.0).contains(&r) { col += 1.0; }
+                    re.push(m::rel_err(&zs[i], &ys[i]).min(10.0)); nr.push(r);
+                    td.push(m::rel_err(&zs[i], &ts[i]).min(10.0));
+                }
+                println!("0x{seed:X},{name},{t},{:.4},{:.4},{:.4},{:.4},{:.4},{nf},{:.4},{:.4}", ok / n, m::mean(&re), m::median(&re), if nr.is_empty() { f64::NAN } else { m::median(&nr) }, col / n, if td.is_empty() { f64::NAN } else { m::median(&td) }, tok / n);
+            }
+        }
+        let q = snapshot().delta(&before).total();
+        eprintln!("0x{seed:X} {name} queries={q}");
     }
 }
