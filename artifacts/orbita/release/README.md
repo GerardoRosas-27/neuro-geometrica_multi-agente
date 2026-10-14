@@ -33,3 +33,18 @@ for k in h["order"]:
     n = int(np.prod(h["shapes"][k])); W[k] = flat[i:i+n].reshape(h["shapes"][k]); i += n
 ```
 o cargar `w_<seed>.original.json` en `orbita/train_orbita.py::Orbita` (mismos nombres de tensores).
+
+## Recuperar pesos y datos (base64)
+
+Los `.tar.xz` se subieron codificados en base64 porque el push binario fallaba. Para recuperarlos:
+
+```bash
+cd artifacts/orbita/release
+base64 -d orbita_traindata_32seeds.tar.xz.b64 > orbita_traindata_32seeds.tar.xz
+base64 -d orbita_weights_32seeds.tar.xz.b64 > orbita_weights_32seeds.tar.xz
+sha256sum -c SHA256SUMS
+tar -xJf orbita_traindata_32seeds.tar.xz
+tar -xJf orbita_weights_32seeds.tar.xz
+```
+
+En Windows (PowerShell): `certutil -decode orbita_weights_32seeds.tar.xz.b64 orbita_weights_32seeds.tar.xz` (igual para traindata).
