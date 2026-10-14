@@ -63,3 +63,5 @@ IC95 bootstrap pareado, 10 000 remuestreos, semilla 12345. "Seeds a favor" = see
 
 ### Lectura (no altera el veredicto)
 La señal va en la misma dirección en las dos fases: más horizonte útil (h8 con IC95 > 0 contra E3 en ambas fases, h16 media positiva en ambas), gate más robusto (16/16 frente a 13/16 y 9/16 de E3) y un coste pequeño en acc de un paso (~0.5 pp, IC95 cruzando 0). Pero el criterio principal exigía IC95 > 0 en h16 en las dos fases y DEV no lo alcanzó, así que el resultado se reporta como no concluyente. Pendiente (§4.7): ablación λ_H = 0 en DEV/CONFIRM para separar el efecto del núcleo ortogonal del de la pérdida multi-horizonte; cualquier nuevo ciclo necesita pre-registro y seeds nuevas.
+
+**Resultados completos (por semilla, auditoría, benchmark de inferencia, pesos):** [`docs/resultados_orbita_completo.md`](resultados_orbita_completo.md)

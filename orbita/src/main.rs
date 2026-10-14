@@ -202,6 +202,40 @@ fn main() {
         Some("eval") => eval(&a),
         Some("fresh") => fresh(&a),
         Some("parity") => parity(&a),
+        Some("bench") => bench(&a),
         _ => eprintln!("uso: orbita export|eval|fresh|parity ..."),
+    }
+}
+
+/// Benchmark de inferencia (1 hilo): ÓRBITA vs Dφ E3 (ckpt v4) vs M3 (misma arquitectura gated no residual).
+fn bench(a: &[String]) {
+    use cdt_rqm_epr::v4_controls::{Dphi, Predictor};
+    use std::time::Instant;
+    let seed = seed_of(a);
+    let orb = Orbita::from_json(&std::fs::read_to_string(arg(a, "--weights").unwrap()).unwrap());
+    let e3 = Dphi::from_ckpt(&std::fs::read_to_string(arg(a, "--e3").unwrap()).unwrap()).unwrap();
+    let m3 = Dphi::gated_h(2 * K_POINTS, cdt_rqm_epr::v4_dataset::CTX_DIM, 136, false, seed ^ 0xD0); // pesos no entrenados: mismo coste
+    let s = sealed(seed);
+    let ex: Vec<&Example> = s.ds.test.iter().collect();
+    let reps: usize = arg(a, "--reps").and_then(|v| v.parse().ok()).unwrap_or(20000);
+    let models: Vec<(&str, &dyn Predictor)> = vec![("ORBITA", &orb), ("v4_E3", &e3), ("M3_mlp", &m3)];
+    println!("model,params,mean_us_step_b1,p50_us,p95_us,steps_per_s_b1,steps_per_s_b1024,rollout16_mean_us,rollout16_p95_us");
+    for (name, mdl) in models {
+        let mut sink = 0.0;
+        for i in 0..2000 { let e = ex[i % ex.len()]; sink += mdl.predict(&e.input, &e.context)[0]; } // warmup
+        let mut lat = Vec::with_capacity(reps);
+        for i in 0..reps { let e = ex[i % ex.len()]; let t = Instant::now(); sink += mdl.predict(&e.input, &e.context)[0]; lat.push(t.elapsed().as_nanos() as f64 / 1e3); }
+        let mut sl = lat.clone(); sl.sort_by(|x, y| x.total_cmp(y));
+        let mean = lat.iter().sum::<f64>() / reps as f64;
+        // batch grande: 1024 estados, 20 pasadas
+        let big: Vec<&Example> = (0..1024).map(|i| ex[i % ex.len()]).collect();
+        let t = Instant::now();
+        for _ in 0..20 { for e in &big { sink += mdl.predict(&e.input, &e.context)[0]; } }
+        let tp_big = (20 * 1024) as f64 / t.elapsed().as_secs_f64();
+        let mut ro = vec![];
+        for i in 0..2000 { let e = ex[i % ex.len()]; let t = Instant::now(); let mut z = e.input.clone(); for _ in 0..16 { z = mdl.predict(&z, &e.context); } sink += z[0]; ro.push(t.elapsed().as_nanos() as f64 / 1e3); }
+        let rm = ro.iter().sum::<f64>() / ro.len() as f64; ro.sort_by(|x, y| x.total_cmp(y));
+        println!("{name},{},{mean:.2},{:.2},{:.2},{:.0},{tp_big:.0},{rm:.1},{:.1}", mdl.params(), sl[reps / 2], sl[reps * 95 / 100], 1e6 / mean, ro[ro.len() * 95 / 100]);
+        if sink == 12345.678 { println!("x"); }
     }
 }
