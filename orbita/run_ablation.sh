@@ -15,8 +15,8 @@ one() {
   [ -f $OUT/metrics_$s.csv ] && return 0
   [ -f $D/$s/meta.json ] || $B export --seed $s --out $D/$s > /dev/null
   if [ ! -f $W/w_$s.json ]; then
-    /usr/bin/time -f "wall_s=%e" -o $W/time_$s.txt env OMP_NUM_THREADS=1 nice -n 10 $P -W ignore $ROOT/orbita/train_orbita.py --data $D/$s --out $W/w_$s.json --seed $s \
-      --steps 256000 --lam_h 0.01 --mh_x 1 --variant $V > $W/log_$s.txt 2>&1
+    t0=$(date +%s); OMP_NUM_THREADS=1 nice -n 10 $P -W ignore $ROOT/orbita/train_orbita.py --data $D/$s --out $W/w_$s.json --seed $s \
+      --steps 256000 --lam_h 0.01 --mh_x 1 --variant $V > $W/log_$s.txt 2>&1 && echo "wall_s=$(( $(date +%s) - t0 ))" > $W/time_$s.txt
   fi
   [ -x $B ] || return 0     # evaluación diferida si el binario aún no existe
   $B parity --weights $W/w_$s.json --probe $W/w_$s.json.probe.json > $OUT/parity_$s.json
