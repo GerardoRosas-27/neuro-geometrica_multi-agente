@@ -29,12 +29,12 @@ cargo run --release --bin run_predictive_field_v5 -- run --phase confirm
 
 Artefactos en `artifacts/v5/<phase>/`. Smoke no es evidencia.
 
-## Estado: prueba pendiente
+## Estado: DEV cerrado (FAIL). CONFIRM incompleto
 
-DEV y CONFIRM están **pendientes**. No hay métricas de esas fases.
+DEV terminó el 14 de octubre de 2026 (SHA de corrida `a0dbb169`, tip de rama `19bf9ac`). Artefactos en `artifacts/v5/dev/`.
 
-El 10 de octubre de 2026 se arrancó DEV (`0xA400–0xA40F`, 256 000 pasos, tres brazos) y se cortó antes de que terminara ninguna seed. No se escribió `artifacts/v5/dev/`. Ese arranque no es un resultado: no se leyó accuracy, región ni comparación con E3, y no autoriza a cambiar el pre-registro.
+Gate pre-registrado: `R_P2_gated` ≥ 9/16. Resultado: **4/16 PASS** (FAIL). `R_P2_mlp` también 4/16. `R_P2_shuffled` 0/16. Línea base `R_E3_v4` en las mismas seeds: **13/16**. P2 no supera a E3; **P3 no aplica**.
 
-El smoke `ec72f3e` (`0x5A00`, 200 pasos) sólo comprobó que el binario corre, con fugas 0 y proceso nuevo intacto. Sigue sin ser evidencia.
+CONFIRM quedó a medias (seeds/checkpoints parciales en `artifacts/v5/confirm/`, sin `summary.md`). El protocolo pedía CONFIRM con el mismo binario; no se retocaron umbrales ni presupuesto.
 
-Para retomar, el mismo comando de DEV y después CONFIRM, sin retocar umbrales ni presupuesto.
+Smoke sigue sin ser evidencia.

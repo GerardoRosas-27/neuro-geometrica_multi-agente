@@ -58,4 +58,4 @@ No hay barrido de hiperparámetros. Si el gradiente del smoke de 200 pasos no es
 
 ## 7. Corrida
 
-**Pendiente.** DEV se interrumpió el 10 de octubre de 2026 antes de completar una seed. No hay `artifacts/v5/dev/` ni `artifacts/v5/confirm/`. El smoke no sustituye esta corrida. Los umbrales de arriba siguen cerrados.
+DEV cerrado el 14 de octubre de 2026. `artifacts/v5/dev/`: `R_P2_gated` **4/16** (umbral ≥9 → FAIL). `R_E3_v4` 13/16 en las mismas seeds. P2 no mejora a E3. CONFIRM incompleto en `artifacts/v5/confirm/` (sin summary). Umbrales de arriba no se retocaron. El smoke no es evidencia.
