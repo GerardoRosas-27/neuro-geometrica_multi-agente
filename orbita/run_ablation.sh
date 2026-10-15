@@ -18,6 +18,7 @@ one() {
     t0=$(date +%s); OMP_NUM_THREADS=1 nice -n 10 $P -W ignore $ROOT/orbita/train_orbita.py --data $D/$s --out $W/w_$s.json --seed $s \
       --steps 256000 --lam_h 0.01 --mh_x 1 --variant $V > $W/log_$s.txt 2>&1 && echo "wall_s=$(( $(date +%s) - t0 ))" > $W/time_$s.txt
   fi
+  [ -f $W/w_$s.json ] || { echo "FALLO entrenamiento $V $s (ver $W/log_$s.txt)"; return 1; }
   [ -x $B ] || return 0     # evaluación diferida si el binario aún no existe
   $B parity --weights $W/w_$s.json --probe $W/w_$s.json.probe.json > $OUT/parity_$s.json
   $B eval --seed $s --weights $W/w_$s.json --meta $D/$s/meta.json --out $OUT --label ABL_$V >> $W/log_$s.txt 2>&1
@@ -25,4 +26,4 @@ one() {
 }
 export -f one; export B P D W OUT ROOT V
 echo $SEEDS | tr ' ' '\n' | grep . | xargs -P $J -I{} bash -c 'one {}'
-echo "ablation $V $PH done"
+rc=$?; [ $rc -eq 0 ] && echo "ablation $V $PH done" || { echo "ablation $V $PH FAILED"; exit 1; }

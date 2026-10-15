@@ -166,7 +166,7 @@ def main():
         lh = torch.zeros(())
         if a.lam_h > 0 and nrep and a.variant != "A":
             sl = slice(a.batch - nrep, a.batch)
-            cpr = tuple(p[sl] for p in cp)
+            cpr = tuple(None if p is None else p[sl] for p in cp)  # B: Q/rho/om son None
             zr = z[sl]; zk = zr; prev = 0
             for j, k in enumerate(KS):
                 zk = model.core(cpr, zk, k - prev); prev = k
