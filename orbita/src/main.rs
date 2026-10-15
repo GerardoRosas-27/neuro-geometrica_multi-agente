@@ -4,6 +4,7 @@
 //!   orbita fresh  --seed S --weights W --test-sha SHA          evaluador en proceso nuevo (E37)
 //!   orbita parity --weights W --probe P                        paridad Rust↔PyTorch
 mod model;
+mod gemma_embed;
 use cdt_rqm_epr::field_autonomy_v4::*;
 use cdt_rqm_epr::v4_dataset::{generate_and_seal, DatasetConfig, Example, Sealed, N_FAM};
 use cdt_rqm_epr::v4_distill::{family_fit_residual, onestep_breakdown, TRUST_TAU};
@@ -204,6 +205,9 @@ fn main() {
         Some("parity") => parity(&a),
         Some("bench") => bench(&a),
         Some("extrap") => extrap(&a),
+        Some("ctx-dump") => ctx_dump(&a),
+        Some("llm-eval") => llm_eval(&a),
+        Some("gemma-embed") => gemma_embed::run(&a, |k| arg(&a, k)),
         _ => eprintln!("uso: orbita export|eval|fresh|parity ..."),
     }
 }
@@ -286,4 +290,72 @@ fn extrap(a: &[String]) {
         let q = snapshot().delta(&before).total();
         eprintln!("0x{seed:X} {name} queries={q}");
     }
+}
+
+/// Fase LLM: 16 ejemplos TEST iterables por seed (8 rotate + 8 reflect, en orden).
+fn llm_subset(s: &Sealed) -> Vec<(usize, &Example)> {
+    let iter_ex: Vec<&Example> = s.ds.test.iter().filter(|e| ITERABLE_FAMS.contains(&e.family_id)).collect();
+    let (mut r, mut f) = (0, 0);
+    let mut out = vec![];
+    for (i, e) in iter_ex.into_iter().enumerate() {
+        if e.family_id == 1 && r < 8 { r += 1; out.push((i, e)); }
+        if e.family_id == 2 && f < 8 { f += 1; out.push((i, e)); }
+    }
+    out
+}
+
+fn ctx_dump(a: &[String]) {
+    let seed = seed_of(a);
+    let s = sealed(seed);
+    println!("idx,fam,p1,p2");
+    for (i, e) in llm_subset(&s) { println!("{i},{},{:.17},{:.17}", e.family_id, e.params[0], e.params[1]); }
+}
+
+/// llm-eval --seed S --weights W --ctx CSV(idx,cond,text_id,c0..c9) : ÓRBITA congelada con contexto sustituido.
+fn llm_eval(a: &[String]) {
+    let seed = seed_of(a);
+    let s = sealed(seed);
+    let d = Orbita::from_json(&std::fs::read_to_string(arg(a, "--weights").expect("--weights")).unwrap());
+    let sub = llm_subset(&s);
+    let cdt = collect_experience(&s.ds.train, ExpMode::Real, seed);
+    let sig = consolidate(&cdt, ConsolidateMode::Full);
+    let before = snapshot();
+    let hs = [1usize, 2, 4, 8, 16, 32];
+    let txt = std::fs::read_to_string(arg(a, "--ctx").expect("--ctx")).unwrap();
+    let mut hdr = "seed,idx,fam,cond,text_id".to_string();
+    for h in hs { hdr += &format!(",ok{h},rel{h}"); }
+    hdr += ",fam_hat_ctx,fam_hat_teacher,teacher_div16,z16";
+    println!("{hdr}");
+    for line in txt.lines().skip(1) {
+        let f: Vec<&str> = line.split(',').collect();
+        let idx: usize = f[0].parse().unwrap();
+        let c: Vec<f64> = f[3..13].iter().map(|v| v.parse().unwrap()).collect();
+        let e = sub.iter().find(|(i, _)| *i == idx).expect("idx").1;
+        let (fh, ph) = fam_of(&c);
+        let (mut z, mut y) = (e.input.clone(), e.input.clone());
+        let mut z1 = vec![];
+        let mut row = format!("0x{seed:X},{idx},{},{},{}", e.family_id, f[1], f[2]);
+        let mut extra = String::new();
+        for t in 1..=32usize {
+            z = d.step(&z, &c);
+            y = cdt_rqm_epr::v4_dataset::apply_rule(e.family_id, e.params, &y);
+            if t == 1 { z1 = z.clone(); }
+            if hs.contains(&t) {
+                let fin = z.iter().all(|v| v.is_finite());
+                let ok = fin && m::correct(&z, &y);
+                row += &format!(",{},{:.6}", ok as u8, if fin { m::rel_err(&z, &y).min(10.0) } else { 10.0 });
+            }
+            if t == 16 {
+                // H-C1: familia inferida por el teacher consolidado a partir de la predicción de ÓRBITA (1 paso)
+                let mut best = (f64::INFINITY, usize::MAX);
+                for g in 0..N_FAM { if let Some(p) = sig.predict(g, ph, &e.input) { let r = m::rel_err(&p, &z1); if r < best.0 { best = (r, g); } } }
+                let mut tz = e.input.clone();
+                let div = (|| { for _ in 0..16 { tz = sig.predict(fh, ph, &tz)?; } Some(m::rel_err(&z, &tz).min(10.0)) })().unwrap_or(f64::NAN);
+                let zs: Vec<String> = z.iter().map(|v| format!("{v:.6}")).collect();
+                extra = format!(",{fh},{},{div:.6},{}", best.1, zs.join(";"));
+            }
+        }
+        println!("{row}{extra}");
+    }
+    eprintln!("0x{seed:X} queries={}", snapshot().delta(&before).total());
 }

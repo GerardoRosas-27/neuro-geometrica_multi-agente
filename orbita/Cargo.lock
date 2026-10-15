@@ -859,6 +859,7 @@ dependencies = [
 name = "orbita"
 version = "0.1.0"
 dependencies = [
+ "candle-core",
  "cdt_rqm_epr",
  "rand 0.8.8",
  "rand_xoshiro",
