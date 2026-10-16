@@ -14,11 +14,14 @@ ART = {
 }
 T = {
  "es": ["Aplica {art} {f} con parámetros {a} y {b}.", "Transformación: {f}; primer parámetro {a}, segundo parámetro {b}.",
-        "A cada punto de la figura se le aplica {art} {f} cuyos parámetros valen {a} y {b}.", "Los puntos sufren {art} {f} (parámetro uno = {a}, parámetro dos = {b})."],
+        "A cada punto de la figura se le aplica {art} {f} cuyos parámetros valen {a} y {b}.", "Los puntos sufren {art} {f} (parámetro uno = {a}, parámetro dos = {b}).",
+        "Se transforma la figura mediante {art} {f}; sus dos parámetros son {a} y {b}.", "Usa {art} {f}. Valores: {a} para el primero y {b} para el segundo."],
  "en": ["Apply {art} {f} with parameters {a} and {b}.", "Transformation: {f}; first parameter {a}, second parameter {b}.",
-        "Every point of the shape undergoes {art} {f} whose parameters are {a} and {b}.", "The points are moved by {art} {f} (parameter one = {a}, parameter two = {b})."],
+        "Every point of the shape undergoes {art} {f} whose parameters are {a} and {b}.", "The points are moved by {art} {f} (parameter one = {a}, parameter two = {b}).",
+        "The shape is transformed by {art} {f}; its two parameters are {a} and {b}.", "Use {art} {f}. Values: {a} for the first one and {b} for the second one."],
  "fr": ["Applique {art} {f} avec les paramètres {a} et {b}.", "Transformation : {f} ; premier paramètre {a}, second paramètre {b}.",
-        "Chaque point de la figure subit {art} {f} dont les paramètres valent {a} et {b}.", "Les points subissent {art} {f} (paramètre un = {a}, paramètre deux = {b})."],
+        "Chaque point de la figure subit {art} {f} dont les paramètres valent {a} et {b}.", "Les points subissent {art} {f} (paramètre un = {a}, paramètre deux = {b}).",
+        "La figure est transformée par {art} {f} ; ses deux paramètres sont {a} et {b}.", "Utilise {art} {f}. Valeurs : {a} pour le premier et {b} pour le second."],
 }
 def num(v, lang):
     s = f"{v:.2f}"
@@ -39,6 +42,16 @@ if __name__ == "__main__":
                     if p1 <= 0.10 or p1 >= 0.45: break
                 p2 = rng.uniform(-1, 1)
                 for lang, k, t in texts(fam, p1, p2, (0, 1)):
+                    rows.append((f"pool{fam}_{i}", fam, p1, p2, lang, k, t))
+    elif mode == "pool2":                   # D2: mismos 128 contextos que el pool de Fase 0, plantillas de entrenamiento 0,1,4,5
+        rng = random.Random(0xC0DE)
+        for fam in range(8):
+            for i in range(16):
+                while True:
+                    p1 = rng.uniform(-1, 1)
+                    if p1 <= 0.10 or p1 >= 0.45: break
+                p2 = rng.uniform(-1, 1)
+                for lang, k, t in texts(fam, p1, p2, (0, 1, 4, 5)):
                     rows.append((f"pool{fam}_{i}", fam, p1, p2, lang, k, t))
     else:
         for r in csv.DictReader(open(sys.argv[2])):
