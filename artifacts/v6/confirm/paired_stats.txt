@@ -1,0 +1,48 @@
+## gates
+R_E3_mlp                     PASS 12/16 clean+fresh=True acc_h16=0.1875
+R_E3_shuffled                PASS 0/16 clean+fresh=True acc_h16=0.0000
+R_E3_v4                      PASS 14/16 clean+fresh=True acc_h16=0.2559
+R_E3_v4_V1reproj             PASS 14/16 clean+fresh=True acc_h16=0.3066
+R_H1_bias                    PASS 11/16 clean+fresh=True acc_h16=0.1748
+R_H2_mh_eqc                  PASS 0/16 clean+fresh=True acc_h16=0.0176
+R_H2_prm_eqc                 PASS 2/16 clean+fresh=True acc_h16=0.0928
+R_H3_x0.5                    PASS 12/16 clean+fresh=True acc_h16=0.1953
+R_H3_x1                      PASS 12/16 clean+fresh=True acc_h16=0.1953
+R_H3_x2                      PASS 12/16 clean+fresh=True acc_h16=0.2256
+R_H3_x4                      PASS 16/16 clean+fresh=True acc_h16=0.2578
+R_H4_sobolev                 PASS 14/16 clean+fresh=True acc_h16=0.2314
+R_H4_sobolev_mlp             PASS 13/16 clean+fresh=True acc_h16=0.2061
+R_H5_eta1                    PASS 14/16 clean+fresh=True acc_h16=0.2344
+R_H5_eta2                    PASS 14/16 clean+fresh=True acc_h16=0.2178
+R_H5_eta4                    PASS 13/16 clean+fresh=True acc_h16=0.1943
+R_H5_eta8                    PASS 11/16 clean+fresh=True acc_h16=0.1758
+R_H5_soft                    PASS 12/16 clean+fresh=True acc_h16=0.2402
+R_H6_semigroup               PASS 0/16 clean+fresh=True acc_h16=0.0185
+R_H7_normal                  PASS 14/16 clean+fresh=True acc_h16=0.2471
+R_V6_all                     PASS 0/16 clean+fresh=True acc_h16=0.0039
+R_V6_all_H2                  PASS 0/16 clean+fresh=True acc_h16=0.0801
+R_V6_all_mlp                 PASS 4/16 clean+fresh=True acc_h16=0.1182
+R_V6_shuffled                PASS 0/16 clean+fresh=True acc_h16=0.0000
+
+## pre-registered contrasts (acc_h16 unless noted; mean [IC95])
+H1  H1_bias - E3_v4                                     -0.0810 [-0.1338, -0.0225]
+H1  acc1 H1_bias - E3_v4                                -0.0095 [-0.0152, -0.0027]
+H2* H2_prm_eqc - H2_mh_eqc (PENDING)                    +0.0752 [+0.0508, +0.1006]
+H3  rel_err1 H3_x0.5 - E3_v4                            +0.0001 [-0.0005, +0.0006]
+H3  rel_err1 H3_x1 - E3_v4                              +0.0003 [-0.0002, +0.0007]
+H3  rel_err1 H3_x2 - E3_v4                              -0.0001 [-0.0008, +0.0005]
+H3  rel_err1 H3_x4 - E3_v4                              -0.0001 [-0.0008, +0.0005]
+H4  interaction (field gain - mlp gain)                 -0.0430 [-0.0957, +0.0117]
+H5a H5_soft - E3_v4                                     -0.0156 [-0.0596, +0.0283]
+H5b eta=1% dstep_vs_E3 mean=0.00253
+H5b eta=2% dstep_vs_E3 mean=0.00393
+H5b eta=4% dstep_vs_E3 mean=0.00498
+H5b eta=8% dstep_vs_E3 mean=0.00777
+H6  H6_semigroup - E3_mlp                               -0.1689 [-0.2041, -0.1358]
+H6  H6_semigroup - E3_v4                                -0.2373 [-0.2871, -0.1885]
+H7  H7_normal(V0) - E3_v4(V1reproj)                     -0.0596 [-0.0840, -0.0352]
+H7  H7_normal - E3_v4                                   -0.0088 [-0.0303, +0.0127]
+v6  V6_all - E3_v4                                      -0.2520 [-0.2998, -0.2041]
+v6  acc1 V6_all - E3_v4                                 -0.2178 [-0.2300, -0.2063]
+v6  V6_all - V6_all_mlp                                 -0.1143 [-0.1367, -0.0928]
+v6* V6_all_H2 - V6_all (PENDING)                        +0.0762 [+0.0518, +0.1064]
