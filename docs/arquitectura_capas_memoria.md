@@ -47,7 +47,7 @@ Lo ya medido condiciona la definición:
   H-C1 invertida/inconclusa en D1/D2). → **No usar** el acuerdo teacher-ÓRBITA como señal de saturación.
 - El teacher reconoce la familia sobre la predicción de ÓRBITA muy por encima del azar (H-C2a: +0,79/+0,81 sobre 1/8).
 - Con observaciones reales, el residuo de ÓRBITA contra lo observado (score de ORACLE_ORB) sí separa fallos:
-  AUROC 0,8649 [0,8141, 0,9163] en CONFIRM (02ce4ed). → la señal útil es **sorpresa contra la observación**.
+  AUROC 0,8649 [0,8141, 0,9163] en CONFIRM (`artifacts/orbita/llm_cdt2/analyze_confirm.log`; el score de BASE da 0,8852, así que la señal no es exclusiva de tener memoria). → la señal útil es **sorpresa contra la observación**.
 - El encoder no satura por formato: parse_fail = 0 con dígitos, palabras, fracciones y unidades (925015f).
 
 Definición propuesta (se calcula online, sin mirar TEST para ajustar):
