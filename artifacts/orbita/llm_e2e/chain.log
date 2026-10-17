@@ -1,0 +1,10 @@
+extract dev start 07:51:25 free=7857MB
+extract dev done 08:04:54
+ctx ok dev parse_fail 0
+eval ok dev
+dev done 08:04:59
+extract confirm start 08:04:59 free=7791MB
+extract confirm done 08:19:36
+ctx ok confirm parse_fail 0
+eval ok confirm
+confirm done 08:19:41
