@@ -207,6 +207,7 @@ fn main() {
         Some("extrap") => extrap(&a),
         Some("ctx-dump") => ctx_dump(&a),
         Some("llm-eval") => llm_eval(&a),
+        Some("cdt-feat") => cdt_feat(&a),
         Some("gemma-embed") => gemma_embed::run(&a, |k| arg(&a, k)),
         _ => eprintln!("uso: orbita export|eval|fresh|parity ..."),
     }
@@ -358,4 +359,61 @@ fn llm_eval(a: &[String]) {
         println!("{row}{extra}");
     }
     eprintln!("0x{seed:X} queries={}", snapshot().delta(&before).total());
+}
+
+/// Rasgos CDT por familia candidata (prerregistro docs/preregistro_cdt_sueno.md). Para cada fila (texto) y familia g:
+/// r_g = rel_err(ÓRBITA h16 con c_g(p), teacher consolidado h16 con g) [10 si el teacher no tiene la familia],
+/// sup_g = p dentro del rango de la regla, tr_g = familia de confianza (residuo de ajuste < TRUST_TAU).
+/// --signal full | corrupt | sleep. sleep = consolidar → máscara de confianza (poda de reglas no confiables) →
+/// borrar la CDT episódica → replay generativo (pseudo_experiences) → re-consolidar offline sobre el replay.
+fn cdt_feat(a: &[String]) {
+    let seed = seed_of(a);
+    let s = sealed(seed);
+    let d = Orbita::from_json(&std::fs::read_to_string(arg(a, "--weights").expect("--weights")).unwrap());
+    let mode = arg(a, "--signal").unwrap_or("full".into());
+    let sub = llm_subset(&s);
+    let cdt = collect_experience(&s.ds.train, ExpMode::Real, seed);
+    let full = consolidate(&cdt, if mode == "corrupt" { ConsolidateMode::Corrupt } else { ConsolidateMode::Full });
+    let res = family_fit_residual(&full, cdt.read_all());
+    let n_exp = cdt.read_all().len();
+    drop(cdt);
+    let trusted: Vec<bool> = (0..N_FAM).map(|f| res.get(f).map_or(false, |r| *r < TRUST_TAU)).collect();
+    let n_full = full.n_numbers();
+    let sig = if mode == "sleep" {
+        let pruned = LearningSignal { kind: full.kind.clone(), rules: full.rules.iter().filter(|r| trusted[r.fam]).cloned().collect(), generic: None };
+        let pseudo = pseudo_experiences(&pruned, s.ds.train.len(), K_POINTS, seed ^ 0x5EE9);
+        let c2 = collect_experience(&pseudo, ExpMode::Real, seed ^ 0x5EE9);
+        consolidate(&c2, ConsolidateMode::Full)
+    } else { full };
+    let before = snapshot(); // como llm-eval: se cuentan las consultas de la fase de inferencia
+    let fams_in: Vec<usize> = sig.rules.iter().map(|r| r.fam).collect();
+    let txt = std::fs::read_to_string(arg(a, "--rows").expect("--rows")).unwrap();
+    let mut hdr = "id".to_string();
+    for g in 0..N_FAM { hdr += &format!(",r{g},sup{g},tr{g}"); }
+    println!("{hdr}");
+    for line in txt.lines().skip(1) {
+        let f: Vec<&str> = line.split(',').collect();
+        let p = [f[3].parse::<f64>().unwrap(), f[4].parse::<f64>().unwrap()];
+        let x: Vec<f64> = if f[1] == "test" {
+            let idx: usize = f[2].parse().unwrap();
+            sub.iter().find(|(i, _)| *i == idx).expect("idx").1.input.clone()
+        } else {
+            let fam: usize = f[2].parse().unwrap();
+            let pool: Vec<&Example> = s.ds.train.iter().filter(|e| e.family_id == fam).collect();
+            let h = f[0].bytes().fold(0xcbf29ce484222325u64, |h, b| (h ^ b as u64).wrapping_mul(0x100000001b3));
+            pool[(h % pool.len() as u64) as usize].input.clone()
+        };
+        let mut row = f[0].to_string();
+        for g in 0..N_FAM {
+            let mut c = vec![0.0; N_FAM + 2]; c[g] = 1.0; c[N_FAM] = p[0]; c[N_FAM + 1] = p[1];
+            let (mut z, mut t) = (x.clone(), Some(x.clone()));
+            for _ in 0..16 { z = d.step(&z, &c); t = t.and_then(|v| sig.predict(g, p, &v)); }
+            let r = match t { Some(t) if z.iter().all(|v| v.is_finite()) => m::rel_err(&z, &t).min(10.0), _ => 10.0 };
+            let sup = sig.rules.iter().find(|q| q.fam == g).map_or(0, |q| (p[0] >= q.p_min[0] && p[0] <= q.p_max[0] && p[1] >= q.p_min[1] && p[1] <= q.p_max[1]) as u8);
+            row += &format!(",{r:.6},{sup},{}", (trusted[g] && fams_in.contains(&g)) as u8);
+        }
+        println!("{row}");
+    }
+    eprintln!("0x{seed:X} signal={mode} episodes={n_exp} numbers_full={n_full} numbers_used={} rules_used={} trusted={:?} queries={}",
+        sig.n_numbers(), sig.rules.len(), trusted, snapshot().delta(&before).total());
 }
