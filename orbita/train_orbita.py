@@ -133,11 +133,21 @@ def main():
     ap.add_argument("--mh_x", type=int, default=0)
     ap.add_argument("--variant", default="full")
     ap.add_argument("--ckpt_every", type=int, default=20000)
+    ap.add_argument("--init", default=None)                 # fine-tune desde pesos JSON (opción B, ÓRBITA-robusta)
+    ap.add_argument("--p_noise", type=float, default=0.0)   # σ final del ruido gaussiano en p (c[8:10])
+    ap.add_argument("--noise_ramp", type=int, default=0)    # pasos de rampa lineal 0→σ
     a = ap.parse_args()
     seed = int(a.seed, 16) if a.seed.startswith("0x") else int(a.seed)
     meta, (tx, tc, ty), (rx, rc, ry, rw) = load(a.data)
     torch.manual_seed(seed ^ 0x0B)
     model = Orbita(variant=a.variant)
+    if a.init:
+        w = json.load(open(a.init))
+        with torch.no_grad():
+            for mod, wn, bn in ((model.l1, "w1", "b1"), (model.l2, "w2", "b2"), (model.l3, "w3", "b3"), (model.l4, "w4", "b4")):
+                mod.weight.copy_(torch.tensor(w[wn])); mod.bias.copy_(torch.tensor(w[bn]))
+            model.wc.copy_(torch.tensor(w["wc"]))
+    gn = torch.Generator().manual_seed(seed ^ 0x5E)
     opt = torch.optim.Adam(model.parameters(), lr=a.lr)
     gen = torch.Generator().manual_seed(seed ^ 0x7A)
     any_trusted = bool((rw > 1e-12).any())
@@ -147,6 +157,7 @@ def main():
     if os.path.exists(ck):                            # reanudación determinista
         st = torch.load(ck, weights_only=False)
         model.load_state_dict(st["model"]); opt.load_state_dict(st["opt"]); gen.set_state(st["gen"]); start = st["step"]
+        if "gn" in st: gn.set_state(st["gn"])
     t0 = time.time(); last = 0.0
     for step in range(start, a.steps):
         t = step / max(a.steps, 1)
@@ -157,6 +168,9 @@ def main():
         it = torch.randint(0, tx.shape[0], (a.batch - nrep,), generator=gen)
         ir = torch.multinomial(rprob, nrep, replacement=True, generator=gen) if nrep else torch.zeros(0, dtype=torch.long)
         x = torch.cat([tx[it], rx[ir]]); c = torch.cat([tc[it], rc[ir]]); y = torch.cat([ty[it], ry[ir, 0]])
+        if a.p_noise > 0:
+            sg = a.p_noise * min(1.0, (step + 1) / max(a.noise_ramp, 1))
+            c = c.clone(); c[:, -2:] = c[:, -2:] + sg * torch.randn(c.shape[0], 2, generator=gn)
         yh, u, u0, z, cp = model(x, c)
         scale = 1.0 / (y * y).sum(1).clamp_min(1e-6)
         l1 = (((yh - y) ** 2).sum(1) * scale).mean()
@@ -182,7 +196,7 @@ def main():
         opt.step()
         last = float(l1.detach())
         if (step + 1) % a.ckpt_every == 0 or step + 1 == a.steps:
-            torch.save({"model": model.state_dict(), "opt": opt.state_dict(), "gen": gen.get_state(), "step": step + 1}, ck + ".tmp")
+            torch.save({"model": model.state_dict(), "opt": opt.state_dict(), "gen": gen.get_state(), "gn": gn.get_state(), "step": step + 1}, ck + ".tmp")
             os.replace(ck + ".tmp", ck)
             print(f"step {step+1} l1={last:.3e} lh={float(lh):.3e} {time.time()-t0:.0f}s", flush=True)
     w = model.to_json(); w["train"] = vars(a); w["final_l1"] = last
