@@ -5,6 +5,7 @@
 //!   orbita parity --weights W --probe P                        paridad Rust↔PyTorch
 mod model;
 mod gemma_embed;
+mod mem;
 use cdt_rqm_epr::field_autonomy_v4::*;
 use cdt_rqm_epr::v4_dataset::{generate_and_seal, DatasetConfig, Example, Sealed, N_FAM};
 use cdt_rqm_epr::v4_distill::{family_fit_residual, onestep_breakdown, TRUST_TAU};
@@ -209,6 +210,7 @@ fn main() {
         Some("llm-eval") => llm_eval(&a),
         Some("cdt-feat") => cdt_feat(&a),
         Some("cdt-causal") => cdt_causal(&a),
+        Some("mem") => { let d = Orbita::from_json(&std::fs::read_to_string(arg(&a, "--weights").unwrap()).unwrap()); mem::run(&a, seed_of(&a), &d) }
         Some("gemma-embed") => gemma_embed::run(&a, |k| arg(&a, k)),
         _ => eprintln!("uso: orbita export|eval|fresh|parity ..."),
     }
