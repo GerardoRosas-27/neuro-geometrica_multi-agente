@@ -41,7 +41,7 @@ fn dir_step(w: &[f64], deg: usize, x: &[f64]) -> Vec<f64> {
     for i in 0..x.len() / 2 { let f = mono(x[2 * i], x[2 * i + 1], 0, deg); for (r, v) in f.iter().enumerate() { y[2 * i] += v * w[2 * r]; y[2 * i + 1] += v * w[2 * r + 1]; } }
     y
 }
-fn sur(step: &dyn Fn(&[f64]) -> Vec<f64>, x0: &[f64], ys: &[Vec<f64>], k: usize) -> f64 {
+pub fn sur(step: &dyn Fn(&[f64]) -> Vec<f64>, x0: &[f64], ys: &[Vec<f64>], k: usize) -> f64 {
     let mut z = x0.to_vec(); let mut r = 0.0;
     for t in 0..k { z = step(&z); r += if fin(&z) { m::rel_err(&z, &ys[t]).min(10.0) } else { 10.0 }; }
     r / k as f64
@@ -91,11 +91,11 @@ pub fn lat_decide(d: &Orbita, cx: &Ctx8, lib: &[Entry], e: &Ep, k: usize, sk: f6
     let a = fit_gn(&|th, z| lat_step(d, &cx.cps[gs], &cx.cs[gs], th, z), &vec![0.0; npar()], lam0, &e.x0, &e.ys, k);
     (Some((gs, a)), "new", f64::NAN)
 }
-fn ok16(e: &Ep, step: &dyn Fn(&[f64]) -> Vec<f64>, k: usize) -> u8 { let mut z = e.ys[k - 1].clone(); for _ in k + 1..=16 { z = step(&z); } (fin(&z) && m::correct(&z, &e.ys[15])) as u8 }
-fn load_set(p: &str) -> Vec<(usize, usize, [f64; 2], Vec<f64>)> {
+pub fn ok16(e: &Ep, step: &dyn Fn(&[f64]) -> Vec<f64>, k: usize) -> u8 { let mut z = e.ys[k - 1].clone(); for _ in k + 1..=16 { z = step(&z); } (fin(&z) && m::correct(&z, &e.ys[15])) as u8 }
+pub fn load_set(p: &str) -> Vec<(usize, usize, [f64; 2], Vec<f64>)> {
     std::fs::read_to_string(p).unwrap().lines().skip(1).map(|l| { let f: Vec<&str> = l.split(',').collect(); (f[0].parse().unwrap(), f[1].parse().unwrap(), [f[2].parse().unwrap(), f[3].parse().unwrap()], nums(f[4], ';')) }).collect()
 }
-fn load_eps(ctx: &str, set: &[(usize, usize, [f64; 2], Vec<f64>)]) -> Vec<(Ep, String)> {
+pub fn load_eps(ctx: &str, set: &[(usize, usize, [f64; 2], Vec<f64>)]) -> Vec<(Ep, String)> {
     let mut by = std::collections::HashMap::new(); for s in set { by.insert(s.0, s); }
     std::fs::read_to_string(ctx).unwrap().lines().skip(1).map(|line| {
         let f: Vec<&str> = line.split(',').collect(); let idx: usize = f[0].parse().unwrap(); let c: Vec<f64> = f[3..13].iter().map(|v| v.parse().unwrap()).collect();
@@ -104,11 +104,11 @@ fn load_eps(ctx: &str, set: &[(usize, usize, [f64; 2], Vec<f64>)]) -> Vec<(Ep, S
     }).collect()
 }
 /// reid + OBS + ORACLE (por episodio) comunes
-fn common(d: &Orbita, e: &Ep, k: usize) -> (f64, usize, [f64; 2], u8) {
+pub fn common(d: &Orbita, e: &Ep, k: usize) -> (f64, usize, [f64; 2], u8) {
     let (g, pp, r) = reid(d, &e.x0, &e.ys, k, e.ph); let cg = context_of(g, pp); (r / k as f64, g, pp, ok16(e, &|z| d.step(z, &cg), k))
 }
-fn oep16(d: &Orbita, e: &Ep, k: usize, deg: usize, lam: f64) -> u8 { let mut o = Res::new(None, deg, lam); o.add(d, &e.x0, &e.ys, k, e.ph, e.fam); ok16(e, &|z| o.step(d, z, e.ph), k) }
-fn oms16(e: &Ep, k: usize, deg: usize, lam: f64) -> u8 { let n = 2 * mono(0.0, 0.0, 0, deg).len(); let w = fit_gn(&|th, z| dir_step(th, deg, z), &vec![0.0; n], lam, &e.x0, &e.ys, k); ok16(e, &|z| dir_step(&w, deg, z), k) }
+pub fn oep16(d: &Orbita, e: &Ep, k: usize, deg: usize, lam: f64) -> u8 { let mut o = Res::new(None, deg, lam); o.add(d, &e.x0, &e.ys, k, e.ph, e.fam); ok16(e, &|z| o.step(d, z, e.ph), k) }
+pub fn oms16(e: &Ep, k: usize, deg: usize, lam: f64) -> u8 { let n = 2 * mono(0.0, 0.0, 0, deg).len(); let w = fit_gn(&|th, z| dir_step(th, deg, z), &vec![0.0; n], lam, &e.x0, &e.ys, k); ok16(e, &|z| dir_step(&w, deg, z), k) }
 fn argf(a: &[String], k: &str) -> f64 { super::arg(a, k).unwrap().parse().unwrap() }
 
 pub fn run(a: &[String]) {

@@ -5,7 +5,7 @@ use cdt_rqm_epr::v4_metrics as m;
 use rand::Rng;
 use rand_xoshiro::rand_core::SeedableRng;
 use rand_xoshiro::Xoshiro256StarStar;
-pub const NF: usize = 10; // 0–7 v4, 8 = B1 giro ondulado (rotación + no linealidad suave), 9 = B2 espiral (de mem)
+pub const NF: usize = 10; // 0–7 v4, 8 = B1 giro ondulado (rotación + no linealidad suave), 9 = B2 espiral (de mem); 10 pulso radial, 11 cizalla saturada (sólo con --nf 12)
 fn rot(t: f64, x: f64, y: f64) -> (f64, f64) { (t.cos() * x - t.sin() * y, t.sin() * x + t.cos() * y) }
 pub fn rule(f: usize, p: [f64; 2], o: &[f64]) -> Vec<f64> {
     if f < N_FAM { return apply_rule(f, p, o); }
@@ -13,7 +13,9 @@ pub fn rule(f: usize, p: [f64; 2], o: &[f64]) -> Vec<f64> {
     for i in 0..o.len() / 2 {
         let (x, y) = (o[2 * i], o[2 * i + 1]);
         let (a, b) = if f == 8 { let (u, w) = rot(0.6 * p[0], x, y); (u + 0.25 * p[1] * (2.0 * w).sin(), w + 0.25 * p[1] * (2.0 * u).sin()) }
-            else { let r = (x * x + y * y).sqrt(); let (u, w) = rot(0.4 * p[0] + 0.8 * p[1] * (r - 0.7), x, y); let s = (0.1 * p[1]).exp(); (s * u, s * w) };
+            else if f == 9 { let r = (x * x + y * y).sqrt(); let (u, w) = rot(0.4 * p[0] + 0.8 * p[1] * (r - 0.7), x, y); let s = (0.1 * p[1]).exp(); (s * u, s * w) }
+            else if f == 10 { let (r, th) = ((x * x + y * y).sqrt(), y.atan2(x)); let r2 = r * (1.0 + 0.15 * p[1] * (3.0 * th).sin()); let t2 = th + 0.5 * p[0]; (r2 * t2.cos(), r2 * t2.sin()) }
+            else { let u = x + 0.3 * p[0] * (2.0 * y).tanh(); (u, y + 0.3 * p[1] * (2.0 * u).tanh()) };
         v[2 * i] = a; v[2 * i + 1] = b;
     }
     v
@@ -51,7 +53,8 @@ pub fn set(a: &[String]) {
     println!("idx,fam,p1,p2,x0");
     let cls = [ObjectClass::Blob, ObjectClass::Circle, ObjectClass::Triangle];
     let n: usize = super::arg(a, "--n").map(|s| s.parse().unwrap()).unwrap_or(16);
-    for f in 0..NF { for i in 0..n {
+    let nf: usize = super::arg(a, "--nf").map(|s| s.parse().unwrap()).unwrap_or(NF);
+    for f in 0..nf { for i in 0..n {
         let p = [rng.gen_range(-1.0..1.0), rng.gen_range(-1.0..1.0)];
         let x = make_object(&mut rng, 6, cls[i % 3]);
         println!("{},{f},{:.17},{:.17},{}", f * n + i, p[0], p[1], x.iter().map(|v| format!("{v:.17}")).collect::<Vec<_>>().join(";"));
