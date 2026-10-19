@@ -209,6 +209,7 @@ fn main() {
         Some("ctx-dump") => ctx_dump(&a),
         Some("llm-eval") => llm_eval(&a),
         Some("yo-feat") => yo::run(&a),
+        Some("yo-act") => yo::act(&a),
         Some("gemma-embed") => gemma_embed::run(&a, |k| arg(&a, k)),
         _ => eprintln!("uso: orbita export|eval|fresh|parity ..."),
     }
