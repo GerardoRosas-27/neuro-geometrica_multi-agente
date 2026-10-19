@@ -1,0 +1,1 @@
+{"model":"/workspace/neuro-geometrica_multi-agente/models/gemma-2-2b-it-Q4_K_M.gguf","exit_after":"Some(12)","dim":1,"n_texts":7168,"resumed_from":0,"tokens":290359,"load_s":4.53,"encode_s":3378.99,"s_per_text":0.4714,"tok_per_s":85.93}
