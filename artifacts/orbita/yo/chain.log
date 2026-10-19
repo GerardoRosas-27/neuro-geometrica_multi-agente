@@ -1,0 +1,44 @@
+1536 textos de calibración dev
+extract dev start 23:44:19 free=7411MB
+extract dev done 00:08:59
+feats ok dev
+feats dev done 00:09:06
+dev 0xA400 gen 384
+dev 0xA401 gen 384
+dev 0xA402 gen 384
+dev 0xA403 gen 384
+dev 0xA404 gen 384
+dev 0xA405 gen 384
+dev 0xA406 gen 384
+dev 0xA407 gen 384
+dev 0xA408 gen 384
+dev 0xA409 gen 384
+dev 0xA40A gen 384
+dev 0xA40B gen 384
+dev 0xA40C gen 384
+dev 0xA40D gen 384
+dev 0xA40E gen 384
+dev 0xA40F gen 384
+dev done 11:06:38
+1536 textos de calibración confirm
+extract confirm start 11:06:38 free=10615MB
+extract confirm done 11:22:30
+feats ok confirm
+feats confirm done 11:22:36
+confirm 0xB400 gen 384
+confirm 0xB401 gen 384
+confirm 0xB402 gen 384
+confirm 0xB403 gen 384
+confirm 0xB404 gen 384
+confirm 0xB405 gen 384
+confirm 0xB406 gen 384
+confirm 0xB407 gen 384
+confirm 0xB408 gen 384
+confirm 0xB409 gen 384
+confirm 0xB40A gen 384
+confirm 0xB40B gen 384
+confirm 0xB40C gen 384
+confirm 0xB40D gen 384
+confirm 0xB40E gen 384
+confirm 0xB40F gen 384
+confirm done 17:24:20
