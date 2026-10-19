@@ -19,7 +19,7 @@ fn phi(x: f64, y: f64, p: [f64; 2], deg: usize) -> Vec<f64> {
 }
 fn nfeat(deg: usize) -> usize { 3 * (deg + 1) * (deg + 2) / 2 }
 /// Cholesky de A (n×n, SPD) y resolución A w = b
-fn solve(a: &[f64], b: &[f64], n: usize) -> Vec<f64> {
+pub fn solve(a: &[f64], b: &[f64], n: usize) -> Vec<f64> {
     let mut l = vec![0.0; n * n];
     for i in 0..n { for j in 0..=i {
         let mut s = a[i * n + j]; for k in 0..j { s -= l[i * n + k] * l[j * n + k]; }
@@ -36,13 +36,13 @@ fn solve(a: &[f64], b: &[f64], n: usize) -> Vec<f64> {
 #[derive(Clone)]
 pub struct Module { pub g0: Option<usize>, deg: usize, lam: f64, a: Vec<f64>, b: [Vec<f64>; 2], w: [Vec<f64>; 2], pub members: Vec<usize>, pub npairs: usize }
 impl Module {
-    fn new(g0: Option<usize>, deg: usize, lam: f64) -> Self {
+    pub fn new(g0: Option<usize>, deg: usize, lam: f64) -> Self {
         let n = nfeat(deg);
         Self { g0, deg, lam, a: vec![0.0; n * n], b: [vec![0.0; n], vec![0.0; n]], w: [vec![0.0; n], vec![0.0; n]], members: vec![], npairs: 0 }
     }
     fn base(&self, d: &Orbita, x: &[f64], p: [f64; 2]) -> Vec<f64> { match self.g0 { Some(g) => d.step(x, &context_of(g, p)), None => x.to_vec() } }
     /// añade pares (x_t → y_{t+1}) observados y reajusta W por ridge
-    fn add(&mut self, d: &Orbita, x0: &[f64], ys: &[Vec<f64>], k: usize, p: [f64; 2], fam: usize) {
+    pub fn add(&mut self, d: &Orbita, x0: &[f64], ys: &[Vec<f64>], k: usize, p: [f64; 2], fam: usize) {
         let n = nfeat(self.deg);
         for t in 0..k {
             let x = if t == 0 { x0.to_vec() } else { ys[t - 1].clone() }; let y = &ys[t]; let bx = self.base(d, &x, p);
@@ -65,7 +65,7 @@ impl Module {
         y
     }
     /// sorpresa S = (1/k) Σ_{t≤k} min(rel_err(F^t(x0), y_t), 10)
-    fn surprise(&self, d: &Orbita, x0: &[f64], ys: &[Vec<f64>], k: usize, p: [f64; 2]) -> f64 {
+    pub fn surprise(&self, d: &Orbita, x0: &[f64], ys: &[Vec<f64>], k: usize, p: [f64; 2]) -> f64 {
         let mut z = x0.to_vec(); let mut r = 0.0;
         for t in 0..k { z = self.step(d, &z, p); r += if fin(&z) { m::rel_err(&z, &ys[t]).min(10.0) } else { 10.0 }; }
         r / k as f64

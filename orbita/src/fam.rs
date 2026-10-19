@@ -50,10 +50,11 @@ pub fn set(a: &[String]) {
     let mut rng = Xoshiro256StarStar::seed_from_u64(r);
     println!("idx,fam,p1,p2,x0");
     let cls = [ObjectClass::Blob, ObjectClass::Circle, ObjectClass::Triangle];
-    for f in 0..NF { for i in 0..16 {
+    let n: usize = super::arg(a, "--n").map(|s| s.parse().unwrap()).unwrap_or(16);
+    for f in 0..NF { for i in 0..n {
         let p = [rng.gen_range(-1.0..1.0), rng.gen_range(-1.0..1.0)];
         let x = make_object(&mut rng, 6, cls[i % 3]);
-        println!("{},{f},{:.17},{:.17},{}", f * 16 + i, p[0], p[1], x.iter().map(|v| format!("{v:.17}")).collect::<Vec<_>>().join(";"));
+        println!("{},{f},{:.17},{:.17},{}", f * n + i, p[0], p[1], x.iter().map(|v| format!("{v:.17}")).collect::<Vec<_>>().join(";"));
     } }
 }
 fn nums(s: &str, sep: char) -> Vec<f64> { s.split(sep).filter(|t| !t.trim().is_empty()).map(|t| t.trim().parse().unwrap()).collect() }
