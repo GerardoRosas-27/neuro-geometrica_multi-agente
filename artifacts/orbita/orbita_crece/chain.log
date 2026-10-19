@@ -1,0 +1,50 @@
+dev H 576 textos
+dev S 2400 textos
+extract dev H start 09:18:33 free=7831MB
+extract dev H done 09:24:48
+extract dev S start 09:24:48 free=9883MB
+extract dev S done 09:49:02
+dev 0xA400 ctx ok
+dev 0xA401 ctx ok
+dev 0xA402 ctx ok
+dev 0xA403 ctx ok
+dev 0xA404 ctx ok
+dev 0xA405 ctx ok
+dev 0xA406 ctx ok
+dev 0xA407 ctx ok
+dev 0xA408 ctx ok
+dev 0xA409 ctx ok
+dev 0xA40A ctx ok
+dev 0xA40B ctx ok
+dev 0xA40C ctx ok
+dev 0xA40D ctx ok
+dev 0xA40E ctx ok
+dev 0xA40F ctx ok
+confirm H 576 textos
+confirm S 2400 textos
+extract confirm H start 09:49:54 free=9725MB
+extract confirm H done 09:55:37
+extract confirm S start 09:55:37 free=9826MB
+extract confirm S done 10:20:54
+confirm 0xB400 ctx ok
+confirm 0xB401 ctx ok
+confirm 0xB402 ctx ok
+confirm 0xB403 ctx ok
+confirm 0xB404 ctx ok
+confirm 0xB405 ctx ok
+confirm 0xB406 ctx ok
+confirm 0xB407 ctx ok
+confirm 0xB408 ctx ok
+confirm 0xB409 ctx ok
+confirm 0xB40A ctx ok
+confirm 0xB40B ctx ok
+confirm 0xB40C ctx ok
+confirm 0xB40D ctx ok
+confirm 0xB40E ctx ok
+confirm 0xB40F ctx ok
+calib done 10:22:32
+grid done 12:18:59
+confirm done 14:37:08
+analyze dev done 14:37:10
+analyze confirm done 14:37:12
+chain done 14:37:12

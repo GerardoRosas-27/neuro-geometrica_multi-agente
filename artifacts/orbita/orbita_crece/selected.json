@@ -1,0 +1,9 @@
+{
+ "ce": "2",
+ "scores": {
+  "1": 0.3426649305555556,
+  "2": 0.3557942708333333,
+  "4": 0.3424479166666667
+ },
+ "rule": "max acc16 GROW held-out DEV final, media todas familias y k; empate -> menor ce"
+}

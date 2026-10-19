@@ -1,0 +1,1 @@
+10:37 grid relanzado: el binario usado 10:22-10:36 era anterior al cambio CAP_POOL 200->600 (fuente 53e7f96 dice 600); salidas movidas a dev/run_stale_cap200 (no se usan)
