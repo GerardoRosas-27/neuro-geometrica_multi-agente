@@ -31,7 +31,7 @@ pub fn reid(d: &Orbita, x0: &[f64], ys: &[Vec<f64>], k: usize, phat: [f64; 2]) -
     } }
     (best.1, best.2, best.0)
 }
-fn ls_fit(pairs: &[(&[f64], &[f64])]) -> [[f64; 3]; 2] {
+pub fn ls_fit(pairs: &[(&[f64], &[f64])]) -> [[f64; 3]; 2] {
     let mut a = [[0.0; 3]; 3]; let mut b = [[0.0; 3]; 2];
     for (x, y) in pairs { for i in 0..x.len() / 2 { let u = [x[2 * i], x[2 * i + 1], 1.0];
         for r in 0..3 { for c in 0..3 { a[r][c] += u[r] * u[c]; } for o in 0..2 { b[o][r] += u[r] * y[2 * i + o]; } } } }
@@ -43,10 +43,11 @@ fn ls_fit(pairs: &[(&[f64], &[f64])]) -> [[f64; 3]; 2] {
         for c in 0..3 { out[o][c] = v[c] / mm[c][c]; } }
     out
 }
-fn ls_step(w: &[[f64; 3]; 2], x: &[f64]) -> Vec<f64> { let mut y = x.to_vec(); for i in 0..x.len() / 2 { for o in 0..2 { y[2 * i + o] = w[o][0] * x[2 * i] + w[o][1] * x[2 * i + 1] + w[o][2]; } } y }
-/// fam-set: conjunto fijo e independiente de la seed (RNG 0xFA4E): 16 ejemplos por familia 0–9.
-pub fn set() {
-    let mut rng = Xoshiro256StarStar::seed_from_u64(0xFA4E);
+pub fn ls_step(w: &[[f64; 3]; 2], x: &[f64]) -> Vec<f64> { let mut y = x.to_vec(); for i in 0..x.len() / 2 { for o in 0..2 { y[2 * i + o] = w[o][0] * x[2 * i] + w[o][1] * x[2 * i + 1] + w[o][2]; } } y }
+/// fam-set [--rng HEX]: conjunto fijo e independiente de la seed (RNG 0xFA4E por defecto): 16 ejemplos por familia 0–9.
+pub fn set(a: &[String]) {
+    let r = super::arg(a, "--rng").map(|s| u64::from_str_radix(s.trim_start_matches("0x"), 16).unwrap()).unwrap_or(0xFA4E);
+    let mut rng = Xoshiro256StarStar::seed_from_u64(r);
     println!("idx,fam,p1,p2,x0");
     let cls = [ObjectClass::Blob, ObjectClass::Circle, ObjectClass::Triangle];
     for f in 0..NF { for i in 0..16 {

@@ -7,6 +7,7 @@ mod model;
 mod gemma_embed;
 mod yo;
 mod fam;
+mod learn;
 use cdt_rqm_epr::field_autonomy_v4::*;
 use cdt_rqm_epr::v4_dataset::{generate_and_seal, DatasetConfig, Example, Sealed, N_FAM};
 use cdt_rqm_epr::v4_distill::{family_fit_residual, onestep_breakdown, TRUST_TAU};
@@ -211,7 +212,8 @@ fn main() {
         Some("llm-eval") => llm_eval(&a),
         Some("yo-feat") => yo::run(&a),
         Some("yo-act") => yo::act(&a),
-        Some("fam-set") => fam::set(),
+        Some("fam-set") => fam::set(&a),
+        Some("learn-eval") => learn::eval(&a),
         Some("fam-eval") => fam::eval(&a),
         Some("demo-step") => fam::demo(&a),
         Some("demo-rule") => fam::demo_rule(&a),
