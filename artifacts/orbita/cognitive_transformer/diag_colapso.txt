@@ -1,0 +1,40 @@
+### confirm 0xB400
+gemma ORB known 0.273 new 0.000 medre_known 0.110
+gemma SELF known 0.000 new 0.000 medre_known 0.417
+gemma CT none known 0.234 new 0.000 medre_known 0.123
+gemma CT trainbank known 0.195 new 0.000 medre_known 0.111
+gemma CT stream150 known 0.000 new 0.000 medre_known 1.006
+gemma CT stream2400 known 0.000 new 0.000 medre_known 0.854
+true ORB known 0.359 new 0.000 medre_known 0.077
+true SELF known 0.000 new 0.000 medre_known 0.334
+true CT none known 0.312 new 0.000 medre_known 0.096
+true CT trainbank known 0.328 new 0.000 medre_known 0.083
+true CT stream150 known 0.000 new 0.000 medre_known 1.012
+true CT stream2400 known 0.000 new 0.000 medre_known 0.840
+none |D| known 0.12122510840193558 |z| 1.5833494157762475 attn mass on CDT entries 0
+stream150 |D| known 0.7709671337228466 |z| 1.5833494157762475 attn mass on CDT entries 0.8844387017223296
+bank150 fams [0 0 0 0 0 0 6 0 5 1 3 5]
+sig scale H [0.039 0.047 0.071 0.093 0.079 0.079 3.61 ] bank sig [0.162 0.257 0.335 0.503 0.064 0.055 0.483]
+TRAINDIST ORB acc16 0.172 med 0.237
+TRAINDIST CT trainbank acc16 0.148 med 0.236
+TRAINDIST SELF acc16 0.004 med 0.460
+### dev 0xA400
+gemma ORB known 0.242 new 0.000 medre_known 0.131
+gemma SELF known 0.000 new 0.000 medre_known 0.454
+gemma CT none known 0.180 new 0.000 medre_known 0.135
+gemma CT trainbank known 0.180 new 0.000 medre_known 0.134
+gemma CT stream150 known 0.000 new 0.000 medre_known 0.937
+gemma CT stream2400 known 0.000 new 0.000 medre_known 0.682
+true ORB known 0.406 new 0.000 medre_known 0.066
+true SELF known 0.000 new 0.000 medre_known 0.346
+true CT none known 0.336 new 0.000 medre_known 0.079
+true CT trainbank known 0.266 new 0.000 medre_known 0.074
+true CT stream150 known 0.000 new 0.000 medre_known 0.885
+true CT stream2400 known 0.000 new 0.000 medre_known 0.577
+none |D| known 0.2533533208035887 |z| 1.6159161277657788 attn mass on CDT entries 0
+stream150 |D| known 0.5754254962889527 |z| 1.6159161277657788 attn mass on CDT entries 0.8277431775733753
+bank150 fams [0 0 0 5 2 0 0 0 2 0 3 4]
+sig scale H [0.041 0.039 0.076 0.071 0.075 0.068 3.254] bank sig [0.127 0.168 0.348 0.356 0.073 0.057 0.609]
+TRAINDIST ORB acc16 0.145 med 0.212
+TRAINDIST CT trainbank acc16 0.090 med 0.218
+TRAINDIST SELF acc16 0.000 med 0.504

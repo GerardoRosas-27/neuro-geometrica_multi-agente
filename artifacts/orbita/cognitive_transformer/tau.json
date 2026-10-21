@@ -1,0 +1,8 @@
+{
+ "tau": {
+  "2": 0.3791657551182492,
+  "4": 0.37104091154325664,
+  "8": 0.36908346894944943
+ },
+ "rule": "P95 sorpresa \u00d3RBITA (rel_err medio en pasos observados), H DEV fam 1-2, 16 seeds"
+}
