@@ -34,7 +34,7 @@ for ph in dev confirm; do
     [ -f $W/dev/converged ] || { echo "DEV no convergió: corregir la optimización antes de CONFIRM (prerregistro §5)"; exit 2; }
   fi
   for t in AG LAT; do for i in $(seq 0 15); do printf "$ph ${pre}%02X $t\n" $i; done; done | xargs -P $J -L 1 bash -c 'job $0 $1 $2'
-  n=$(ls $W/$ph/*.done 2>/dev/null | wc -l)
+  n=$(ls $W/$ph/AG.*.done $W/$ph/LAT.*.done 2>/dev/null | wc -l)
   [ $n -eq 32 ] || { echo "fase $ph incompleta ($n/32); relanzar la cadena"; exit 1; }
   [ $ph = dev ] && { [ -f $W/tau.json ] || $P $AG/calibrate.py $W || exit 1; cp $W/tau.json $A/tau.json; }
   [ -f $W/$ph/analyze.done ] || { rm -f $W/$ph/converged $W/$ph/not_converged; $P $AG/analyze_ag.py $ph $A > $A/analyze_$ph.md && touch $W/$ph/analyze.done && echo "analyze $ph done $(date '+%F %T %Z')"; } || exit 1
