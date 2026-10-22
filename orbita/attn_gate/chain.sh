@@ -3,7 +3,7 @@
 # Lanzar: setsid nohup orbita/attn_gate/chain.sh >> /workspace/orbita-data/attn-gate/chain.log 2>&1 &
 set -u
 R=/workspace/ngm-attn-gate; AG=$R/orbita/attn_gate; B=$R/orbita/target/release/orbita; P=/workspace/attn-venv/bin/python
-W=/workspace/orbita-data/attn-gate; A=$R/artifacts/orbita/attn_gate; J=${J:-6}; STEPS=${STEPS:-20000}
+W=/workspace/orbita-data/attn-gate; A=$R/artifacts/orbita/attn_gate; J=${J:-6}; STEPS=${STEPS:-40000}
 mkdir -p $W $A; exec 9>$W/chain.lock; flock -n 9 || { echo "otra cadena activa; salgo"; exit 1; }
 export R AG B P W A STEPS ORBITA_BIN=$B
 job() {  # $1 fase $2 seed $3 tarea

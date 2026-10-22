@@ -45,6 +45,14 @@ C3 val final < 0.9 × val inicial; C4 sin pasos no finitos. Si alguna seed falla
 optimización (p. ej. más pasos o lr), se documenta como enmienda fechada, se repite DEV completo y sólo entonces CONFIRM. Se publican las
 curvas (`artifacts/orbita/attn_gate/curve_*.csv`).
 
+## Enmienda 2026-10-22 (§5, convergencia; aprobada antes de CONFIRM)
+DEV con 20 000 pasos del corrector: las seeds 0xA409 y 0xA40E fallan C2 (pérdida de entrenamiento aún cambia ≥ 5 % entre los dos últimos
+10 %); C1, C3, C4 pasan. Corrección de la optimización: pasos del corrector 20 000 → **40 000** (`chain.sh STEPS`), manteniendo el resto
+del esquema de lr ya prerregistrado en `train_corr.py` (lr 1e-3, warmup 500, decaimiento coseno hasta lr_final 1e-5, ahora sobre 40 000
+pasos). Ningún otro cambio experimental (datos, seeds, hipótesis, métricas, umbrales, LAT, análisis). Las salidas DEV previas se archivan
+(`artifacts/orbita/attn_gate/dev_pre_enmienda/`, datos en `dev_pre_enmienda/`), se repite DEV completo, se recalibra τ, se verifica §5 y
+sólo entonces CONFIRM. Si C2 sigue fallando, nueva enmienda fechada.
+
 ## 6. Hipótesis (k = 2; A − B media por seed [IC95])
 | id | cantidad | aceptada si (DEV y CONFIRM) | refutada si (CONFIRM) |
 |---|---|---|---|
