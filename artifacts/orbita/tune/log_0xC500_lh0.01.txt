@@ -1,0 +1,3 @@
+step 32000 l1=9.371e-04 lh=4.690e-01 356s
+done 2602
+0xC500 ORBITA acc1=0.7109 rel1=0.0508 region=0 clean=true fresh_ok=true pass=false

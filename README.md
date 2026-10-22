@@ -1,3 +1,5 @@
+> **`main` = ÓRBITA.** Ver [`docs/ORBITA_MAIN.md`](docs/ORBITA_MAIN.md). v4 está archivado en el tag `v4-final`.
+
 # Laboratorio neuro-geométrico multi-agente · `main` v4
 
 Crate Rust `cdt_rqm_epr` con **una sola arquitectura de campo: v4** (Dφ

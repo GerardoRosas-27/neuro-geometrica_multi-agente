@@ -1,0 +1,48 @@
+{
+ "selected": {
+  "learn": [
+   2,
+   "0.0001"
+  ],
+  "ofam": [
+   2,
+   "0.0001"
+  ],
+  "oep": [
+   2,
+   "0.0001"
+  ]
+ },
+ "table": [
+  "learn D=2 λ=0.0001 acc16_dev=0.3512",
+  "learn D=2 λ=0.001 acc16_dev=0.3453",
+  "learn D=2 λ=0.01 acc16_dev=0.3375",
+  "learn D=2 λ=0.1 acc16_dev=0.3461",
+  "learn D=2 λ=1 acc16_dev=0.3379",
+  "learn D=3 λ=0.0001 acc16_dev=0.3512",
+  "learn D=3 λ=0.001 acc16_dev=0.3434",
+  "learn D=3 λ=0.01 acc16_dev=0.3406",
+  "learn D=3 λ=0.1 acc16_dev=0.3445",
+  "learn D=3 λ=1 acc16_dev=0.3410",
+  "ofam D=2 λ=0.0001 acc16_dev=0.3621",
+  "ofam D=2 λ=0.001 acc16_dev=0.3324",
+  "ofam D=2 λ=0.01 acc16_dev=0.2445",
+  "ofam D=2 λ=0.1 acc16_dev=0.0895",
+  "ofam D=2 λ=1 acc16_dev=0.0094",
+  "ofam D=3 λ=0.0001 acc16_dev=0.2488",
+  "ofam D=3 λ=0.001 acc16_dev=0.1965",
+  "ofam D=3 λ=0.01 acc16_dev=0.1223",
+  "ofam D=3 λ=0.1 acc16_dev=0.0625",
+  "ofam D=3 λ=1 acc16_dev=0.0066",
+  "oep D=2 λ=0.0001 acc16_dev=0.7125",
+  "oep D=2 λ=0.001 acc16_dev=0.6500",
+  "oep D=2 λ=0.01 acc16_dev=0.3312",
+  "oep D=2 λ=0.1 acc16_dev=0.0375",
+  "oep D=2 λ=1 acc16_dev=0.0063",
+  "oep D=3 λ=0.0001 acc16_dev=0.6062",
+  "oep D=3 λ=0.001 acc16_dev=0.3375",
+  "oep D=3 λ=0.01 acc16_dev=0.0813",
+  "oep D=3 λ=0.1 acc16_dev=0.0437",
+  "oep D=3 λ=1 acc16_dev=0.0063"
+ ]
+}

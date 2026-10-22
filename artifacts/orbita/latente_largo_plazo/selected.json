@@ -1,0 +1,67 @@
+{
+ "selected": {
+  "lat": [
+   "0.0001",
+   "0.001"
+  ],
+  "latep_lam0": "0.0001",
+  "oep": [
+   2,
+   "0.0001"
+  ],
+  "oms": [
+   2,
+   "0.0001"
+  ]
+ },
+ "table": [
+  "LAT λ0=0.0001 λm=0.001 score=0.4478",
+  "LAT λ0=0.0001 λm=0.01 score=0.4458",
+  "LAT λ0=0.0001 λm=0.1 score=0.4443",
+  "LAT λ0=0.0001 λm=1 score=0.4408",
+  "LAT λ0=0.0001 λm=10 score=0.4350",
+  "LAT λ0=0.001 λm=0.001 score=0.4436",
+  "LAT λ0=0.001 λm=0.01 score=0.4421",
+  "LAT λ0=0.001 λm=0.1 score=0.4406",
+  "LAT λ0=0.001 λm=1 score=0.4375",
+  "LAT λ0=0.001 λm=10 score=0.4320",
+  "LAT λ0=0.01 λm=0.001 score=0.4414",
+  "LAT λ0=0.01 λm=0.01 score=0.4393",
+  "LAT λ0=0.01 λm=0.1 score=0.4388",
+  "LAT λ0=0.01 λm=1 score=0.4354",
+  "LAT λ0=0.01 λm=10 score=0.4299",
+  "LAT λ0=0.1 λm=0.001 score=0.4398",
+  "LAT λ0=0.1 λm=0.01 score=0.4383",
+  "LAT λ0=0.1 λm=0.1 score=0.4372",
+  "LAT λ0=0.1 λm=1 score=0.4327",
+  "LAT λ0=0.1 λm=10 score=0.4276",
+  "LAT λ0=1 λm=0.001 score=0.4370",
+  "LAT λ0=1 λm=0.01 score=0.4349",
+  "LAT λ0=1 λm=0.1 score=0.4340",
+  "LAT λ0=1 λm=1 score=0.4294",
+  "LAT λ0=1 λm=10 score=0.4254",
+  "LAT_EP λ0=0.0001 score=0.4367",
+  "LAT_EP λ0=0.001 score=0.4324",
+  "LAT_EP λ0=0.01 score=0.4294",
+  "LAT_EP λ0=0.1 score=0.4273",
+  "LAT_EP λ0=1 score=0.4191",
+  "ORACLE_EP D=2 λ=0.0001 score=0.7063",
+  "ORACLE_EP D=2 λ=0.001 score=0.6875",
+  "ORACLE_EP D=2 λ=0.01 score=0.5375",
+  "ORACLE_EP D=2 λ=0.1 score=0.2854",
+  "ORACLE_EP D=2 λ=1 score=0.1021",
+  "ORACLE_EP D=3 λ=0.0001 score=0.6854",
+  "ORACLE_EP D=3 λ=0.001 score=0.5771",
+  "ORACLE_EP D=3 λ=0.01 score=0.3833",
+  "ORACLE_EP D=3 λ=0.1 score=0.1833",
+  "ORACLE_EP D=3 λ=1 score=0.0667",
+  "ORACLE_MS D=2 λ=0.0001 score=0.6562",
+  "ORACLE_MS D=2 λ=0.001 score=0.5667",
+  "ORACLE_MS D=2 λ=0.01 score=0.3979",
+  "ORACLE_MS D=2 λ=0.1 score=0.2271",
+  "ORACLE_MS D=3 λ=0.0001 score=0.4500",
+  "ORACLE_MS D=3 λ=0.001 score=0.3729",
+  "ORACLE_MS D=3 λ=0.01 score=0.2437",
+  "ORACLE_MS D=3 λ=0.1 score=0.1458"
+ ]
+}

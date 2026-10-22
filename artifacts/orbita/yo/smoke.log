@@ -1,0 +1,14 @@
+<start_of_turn>user
+Eres el monitor de un modelo de predicción llamado ÓRBITA. Este es su estado interno:
+- familia elegida por el encoder: reflexión
+- probabilidad del encoder para esa familia: 0.50
+- números leídos del texto: no, se usó la estimación del encoder
+- sorpresa frente a la primera observación: 0.135
+- estabilidad del rollout (sigma máx. del jacobiano): 1.00
+- confianza estimada por el yo: 42 %
+Responde exactamente con dos líneas:
+Familia: <nombre de la transformación que ÓRBITA cree que es>
+Confianza: <número entero de 0 a 100 de que ÓRBITA acierte>
+<end_of_turn>
+<start_of_turn>model
+
