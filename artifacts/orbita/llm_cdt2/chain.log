@@ -1,0 +1,16 @@
+eval ok dev
+/workspace/ngm-orbita/orbita/llm/pipeline.py:91: RuntimeWarning: Mean of empty slice
+  m = x[rng.integers(0, len(x), (B_, len(x)))].mean(1); return x.mean(), np.percentile(m, 2.5), np.percentile(m, 97.5), len(x)
+/workspace/orbita-venv/lib/python3.13/site-packages/numpy/_core/_methods.py:134: RuntimeWarning: invalid value encountered in divide
+  ret = um.true_divide(
+/workspace/orbita-venv/lib/python3.13/site-packages/numpy/_core/_methods.py:142: RuntimeWarning: invalid value encountered in scalar divide
+  ret = ret.dtype.type(ret / rcount)
+dev done 12:04:21
+eval ok confirm
+/workspace/ngm-orbita/orbita/llm/pipeline.py:91: RuntimeWarning: Mean of empty slice
+  m = x[rng.integers(0, len(x), (B_, len(x)))].mean(1); return x.mean(), np.percentile(m, 2.5), np.percentile(m, 97.5), len(x)
+/workspace/orbita-venv/lib/python3.13/site-packages/numpy/_core/_methods.py:134: RuntimeWarning: invalid value encountered in divide
+  ret = um.true_divide(
+/workspace/orbita-venv/lib/python3.13/site-packages/numpy/_core/_methods.py:142: RuntimeWarning: invalid value encountered in scalar divide
+  ret = ret.dtype.type(ret / rcount)
+confirm done 12:04:25

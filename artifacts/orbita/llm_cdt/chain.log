@@ -1,0 +1,46 @@
+extract pool3 start 09:15:42 free=9523MB
+extract done 09:29:13
+feat ok dev
+feat dev 09:31:08
+train dev J=8 09:31:08
+0xA407 train ok
+0xA401 train ok
+0xA400 train ok
+0xA405 train ok
+0xA402 train ok
+0xA406 train ok
+0xA403 train ok
+0xA404 train ok
+0xA40A train ok
+0xA40D train ok
+0xA40C train ok
+0xA409 train ok
+0xA408 train ok
+0xA40E train ok
+0xA40F train ok
+0xA40B train ok
+ctx ok dev
+eval ok dev
+dev done 09:31:37
+feat ok confirm
+feat confirm 09:33:31
+train confirm J=8 09:33:31
+0xB405 train ok
+0xB404 train ok
+0xB407 train ok
+0xB401 train ok
+0xB400 train ok
+0xB406 train ok
+0xB402 train ok
+0xB403 train ok
+0xB40B train ok
+0xB40D train ok
+0xB40A train ok
+0xB40E train ok
+0xB408 train ok
+0xB409 train ok
+0xB40F train ok
+0xB40C train ok
+ctx ok confirm
+eval ok confirm
+confirm done 09:33:56

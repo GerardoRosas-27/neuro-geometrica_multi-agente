@@ -1,0 +1,4 @@
+queries=0 n_modules=14 library=[{"g0":1,"members":[8,7,9],"npairs":18},{"g0":6,"members":[9,8,9],"npairs":18},{"g0":4,"members":[8,8,9,9],"npairs":24},{"g0":4,"members":[8,7,7],"npairs":18},{"g0":7,"members":[7,8,8],"npairs":18},{"g0":4,"members":[8,9,8],"npairs":18},{"g0":6,"members":[9,7,8],"npairs":18},{"g0":4,"members":[8,9,9],"npairs":18},{"g0":7,"members":[7,6,7],"npairs":18},{"g0":7,"members":[7,7,9,8],"npairs":24},{"g0":1,"members":[9,7,7],"npairs":18},{"g0":1,"members":[9,9,7,9],"npairs":24},{"g0":4,"members":[8,8,8,7,7],"npairs":30},{"g0":3,"members":[9,9],"npairs":12}]
+
+sha256_before=4d029eb40f897b9a01f2575c7b8c37d32e23346be353b8acce4102d70bd19879
+sha256_after=4d029eb40f897b9a01f2575c7b8c37d32e23346be353b8acce4102d70bd19879

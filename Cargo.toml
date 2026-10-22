@@ -2,7 +2,7 @@
 name = "cdt_rqm_epr"
 version = "0.1.0"
 edition = "2021"
-description = "Neuro-geometrica v4: campo Dphi + CDT/teacher (E31-E45) y app agentica"
+description = "Neuro-geometrica: ÓRBITA (crate orbita/) sobre el sustrato v4 (dataset/métricas) y app agentica"
 license = "MIT"
 
 [profile.release]
@@ -26,10 +26,6 @@ web = [
     "dep:futures-util",
     "dep:ureq",
 ]
-
-[[bin]]
-name = "run_field_autonomy_v4"
-path = "src/bin/run_field_autonomy_v4.rs"
 
 [[bin]]
 name = "agentic_web"

@@ -1,0 +1,37 @@
+480 textos
+extract start 22:42:51 free=7404MB
+extract done 22:49:35
+dev 0xA400 ok
+dev 0xA401 ok
+dev 0xA402 ok
+dev 0xA403 ok
+dev 0xA404 ok
+dev 0xA405 ok
+dev 0xA406 ok
+dev 0xA407 ok
+dev 0xA408 ok
+dev 0xA409 ok
+dev 0xA40A ok
+dev 0xA40B ok
+dev 0xA40C ok
+dev 0xA40D ok
+dev 0xA40E ok
+dev 0xA40F ok
+dev done 22:51:31
+confirm 0xB400 ok
+confirm 0xB401 ok
+confirm 0xB402 ok
+confirm 0xB403 ok
+confirm 0xB404 ok
+confirm 0xB405 ok
+confirm 0xB406 ok
+confirm 0xB407 ok
+confirm 0xB408 ok
+confirm 0xB409 ok
+confirm 0xB40A ok
+confirm 0xB40B ok
+confirm 0xB40C ok
+confirm 0xB40D ok
+confirm 0xB40E ok
+confirm 0xB40F ok
+confirm done 22:53:26

@@ -1,0 +1,21 @@
+## DEV (16 seeds)
+
+| cantidad | media | IC95 | n |
+|---|---|---|---|
+| acc16 E2E_R (tasa de acierto real) | +0.2630 | [+0.1953, +0.3301] | 16 |
+| brier YO | +0.1536 | [+0.1174, +0.1923] | 16 |
+| brier MARGIN | +0.2219 | [+0.1889, +0.2516] | 16 |
+| brier SURPRISE | +0.1351 | [+0.1025, +0.1712] | 16 |
+| ece YO | +0.2149 | [+0.1707, +0.2616] | 16 |
+| ece MARGIN | +0.1962 | [+0.1560, +0.2390] | 16 |
+| ece SURPRISE | +0.2042 | [+0.1672, +0.2433] | 16 |
+| aurc YO | +0.5411 | [+0.4385, +0.6457] | 16 |
+| aurc MARGIN | +0.7490 | [+0.6688, +0.8259] | 16 |
+| aurc SURPRISE | +0.5285 | [+0.4249, +0.6351] | 16 |
+| aurc RANDOM | +0.7370 | [+0.6699, +0.8047] | 16 |
+| **H1** Brier: min(MARGIN, SURPRISE) − YO | -0.0230 | [-0.0391, -0.0101] | 16 |
+| H1 (sec.) ECE: min(MARGIN, SURPRISE) − YO | -0.0565 | [-0.0885, -0.0260] | 16 |
+| **H2** AURC: min(MARGIN, SURPRISE, RANDOM) − YO | -0.0130 | [-0.0289, -0.0025] | 16 |
+| AUROC(−p̂ YO → fallo), 96 filas | +0.8214 | [+0.7418, +0.8943] | 15 |
+
+Queries v4 (yo-feat, dev+test): 0
