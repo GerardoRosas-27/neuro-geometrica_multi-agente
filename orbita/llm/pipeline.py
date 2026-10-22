@@ -6,8 +6,13 @@
   pipeline.py analyze PHASE      → tablas + IC95 (bootstrap pareado por seed, 10000, semilla 12345)"""
 import sys, os, csv, json, subprocess, zlib
 import numpy as np
-D = "/workspace/orbita-data/llm"; R = os.path.dirname(os.path.abspath(__file__)); ROOT = os.path.dirname(os.path.dirname(R))
-B = f"{ROOT}/orbita/target/release/orbita"; DIM = 2304
+R = os.path.dirname(os.path.abspath(__file__)); ROOT = os.path.dirname(os.path.dirname(R))
+# Rutas configurables por entorno (por defecto, las del box de investigación).
+DATA = os.environ.get("ORBITA_DATA", "/workspace/orbita-data")
+GEMMA_GGUF = os.environ.get("GEMMA_GGUF_PATH", "/workspace/neuro-geometrica_multi-agente/models/gemma-2-2b-it-Q4_K_M.gguf")
+LLAMACPP = os.environ.get("ORBITA_LLAMACPP", "/workspace/llamacpp/llama-b11259")
+D = f"{DATA}/llm"
+B = os.environ.get("ORBITA_BIN", f"{ROOT}/orbita/target/release/orbita"); DIM = 2304
 SEEDS = {"dev": [f"0xA4{i:02X}" for i in range(16)], "confirm": [f"0xB4{i:02X}" for i in range(16)]}
 ART = f"{ROOT}/artifacts/orbita/llm"
 def tsv(p): return [l.rstrip("\n").split("\t") for l in open(p)]
@@ -82,7 +87,7 @@ def ctx(ph):
 def ev(ph):
     os.makedirs(f"{ART}/{ph}", exist_ok=True)
     for s in SEEDS[ph]:
-        w = f"/workspace/orbita-data/{ph}/w_{s}.json"
+        w = f"{DATA}/{ph}/w_{s}.json"
         p = subprocess.run([B, "llm-eval", "--seed", s, "--weights", w, "--ctx", f"{D}/{ph}/ctxin_{s}.csv"], capture_output=True, check=True)
         open(f"{ART}/{ph}/llm_eval_{s}.csv", "wb").write(p.stdout); open(f"{ART}/{ph}/queries_{s}.txt", "wb").write(p.stderr)
     print("eval ok", ph)

@@ -9,8 +9,8 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import pipeline as P0, numnorm as NN
 from make_texts import FAM, ART as ARTI
-O = "/workspace/orbita-data/llm_e2e"; L = "/workspace/orbita-data/llm"; D2D = "/workspace/orbita-data/llm_d2"; D3D = "/workspace/orbita-data/llm_d3"
-ART = f"{P0.ROOT}/artifacts/orbita/llm_e2e"; GEMMA = "/workspace/neuro-geometrica_multi-agente/models/gemma-2-2b-it-Q4_K_M.gguf"
+O = f"{P0.DATA}/llm_e2e"; L = f"{P0.DATA}/llm"; D2D = f"{P0.DATA}/llm_d2"; D3D = f"{P0.DATA}/llm_d3"
+ART = f"{P0.ROOT}/artifacts/orbita/llm_e2e"; GEMMA = P0.GEMMA_GGUF
 T = {"es": ["Transforma la figura con {art} {f}: el primer valor es {a} y el segundo es {b}.", "Se pide {art} {f} de valores {a} y {b}."],
      "en": ["Transform the shape with {art} {f}: the first value is {a} and the second is {b}.", "Requested: {art} {f} with values {a} and {b}."],
      "fr": ["Transforme la figure avec {art} {f} : la première valeur est {a} et la seconde est {b}.", "Demandé : {art} {f} de valeurs {a} et {b}."]}
@@ -30,7 +30,7 @@ def d2_predict(tokpath, ph, seed, idxs):
     with torch.no_grad(): return enc(*tok.batch(idxs, st["mu"], st["sd"]))[0].numpy()
 
 def llm_eval(seed, ph, ctxfile):
-    p = subprocess.run([P0.B, "llm-eval", "--seed", seed, "--weights", f"/workspace/orbita-data/{ph}/w_{seed}.json", "--ctx", ctxfile], capture_output=True, check=True)
+    p = subprocess.run([P0.B, "llm-eval", "--seed", seed, "--weights", f"{P0.DATA}/{ph}/w_{seed}.json", "--ctx", ctxfile], capture_output=True, check=True)
     return p.stdout.decode(), p.stderr.decode()
 
 def run(argv):

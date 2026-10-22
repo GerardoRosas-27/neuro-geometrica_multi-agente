@@ -4,7 +4,7 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import pipeline as P0, numnorm as NN, e2e as E
 from make_texts import FAM, ART as ARTI
-O = "/workspace/orbita-data/demo_fam"; ART = f"{P0.ROOT}/artifacts/orbita/otras_familias"
+O = f"{P0.DATA}/demo_fam"; ART = f"{P0.ROOT}/artifacts/orbita/otras_familias"
 NEWN = {"es": (["un", "una"], ["giro ondulado", "espiral"]), "en": (["a", "a"], ["wavy turn", "spiral"]), "fr": (["un", "une"], ["virage ondulé", "spirale"])}
 GROUPS = {"conocidas_1_2": [1, 2], "v4_no_iterables": [0, 3, 4, 5, 6, 7], "nuevas_8_9": [8, 9]}
 def name(lang, f): return (ARTI[lang][f], FAM[lang][f]) if f < 8 else (NEWN[lang][0][f - 8], NEWN[lang][1][f - 8])
@@ -25,7 +25,7 @@ def run(ph):
         for j, r in enumerate(rows):
             c, ok = E.build_c(C[j], r[7]); nf += not ok; L.append(f"{r[0]},E2E,{r[4]}-{r[5]}," + ",".join(repr(float(x)) for x in c))
         open(f"{O}/{ph}/ctx_{s}.csv", "w").write("\n".join(L) + "\n")
-        p = subprocess.run([P0.B, "fam-eval", "--weights", f"/workspace/orbita-data/{ph}/w_{s}.json", "--set", f"{O}/set.csv", "--ctx", f"{O}/{ph}/ctx_{s}.csv"], capture_output=True, check=True)
+        p = subprocess.run([P0.B, "fam-eval", "--weights", f"{P0.DATA}/{ph}/w_{s}.json", "--set", f"{O}/set.csv", "--ctx", f"{O}/{ph}/ctx_{s}.csv"], capture_output=True, check=True)
         open(f"{O}/{ph}/eval_{s}.csv", "wb").write(p.stdout); open(f"{O}/{ph}/q_{s}.txt", "w").write(p.stderr.decode() + f" parse_fail={nf}\n")
         open(dn, "w").write("ok\n"); print(ph, s, "ok", flush=True)
 def analyze(ph):

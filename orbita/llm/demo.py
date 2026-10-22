@@ -27,7 +27,7 @@ def main(argv=None):
         subprocess.run([P0.B, "gemma-embed", "--model", E.GEMMA, "--in", f"{td}/in.txt", "--out", f"{td}/t.tok", "--exit-after", "12", "--per-token"], check=True, capture_output=True)
         C, LG = Y.d2_logits(f"{td}/t.tok", ph, a.seed, [0])
     c, ok = E.build_c(C[0], a.text); pr = np.exp(LG[0] - LG[0].max()); pr /= pr.sum(); so = np.sort(pr)[::-1]
-    cmd = [P0.B, "demo-step", "--weights", f"/workspace/orbita-data/{ph}/w_{a.seed}.json", "--c", ",".join(map(repr, c)), "--x0", ",".join(map(repr, x0))]
+    cmd = [P0.B, "demo-step", "--weights", f"{P0.DATA}/{ph}/w_{a.seed}.json", "--c", ",".join(map(repr, c)), "--x0", ",".join(map(repr, x0))]
     if ys: cmd += ["--obs", "|".join(",".join(map(repr, y)) for y in ys)]
     st = json.loads(subprocess.check_output(cmd).decode())
     feat = {"fam_hat": str(int(np.argmax(c[:8]))), "p_d2": f"{so[0]}", "margin_d2": f"{so[0] - so[1]}", "parse_ok": str(int(ok)), "sigma": f"{np.log(st['sigma'])}", "normr": f"{np.log(st['normr'])}"}

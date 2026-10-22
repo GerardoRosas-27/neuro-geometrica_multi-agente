@@ -251,6 +251,7 @@ pub fn router_with_auth(state: SharedState, static_dir: PathBuf, auth: SharedAut
         .route("/api/llm/parse-curl", post(llm_parse_curl))
         .merge(crate::web::spider_job::routes())
         .merge(crate::web::spider_field_job::routes())
+        .merge(crate::web::orbita_job::routes())
         .with_state(state);
 
     // Estáticos: no-cache para que index.html siempre pida app.js/css frescos

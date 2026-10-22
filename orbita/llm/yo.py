@@ -5,15 +5,15 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import pipeline as P0, numnorm as NN, e2e as E
 from make_texts import FAM, ART as ARTI
-O = "/workspace/orbita-data/yo"; ART = f"{P0.ROOT}/artifacts/orbita/yo"; EO = "/workspace/orbita-data/llm_e2e"
-LLAMA = "/workspace/llamacpp/llama-b11259"; PORT = 18093
+O = f"{P0.DATA}/yo"; ART = f"{P0.ROOT}/artifacts/orbita/yo"; EO = f"{P0.DATA}/llm_e2e"
+LLAMA = P0.LLAMACPP; PORT = 18093
 T89 = {"es": ["Hay que aplicar {art} {f}; el valor uno es {a} y el valor dos es {b}.", "Pedido: {art} {f}, con {a} como primer valor y {b} como segundo."],
        "en": ["Please apply {art} {f}; value one is {a} and value two is {b}.", "Order: {art} {f}, with {a} as the first value and {b} as the second."],
        "fr": ["Il faut appliquer {art} {f} ; la valeur un est {a} et la valeur deux est {b}.", "Commande : {art} {f}, avec {a} comme première valeur et {b} comme seconde."]}
 def caltexts(ph):
     os.makedirs(f"{O}/{ph}", exist_ok=True); out = []
     for s in P0.SEEDS[ph]:
-        d = subprocess.check_output([P0.B, "yo-feat", "--seed", s, "--weights", f"/workspace/orbita-data/{ph}/w_{s}.json", "--part", "dev", "--dump"]).decode()
+        d = subprocess.check_output([P0.B, "yo-feat", "--seed", s, "--weights", f"{P0.DATA}/{ph}/w_{s}.json", "--part", "dev", "--dump"]).decode()
         for r in csv.DictReader(d.splitlines()):
             fam, p1, p2 = int(r["fam"]), float(r["p1"]), float(r["p2"])
             for li, lang in enumerate(E.LANGS):
@@ -37,7 +37,7 @@ def feats(ph):
                 r = rows[i]; c, ok = E.build_c(C[j], r[8]); pr = np.exp(LG[j] - LG[j].max()); pr /= pr.sum(); so = np.sort(pr)[::-1]
                 lines.append(f"{r[1]},E2E_R,{r[5]}-{r[6]}," + ",".join(repr(float(x)) for x in c)); meta.append((r[1], f"{r[5]}-{r[6]}", int(np.argmax(c[:8])), so[0], so[0] - so[1], int(ok)))
             cp = f"{O}/{ph}/ctx_{part}_{s}.csv"; open(cp, "w").write("\n".join(lines) + "\n")
-            p = subprocess.run([P0.B, "yo-feat", "--seed", s, "--weights", f"/workspace/orbita-data/{ph}/w_{s}.json", "--part", part, "--ctx", cp], capture_output=True, check=True)
+            p = subprocess.run([P0.B, "yo-feat", "--seed", s, "--weights", f"{P0.DATA}/{ph}/w_{s}.json", "--part", part, "--ctx", cp], capture_output=True, check=True)
             R = list(csv.DictReader(p.stdout.decode().splitlines())); assert len(R) == len(meta)
             with open(f"{O}/{ph}/yo_{part}_{s}.csv", "w") as f:
                 f.write("idx,text_id,fam,fam_hat,p_d2,margin_d2,parse_ok,surprise,sigma,normr,ok16\n")

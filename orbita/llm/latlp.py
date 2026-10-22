@@ -5,7 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import pipeline as P0, numnorm as NN, e2e as E, fam_eval as FE
-O = "/workspace/orbita-data/latlp"; ART = f"{P0.ROOT}/artifacts/orbita/latente_largo_plazo"
+O = f"{P0.DATA}/latlp"; ART = f"{P0.ROOT}/artifacts/orbita/latente_largo_plazo"
 RNG = {"dev": ("0xFA61", "0xFA60"), "confirm": ("0xFA63", "0xFA62")}  # (H, S)
 KS = (2, 4, 8); L0 = ("0.0001", "0.001", "0.01", "0.1", "1"); LM = ("0.001", "0.01", "0.1", "1", "10")
 OEP = [(2, "0.0001"), (2, "0.001"), (2, "0.01"), (2, "0.1"), (2, "1"), (3, "0.0001"), (3, "0.001"), (3, "0.01"), (3, "0.1"), (3, "1")]
@@ -54,7 +54,7 @@ def job(out, argv, w):
     os.makedirs(os.path.dirname(out), exist_ok=True); h0 = sha(w); p = subprocess.run([P0.B] + argv, capture_output=True, check=True)
     open(out, "wb").write(p.stdout); open(out[:-4] + ".err", "w").write(p.stderr.decode() + f"\nsha256_before={h0}\nsha256_after={sha(w)}\n"); assert sha(w) == h0; open(dn, "w").write("ok\n")
 def e1(ph, s, k, tau, l0, lm, tag):
-    w = f"/workspace/orbita-data/{ph}/w_{s}.json"
+    w = f"{P0.DATA}/{ph}/w_{s}.json"
     return (f"{D(ph)}/e1/{tag}/k{k}_{s}.csv", ["lat-eval", "exp1", "--weights", w, "--set", f"{D(ph)}/H_set.csv", "--ctx", f"{D(ph)}/ctx/H_{s}.csv", "--k", str(k), "--tau", repr(tau), "--lam0", l0, "--lamm", lm], w)
 def pool(jobs):
     with ThreadPoolExecutor(NPAR) as ex: [f.result() for f in [ex.submit(job, *j) for j in jobs]]
@@ -124,7 +124,7 @@ def analyze1(ph):
 def run2(ph):
     t = taus(); S = sel(); jobs = []
     for s in P0.SEEDS[ph]:
-        w = f"/workspace/orbita-data/{ph}/w_{s}.json"; out = f"{D(ph)}/e2/stream_{s}.csv"
+        w = f"{P0.DATA}/{ph}/w_{s}.json"; out = f"{D(ph)}/e2/stream_{s}.csv"
         jobs.append((out, ["lat-eval", "long", "--weights", w, "--set", f"{D(ph)}/S_set.csv", "--ctx", f"{D(ph)}/ctx/S_{s}.csv", "--held", f"{D(ph)}/ctx/H_{s}.csv", "--hset", f"{D(ph)}/H_set.csv",
                      "--taus", ",".join(repr(t[k]) for k in KS), "--lam0", S["lat"][0], "--lamm", S["lat"][1], "--oep-d", str(S["oep"][0]), "--oep-l", S["oep"][1], "--oms-d", str(S["oms"][0]), "--oms-l", S["oms"][1],
                      "--ckpts", ",".join(map(str, CK)), "--held-out", f"{D(ph)}/e2/held_{s}.csv"], w))
