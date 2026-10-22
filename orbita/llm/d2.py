@@ -8,7 +8,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import pipeline as P0, d1 as D1
 from d1 import load_orbita, rollout
 torch.set_num_threads(1); torch.set_default_dtype(torch.float64)
-O = "/workspace/orbita-data/llm_d2"; L = "/workspace/orbita-data/llm"; ART = f"{P0.ROOT}/artifacts/orbita/llm_d2"; DIM = 2304
+O = f"{P0.DATA}/llm_d2"; L = f"{P0.DATA}/llm"; ART = f"{P0.ROOT}/artifacts/orbita/llm_d2"; DIM = 2304
 HID, STEPS, BATCH, LR, LAM_P, LAM_T, LAM_I, TAU_I, NX, KS = 128, 3000, 32, 1e-3, 10.0, 1.0, 0.1, 0.1, 8, [1, 2, 4, 8]
 DK, DV = 32, 64
 
@@ -42,9 +42,9 @@ def stats():
 
 def train(ph, seed):
     t0 = time.time(); torch.manual_seed(int(seed, 16) ^ 0xD2)
-    m = load_orbita(f"/workspace/orbita-data/{ph}/w_{seed}.json")
-    meta = json.load(open(f"/workspace/orbita-data/{ph}/{seed}/meta.json")); z, cd = meta["zdim"], meta["cdim"]
-    XT = torch.from_numpy(np.fromfile(f"/workspace/orbita-data/{ph}/{seed}/train.bin", dtype="<f8").reshape(-1, z + cd + z)[:, :z].copy())
+    m = load_orbita(f"{P0.DATA}/{ph}/w_{seed}.json")
+    meta = json.load(open(f"{P0.DATA}/{ph}/{seed}/meta.json")); z, cd = meta["zdim"], meta["cdim"]
+    XT = torch.from_numpy(np.fromfile(f"{P0.DATA}/{ph}/{seed}/train.bin", dtype="<f8").reshape(-1, z + cd + z)[:, :z].copy())
     rows = P0.tsv(f"{O}/pool2.tsv"); ids = sorted({r[0] for r in rows}); byc = collections.defaultdict(list)
     for i, r in enumerate(rows): byc[r[0]].append(i)
     C = torch.tensor(np.array([P0.ctx_true(int(r[1]), float(r[2]), float(r[3])) for r in rows])); FAM = torch.tensor([int(r[1]) for r in rows])
@@ -85,7 +85,7 @@ def predict(ph, seed, kind):
 
 def ctx(ph):
     for s in P0.SEEDS[ph]:
-        old = open(f"/workspace/orbita-data/llm_d1/{ph}/ctxin_{s}.csv").read().splitlines()
+        old = open(f"{P0.DATA}/llm_d1/{ph}/ctxin_{s}.csv").read().splitlines()
         keep = [old[0]] + [l for l in old[1:] if l.split(",")[1] in ("TRUE", "GEMMA_F0", "RAND", "D1", "D1_NGRAM")]
         rows, I, CG = predict(ph, s, "D2"); _, _, CP = predict(ph, s, "D1_POOL2")
         ex = collections.defaultdict(list)
@@ -102,7 +102,7 @@ def ctx(ph):
 def ev(ph):
     os.makedirs(f"{ART}/{ph}", exist_ok=True)
     for s in P0.SEEDS[ph]:
-        p = P0.subprocess.run([P0.B, "llm-eval", "--seed", s, "--weights", f"/workspace/orbita-data/{ph}/w_{s}.json", "--ctx", f"{O}/{ph}/ctxin_{s}.csv"], capture_output=True, check=True)
+        p = P0.subprocess.run([P0.B, "llm-eval", "--seed", s, "--weights", f"{P0.DATA}/{ph}/w_{s}.json", "--ctx", f"{O}/{ph}/ctxin_{s}.csv"], capture_output=True, check=True)
         open(f"{ART}/{ph}/llm_eval_{s}.csv", "wb").write(p.stdout); open(f"{ART}/{ph}/queries_{s}.txt", "wb").write(p.stderr)
     print("eval ok", ph)
 

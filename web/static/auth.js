@@ -8,6 +8,7 @@
 (() => {
   const APP_SRC = "/app.js?v=100";
   const SPIDER_SRC = "/spider.js?v=100";
+  const ORBITA_SRC = "/orbita.js?v=100";
   const $ = (id) => document.getElementById(id);
   const nativeFetch = window.fetch.bind(window);
   const overlay = $("auth-overlay");
@@ -124,6 +125,9 @@
     const sp = document.createElement("script");
     sp.src = SPIDER_SRC;
     document.body.appendChild(sp);
+    const ob = document.createElement("script");
+    ob.src = ORBITA_SRC;
+    document.body.appendChild(ob);
   }
 
   form.addEventListener("submit", async (ev) => {

@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import pipeline as P0
 from train_orbita import Orbita
 torch.set_num_threads(1); torch.set_default_dtype(torch.float64)
-L = "/workspace/orbita-data/llm"; O = "/workspace/orbita-data/llm_d1"; ART = f"{P0.ROOT}/artifacts/orbita/llm_d1"
+L = f"{P0.DATA}/llm"; O = f"{P0.DATA}/llm_d1"; ART = f"{P0.ROOT}/artifacts/orbita/llm_d1"
 SIGMAS = [0.005, 0.01, 0.02, 0.05]; ND = 6
 # hiperparámetros FIJOS (prerregistro)
 HID, STEPS0, BATCH, LR, LAM_P, LAM_T, LAM_I, TAU_I, NX, KS = 128, 3000, 32, 1e-3, 10.0, 1.0, 0.1, 0.1, 8, [1, 2, 4, 8]
@@ -45,9 +45,9 @@ def rollout(m, x, c, k):
 
 def train(ph, seed):
     t0 = time.time(); torch.manual_seed(int(seed, 16) ^ 0xD1)
-    m = load_orbita(f"/workspace/orbita-data/{ph}/w_{seed}.json")
-    meta = json.load(open(f"/workspace/orbita-data/{ph}/{seed}/meta.json")); z, cd = meta["zdim"], meta["cdim"]
-    tr = np.fromfile(f"/workspace/orbita-data/{ph}/{seed}/train.bin", dtype="<f8").reshape(-1, z + cd + z)
+    m = load_orbita(f"{P0.DATA}/{ph}/w_{seed}.json")
+    meta = json.load(open(f"{P0.DATA}/{ph}/{seed}/meta.json")); z, cd = meta["zdim"], meta["cdim"]
+    tr = np.fromfile(f"{P0.DATA}/{ph}/{seed}/train.bin", dtype="<f8").reshape(-1, z + cd + z)
     XT = torch.from_numpy(tr[:, :z].copy())          # sólo objetos TRAIN de esa seed
     rows = P0.tsv(f"{L}/pool.tsv"); ctxid = [r[0] for r in rows]; ids = sorted(set(ctxid))
     byc = collections.defaultdict(list)
@@ -100,7 +100,7 @@ def noise(ph):
                 for d in range(ND):
                     cn = c.copy(); cn[8:] += rng.normal(0, sg, 2); Lh.append(f"{r['idx']},NOISE{sg},{d}," + ",".join(repr(float(v)) for v in cn))
         open(f"{O}/{ph}/noise_{s}.csv", "w").write("\n".join(Lh) + "\n")
-        p = P0.subprocess.run([P0.B, "llm-eval", "--seed", s, "--weights", f"/workspace/orbita-data/{ph}/w_{s}.json", "--ctx", f"{O}/{ph}/noise_{s}.csv"], capture_output=True, check=True)
+        p = P0.subprocess.run([P0.B, "llm-eval", "--seed", s, "--weights", f"{P0.DATA}/{ph}/w_{s}.json", "--ctx", f"{O}/{ph}/noise_{s}.csv"], capture_output=True, check=True)
         open(f"{ART}/{ph}/noise_eval_{s}.csv", "wb").write(p.stdout); open(f"{ART}/{ph}/noise_queries_{s}.txt", "wb").write(p.stderr)
     print("noise ok", ph)
 
@@ -123,7 +123,7 @@ def ctx(ph):
 def ev(ph):
     os.makedirs(f"{ART}/{ph}", exist_ok=True)
     for s in P0.SEEDS[ph]:
-        p = P0.subprocess.run([P0.B, "llm-eval", "--seed", s, "--weights", f"/workspace/orbita-data/{ph}/w_{s}.json", "--ctx", f"{O}/{ph}/ctxin_{s}.csv"], capture_output=True, check=True)
+        p = P0.subprocess.run([P0.B, "llm-eval", "--seed", s, "--weights", f"{P0.DATA}/{ph}/w_{s}.json", "--ctx", f"{O}/{ph}/ctxin_{s}.csv"], capture_output=True, check=True)
         open(f"{ART}/{ph}/llm_eval_{s}.csv", "wb").write(p.stdout); open(f"{ART}/{ph}/queries_{s}.txt", "wb").write(p.stderr)
     print("eval ok", ph)
 

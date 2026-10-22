@@ -3,14 +3,14 @@ import sys, os, csv, collections, subprocess
 import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import pipeline as P0, yo as Y
-O = "/workspace/orbita-data/yo_act"; ART = f"{P0.ROOT}/artifacts/orbita/yo_act"
+O = f"{P0.DATA}/yo_act"; ART = f"{P0.ROOT}/artifacts/orbita/yo_act"
 def run(ph):
     os.makedirs(f"{O}/{ph}", exist_ok=True)
     for s in P0.SEEDS[ph]:
         dn = f"{O}/{ph}/{s}.done"
         if os.path.exists(dn): continue
         for part in ("dev", "test"):
-            p = subprocess.run([P0.B, "yo-act", "--seed", s, "--weights", f"/workspace/orbita-data/{ph}/w_{s}.json", "--part", part, "--ctx", f"{Y.O}/{ph}/ctx_{part}_{s}.csv"], capture_output=True, check=True)
+            p = subprocess.run([P0.B, "yo-act", "--seed", s, "--weights", f"{P0.DATA}/{ph}/w_{s}.json", "--part", part, "--ctx", f"{Y.O}/{ph}/ctx_{part}_{s}.csv"], capture_output=True, check=True)
             open(f"{O}/{ph}/act_{part}_{s}.csv", "wb").write(p.stdout); open(f"{O}/{ph}/q_{part}_{s}.txt", "wb").write(p.stderr)
         open(dn, "w").write("ok\n"); print(ph, s, "ok", flush=True)
 def acc(A, mask, k, h):

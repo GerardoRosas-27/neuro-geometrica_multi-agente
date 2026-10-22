@@ -5,7 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import pipeline as P0, numnorm as NN, e2e as E, fam_eval as FE
-O = "/workspace/orbita-data/learn"; ART = f"{P0.ROOT}/artifacts/orbita/aprendizaje_online"
+O = f"{P0.DATA}/learn"; ART = f"{P0.ROOT}/artifacts/orbita/aprendizaje_online"
 RNG = {"dev": "0xFA50", "confirm": "0xFA51"}
 GRID = [(d, l) for d in (2, 3) for l in ("0.0001", "0.001", "0.01", "0.1", "1")]
 GROUPS = {"nuevas_8_9": [8, 9], "conocidas_1_2": [1, 2], "v4_no_iterables": [0, 3, 4, 5, 6, 7], "conocidas_0_7": list(range(8))}
@@ -36,7 +36,7 @@ def sha(p): return hashlib.sha256(open(p, "rb").read()).hexdigest()
 def one(ph, s, k, deg, lam, tau, tag):
     out = f"{D(ph)}/eval/{tag}/k{k}_{s}.csv"; dn = out + ".done"
     if os.path.exists(dn): return
-    os.makedirs(os.path.dirname(out), exist_ok=True); w = f"/workspace/orbita-data/{ph}/w_{s}.json"; h0 = sha(w)
+    os.makedirs(os.path.dirname(out), exist_ok=True); w = f"{P0.DATA}/{ph}/w_{s}.json"; h0 = sha(w)
     p = subprocess.run([P0.B, "learn-eval", "--weights", w, "--set", f"{D(ph)}/set.csv", "--ctx", f"{D(ph)}/ctx/ctx_{s}.csv", "--k", str(k), "--deg", str(deg), "--lam", lam, "--tau", repr(tau)], capture_output=True, check=True)
     open(out, "wb").write(p.stdout); open(out[:-4] + ".err", "w").write(p.stderr.decode() + f"\nsha256_before={h0}\nsha256_after={sha(w)}\n")
     assert sha(w) == h0; open(dn, "w").write("ok\n")

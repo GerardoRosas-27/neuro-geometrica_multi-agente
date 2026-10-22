@@ -5,7 +5,7 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import pipeline as P0, numnorm as NN, e2e as E, yo as Y, d2 as D2M
 from make_texts import FAM, ART as ARTI, T as T05
-O = "/workspace/orbita-data/yo_ext"; ART = f"{P0.ROOT}/artifacts/orbita/yo_ext"; STEPS_EXT = 9000
+O = f"{P0.DATA}/yo_ext"; ART = f"{P0.ROOT}/artifacts/orbita/yo_ext"; STEPS_EXT = 9000
 FAM_X = {"pt": ["translação", "rotação", "reflexão", "escala", "cisalhamento", "transformação afim", "rotação com escala", "deformação radial"],
          "it": ["traslazione", "rotazione", "riflessione", "scalatura", "taglio", "trasformazione affine", "rotazione con scala", "deformazione radiale"]}
 ART_X = {"pt": ["uma"] * 8, "it": ["una"] * 8}
@@ -51,7 +51,7 @@ def feats(ph):
                 r = rows[i]; c, ok = E.build_c(C[j], r[8]); pr = np.exp(LG[j] - LG[j].max()); pr /= pr.sum(); so = np.sort(pr)[::-1]
                 lines.append(f"{r[1]},E2E_R,{r[5]}-{r[6]}," + ",".join(repr(float(x)) for x in c)); meta.append((r[1], f"{r[5]}-{r[6]}", int(np.argmax(c[:8])), so[0], so[0] - so[1], int(ok)))
             cp = f"{O}/{ph}/ctx_{part}_{s}.csv"; open(cp, "w").write("\n".join(lines) + "\n")
-            p = subprocess.run([P0.B, "yo-feat", "--seed", s, "--weights", f"/workspace/orbita-data/{ph}/w_{s}.json", "--part", part, "--ctx", cp], capture_output=True, check=True)
+            p = subprocess.run([P0.B, "yo-feat", "--seed", s, "--weights", f"{P0.DATA}/{ph}/w_{s}.json", "--part", part, "--ctx", cp], capture_output=True, check=True)
             R = list(csv.DictReader(p.stdout.decode().splitlines())); assert len(R) == len(meta)
             with open(f"{O}/{ph}/yo_{part}_{s}.csv", "w") as f:
                 f.write("idx,text_id,fam,fam_hat,p_d2,margin_d2,parse_ok,surprise,sigma,normr,ok16\n")

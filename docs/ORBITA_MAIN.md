@@ -14,14 +14,14 @@ Fuente del código ÓRBITA: `exp/orbita-yo` en **`9166f1f`** (último commit ant
 | «yo» sólo como informante (confianza/sorpresa, no decide) | `orbita/src/yo.rs`, `orbita/llm/yo.py` | informa |
 | Adaptador latente LAT / LAT_EP (aprendizaje acumulativo sin olvido en familias conocidas) | `orbita/src/latent.rs` (`lat-eval`), `orbita/llm/latlp.py` | funciona en conocidas |
 | Sustrato v4 (dataset sellado, métricas, procedencia) | `src/v4_*.rs`, `src/field_autonomy_v4.rs` | lo usa ÓRBITA como dependencia (`cdt_rqm_epr`) y lo usa la GUI |
-| GUI (sin tocar) | `src/web/`, `src/bin/agentic_web.rs`, `web/static/` | sigue llamando al motor v4 (`field_v4`, `spider_field`); pendiente de adaptar |
+| GUI | `src/web/`, `src/bin/agentic_web.rs`, `web/static/` | pestaña **ÓRBITA** (`/api/orbita/*`, `src/web/orbita_job.rs`, `web/static/orbita.js`); chat/entrenamiento/sueño/Spider siguen sobre v4. Ver `docs/ORBITA_GUI.md` |
 
 Retirado de `main` (sigue en `v4-final`): `src/bin/run_field_autonomy_v4.rs`, `examples/v4_*`, `scripts/v4_*`, `training/v4_psi64/`.
 
 ## Cómo correr
 
 Requisitos: pesos por seed en `/workspace/orbita-data/{dev,confirm}/w_<seed>.json`, calibración del yo en `/workspace/orbita-data/yo/`,
-Gemma en `/workspace/neuro-geometrica_multi-agente/models/gemma-2-2b-it-Q4_K_M.gguf`, venv `/workspace/orbita-venv` (rutas fijas en el código).
+Gemma en `/workspace/neuro-geometrica_multi-agente/models/gemma-2-2b-it-Q4_K_M.gguf`, venv `/workspace/orbita-venv`. Son los valores por defecto; se cambian con `ORBITA_DATA`, `GEMMA_GGUF_PATH`, `ORBITA_BIN`, `ORBITA_LLAMACPP` (ver `docs/ORBITA_GUI.md`).
 
 ```
 cd orbita && cargo build --release            # binario orbita/target/release/orbita

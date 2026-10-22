@@ -12,6 +12,10 @@ jobs:
   smoke:
     name: fmt, clippy y smoke
     runs-on: windows-latest
+    # Igual que en `scientific`: con target-cpu=native clippy-driver aborta con
+    # STATUS_ILLEGAL_INSTRUCTION en algunos runners Windows (visto en #44).
+    env:
+      RUSTFLAGS: "-C target-cpu=x86-64-v2"
     steps:
       - uses: actions/checkout@v4
 
@@ -56,3 +60,43 @@ jobs:
       # paso (< 5 %) con la receta §16 (presupuesto reducido).
       - name: Gate científico
         run: cargo test --release --lib scientific -- --nocapture
+
+  orbita:
+    name: crate ÓRBITA (build + tests + numnorm)
+    runs-on: windows-latest
+    needs: smoke
+    # Mismo motivo que en `scientific`: target-cpu=native aborta en algunos
+    # runners Windows. El crate `orbita/` tiene su propio [workspace], así que
+    # `cargo build` en la raíz no lo compila: se construye aparte.
+    env:
+      RUSTFLAGS: "-C target-cpu=x86-64-v2"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache de compilación
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: orbita
+
+      - name: Build release de orbita
+        working-directory: orbita
+        run: cargo build --release
+
+      - name: Tests de orbita
+        working-directory: orbita
+        run: cargo test --release
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Parser numérico (sin pesos ni Gemma). La demo completa (smoke.sh)
+      # necesita pesos/GGUF que no están en git: se corre a mano en el box.
+      - name: Tests numnorm (Python, sin pesos)
+        env:
+          PYTHONPATH: orbita
+          PYTHONUTF8: "1"
+        run: python orbita/llm/test_numnorm.py

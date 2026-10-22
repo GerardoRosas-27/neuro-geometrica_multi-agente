@@ -570,3 +570,17 @@ body.auth-locked { overflow: hidden; }
 .sp-ft-log { max-height: 220px; overflow: auto; font-size: 10.5px; color: var(--sp-muted); white-space: pre-wrap; overflow-wrap: anywhere; }
 .sp-ft-log div { padding: 0.1rem 0; border-bottom: 1px solid #0f151d; }
 @media (max-width: 760px) { .sp-ft-grid { grid-template-columns: 1fr; } }
+
+/* ÓRBITA */
+.orb-wrap { max-width: 960px; margin: 0 auto; padding: 16px; }
+.orb-form { display: flex; flex-direction: column; gap: 10px; margin: 12px 0; }
+.orb-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
+.orb-row label, .orb-block { display: flex; flex-direction: column; gap: 4px; font-size: 0.9em; }
+.orb-block input, .orb-block textarea { width: 100%; font-family: monospace; }
+.orb-avail { padding: 8px 12px; border-radius: 6px; border: 1px solid #8884; }
+.orb-avail[data-state="ok"] { border-color: #2a8; }
+.orb-avail[data-state="off"] { border-color: #c84; background: #c841; }
+.orb-avail ul { margin: 4px 0 0 18px; font-size: 0.85em; }
+.orb-result table { border-collapse: collapse; font-family: monospace; font-size: 0.8em; }
+.orb-result td, .orb-result th { border: 1px solid #8884; padding: 2px 6px; text-align: right; }
+.orb-result svg { background: #0001; border-radius: 6px; }

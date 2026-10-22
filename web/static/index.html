@@ -36,6 +36,7 @@
     <button type="button" class="main-tab" data-main="sleep">Sueño <span class="tab-status" id="status-sleep" data-state="idle" aria-hidden="true"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span></button>
     <button type="button" class="main-tab" data-main="llm">Modelos / API</button>
     <button type="button" class="main-tab" data-main="tests">Pruebas <span class="tab-status" id="status-tests" data-state="idle" aria-hidden="true"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span></button>
+    <button type="button" class="main-tab" data-main="orbita">ÓRBITA <span class="tab-status" id="status-orbita" data-state="idle" aria-hidden="true"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span></button>
     <button type="button" class="main-tab" data-main="spider">Prompt Spider <span class="tab-status" id="status-spider" data-state="idle" aria-hidden="true"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span></button>
   </nav>
 
@@ -398,6 +399,45 @@
           </div>
         </div>
         <div class="sp-footer"><span id="sp-foot-l">spider · listo</span><span id="sp-foot-r"></span></div>
+      </div>
+    </section>
+    <!-- ÓRBITA -->
+    <section id="main-orbita" class="main-panel">
+      <div class="orb-wrap">
+        <h2>ÓRBITA · predicción de transformaciones</h2>
+        <p class="hint">ÓRBITA no es un chat: recibe una <strong>transformación</strong> (familia + 2 parámetros) y un <strong>estado de 12 números</strong> (6 puntos 2D), predice la trayectoria h1–h16, informa confianza/sorpresa (el «yo») y, si hay observaciones, re-identifica la familia.</p>
+        <div id="orb-avail" class="orb-avail" data-state="checking">Comprobando disponibilidad…</div>
+        <form id="orb-form" class="orb-form" autocomplete="off">
+          <div class="orb-row">
+            <label>Familia <select id="orb-family"></select></label>
+            <label>p1 <input id="orb-p1" type="number" step="any" min="-1" max="1" value="0.5" required /></label>
+            <label>p2 <input id="orb-p2" type="number" step="any" min="-1" max="1" value="-0.2" required /></label>
+            <label>Seed <select id="orb-seed"></select></label>
+          </div>
+          <label class="orb-block">Texto enviado al encoder (plantilla; puedes editarlo, debe nombrar la familia y 2 números)
+            <input id="orb-text" type="text" maxlength="500" />
+          </label>
+          <label class="orb-block">Estado inicial x0 (12 números separados por coma; vacío = hexágono por defecto)
+            <input id="orb-x0" type="text" />
+          </label>
+          <div class="orb-row">
+            <label>Re-observación
+              <select id="orb-obs-mode">
+                <option value="none">sin observación</option>
+                <option value="sim">simular con la familia/parámetros (k pasos)</option>
+                <option value="real">observaciones reales</option>
+              </select>
+            </label>
+            <label>k <select id="orb-k"><option>1</option><option>2</option></select></label>
+          </div>
+          <label class="orb-block" id="orb-observed-wrap" hidden>Observaciones (una por línea, 12 números cada una)
+            <textarea id="orb-observed" rows="2"></textarea>
+          </label>
+          <p id="orb-error" class="auth-error" role="alert"></p>
+          <button type="submit" id="orb-submit">Ejecutar ÓRBITA</button>
+        </form>
+        <div id="orb-result" class="orb-result"></div>
+        <p class="hint">LAT/LAT_EP en vivo no está disponible (requiere servicio con estado). Ver <code>docs/ORBITA_GUI.md</code>.</p>
       </div>
     </section>
   </main>

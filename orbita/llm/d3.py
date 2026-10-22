@@ -6,7 +6,7 @@ import sys, os, re, csv, collections, subprocess, json
 import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import pipeline as P0
-O = "/workspace/orbita-data/llm_d3"; L = "/workspace/orbita-data/llm"; D2D = "/workspace/orbita-data/llm_d2"; ART = f"{P0.ROOT}/artifacts/orbita/llm_d3"
+O = f"{P0.DATA}/llm_d3"; L = f"{P0.DATA}/llm"; D2D = f"{P0.DATA}/llm_d2"; ART = f"{P0.ROOT}/artifacts/orbita/llm_d3"
 NUM = re.compile(r"[-−]?\d+(?:[.,]\d+)?")
 def parse(t):
     v = [float(x.replace("−", "-").replace(",", ".")) for x in NUM.findall(t)]
@@ -29,10 +29,10 @@ def ctx(ph):
 def ev(ph):
     os.makedirs(f"{ART}/{ph}/B_eval", exist_ok=True)
     for s in P0.SEEDS[ph]:
-        for tag, w, cf in (("A", f"/workspace/orbita-data/{ph}/w_{s}.json", f"{O}/{ph}/ctxA_{s}.csv"), ("B", f"{O}/B/{ph}/w_{s}.json", f"{O}/{ph}/ctxB_{s}.csv")):
+        for tag, w, cf in (("A", f"{P0.DATA}/{ph}/w_{s}.json", f"{O}/{ph}/ctxA_{s}.csv"), ("B", f"{O}/B/{ph}/w_{s}.json", f"{O}/{ph}/ctxB_{s}.csv")):
             p = subprocess.run([P0.B, "llm-eval", "--seed", s, "--weights", w, "--ctx", cf], capture_output=True, check=True)
             open(f"{ART}/{ph}/eval{tag}_{s}.csv", "wb").write(p.stdout); open(f"{ART}/{ph}/queries{tag}_{s}.txt", "wb").write(p.stderr)
-        subprocess.run([P0.B, "eval", "--seed", s, "--weights", f"{O}/B/{ph}/w_{s}.json", "--meta", f"/workspace/orbita-data/{ph}/{s}/meta.json", "--out", f"{ART}/{ph}/B_eval", "--label", "ORBITA_B"], check=True, capture_output=True)
+        subprocess.run([P0.B, "eval", "--seed", s, "--weights", f"{O}/B/{ph}/w_{s}.json", "--meta", f"{P0.DATA}/{ph}/{s}/meta.json", "--out", f"{ART}/{ph}/B_eval", "--label", "ORBITA_B"], check=True, capture_output=True)
     print("eval ok", ph)
 def analyze(ph):
     S = P0.SEEDS[ph]; per = collections.defaultdict(dict); out = []
