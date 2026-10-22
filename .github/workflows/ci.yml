@@ -12,6 +12,10 @@ jobs:
   smoke:
     name: fmt, clippy y smoke
     runs-on: windows-latest
+    # Igual que en `scientific`: con target-cpu=native clippy-driver aborta con
+    # STATUS_ILLEGAL_INSTRUCTION en algunos runners Windows (visto en #44).
+    env:
+      RUSTFLAGS: "-C target-cpu=x86-64-v2"
     steps:
       - uses: actions/checkout@v4
 
