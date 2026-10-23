@@ -1,6 +1,6 @@
 # ÓRBITA-Nova — Diseño (rama `exp/orbita-nova`, base `main` 590dd93)
 
-Estado: **fase 2 hecha** (2026-10-22). Preregistro congelado: [`PREREG.md`](PREREG.md) (primario {8,10,11}; 9 fuera). Fase 1 techo OK; fase 0 PASS. Sin train; sin bytes; sin DEV aún. C6/train = stubs hasta cablear fase 3.
+Estado: **harness train listo** (2026-10-22). PREREG [`PREREG.md`](PREREG.md) `f64b289`; C6 real + flujo 2400 en `nova_train.rs` / `nova_full.sh` (ver [`ENTRENAMIENTO.md`](ENTRENAMIENTO.md)). Fase 0–1 PASS. Job 2400×seeds **pendiente** OK de CPU. Sin bytes; sin merge main.
 
 ## 0. Propuesta original (conversación compartida, resumida fielmente)
 Fuente: https://chatgpt.com/share/6adaadd5-f6f8-83e8-a1f7-235313e9fc87 (leída del JSON embebido del HTML).
