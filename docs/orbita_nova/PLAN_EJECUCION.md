@@ -1,6 +1,6 @@
 # ÓRBITA-Nova — Plan de ejecución y preregistro (borrador)
 
-Este borrador **no es el preregistro congelado**. Antes de DEV se congela en `docs/orbita_nova/PREREG.md` con commit/push, y después no se ajusta nada.
+El preregistro congelado está en [`PREREG.md`](PREREG.md) (fase 2 hecha). Después de ese commit **no** se ajusta nada entre DEV y CONFIRM (salvo la calibración única de τ descrita allí).
 Seeds: DEV `0xA400–0xA40F`, CONFIRM `0xB400–0xB40F` (n=16). Bootstrap pareado por seed, 10 000 réplicas, semilla 12345, IC95, δ=0,05. 0 queries a TEST.
 Pesos ÓRBITA congelados (sha256 antes/después). Conocidas 0–7, nuevas 8–11.
 
@@ -45,4 +45,9 @@ Cadena `setsid nohup` reanudable con `.done`, `nice 10`, sin compartir CPU con o
 - Techo medido por fam 8–11 × k∈{2,4,8}; **incluir {8,10,11}**, **excluir {9}** del primario (suelo blando).
 - k_fit/k_val: 2→1/1, 4→3/1, 8→6/2. FAMNET Module ≈0; techo útil = ORACLE_EP/C4_EP.
 - Detalle: [`FASE1_RESULTADOS.md`](FASE1_RESULTADOS.md). Artefactos: `artifacts/orbita/nova_fase1/`.
-- Siguiente puerta: fase 2 preregistro (`PREREG.md`) cuando se autorice.
+
+## Estado fase 2 (actualizado)
+- **Preregistro congelado**: [`PREREG.md`](PREREG.md) (commit empujado en `exp/orbita-nova`).
+- Autorizado por ❤️ del usuario a la recomendación fase 1: primario {8,10,11}; 9 fuera; escribir así el preregistro.
+- Congelado: métricas, brazos, r=2, λ_C4, ε espectral, N_consolidación=50, mezcla 80/20, seeds DEV/CONFIRM, k_fit/k_val, N1–N6, éxito/fracaso; sin bytes; sin reajuste DEV→CONFIRM (τ se calibra una vez en H DEV fam 1–2).
+- **Siguiente puerta**: fase 3 DEV — sólo tras harness de flujo 2400 + C6 real (hoy stubs) conforme a PREREG; **no** arrancar train ni generar S todavía en este commit.

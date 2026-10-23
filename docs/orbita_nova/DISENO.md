@@ -1,6 +1,6 @@
 # ÓRBITA-Nova — Diseño (rama `exp/orbita-nova`, base `main` 590dd93)
 
-Estado: **fase 1 hecha** (2026-10-22). `nova-eval --ceiling`; ver `FASE1_RESULTADOS.md` (incluir 8/10/11, excluir 9). Fase 0 PASS. Sin train; sin bytes. C6/train = stubs.
+Estado: **fase 2 hecha** (2026-10-22). Preregistro congelado: [`PREREG.md`](PREREG.md) (primario {8,10,11}; 9 fuera). Fase 1 techo OK; fase 0 PASS. Sin train; sin bytes; sin DEV aún. C6/train = stubs hasta cablear fase 3.
 
 ## 0. Propuesta original (conversación compartida, resumida fielmente)
 Fuente: https://chatgpt.com/share/6adaadd5-f6f8-83e8-a1f7-235313e9fc87 (leída del JSON embebido del HTML).
