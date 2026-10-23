@@ -1,0 +1,394 @@
+bin=orbita/target/release/orbita out=artifacts/orbita/nova_fase0 n=64 k=4 rank=2 noise=0.01
+=== seed 0xA400 ===
+0xA400 c4_wins=true Δc4=-1.709888 nis_cov=0.938 accept=1.00 queries=0
+{
+  "accept_rate": 1.0,
+  "c4_acc16": 0.65625,
+  "c4_med_log_rel_h16": -4.287491536749706,
+  "c4_wins": true,
+  "delta_c4": -1.7098883808348466,
+  "delta_nova": -1.7098883808348466,
+  "k": 4,
+  "n": 64,
+  "nis_coverage": 0.9375,
+  "nis_n": 256,
+  "nova_acc16": 0.65625,
+  "nova_med_log_rel_h16": -4.287491536749706,
+  "nova_wins": true,
+  "orbita_acc16": 0.390625,
+  "orbita_med_log_rel_h16": -2.5776031559148596,
+  "queries": 0,
+  "rank": 2,
+  "seed": "0xA400",
+  "weights": "/workspace/ngm-orbita-nova/artifacts/orbita/dev/weights_0xA400.json"
+}
+C4_WIN NOVA_WIN Δc4= -1.7098883808348466
+=== seed 0xA401 ===
+0xA401 c4_wins=true Δc4=-1.082588 nis_cov=0.945 accept=1.00 queries=0
+{
+  "accept_rate": 1.0,
+  "c4_acc16": 0.515625,
+  "c4_med_log_rel_h16": -3.062861396083207,
+  "c4_wins": true,
+  "delta_c4": -1.0825879700966565,
+  "delta_nova": -1.0825879700966565,
+  "k": 4,
+  "n": 64,
+  "nis_coverage": 0.9453125,
+  "nis_n": 256,
+  "nova_acc16": 0.515625,
+  "nova_med_log_rel_h16": -3.062861396083207,
+  "nova_wins": true,
+  "orbita_acc16": 0.203125,
+  "orbita_med_log_rel_h16": -1.9802734259865504,
+  "queries": 0,
+  "rank": 2,
+  "seed": "0xA401",
+  "weights": "/workspace/ngm-orbita-nova/artifacts/orbita/dev/weights_0xA401.json"
+}
+C4_WIN NOVA_WIN Δc4= -1.0825879700966565
+=== seed 0xA402 ===
+0xA402 c4_wins=true Δc4=-1.045557 nis_cov=0.953 accept=0.97 queries=0
+{
+  "accept_rate": 0.96875,
+  "c4_acc16": 0.578125,
+  "c4_med_log_rel_h16": -3.5801041304690386,
+  "c4_wins": true,
+  "delta_c4": -1.0455570740407167,
+  "delta_nova": -1.0455570740407167,
+  "k": 4,
+  "n": 64,
+  "nis_coverage": 0.953125,
+  "nis_n": 256,
+  "nova_acc16": 0.578125,
+  "nova_med_log_rel_h16": -3.5801041304690386,
+  "nova_wins": true,
+  "orbita_acc16": 0.296875,
+  "orbita_med_log_rel_h16": -2.534547056428322,
+  "queries": 0,
+  "rank": 2,
+  "seed": "0xA402",
+  "weights": "/workspace/ngm-orbita-nova/artifacts/orbita/dev/weights_0xA402.json"
+}
+C4_WIN NOVA_WIN Δc4= -1.0455570740407167
+=== seed 0xA403 ===
+0xA403 c4_wins=true Δc4=-1.547373 nis_cov=0.941 accept=0.97 queries=0
+{
+  "accept_rate": 0.96875,
+  "c4_acc16": 0.734375,
+  "c4_med_log_rel_h16": -4.098946708981917,
+  "c4_wins": true,
+  "delta_c4": -1.5473734229298457,
+  "delta_nova": -1.5473734229298457,
+  "k": 4,
+  "n": 64,
+  "nis_coverage": 0.94140625,
+  "nis_n": 256,
+  "nova_acc16": 0.734375,
+  "nova_med_log_rel_h16": -4.098946708981917,
+  "nova_wins": true,
+  "orbita_acc16": 0.328125,
+  "orbita_med_log_rel_h16": -2.5515732860520717,
+  "queries": 0,
+  "rank": 2,
+  "seed": "0xA403",
+  "weights": "/workspace/ngm-orbita-nova/artifacts/orbita/dev/weights_0xA403.json"
+}
+C4_WIN NOVA_WIN Δc4= -1.5473734229298457
+=== seed 0xA404 ===
+0xA404 c4_wins=true Δc4=-1.495806 nis_cov=0.961 accept=0.95 queries=0
+{
+  "accept_rate": 0.953125,
+  "c4_acc16": 0.609375,
+  "c4_med_log_rel_h16": -3.680175761922589,
+  "c4_wins": true,
+  "delta_c4": -1.4958060579385624,
+  "delta_nova": -1.4958060579385624,
+  "k": 4,
+  "n": 64,
+  "nis_coverage": 0.9609375,
+  "nis_n": 256,
+  "nova_acc16": 0.609375,
+  "nova_med_log_rel_h16": -3.680175761922589,
+  "nova_wins": true,
+  "orbita_acc16": 0.1875,
+  "orbita_med_log_rel_h16": -2.184369703984027,
+  "queries": 0,
+  "rank": 2,
+  "seed": "0xA404",
+  "weights": "/workspace/ngm-orbita-nova/artifacts/orbita/dev/weights_0xA404.json"
+}
+C4_WIN NOVA_WIN Δc4= -1.4958060579385624
+=== seed 0xA405 ===
+0xA405 c4_wins=true Δc4=-1.401122 nis_cov=0.914 accept=0.92 queries=0
+{
+  "accept_rate": 0.921875,
+  "c4_acc16": 0.640625,
+  "c4_med_log_rel_h16": -3.949605455863547,
+  "c4_wins": true,
+  "delta_c4": -1.401122471874598,
+  "delta_nova": -1.346633527334566,
+  "k": 4,
+  "n": 64,
+  "nis_coverage": 0.9140625,
+  "nis_n": 256,
+  "nova_acc16": 0.640625,
+  "nova_med_log_rel_h16": -3.895116511323515,
+  "nova_wins": true,
+  "orbita_acc16": 0.375,
+  "orbita_med_log_rel_h16": -2.548482983988949,
+  "queries": 0,
+  "rank": 2,
+  "seed": "0xA405",
+  "weights": "/workspace/ngm-orbita-nova/artifacts/orbita/dev/weights_0xA405.json"
+}
+C4_WIN NOVA_WIN Δc4= -1.401122471874598
+=== seed 0xA406 ===
+0xA406 c4_wins=true Δc4=-1.754867 nis_cov=0.914 accept=0.97 queries=0
+{
+  "accept_rate": 0.96875,
+  "c4_acc16": 0.734375,
+  "c4_med_log_rel_h16": -4.57953045475397,
+  "c4_wins": true,
+  "delta_c4": -1.7548666670013393,
+  "delta_nova": -1.7548666670013393,
+  "k": 4,
+  "n": 64,
+  "nis_coverage": 0.9140625,
+  "nis_n": 256,
+  "nova_acc16": 0.734375,
+  "nova_med_log_rel_h16": -4.57953045475397,
+  "nova_wins": true,
+  "orbita_acc16": 0.4375,
+  "orbita_med_log_rel_h16": -2.8246637877526304,
+  "queries": 0,
+  "rank": 2,
+  "seed": "0xA406",
+  "weights": "/workspace/ngm-orbita-nova/artifacts/orbita/dev/weights_0xA406.json"
+}
+C4_WIN NOVA_WIN Δc4= -1.7548666670013393
+=== seed 0xA407 ===
+0xA407 c4_wins=true Δc4=-1.377764 nis_cov=0.941 accept=0.97 queries=0
+{
+  "accept_rate": 0.96875,
+  "c4_acc16": 0.734375,
+  "c4_med_log_rel_h16": -4.30518642806992,
+  "c4_wins": true,
+  "delta_c4": -1.377763951750783,
+  "delta_nova": -1.377763951750783,
+  "k": 4,
+  "n": 64,
+  "nis_coverage": 0.94140625,
+  "nis_n": 256,
+  "nova_acc16": 0.734375,
+  "nova_med_log_rel_h16": -4.30518642806992,
+  "nova_wins": true,
+  "orbita_acc16": 0.484375,
+  "orbita_med_log_rel_h16": -2.927422476319137,
+  "queries": 0,
+  "rank": 2,
+  "seed": "0xA407",
+  "weights": "/workspace/ngm-orbita-nova/artifacts/orbita/dev/weights_0xA407.json"
+}
+C4_WIN NOVA_WIN Δc4= -1.377763951750783
+=== seed 0xA408 ===
+0xA408 c4_wins=true Δc4=-1.080653 nis_cov=0.883 accept=0.95 queries=0
+{
+  "accept_rate": 0.953125,
+  "c4_acc16": 0.609375,
+  "c4_med_log_rel_h16": -3.7716196355897735,
+  "c4_wins": true,
+  "delta_c4": -1.080652690266103,
+  "delta_nova": -1.080652690266103,
+  "k": 4,
+  "n": 64,
+  "nis_coverage": 0.8828125,
+  "nis_n": 256,
+  "nova_acc16": 0.609375,
+  "nova_med_log_rel_h16": -3.7716196355897735,
+  "nova_wins": true,
+  "orbita_acc16": 0.3125,
+  "orbita_med_log_rel_h16": -2.6909669453236704,
+  "queries": 0,
+  "rank": 2,
+  "seed": "0xA408",
+  "weights": "/workspace/ngm-orbita-nova/artifacts/orbita/dev/weights_0xA408.json"
+}
+C4_WIN NOVA_WIN Δc4= -1.080652690266103
+=== seed 0xA409 ===
+0xA409 c4_wins=true Δc4=-0.922219 nis_cov=0.969 accept=0.98 queries=0
+{
+  "accept_rate": 0.984375,
+  "c4_acc16": 0.5625,
+  "c4_med_log_rel_h16": -3.459345040577362,
+  "c4_wins": true,
+  "delta_c4": -0.9222190895636739,
+  "delta_nova": -0.9222190895636739,
+  "k": 4,
+  "n": 64,
+  "nis_coverage": 0.96875,
+  "nis_n": 256,
+  "nova_acc16": 0.5625,
+  "nova_med_log_rel_h16": -3.459345040577362,
+  "nova_wins": true,
+  "orbita_acc16": 0.296875,
+  "orbita_med_log_rel_h16": -2.537125951013688,
+  "queries": 0,
+  "rank": 2,
+  "seed": "0xA409",
+  "weights": "/workspace/ngm-orbita-nova/artifacts/orbita/dev/weights_0xA409.json"
+}
+C4_WIN NOVA_WIN Δc4= -0.9222190895636739
+=== seed 0xA40A ===
+0xA40A c4_wins=true Δc4=-1.594124 nis_cov=0.902 accept=0.94 queries=0
+{
+  "accept_rate": 0.9375,
+  "c4_acc16": 0.640625,
+  "c4_med_log_rel_h16": -4.201594473565558,
+  "c4_wins": true,
+  "delta_c4": -1.5941241092014025,
+  "delta_nova": -1.5941241092014025,
+  "k": 4,
+  "n": 64,
+  "nis_coverage": 0.90234375,
+  "nis_n": 256,
+  "nova_acc16": 0.640625,
+  "nova_med_log_rel_h16": -4.201594473565558,
+  "nova_wins": true,
+  "orbita_acc16": 0.4375,
+  "orbita_med_log_rel_h16": -2.607470364364156,
+  "queries": 0,
+  "rank": 2,
+  "seed": "0xA40A",
+  "weights": "/workspace/ngm-orbita-nova/artifacts/orbita/dev/weights_0xA40A.json"
+}
+C4_WIN NOVA_WIN Δc4= -1.5941241092014025
+=== seed 0xA40B ===
+0xA40B c4_wins=true Δc4=-1.084808 nis_cov=0.922 accept=0.98 queries=0
+{
+  "accept_rate": 0.984375,
+  "c4_acc16": 0.578125,
+  "c4_med_log_rel_h16": -3.519438883133562,
+  "c4_wins": true,
+  "delta_c4": -1.084808185918471,
+  "delta_nova": -1.084808185918471,
+  "k": 4,
+  "n": 64,
+  "nis_coverage": 0.921875,
+  "nis_n": 256,
+  "nova_acc16": 0.578125,
+  "nova_med_log_rel_h16": -3.519438883133562,
+  "nova_wins": true,
+  "orbita_acc16": 0.25,
+  "orbita_med_log_rel_h16": -2.434630697215091,
+  "queries": 0,
+  "rank": 2,
+  "seed": "0xA40B",
+  "weights": "/workspace/ngm-orbita-nova/artifacts/orbita/dev/weights_0xA40B.json"
+}
+C4_WIN NOVA_WIN Δc4= -1.084808185918471
+=== seed 0xA40C ===
+0xA40C c4_wins=true Δc4=-0.762845 nis_cov=0.898 accept=0.97 queries=0
+{
+  "accept_rate": 0.96875,
+  "c4_acc16": 0.5625,
+  "c4_med_log_rel_h16": -3.2503373648262657,
+  "c4_wins": true,
+  "delta_c4": -0.7628453953798067,
+  "delta_nova": -0.7628453953798067,
+  "k": 4,
+  "n": 64,
+  "nis_coverage": 0.8984375,
+  "nis_n": 256,
+  "nova_acc16": 0.5625,
+  "nova_med_log_rel_h16": -3.2503373648262657,
+  "nova_wins": true,
+  "orbita_acc16": 0.28125,
+  "orbita_med_log_rel_h16": -2.487491969446459,
+  "queries": 0,
+  "rank": 2,
+  "seed": "0xA40C",
+  "weights": "/workspace/ngm-orbita-nova/artifacts/orbita/dev/weights_0xA40C.json"
+}
+C4_WIN NOVA_WIN Δc4= -0.7628453953798067
+=== seed 0xA40D ===
+0xA40D c4_wins=true Δc4=-1.807252 nis_cov=0.957 accept=0.98 queries=0
+{
+  "accept_rate": 0.984375,
+  "c4_acc16": 0.71875,
+  "c4_med_log_rel_h16": -4.4123471427497325,
+  "c4_wins": true,
+  "delta_c4": -1.807251842119574,
+  "delta_nova": -1.807251842119574,
+  "k": 4,
+  "n": 64,
+  "nis_coverage": 0.95703125,
+  "nis_n": 256,
+  "nova_acc16": 0.71875,
+  "nova_med_log_rel_h16": -4.4123471427497325,
+  "nova_wins": true,
+  "orbita_acc16": 0.40625,
+  "orbita_med_log_rel_h16": -2.6050953006301585,
+  "queries": 0,
+  "rank": 2,
+  "seed": "0xA40D",
+  "weights": "/workspace/ngm-orbita-nova/artifacts/orbita/dev/weights_0xA40D.json"
+}
+C4_WIN NOVA_WIN Δc4= -1.807251842119574
+=== seed 0xA40E ===
+0xA40E c4_wins=true Δc4=-1.004798 nis_cov=0.977 accept=1.00 queries=0
+{
+  "accept_rate": 1.0,
+  "c4_acc16": 0.59375,
+  "c4_med_log_rel_h16": -3.529463269425203,
+  "c4_wins": true,
+  "delta_c4": -1.004798072862355,
+  "delta_nova": -1.004798072862355,
+  "k": 4,
+  "n": 64,
+  "nis_coverage": 0.9765625,
+  "nis_n": 256,
+  "nova_acc16": 0.59375,
+  "nova_med_log_rel_h16": -3.529463269425203,
+  "nova_wins": true,
+  "orbita_acc16": 0.328125,
+  "orbita_med_log_rel_h16": -2.524665196562848,
+  "queries": 0,
+  "rank": 2,
+  "seed": "0xA40E",
+  "weights": "/workspace/ngm-orbita-nova/artifacts/orbita/dev/weights_0xA40E.json"
+}
+C4_WIN NOVA_WIN Δc4= -1.004798072862355
+=== seed 0xA40F ===
+0xA40F c4_wins=true Δc4=-1.433883 nis_cov=0.906 accept=0.98 queries=0
+{
+  "accept_rate": 0.984375,
+  "c4_acc16": 0.71875,
+  "c4_med_log_rel_h16": -4.021906129021522,
+  "c4_wins": true,
+  "delta_c4": -1.4338829478215018,
+  "delta_nova": -1.4338829478215018,
+  "k": 4,
+  "n": 64,
+  "nis_coverage": 0.90625,
+  "nis_n": 256,
+  "nova_acc16": 0.71875,
+  "nova_med_log_rel_h16": -4.021906129021522,
+  "nova_wins": true,
+  "orbita_acc16": 0.390625,
+  "orbita_med_log_rel_h16": -2.58802318120002,
+  "queries": 0,
+  "rank": 2,
+  "seed": "0xA40F",
+  "weights": "/workspace/ngm-orbita-nova/artifacts/orbita/dev/weights_0xA40F.json"
+}
+C4_WIN NOVA_WIN Δc4= -1.4338829478215018
+{
+  "c4_wins": 16,
+  "nova_wins": 16,
+  "n_seeds": 16,
+  "pass": true,
+  "nis_coverage_mean": 0.9326125,
+  "nis_calibrated_95_pm5": true
+}
+PASS C4 16/16

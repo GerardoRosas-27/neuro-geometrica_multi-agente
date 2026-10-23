@@ -1,6 +1,6 @@
 # ÓRBITA-Nova — Diseño (rama `exp/orbita-nova`, base `main` 590dd93)
 
-Estado: **sólo diseño**. No hay código nuevo. Nada de esto está probado.
+Estado: **fase 0 PASS** (2026-10-22). Código en `orbita/src/nova.rs` (`nova-eval`); ver `FASE0_RESULTADOS.md`. Sin train; sin bytes. C6/train = stubs.
 
 ## 0. Propuesta original (conversación compartida, resumida fielmente)
 Fuente: https://chatgpt.com/share/6adaadd5-f6f8-83e8-a1f7-235313e9fc87 (leída del JSON embebido del HTML).

@@ -35,3 +35,9 @@ MLP (mismo nº de parámetros adaptables, misma inferencia GN), ORACLE_EP, ORACL
 
 Total: ~1,5–2 semanas calendario; cómputo ~1 día CPU (sin GPU; Gemma sólo para contextos ya cacheados de experimentos previos si se reutilizan).
 Cadena `setsid nohup` reanudable con `.done`, `nice 10`, sin compartir CPU con otras ramas (lección CT: tiempos contaminados).
+
+
+## Estado fase 0 (actualizado)
+- **PASS** 16/16 seeds (C4 vs ÓRBITA, mediana log rel_err h16); NIS media 0,933.
+- Detalle: [`FASE0_RESULTADOS.md`](FASE0_RESULTADOS.md). Artefactos: `artifacts/orbita/nova_fase0/`.
+- Siguiente puerta: fase 1 (ORACLE_EP/FAMNET) cuando se autorice; preregistro (fase 2) aún no congelado.
