@@ -51,3 +51,10 @@ Cadena `setsid nohup` reanudable con `.done`, `nice 10`, sin compartir CPU con o
 - Autorizado por ❤️ del usuario a la recomendación fase 1: primario {8,10,11}; 9 fuera; escribir así el preregistro.
 - Congelado: métricas, brazos, r=2, λ_C4, ε espectral, N_consolidación=50, mezcla 80/20, seeds DEV/CONFIRM, k_fit/k_val, N1–N6, éxito/fracaso; sin bytes; sin reajuste DEV→CONFIRM (τ se calibra una vez en H DEV fam 1–2).
 - **Siguiente puerta**: fase 3 DEV — sólo tras harness de flujo 2400 + C6 real (hoy stubs) conforme a PREREG; **no** arrancar train ni generar S todavía en este commit.
+
+
+## Estado harness entrenamiento (actualizado)
+- PREREG congelado: `f64b289`.
+- Harness completo: `nova_train.rs` + `nova_full.sh` (C6 real, flujo 2400, brazos, τ, DEV→CONFIRM).
+- Doc de lanzamiento: [`ENTRENAMIENTO.md`](ENTRENAMIENTO.md).
+- **Job 2400×seeds pendiente** del OK de CPU (Investigador IA en box).

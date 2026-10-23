@@ -1,11 +1,13 @@
 #![allow(dead_code)]
 //! ÓRBITA-Nova (docs/orbita_nova/): C3 filtro de innovación, C4 adaptador rango-r,
-//! C5 árbitro de verificación, C6 biblioteca (stub), C7 compuerta (stub).
+//! C5 árbitro de verificación, C6 biblioteca consolidada, C7 compuerta.
 //! Inferencia sin entrenar: GN/LM por episodio; núcleo ÓRBITA congelado.
 //!
 //!   nova-eval --weights W --seed S [--n N] [--k K] [--rank R] [--lam L]
 //!             [--noise SIG] [--k-fit KF] [--out DIR] [--prepare-train]
 //!   nova-eval --ceiling --weights W --seed S [--n-per-fam N] [--rank R] [--out DIR]
+//!   nova-eval --calibrate-tau --wdir DIR --out DIR
+//!   nova-eval --full --phase P --weights W --seed S --tau T --out DIR [--smoke]
 //!
 //! Fase 0: episodios generados fam 0–7 (contexto verdadero).
 //! Fase 1 (--ceiling): techo ORACLE_EP / ORACLE_FAMNET / C4_EP por familia nueva 8–11 y k∈{2,4,8}.
@@ -311,10 +313,74 @@ impl OperatorLib {
         }
         best.map(|(_, e)| e)
     }
-    /// Admisión (stub): no consolida en fase 0; API lista para sueño por lotes.
+    /// Admisión (stub fase 0): rechaza siempre. Preferir `admit` en train.
     pub fn admit_stub(&mut self, _e: LibEntry, _held_ok: bool, _no_damage: bool) -> bool {
-        // Fase 0: no se admite nada (consolidación = fase ≥3 / train).
         false
+    }
+    /// Admisión real: sólo si mejora retenida y no-daño. Empuja a `entries`.
+    pub fn admit(&mut self, e: LibEntry, held_ok: bool, no_damage: bool) -> bool {
+        if held_ok && no_damage {
+            self.entries.push(e);
+            true
+        } else {
+            false
+        }
+    }
+    /// Distancia L2 de firmas (misma longitud; trunca al mínimo).
+    pub fn sig_dist(a: &[f64], b: &[f64]) -> f64 {
+        let n = a.len().min(b.len());
+        if n == 0 {
+            return f64::INFINITY;
+        }
+        a[..n]
+            .iter()
+            .zip(&b[..n])
+            .map(|(x, y)| (x - y) * (x - y))
+            .sum::<f64>()
+            .sqrt()
+    }
+    /// Permuta firmas entre entradas (control NOVA_SHUF); `th` intacto.
+    pub fn shuffled_signatures(&self, seed: u64) -> OperatorLib {
+        use rand::seq::SliceRandom;
+        use rand_xoshiro::rand_core::SeedableRng;
+        use rand_xoshiro::Xoshiro256StarStar;
+        let mut out = self.clone();
+        if out.entries.len() < 2 {
+            return out;
+        }
+        let mut rng = Xoshiro256StarStar::seed_from_u64(seed ^ 0x5A1F_51C6u64);
+        let mut sigs: Vec<Vec<f64>> = out.entries.iter().map(|e| e.signature.clone()).collect();
+        sigs.shuffle(&mut rng);
+        for (e, s) in out.entries.iter_mut().zip(sigs) {
+            e.signature = s;
+        }
+        out
+    }
+    /// Serializa biblioteca a JSON (checkpoint/resume).
+    pub fn to_json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "entries": self.entries.iter().map(|e| serde_json::json!({
+                "signature": e.signature,
+                "th": e.th,
+                "n_support": e.n_support,
+            })).collect::<Vec<_>>()
+        })
+    }
+    pub fn from_json(v: &serde_json::Value) -> Self {
+        let mut lib = Self::new();
+        if let Some(arr) = v.get("entries").and_then(|x| x.as_array()) {
+            for e in arr {
+                let sig = e.get("signature").and_then(|x| x.as_array()).map(|a| {
+                    a.iter().filter_map(|z| z.as_f64()).collect::<Vec<_>>()
+                }).unwrap_or_default();
+                let th = e.get("th").and_then(|x| x.as_array()).map(|a| {
+                    a.iter().filter_map(|z| z.as_f64()).collect::<Vec<_>>()
+                }).unwrap_or_default();
+                let n_support = e.get("n_support").and_then(|x| x.as_u64()).unwrap_or(1) as usize;
+                lib.entries.push(LibEntry { signature: sig, th, n_support });
+            }
+        }
+        lib
     }
 }
 
@@ -902,6 +968,10 @@ pub fn run_ceiling(a: &[String]) {
 }
 
 pub fn run(a: &[String]) {
+    if a.iter().any(|x| x == "--calibrate-tau" || x == "--full") {
+        crate::nova_train::run(a);
+        return;
+    }
     if a.iter().any(|x| x == "--ceiling" || x == "--fase1") {
         run_ceiling(a);
         return;

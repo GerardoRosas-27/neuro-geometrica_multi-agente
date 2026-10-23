@@ -1,10 +1,10 @@
-# ÓRBITA-Nova — config de train (FASE 0: no-op)
-# No activar hasta pasar fase 0 y preregistro. No toca run_v6 ni Gemma.
-enabled = false
-max_steps = 0
+# ÓRBITA-Nova — config de train (PREREG f64b289)
+# El bucle real es `nova-eval --full` / `orbita/scripts/nova_full.sh` (sin SGD).
+enabled = true
+max_steps = 2400
 lr = 0.0
-consolidate_every = 0
-checkpoint_dir = "artifacts/orbita/nova_train"
-# rank = 2
-# lam_prior = 1e-4
-# Nota: el ajuste actual es GN/LM por episodio (C4), sin SGD.
+consolidate_every = 50
+checkpoint_dir = "artifacts/orbita/nova_full"
+rank = 2
+lam_c4 = 1e-6
+# τ: calibrar una vez con --calibrate-tau (no editar a mano tras DEV)
