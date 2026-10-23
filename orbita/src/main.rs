@@ -222,7 +222,7 @@ fn main() {
         Some("demo-step") => fam::demo(&a),
         Some("demo-rule") => fam::demo_rule(&a),
         Some("gemma-embed") => gemma_embed::run(&a, |k| arg(&a, k)),
-        _ => eprintln!("uso: orbita export|eval|fresh|parity|nova-eval ..."),
+        _ => eprintln!("uso: orbita export|eval|fresh|parity|nova-eval [--ceiling] ..."),
     }
 }
 

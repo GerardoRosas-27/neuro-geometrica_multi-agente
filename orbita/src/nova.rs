@@ -5,10 +5,14 @@
 //!
 //!   nova-eval --weights W --seed S [--n N] [--k K] [--rank R] [--lam L]
 //!             [--noise SIG] [--k-fit KF] [--out DIR] [--prepare-train]
+//!   nova-eval --ceiling --weights W --seed S [--n-per-fam N] [--rank R] [--out DIR]
 //!
-//! Fase 0: episodios generados en distribución propia (familias 0–7, contexto verdadero).
+//! Fase 0: episodios generados fam 0–7 (contexto verdadero).
+//! Fase 1 (--ceiling): techo ORACLE_EP / ORACLE_FAMNET / C4_EP por familia nueva 8–11 y k∈{2,4,8}.
 //! No lee ds.test. No toca run_v6 ni bytes/idiomas.
+use crate::fam::{reid, rule, NF_NEW};
 use crate::latent::fit_gn;
+use crate::learn::Module;
 use crate::model::{CtxParams, Orbita, M};
 use cdt_rqm_epr::field_autonomy_v4::K_POINTS;
 use cdt_rqm_epr::v4_dataset::{apply_rule, context_of, make_object, ObjectClass, N_FAM};
@@ -624,7 +628,284 @@ pub fn eval_seed(
     }
 }
 
+
+// ─── Fase 1: techo ORACLE_EP / FAMNET por familia nueva ───────────────────────
+
+/// Familias nuevas (no afines) del plan Nova / crece.
+pub const NEW_FAMS: [usize; 4] = [8, 9, 10, 11];
+/// k a medir (primario = 4).
+pub const CEILING_KS: [usize; 3] = [2, 4, 8];
+const OEP_DEG: usize = 2;
+const OEP_LAM: f64 = 1e-4;
+
+/// Episodios generados sólo en familias nuevas (dinámica `fam::rule`).
+pub fn gen_new_episodes(seed: u64, n_per_fam: usize, horizon: usize) -> Vec<Episode> {
+    let mut rng = Xoshiro256StarStar::seed_from_u64(seed ^ 0xF1A5_E001u64);
+    let cls = [ObjectClass::Blob, ObjectClass::Circle, ObjectClass::Triangle];
+    let mut out = Vec::with_capacity(n_per_fam * NEW_FAMS.len());
+    for (fi, &fam) in NEW_FAMS.iter().enumerate() {
+        for i in 0..n_per_fam {
+            let p = [rng.gen_range(-1.0..1.0), rng.gen_range(-1.0..1.0)];
+            // contexto «falso» one-hot de fam 0 + p verdadero (ÓRBITA no tiene slots 8–11);
+            // el baseline honesto usa reid, no este c.
+            let c = context_of(0, p);
+            let x0 = make_object(&mut rng, K_POINTS, cls[(fi * n_per_fam + i) % 3]);
+            let mut ys = Vec::with_capacity(horizon);
+            let mut y = x0.clone();
+            for _ in 0..horizon {
+                y = rule(fam, p, &y);
+                ys.push(y.clone());
+            }
+            out.push(Episode { fam, p, c, x0, ys });
+        }
+    }
+    let _ = NF_NEW; // documenta el techo 12 familias
+    out
+}
+
+fn med_f64(v: &mut [f64]) -> f64 {
+    if v.is_empty() {
+        return f64::NAN;
+    }
+    v.sort_by(|a, b| a.total_cmp(b));
+    m::median(&v.to_vec())
+}
+
+fn lora_prior(seed: u64, fam: usize, rank: usize) -> Vec<f64> {
+    let mut prior = vec![0.0; npar_lr(rank)];
+    let mut prng = Xoshiro256StarStar::seed_from_u64(
+        seed ^ ((fam as u64) << 32) ^ (prior.len() as u64).wrapping_mul(0x9E3779B97F4A7C15),
+    );
+    let nu = rank * M;
+    for i in 0..nu {
+        let u: f64 = (0..6).map(|_| prng.gen::<f64>()).sum::<f64>() / 6.0;
+        prior[i] = (u - 0.5) * 2.0 * 3.0f64.sqrt() * 1e-3;
+    }
+    prior
+}
+
+/// Métricas agregadas por (familia, k) en una seed.
+#[derive(Clone, Debug)]
+pub struct FamKCeil {
+    pub fam: usize,
+    pub k: usize,
+    pub n: usize,
+    pub orbita_med_log: f64,
+    pub oep_med_log: f64,
+    pub c4_med_log: f64,
+    pub famnet_med_log: f64,
+    pub orbita_acc16: f64,
+    pub oep_acc16: f64,
+    pub c4_acc16: f64,
+    pub famnet_acc16: f64,
+    pub delta_oep: f64,     // oep − orbita (negativo = mejora)
+    pub delta_c4: f64,
+    pub delta_famnet: f64,
+    pub best_acc16: f64,    // max(oep, c4, famnet)
+    pub best_delta_log: f64, // min Δ log entre oráculos
+}
+
+/// ¿Techo en suelo? Criterio documentado (optimista): acc16 del mejor oráculo ≤ ε
+/// y ninguna mejora continua Δlog < −δ frente a ÓRBITA.
+pub fn is_floor(c: &FamKCeil, eps_acc: f64, delta_cont: f64) -> bool {
+    c.best_acc16 <= eps_acc && c.best_delta_log >= -delta_cont
+}
+
+pub fn eval_ceiling_seed(
+    d: &Orbita,
+    seed: u64,
+    n_per_fam: usize,
+    rank: usize,
+    lam_c4: f64,
+) -> Vec<FamKCeil> {
+    let eps = gen_new_episodes(seed, n_per_fam, 16);
+    let mut out = Vec::with_capacity(NEW_FAMS.len() * CEILING_KS.len());
+
+    for &k in &CEILING_KS {
+        // —— ORACLE_FAMNET: un Module(None) por familia, todos los episodios (etiqueta privilegiada) ——
+        let mut fam_mods: std::collections::HashMap<usize, Module> = std::collections::HashMap::new();
+        for e in &eps {
+            let m = fam_mods
+                .entry(e.fam)
+                .or_insert_with(|| Module::new(None, OEP_DEG, OEP_LAM));
+            m.add(d, &e.x0, &e.ys, k, e.p, e.fam);
+        }
+
+        for &fam in &NEW_FAMS {
+            let group: Vec<&Episode> = eps.iter().filter(|e| e.fam == fam).collect();
+            let n = group.len();
+            let mut log_o = Vec::with_capacity(n);
+            let mut log_ep = Vec::with_capacity(n);
+            let mut log_c4 = Vec::with_capacity(n);
+            let mut log_fn = Vec::with_capacity(n);
+            let mut acc_o = 0usize;
+            let mut acc_ep = 0usize;
+            let mut acc_c4 = 0usize;
+            let mut acc_fn = 0usize;
+
+            for e in &group {
+                // ÓRBITA honesta en nuevas: reid a g∈0..7 con p̂ = p verdadero
+                let (g, pp, _) = reid(d, &e.x0, &e.ys, k, e.p);
+                let cg = context_of(g, pp);
+                let err_o = rel_at(&|z| d.step(z, &cg), &e.x0, &e.ys, 16);
+                log_o.push(log_rel(err_o));
+                if err_o < 0.05 {
+                    acc_o += 1;
+                }
+
+                // ORACLE_EP: residual Φ por episodio (identidad + WᵀΦ)
+                let mut oep = Module::new(None, OEP_DEG, OEP_LAM);
+                oep.add(d, &e.x0, &e.ys, k, e.p, e.fam);
+                let err_ep = rel_at(&|z| oep.step(d, z, e.p), &e.x0, &e.ys, 16);
+                log_ep.push(log_rel(err_ep));
+                if err_ep < 0.05 {
+                    acc_ep += 1;
+                }
+
+                // C4_EP: adaptador Nova por episodio (techo del stack C4, sin C5/C7)
+                let cp0 = d.ctx(&e.c); // base g=0; el ΔK absorbe el residuo
+                let prior = lora_prior(seed, e.fam, rank);
+                let th = fit_gn(
+                    &|th, z| lr_step(d, &cp0, &e.c, th, rank, z),
+                    &prior,
+                    lam_c4,
+                    &e.x0,
+                    &e.ys,
+                    k,
+                );
+                let err_c4 = rel_at(&|z| lr_step(d, &cp0, &e.c, &th, rank, z), &e.x0, &e.ys, 16);
+                log_c4.push(log_rel(err_c4));
+                if err_c4 < 0.05 {
+                    acc_c4 += 1;
+                }
+
+                // ORACLE_FAMNET
+                let fnm = fam_mods.get(&e.fam).unwrap();
+                let err_fn = rel_at(&|z| fnm.step(d, z, e.p), &e.x0, &e.ys, 16);
+                log_fn.push(log_rel(err_fn));
+                if err_fn < 0.05 {
+                    acc_fn += 1;
+                }
+            }
+
+            let mo = med_f64(&mut log_o);
+            let mep = med_f64(&mut log_ep);
+            let mc4 = med_f64(&mut log_c4);
+            let mfn = med_f64(&mut log_fn);
+            let ao = acc_o as f64 / n as f64;
+            let aep = acc_ep as f64 / n as f64;
+            let ac4 = acc_c4 as f64 / n as f64;
+            let afn = acc_fn as f64 / n as f64;
+            let d_ep = mep - mo;
+            let d_c4 = mc4 - mo;
+            let d_fn = mfn - mo;
+            let best_acc = aep.max(ac4).max(afn);
+            let best_d = d_ep.min(d_c4).min(d_fn);
+            out.push(FamKCeil {
+                fam,
+                k,
+                n,
+                orbita_med_log: mo,
+                oep_med_log: mep,
+                c4_med_log: mc4,
+                famnet_med_log: mfn,
+                orbita_acc16: ao,
+                oep_acc16: aep,
+                c4_acc16: ac4,
+                famnet_acc16: afn,
+                delta_oep: d_ep,
+                delta_c4: d_c4,
+                delta_famnet: d_fn,
+                best_acc16: best_acc,
+                best_delta_log: best_d,
+            });
+        }
+    }
+    out
+}
+
+pub fn run_ceiling(a: &[String]) {
+    let wpath = super::arg(a, "--weights").expect("--weights");
+    let wtxt = std::fs::read_to_string(&wpath).unwrap();
+    let d = Orbita::from_json(&wtxt);
+    let seed = super::seed_of(a);
+    let n_per_fam = argu(a, "--n-per-fam", 16);
+    let rank = argu(a, "--rank", DEFAULT_RANK);
+    let lam_c4 = argf(a, "--lam", 1e-6);
+    let before = cdt_rqm_epr::v4_provenance::snapshot();
+
+    let rows = eval_ceiling_seed(&d, seed, n_per_fam, rank, lam_c4);
+    let after = Orbita::from_json(&wtxt);
+    assert_eq!(after.raw, d.raw, "núcleo ÓRBITA modificado — prohibido en Nova");
+
+    let table: Vec<serde_json::Value> = rows
+        .iter()
+        .map(|c| {
+            serde_json::json!({
+                "fam": c.fam,
+                "k": c.k,
+                "n": c.n,
+                "orbita_med_log": c.orbita_med_log,
+                "oep_med_log": c.oep_med_log,
+                "c4_med_log": c.c4_med_log,
+                "famnet_med_log": c.famnet_med_log,
+                "orbita_acc16": c.orbita_acc16,
+                "oep_acc16": c.oep_acc16,
+                "c4_acc16": c.c4_acc16,
+                "famnet_acc16": c.famnet_acc16,
+                "delta_oep": c.delta_oep,
+                "delta_c4": c.delta_c4,
+                "delta_famnet": c.delta_famnet,
+                "best_acc16": c.best_acc16,
+                "best_delta_log": c.best_delta_log,
+                "floor": c.k == 4 && is_floor(c, 0.02, 0.1),
+            })
+        })
+        .collect();
+
+    let out = serde_json::json!({
+        "phase": 1,
+        "seed": format!("0x{:X}", seed),
+        "n_per_fam": n_per_fam,
+        "rank": rank,
+        "oep_deg": OEP_DEG,
+        "oep_lam": OEP_LAM,
+        "new_fams": NEW_FAMS.to_vec(),
+        "ks": CEILING_KS.to_vec(),
+        "floor_rule": "k=4 primario: best_acc16≤0.02 y best_delta_log≥−0.1 → suelo (excluir)",
+        "rows": table,
+        "queries": cdt_rqm_epr::v4_provenance::snapshot().delta(&before).total(),
+        "weights": wpath,
+    });
+    println!("{}", serde_json::to_string_pretty(&out).unwrap());
+
+    if let Some(dir) = super::arg(a, "--out") {
+        let p = PathBuf::from(&dir);
+        std::fs::create_dir_all(&p).unwrap();
+        let mut f = std::fs::File::create(p.join(format!("fase1_0x{:X}.json", seed))).unwrap();
+        writeln!(f, "{}", serde_json::to_string_pretty(&out).unwrap()).unwrap();
+    }
+    // resumen stderr por fam @ k=4
+    for c in rows.iter().filter(|c| c.k == 4) {
+        eprintln!(
+            "0x{:X} fam{} k4 orb_acc={:.3} oep={:.3} c4={:.3} famnet={:.3} bestΔlog={:.3} floor={}",
+            seed,
+            c.fam,
+            c.orbita_acc16,
+            c.oep_acc16,
+            c.c4_acc16,
+            c.famnet_acc16,
+            c.best_delta_log,
+            is_floor(c, 0.02, 0.1)
+        );
+    }
+}
+
 pub fn run(a: &[String]) {
+    if a.iter().any(|x| x == "--ceiling" || x == "--fase1") {
+        run_ceiling(a);
+        return;
+    }
     if a.iter().any(|x| x == "--prepare-train") {
         let dir = PathBuf::from(
             super::arg(a, "--out").unwrap_or_else(|| "orbita/configs".into()),

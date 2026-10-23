@@ -40,4 +40,9 @@ Cadena `setsid nohup` reanudable con `.done`, `nice 10`, sin compartir CPU con o
 ## Estado fase 0 (actualizado)
 - **PASS** 16/16 seeds (C4 vs ÓRBITA, mediana log rel_err h16); NIS media 0,933.
 - Detalle: [`FASE0_RESULTADOS.md`](FASE0_RESULTADOS.md). Artefactos: `artifacts/orbita/nova_fase0/`.
-- Siguiente puerta: fase 1 (ORACLE_EP/FAMNET) cuando se autorice; preregistro (fase 2) aún no congelado.
+
+## Estado fase 1 (actualizado)
+- Techo medido por fam 8–11 × k∈{2,4,8}; **incluir {8,10,11}**, **excluir {9}** del primario (suelo blando).
+- k_fit/k_val: 2→1/1, 4→3/1, 8→6/2. FAMNET Module ≈0; techo útil = ORACLE_EP/C4_EP.
+- Detalle: [`FASE1_RESULTADOS.md`](FASE1_RESULTADOS.md). Artefactos: `artifacts/orbita/nova_fase1/`.
+- Siguiente puerta: fase 2 preregistro (`PREREG.md`) cuando se autorice.
