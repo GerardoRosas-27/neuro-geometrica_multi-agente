@@ -18,14 +18,21 @@ def simulate(spec, x0, k):
 def main(argv=None):
     ap = argparse.ArgumentParser(); ap.add_argument("--text", required=True); ap.add_argument("--seed", default="0xA400"); ap.add_argument("--obs", type=int, default=0)
     ap.add_argument("--observed"); ap.add_argument("--simulate"); ap.add_argument("--x0"); ap.add_argument("--no-explain", action="store_true"); ap.add_argument("--json", action="store_true")
+    ap.add_argument("--encoder", choices=["gemma", "bytes"], default="gemma")   # bytes: ÓRBITA-Bytes (docs/prereg_orbita_bytes.md); por defecto gemma hasta CONFIRM
     a = ap.parse_args(argv); ph = "dev" if a.seed.upper().startswith("0XA4") else "confirm"
     x0 = [float(v) for v in a.x0.split(",")] if a.x0 else X0_DEFAULT
     ys = [[float(v) for v in t.split(",")] for t in a.observed.split("|")][:a.obs or None] if a.observed else (simulate(a.simulate, x0, a.obs) if a.simulate and a.obs else [])
     if a.obs and len(ys) < a.obs: sys.exit("--obs k requiere k estados en --observed o --simulate")
-    with tempfile.TemporaryDirectory() as td:
+    import time; t0 = time.perf_counter(); extra = {"encoder": a.encoder}
+    if a.encoder == "bytes":
+        import bytes_enc as BE
+        C, LG, U, NPATCH = BE.Encoder(f"{BE.BD}/models/{ph}/MAIN/{a.seed}/model.pt")([a.text.replace("\n", " ")]); extra |= {"n_parches": int(NPATCH[0]), "concepto_dim": int(U.shape[1])}
+    else:
+      with tempfile.TemporaryDirectory() as td:
         open(f"{td}/in.txt", "w").write(a.text.replace("\n", " ") + "\n")
         subprocess.run([P0.B, "gemma-embed", "--model", E.GEMMA, "--in", f"{td}/in.txt", "--out", f"{td}/t.tok", "--exit-after", "12", "--per-token"], check=True, capture_output=True)
         C, LG = Y.d2_logits(f"{td}/t.tok", ph, a.seed, [0])
+    extra["latencia_ms"] = round(1000 * (time.perf_counter() - t0), 1)
     c, ok = E.build_c(C[0], a.text); pr = np.exp(LG[0] - LG[0].max()); pr /= pr.sum(); so = np.sort(pr)[::-1]
     cmd = [P0.B, "demo-step", "--weights", f"{P0.DATA}/{ph}/w_{a.seed}.json", "--c", ",".join(map(repr, c)), "--x0", ",".join(map(repr, x0))]
     if ys: cmd += ["--obs", "|".join(",".join(map(repr, y)) for y in ys)]
@@ -34,9 +41,9 @@ def main(argv=None):
     cal = Y.load(ph, "dev", a.seed); cols = [f for f in Y.F_YO if f != "surprise" or "surprise" in st]
     if "surprise" in st: feat["surprise"] = f"{np.log(st['surprise'] + 1e-9)}"
     phat = float(Y.fit(cal, cols)([feat])[0])
-    res = {"texto": a.text, "seed": a.seed, "familia_leida": FAM["es"][int(feat["fam_hat"])], "p_leido": c[8:], "p_fuente": "numnorm" if ok else "fallback D2",
+    res = {"texto": a.text, "seed": a.seed, "familia_leida": FAM["es"][int(feat["fam_hat"])], "p_leido": c[8:], "p_fuente": "numnorm" if ok else ("fallback D2" if a.encoder == "gemma" else "fallback cabeza bytes"),
            "prob_encoder": round(float(so[0]), 4), "trayectoria_h1_h16": st["base_traj"], "yo": {"confianza_acierto_h16": round(phat, 4), "rasgos": cols,
-           "sorpresa_vs_obs": st.get("surprise"), "sigma_jacobiano": st["sigma"], "ratio_norma_h16": st["normr"]}}
+           "sorpresa_vs_obs": st.get("surprise"), "sigma_jacobiano": st["sigma"], "ratio_norma_h16": st["normr"]}} | extra
     if "reid" in st:
         res["re_observacion"] = {"k": st["reid"]["k"], "familia_reidentificada": FAM["es"][st["reid"]["fam"]], "p_reidentificado": st["reid"]["p"],
                                  "error_ajuste": st["reid"]["fit_err"], "trayectoria_h1_h16": st["reid_traj"]}
