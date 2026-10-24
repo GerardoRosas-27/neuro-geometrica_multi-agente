@@ -1,0 +1,13 @@
+{
+  "fams": [
+    1,
+    2
+  ],
+  "mu_ref": -5.301001033444018,
+  "n_obs": 4096,
+  "per_seed_eps": 32,
+  "prereg": "docs/orbita_nova2/PREREG_EXP3.md §2.3",
+  "s2_ref": 0.489366781028144,
+  "seeds": "0xA400-0xA40F",
+  "steps": 8
+}
