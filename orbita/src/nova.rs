@@ -115,7 +115,7 @@ fn frobenius_uv(th: &[f64], r: usize) -> f64 {
 }
 
 /// Radio espectral aproximado de I+ΔK vía power iteration en R^M (sólo ΔK).
-fn spectral_delta(th: &[f64], r: usize) -> f64 {
+pub(crate) fn spectral_delta(th: &[f64], r: usize) -> f64 {
     let (uu, vv) = uv_from(th, r);
     let mut x = vec![1.0 / (M as f64).sqrt(); M];
     let mut nrm = 1.0;

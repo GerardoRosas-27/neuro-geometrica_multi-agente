@@ -43,10 +43,10 @@ const XOR_STREAM: u64 = 0x4E0A_F100;
 const XOR_HELD: u64 = 0x4E0A_501D;
 const XOR_CALIB: u64 = 0x4E0A_CA11;
 
-fn fin(z: &[f64]) -> bool {
+pub(crate) fn fin(z: &[f64]) -> bool {
     z.iter().all(|v| v.is_finite())
 }
-fn k_fit_val(k: usize) -> (usize, usize) {
+pub(crate) fn k_fit_val(k: usize) -> (usize, usize) {
     match k {
         2 => (1, 1),
         4 => (3, 1),
@@ -55,7 +55,7 @@ fn k_fit_val(k: usize) -> (usize, usize) {
     }
 }
 
-fn log_rel(e: f64) -> f64 {
+pub(crate) fn log_rel(e: f64) -> f64 {
     e.max(1e-12).ln()
 }
 
@@ -74,7 +74,7 @@ fn rel_at(step: &dyn Fn(&[f64]) -> Vec<f64>, x0: &[f64], ys: &[Vec<f64>], h: usi
     10.0
 }
 
-fn med_f64(v: &mut [f64]) -> f64 {
+pub(crate) fn med_f64(v: &mut [f64]) -> f64 {
     if v.is_empty() {
         return f64::NAN;
     }
@@ -171,7 +171,7 @@ pub fn gen_calib_h(seed: u64, n_per: usize) -> Vec<Ep> {
     out
 }
 
-fn lora_prior(seed: u64, tag: u64, rank: usize) -> Vec<f64> {
+pub(crate) fn lora_prior(seed: u64, tag: u64, rank: usize) -> Vec<f64> {
     let mut prior = vec![0.0; npar_lr(rank)];
     let mut prng = Xoshiro256StarStar::seed_from_u64(
         seed ^ tag ^ (prior.len() as u64).wrapping_mul(0x9E3779B97F4A7C15),
@@ -209,7 +209,7 @@ fn mlp_step(d: &Orbita, c: &[f64], th: &[f64], x: &[f64]) -> Vec<f64> {
     out
 }
 
-fn fit_c4(d: &Orbita, e: &Ep, prior: &[f64], rank: usize, k: usize) -> Vec<f64> {
+pub(crate) fn fit_c4(d: &Orbita, e: &Ep, prior: &[f64], rank: usize, k: usize) -> Vec<f64> {
     let cp = d.ctx(&e.c);
     fit_gn(
         &|th, z| lr_step(d, &cp, &e.c, th, rank, z),
@@ -221,7 +221,7 @@ fn fit_c4(d: &Orbita, e: &Ep, prior: &[f64], rank: usize, k: usize) -> Vec<f64> 
     )
 }
 
-fn ctx_for_eval(d: &Orbita, e: &Ep, k: usize) -> (Vec<f64>, usize, [f64; 2]) {
+pub(crate) fn ctx_for_eval(d: &Orbita, e: &Ep, k: usize) -> (Vec<f64>, usize, [f64; 2]) {
     if e.fam < N_FAM {
         (context_of(e.fam, e.p), e.fam, e.p)
     } else {
@@ -233,16 +233,16 @@ fn ctx_for_eval(d: &Orbita, e: &Ep, k: usize) -> (Vec<f64>, usize, [f64; 2]) {
 // ─── Buffer episódico + consolidación C6 ─────────────────────────────────────
 
 #[derive(Clone)]
-struct BufItem {
-    signature: Vec<f64>,
-    th: Vec<f64>,
-    _fam: usize,
-    known: bool,
-    val_err: f64,
-    base_err: f64,
+pub(crate) struct BufItem {
+    pub signature: Vec<f64>,
+    pub th: Vec<f64>,
+    pub _fam: usize,
+    pub known: bool,
+    pub val_err: f64,
+    pub base_err: f64,
 }
 
-fn consolidate(
+pub(crate) fn consolidate(
     lib: &mut OperatorLib,
     buffer: &mut Vec<BufItem>,
     tau: f64,
@@ -358,7 +358,7 @@ impl Arm {
     }
 }
 
-fn err_h16(step: &dyn Fn(&[f64]) -> Vec<f64>, e: &Ep) -> (f64, bool) {
+pub(crate) fn err_h16(step: &dyn Fn(&[f64]) -> Vec<f64>, e: &Ep) -> (f64, bool) {
     let err = rel_at(step, &e.x0, &e.ys, 16);
     (err, err < 0.05)
 }
