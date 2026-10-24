@@ -43,7 +43,7 @@ impl Arm {
 }
 
 /// sorpresa base: media rel_err de ÓRBITA en los k pasos observados (S_known de latent.rs).
-fn s_known(d: &Orbita, cg: &[f64], e: &Ep, k: usize) -> f64 {
+pub(crate) fn s_known(d: &Orbita, cg: &[f64], e: &Ep, k: usize) -> f64 {
     let mut z = e.x0.clone();
     let mut r = 0.0;
     for t in 0..k {
@@ -55,7 +55,7 @@ fn s_known(d: &Orbita, cg: &[f64], e: &Ep, k: usize) -> f64 {
 
 /// C3: filtra el estado en los k pasos observados (filtro con operador base) y hace free-run con `step`
 /// los 16−k pasos restantes; error relativo en h16 (mismo esquema que ÓRBITA+C3 de Nova).
-fn err_c3(d: &Orbita, cg: &[f64], e: &Ep, k: usize, step: &dyn Fn(&[f64]) -> Vec<f64>) -> (f64, bool) {
+pub(crate) fn err_c3(d: &Orbita, cg: &[f64], e: &Ep, k: usize, step: &dyn Fn(&[f64]) -> Vec<f64>) -> (f64, bool) {
     let mut filt = InnovFilter::new(1e-4);
     let mut x = e.x0.clone();
     for t in 0..k.min(e.ys.len()) {
