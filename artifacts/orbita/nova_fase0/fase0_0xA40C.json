@@ -1,0 +1,21 @@
+{
+  "accept_rate": 0.96875,
+  "c4_acc16": 0.5625,
+  "c4_med_log_rel_h16": -3.2503373648262657,
+  "c4_wins": true,
+  "delta_c4": -0.7628453953798067,
+  "delta_nova": -0.7628453953798067,
+  "k": 4,
+  "n": 64,
+  "nis_coverage": 0.8984375,
+  "nis_n": 256,
+  "nova_acc16": 0.5625,
+  "nova_med_log_rel_h16": -3.2503373648262657,
+  "nova_wins": true,
+  "orbita_acc16": 0.28125,
+  "orbita_med_log_rel_h16": -2.487491969446459,
+  "queries": 0,
+  "rank": 2,
+  "seed": "0xA40C",
+  "weights": "/workspace/ngm-orbita-nova/artifacts/orbita/dev/weights_0xA40C.json"
+}

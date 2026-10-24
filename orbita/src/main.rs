@@ -9,6 +9,8 @@ mod yo;
 mod fam;
 mod learn;
 mod latent;
+mod nova;
+mod nova_train;
 use cdt_rqm_epr::field_autonomy_v4::*;
 use cdt_rqm_epr::v4_dataset::{generate_and_seal, DatasetConfig, Example, Sealed, N_FAM};
 use cdt_rqm_epr::v4_distill::{family_fit_residual, onestep_breakdown, TRUST_TAU};
@@ -216,11 +218,12 @@ fn main() {
         Some("fam-set") => fam::set(&a),
         Some("learn-eval") => learn::eval(&a),
         Some("lat-eval") => latent::run(&a),
+        Some("nova-eval") => nova::run(&a),
         Some("fam-eval") => fam::eval(&a),
         Some("demo-step") => fam::demo(&a),
         Some("demo-rule") => fam::demo_rule(&a),
         Some("gemma-embed") => gemma_embed::run(&a, |k| arg(&a, k)),
-        _ => eprintln!("uso: orbita export|eval|fresh|parity ..."),
+        _ => eprintln!("uso: orbita export|eval|fresh|parity|nova-eval [--ceiling|--full|--calibrate-tau] ..."),
     }
 }
 
