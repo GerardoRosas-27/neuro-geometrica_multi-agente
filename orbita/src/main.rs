@@ -10,6 +10,7 @@ mod fam;
 mod learn;
 mod latent;
 mod constelacion;
+mod constelacion3;
 use cdt_rqm_epr::field_autonomy_v4::*;
 use cdt_rqm_epr::v4_dataset::{generate_and_seal, DatasetConfig, Example, Sealed, N_FAM};
 use cdt_rqm_epr::v4_distill::{family_fit_residual, onestep_breakdown, TRUST_TAU};
@@ -224,6 +225,12 @@ fn main() {
         Some("cst-f0") => constelacion::f0(&a),
         Some("cst-f1") => constelacion::f1(&a),
         Some("cst-run") => constelacion::run(&a),
+        Some("cst3-paso0") => constelacion3::paso0(&a),
+        Some("cst3-f0") => constelacion3::f0(&a),
+        Some("cst3-f1") => constelacion3::f1(&a),
+        Some("cst3-run") => constelacion3::run(&a),
+        Some("cst3-diag") => constelacion3::diag(&a),
+        Some("cst3-oracle") => constelacion3::oracle_icl(&a),
         Some("gemma-embed") => gemma_embed::run(&a, |k| arg(&a, k)),
         _ => eprintln!("uso: orbita export|eval|fresh|parity ..."),
     }
