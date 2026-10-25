@@ -14,6 +14,7 @@ mod nova_train;
 mod nova2;
 mod nova2x2;
 mod nova2x3;
+mod nova2p0;
 use cdt_rqm_epr::field_autonomy_v4::*;
 use cdt_rqm_epr::v4_dataset::{generate_and_seal, DatasetConfig, Example, Sealed, N_FAM};
 use cdt_rqm_epr::v4_distill::{family_fit_residual, onestep_breakdown, TRUST_TAU};
@@ -226,6 +227,8 @@ fn main() {
         Some("nova2-exp2") => nova2x2::run(&a),
         Some("nova2-exp3") => nova2x3::run(&a),
         Some("nova2-exp3-calib") => nova2x3::run_calib(&a),
+        Some("nova2-p0") => nova2p0::run(&a),
+        Some("nova2-p0-calib") => nova2p0::run_calib(&a),
         Some("fam-eval") => fam::eval(&a),
         Some("demo-step") => fam::demo(&a),
         Some("demo-rule") => fam::demo_rule(&a),
