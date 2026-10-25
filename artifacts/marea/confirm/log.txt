@@ -1,0 +1,16 @@
+0xB406 ok wall=6.5s slope_new marea=0.01001 eta0=0.02309
+0xB402 ok wall=6.6s slope_new marea=0.00816 eta0=0.02112
+0xB400 ok wall=6.6s slope_new marea=0.01892 eta0=0.02798
+0xB403 ok wall=6.6s slope_new marea=0.01375 eta0=0.02415
+0xB401 ok wall=6.7s slope_new marea=0.01722 eta0=0.02786
+0xB405 ok wall=6.7s slope_new marea=0.01103 eta0=0.02021
+0xB404 ok wall=6.8s slope_new marea=0.01203 eta0=0.02738
+0xB40B ok wall=6.5s slope_new marea=0.00379 eta0=0.02045
+0xB40D ok wall=6.5s slope_new marea=0.01706 eta0=0.02811
+0xB407 ok wall=6.9s slope_new marea=0.01107 eta0=0.02231
+0xB408 ok wall=7.0s slope_new marea=0.00807 eta0=0.02005
+0xB40C ok wall=7.0s slope_new marea=0.00654 eta0=0.01999
+0xB409 ok wall=7.1s slope_new marea=0.01086 eta0=0.02244
+0xB40A ok wall=7.3s slope_new marea=0.01057 eta0=0.02010
+0xB40E ok wall=6.5s slope_new marea=0.00758 eta0=0.02166
+0xB40F ok wall=6.6s slope_new marea=0.01049 eta0=0.02258
