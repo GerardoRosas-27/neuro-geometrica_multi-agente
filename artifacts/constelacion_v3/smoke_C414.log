@@ -3,3 +3,9 @@
 0xC414 no_prec 93.7s
 0xC414 t1 24.7s
 0xC414 no_prune 90.8s
+0xC414 no_sleep 41.0s
+0xC414 fixed_w 90.7s
+0xC414 one_layer 33.6s
+0xC414 backprop 93.1s
+0xC414 no_fast 92.2s
+0xC414 ok 663s
