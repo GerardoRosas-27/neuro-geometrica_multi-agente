@@ -9,6 +9,8 @@ mod yo;
 mod fam;
 mod learn;
 mod latent;
+mod eco;
+mod marea;
 use cdt_rqm_epr::field_autonomy_v4::*;
 use cdt_rqm_epr::v4_dataset::{generate_and_seal, DatasetConfig, Example, Sealed, N_FAM};
 use cdt_rqm_epr::v4_distill::{family_fit_residual, onestep_breakdown, TRUST_TAU};
@@ -216,6 +218,9 @@ fn main() {
         Some("fam-set") => fam::set(&a),
         Some("learn-eval") => learn::eval(&a),
         Some("lat-eval") => latent::run(&a),
+        Some("marea-pretrain") => marea::pretrain_cli(&a),
+        Some("marea-run") => marea::run(&a),
+        Some("marea-paso0") => marea::paso0(&a),
         Some("fam-eval") => fam::eval(&a),
         Some("demo-step") => fam::demo(&a),
         Some("demo-rule") => fam::demo_rule(&a),
