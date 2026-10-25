@@ -1,0 +1,161 @@
+{
+ "dev": {
+  "n": 16,
+  "primary_auc_new_eco_minus_orbita_lat": [
+   0.0,
+   0.0,
+   0.0
+  ],
+  "noharm_known_acc16_eco_minus_orbita": [
+   0.076171875,
+   0.05810546875,
+   0.09521484375
+  ],
+  "noharm_known_acc16_eco_minus_orbita_lat": [
+   0.0,
+   0.0,
+   0.0
+  ],
+  "e33_h16_eco_minus_orbita": [
+   0.15234375,
+   0.1025390625,
+   0.205078125
+  ],
+  "e33_pass": {
+   "eco": 16,
+   "orbita": 16
+  },
+  "controls_auc_new_eco_minus": {
+   "orbita": [
+    0.5303088915612306,
+    0.45297527102607527,
+    0.6085364501774126
+   ],
+   "eco_nosleep": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "eco_norollback": [
+    -8.04306887814965e-05,
+    -0.00024129206634448952,
+    0.0
+   ],
+   "eco_shuf": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "eco_pos": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "eco_e2": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "eco_m3": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "sleeps_accepted_mean": 0.0,
+  "delta_used_new_mean": 0.0,
+  "means_auc_new": {
+   "eco": -0.2736089037433844,
+   "orbita_lat": -0.2736089037433844,
+   "orbita": -0.8039177953046149,
+   "eco_nosleep": -0.2736089037433844,
+   "eco_norollback": -0.2735284730546029,
+   "eco_shuf": -0.2736089037433844,
+   "eco_pos": -0.2736089037433844,
+   "eco_e2": -0.2736089037433844,
+   "eco_m3": -0.2736089037433844
+  }
+ },
+ "confirm": {
+  "n": 16,
+  "primary_auc_new_eco_minus_orbita_lat": [
+   0.0,
+   0.0,
+   0.0
+  ],
+  "noharm_known_acc16_eco_minus_orbita": [
+   0.087890625,
+   0.076171875,
+   0.1005859375
+  ],
+  "noharm_known_acc16_eco_minus_orbita_lat": [
+   0.0,
+   0.0,
+   0.0
+  ],
+  "e33_h16_eco_minus_orbita": [
+   0.189453125,
+   0.1474609375,
+   0.2314453125
+  ],
+  "e33_pass": {
+   "eco": 16,
+   "orbita": 16
+  },
+  "controls_auc_new_eco_minus": {
+   "orbita": [
+    0.5665271293127218,
+    0.5019940905840445,
+    0.6424397406736985
+   ],
+   "eco_nosleep": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "eco_norollback": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "eco_shuf": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "eco_pos": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "eco_e2": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "eco_m3": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "sleeps_accepted_mean": 0.0,
+  "delta_used_new_mean": 0.0,
+  "means_auc_new": {
+   "eco": -0.21267007008039168,
+   "orbita_lat": -0.21267007008039168,
+   "orbita": -0.7791971993931134,
+   "eco_nosleep": -0.21267007008039168,
+   "eco_norollback": -0.21267007008039168,
+   "eco_shuf": -0.21267007008039168,
+   "eco_pos": -0.21267007008039168,
+   "eco_e2": -0.21267007008039168,
+   "eco_m3": -0.21267007008039168
+  }
+ },
+ "verdict": {
+  "primary": "NO CONCLUYENTE (H1 no aceptada)",
+  "no_harm": "OK",
+  "e33": "OK"
+ }
+}

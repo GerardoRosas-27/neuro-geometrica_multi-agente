@@ -1,0 +1,16 @@
+0xA403 ok wall=180.0s auc_new eco=-0.1811 orbita_lat=-0.1811
+0xA400 ok wall=182.1s auc_new eco=-0.2905 orbita_lat=-0.2905
+0xA404 ok wall=182.1s auc_new eco=-0.0615 orbita_lat=-0.0615
+0xA406 ok wall=183.5s auc_new eco=-0.5096 orbita_lat=-0.5096
+0xA402 ok wall=183.7s auc_new eco=-0.3244 orbita_lat=-0.3244
+0xA401 ok wall=184.6s auc_new eco=-0.1057 orbita_lat=-0.1057
+0xA405 ok wall=184.7s auc_new eco=-0.3061 orbita_lat=-0.3061
+0xA408 ok wall=176.2s auc_new eco=-0.2785 orbita_lat=-0.2785
+0xA407 ok wall=178.7s auc_new eco=-0.1958 orbita_lat=-0.1958
+0xA40D ok wall=177.0s auc_new eco=-0.3979 orbita_lat=-0.3979
+0xA40A ok wall=178.8s auc_new eco=-0.2634 orbita_lat=-0.2634
+0xA40B ok wall=179.2s auc_new eco=-0.3807 orbita_lat=-0.3807
+0xA409 ok wall=180.8s auc_new eco=-0.5203 orbita_lat=-0.5203
+0xA40C ok wall=178.6s auc_new eco=-0.3318 orbita_lat=-0.3318
+0xA40E ok wall=177.2s auc_new eco=-0.2308 orbita_lat=-0.2308
+0xA40F ok wall=178.0s auc_new eco=0.0006 orbita_lat=0.0006
