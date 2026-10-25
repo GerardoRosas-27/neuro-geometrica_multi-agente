@@ -37,15 +37,15 @@ pub fn kscore(d: &Orbita, cp: &crate::model::CtxParams, cg: &[f64], th: &[f64], 
 }
 
 /// Índices ordenados por puntuación (empates: índice menor) sobre `cand`.
-fn rank(d: &Orbita, cp: &crate::model::CtxParams, cg: &[f64], lib: &OperatorLib, cand: &[usize], e: &Ep, k: usize) -> Vec<(usize, f64)> {
+pub fn rank(d: &Orbita, cp: &crate::model::CtxParams, cg: &[f64], lib: &OperatorLib, cand: &[usize], e: &Ep, k: usize) -> Vec<(usize, f64)> {
     let mut v: Vec<(usize, f64)> = cand.iter().map(|&j| (j, kscore(d, cp, cg, &lib.entries[j].th, e, k))).collect();
     v.sort_by(|a, b| a.1.total_cmp(&b.1).then(a.0.cmp(&b.0)));
     v
 }
 
-struct RetOut { err: f64, ok: bool, accept: bool, pick: Option<usize>, score: f64 }
+pub struct RetOut { pub err: f64, pub ok: bool, pub accept: bool, pub pick: Option<usize>, pub score: f64 }
 
-fn ret_eval(d: &Orbita, e: &Ep, cg: &[f64], k: usize, lib: &OperatorLib, cand: &[usize]) -> RetOut {
+pub fn ret_eval(d: &Orbita, e: &Ep, cg: &[f64], k: usize, lib: &OperatorLib, cand: &[usize]) -> RetOut {
     let base = |z: &[f64]| d.step(z, cg);
     if cand.is_empty() {
         let (err, ok) = err_c3(d, cg, e, k, &base);
@@ -65,7 +65,7 @@ fn ret_eval(d: &Orbita, e: &Ep, cg: &[f64], k: usize, lib: &OperatorLib, cand: &
     RetOut { err, ok, accept, pick: Some(j), score: sc }
 }
 
-fn nova_eval(d: &Orbita, e: &Ep, cg: &[f64], k: usize, lib: &OperatorLib, tau: f64, seed: u64) -> (f64, bool) {
+pub fn nova_eval(d: &Orbita, e: &Ep, cg: &[f64], k: usize, lib: &OperatorLib, tau: f64, seed: u64) -> (f64, bool) {
     let (kf, kv) = k_fit_val(k);
     let cp = d.ctx(cg);
     let base = |z: &[f64]| d.step(z, cg);
@@ -134,7 +134,7 @@ fn aggregate(d: &Orbita, held: &[Ep], lib: &OperatorLib, lfam: &[usize], tau: f6
 
 /// Espejo de familias: replica el clustering greedy de `consolidate` (sin alterarlo) y asigna la familia dominante
 /// a cada entrada nueva por coincidencia exacta de θ medio.
-fn consolidate_mirror(lib: &mut OperatorLib, buf: &mut Vec<BufItem>, tau: f64, lfam: &mut Vec<usize>) {
+pub fn consolidate_mirror(lib: &mut OperatorLib, buf: &mut Vec<BufItem>, tau: f64, lfam: &mut Vec<usize>) {
     let mut cl: Vec<Vec<usize>> = vec![];
     let mut ce: Vec<Vec<f64>> = vec![];
     for (i, b) in buf.iter().enumerate() {
