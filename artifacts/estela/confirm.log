@@ -1,0 +1,98 @@
+=== estela confirm 2026-10-24T22:56:06-06:00 sha=85d0b81 ===
+0xB401 estela train=80s total=91s
+0xB403 estela train=81s total=93s
+0xB400 estela train=82s total=94s
+0xB405 estela train=82s total=95s
+0xB404 estela train=83s total=95s
+0xB406 estela train=82s total=95s
+0xB402 estela train=82s total=98s
+0xB405 estela_nosig train=63s total=160s
+0xB401 estela_nosig train=69s total=162s
+0xB403 estela_nosig train=68s total=163s
+0xB404 estela_nosig train=69s total=166s
+0xB400 estela_nosig train=70s total=167s
+0xB406 estela_nosig train=69s total=168s
+0xB402 estela_nosig train=69s total=171s
+0xB405 estela_rec train=78s total=241s
+0xB401 estela_rec train=82s total=246s
+0xB403 estela_rec train=83s total=249s
+0xB404 estela_rec train=83s total=251s
+0xB400 estela_rec train=85s total=255s
+0xB406 estela_rec train=85s total=256s
+0xB402 estela_rec train=83s total=259s
+0xB405 estela_mlp train=73s total=316s
+0xB405 estela_r0 train=0s total=317s
+done 0xB405 2026-10-24T23:01:23-06:00
+0xB401 estela_mlp train=73s total=320s
+0xB401 estela_r0 train=0s total=321s
+done 0xB401 2026-10-24T23:01:27-06:00
+0xB403 estela_mlp train=74s total=325s
+0xB403 estela_r0 train=0s total=326s
+done 0xB403 2026-10-24T23:01:32-06:00
+0xB404 estela_mlp train=74s total=328s
+0xB404 estela_r0 train=0s total=329s
+done 0xB404 2026-10-24T23:01:35-06:00
+0xB400 estela_mlp train=72s total=330s
+0xB406 estela_mlp train=71s total=330s
+0xB400 estela_r0 train=0s total=330s
+done 0xB400 2026-10-24T23:01:36-06:00
+0xB406 estela_r0 train=0s total=331s
+done 0xB406 2026-10-24T23:01:37-06:00
+0xB402 estela_mlp train=70s total=333s
+0xB402 estela_r0 train=0s total=335s
+done 0xB402 2026-10-24T23:01:41-06:00
+0xB407 estela train=71s total=84s
+0xB408 estela train=74s total=89s
+0xB409 estela train=77s total=89s
+0xB40C estela train=73s total=85s
+0xB40B estela train=77s total=88s
+0xB40A estela train=79s total=91s
+0xB40D estela train=80s total=93s
+0xB407 estela_nosig train=68s total=155s
+0xB408 estela_nosig train=69s total=163s
+0xB409 estela_nosig train=69s total=160s
+0xB40C estela_nosig train=69s total=156s
+0xB40B estela_nosig train=69s total=158s
+0xB40A estela_nosig train=69s total=162s
+0xB40D estela_nosig train=69s total=166s
+0xB407 estela_rec train=82s total=241s
+0xB40C estela_rec train=81s total=239s
+0xB40B estela_rec train=81s total=240s
+0xB408 estela_rec train=82s total=250s
+0xB409 estela_rec train=82s total=245s
+0xB40A estela_rec train=80s total=244s
+0xB40D estela_rec train=80s total=250s
+0xB407 estela_mlp train=70s total=313s
+0xB407 estela_r0 train=0s total=315s
+done 0xB407 2026-10-24T23:06:38-06:00
+0xB40B estela_mlp train=71s total=313s
+0xB40B estela_r0 train=0s total=314s
+done 0xB40B 2026-10-24T23:06:50-06:00
+0xB40C estela_mlp train=71s total=313s
+0xB409 estela_mlp train=71s total=319s
+0xB40A estela_mlp train=70s total=317s
+0xB408 estela_mlp train=71s total=325s
+0xB40C estela_r0 train=0s total=314s
+done 0xB40C 2026-10-24T23:06:52-06:00
+0xB40A estela_r0 train=0s total=317s
+done 0xB40A 2026-10-24T23:06:52-06:00
+0xB409 estela_r0 train=0s total=320s
+done 0xB409 2026-10-24T23:06:53-06:00
+0xB408 estela_r0 train=0s total=327s
+done 0xB408 2026-10-24T23:06:54-06:00
+0xB40D estela_mlp train=65s total=318s
+0xB40D estela_r0 train=0s total=319s
+done 0xB40D 2026-10-24T23:07:00-06:00
+0xB40E estela train=43s total=57s
+0xB40F estela train=43s total=55s
+0xB40E estela_nosig train=39s total=101s
+0xB40F estela_nosig train=40s total=98s
+0xB40E estela_rec train=47s total=152s
+0xB40F estela_rec train=47s total=148s
+0xB40E estela_mlp train=42s total=198s
+0xB40E estela_r0 train=0s total=199s
+done 0xB40E 2026-10-24T23:09:57-06:00
+0xB40F estela_mlp train=41s total=193s
+0xB40F estela_r0 train=0s total=193s
+done 0xB40F 2026-10-24T23:10:03-06:00
+confirm done_count=16 2026-10-24T23:10:03-06:00

@@ -1,0 +1,614 @@
+{
+  "arms": {
+    "k2": {
+      "auroc_estela": 0.3857421875,
+      "auroc_estela_mlp": 0.5056966145833334,
+      "auroc_estela_nosig": 0.38525390625,
+      "auroc_estela_r0": 0.4117838541666667,
+      "auroc_estela_rec": 0.4091796875,
+      "auroc_orbita": 0.955078125,
+      "estela": {
+        "accept_known": 0.0703125,
+        "accept_new": 0.0,
+        "known_acc16": 0.109375,
+        "known_med_log": -1.524853670838148,
+        "n_known": 128,
+        "n_new": 48,
+        "new_acc16": 0.0,
+        "new_med_log": -0.6467321360774506,
+        "trigger_known": 0.0703125,
+        "trigger_new": 0.0
+      },
+      "estela_base": {
+        "known_acc16": 0.0390625,
+        "known_med_log": -1.4587865914165628,
+        "n_known": 128,
+        "n_new": 48,
+        "new_acc16": 0.0,
+        "new_med_log": -0.6467321360774506
+      },
+      "estela_mlp": {
+        "accept_known": 0.0546875,
+        "accept_new": 0.0,
+        "known_acc16": 0.0078125,
+        "known_med_log": 0.013056160694360792,
+        "n_known": 128,
+        "n_new": 48,
+        "new_acc16": 0.0,
+        "new_med_log": 0.0653349107868155,
+        "trigger_known": 0.0859375,
+        "trigger_new": 0.0
+      },
+      "estela_mlp_base": {
+        "known_acc16": 0.0,
+        "known_med_log": 0.013056160694360792,
+        "n_known": 128,
+        "n_new": 48,
+        "new_acc16": 0.0,
+        "new_med_log": 0.0653349107868155
+      },
+      "estela_nosig": {
+        "accept_known": 0.0703125,
+        "accept_new": 0.0,
+        "known_acc16": 0.109375,
+        "known_med_log": -1.5374321822050012,
+        "n_known": 128,
+        "n_new": 48,
+        "new_acc16": 0.0,
+        "new_med_log": -0.654025021822596,
+        "trigger_known": 0.0703125,
+        "trigger_new": 0.0
+      },
+      "estela_nosig_base": {
+        "known_acc16": 0.0390625,
+        "known_med_log": -1.4217635977954508,
+        "n_known": 128,
+        "n_new": 48,
+        "new_acc16": 0.0,
+        "new_med_log": -0.654025021822596
+      },
+      "estela_r0": {
+        "accept_known": 0.03125,
+        "accept_new": 0.0,
+        "known_acc16": 0.4375,
+        "known_med_log": -2.822226383918618,
+        "n_known": 128,
+        "n_new": 48,
+        "new_acc16": 0.041666666666666664,
+        "new_med_log": -0.8648614787745172,
+        "trigger_known": 0.0546875,
+        "trigger_new": 0.0
+      },
+      "estela_r0_base": {
+        "known_acc16": 0.40625,
+        "known_med_log": -2.7200962134263023,
+        "n_known": 128,
+        "n_new": 48,
+        "new_acc16": 0.041666666666666664,
+        "new_med_log": -0.8648614787745172
+      },
+      "estela_rec": {
+        "accept_known": 0.046875,
+        "accept_new": 0.0,
+        "known_acc16": 0.1171875,
+        "known_med_log": -1.8776999860013985,
+        "n_known": 128,
+        "n_new": 48,
+        "new_acc16": 0.0,
+        "new_med_log": -0.7335700717807423,
+        "trigger_known": 0.0703125,
+        "trigger_new": 0.0
+      },
+      "estela_rec_base": {
+        "known_acc16": 0.0703125,
+        "known_med_log": -1.8217208207581777,
+        "n_known": 128,
+        "n_new": 48,
+        "new_acc16": 0.0,
+        "new_med_log": -0.7335700717807423
+      },
+      "orbita": {
+        "known_acc16": 0.40625,
+        "known_med_log": -2.7200962134263023,
+        "n_known": 128,
+        "n_new": 48,
+        "new_acc16": 0.041666666666666664,
+        "new_med_log": -0.8648614787745172
+      },
+      "orbita_lat": {
+        "known_acc16": 0.4375,
+        "known_med_log": -2.822226383918618,
+        "n_known": 128,
+        "n_new": 48,
+        "new_acc16": 0.041666666666666664,
+        "new_med_log": 0.09034357428436182
+      }
+    },
+    "k4": {
+      "auroc_estela": 0.3515625,
+      "auroc_estela_mlp": 0.4959309895833333,
+      "auroc_estela_nosig": 0.3513997395833333,
+      "auroc_estela_r0": 0.3824869791666667,
+      "auroc_estela_rec": 0.3779296875,
+      "auroc_orbita": 0.9490559895833334,
+      "estela": {
+        "accept_known": 0.0703125,
+        "accept_new": 0.0,
+        "known_acc16": 0.109375,
+        "known_med_log": -1.524853670838148,
+        "n_known": 128,
+        "n_new": 48,
+        "new_acc16": 0.0,
+        "new_med_log": -0.6747515763531378,
+        "trigger_known": 0.0703125,
+        "trigger_new": 0.0
+      },
+      "estela_base": {
+        "known_acc16": 0.0390625,
+        "known_med_log": -1.4587865914165628,
+        "n_known": 128,
+        "n_new": 48,
+        "new_acc16": 0.0,
+        "new_med_log": -0.6747515763531378
+      },
+      "estela_mlp": {
+        "accept_known": 0.078125,
+        "accept_new": 0.0,
+        "known_acc16": 0.0234375,
+        "known_med_log": 0.013056160694360792,
+        "n_known": 128,
+        "n_new": 48,
+        "new_acc16": 0.0,
+        "new_med_log": 0.06367030925829241,
+        "trigger_known": 0.0859375,
+        "trigger_new": 0.0
+      },
+      "estela_mlp_base": {
+        "known_acc16": 0.0,
+        "known_med_log": 0.013056160694360792,
+        "n_known": 128,
+        "n_new": 48,
+        "new_acc16": 0.0,
+        "new_med_log": 0.06367030925829241
+      },
+      "estela_nosig": {
+        "accept_known": 0.0703125,
+        "accept_new": 0.0,
+        "known_acc16": 0.109375,
+        "known_med_log": -1.5374321822050012,
+        "n_known": 128,
+        "n_new": 48,
+        "new_acc16": 0.0,
+        "new_med_log": -0.6673458022696654,
+        "trigger_known": 0.0703125,
+        "trigger_new": 0.0
+      },
+      "estela_nosig_base": {
+        "known_acc16": 0.0390625,
+        "known_med_log": -1.4217635977954508,
+        "n_known": 128,
+        "n_new": 48,
+        "new_acc16": 0.0,
+        "new_med_log": -0.6673458022696654
+      },
+      "estela_r0": {
+        "accept_known": 0.0546875,
+        "accept_new": 0.0,
+        "known_acc16": 0.4453125,
+        "known_med_log": -2.8246733609023416,
+        "n_known": 128,
+        "n_new": 48,
+        "new_acc16": 0.041666666666666664,
+        "new_med_log": -0.9743731644996592,
+        "trigger_known": 0.0546875,
+        "trigger_new": 0.0
+      },
+      "estela_r0_base": {
+        "known_acc16": 0.40625,
+        "known_med_log": -2.7200962134263023,
+        "n_known": 128,
+        "n_new": 48,
+        "new_acc16": 0.041666666666666664,
+        "new_med_log": -0.9743731644996592
+      },
+      "estela_rec": {
+        "accept_known": 0.0703125,
+        "accept_new": 0.0,
+        "known_acc16": 0.140625,
+        "known_med_log": -1.8937711193751974,
+        "n_known": 128,
+        "n_new": 48,
+        "new_acc16": 0.0,
+        "new_med_log": -0.9975850601523071,
+        "trigger_known": 0.0703125,
+        "trigger_new": 0.0
+      },
+      "estela_rec_base": {
+        "known_acc16": 0.0703125,
+        "known_med_log": -1.8217208207581777,
+        "n_known": 128,
+        "n_new": 48,
+        "new_acc16": 0.0,
+        "new_med_log": -0.9975850601523071
+      },
+      "orbita": {
+        "known_acc16": 0.40625,
+        "known_med_log": -2.7200962134263023,
+        "n_known": 128,
+        "n_new": 48,
+        "new_acc16": 0.041666666666666664,
+        "new_med_log": -0.9743731644996592
+      },
+      "orbita_lat": {
+        "known_acc16": 0.453125,
+        "known_med_log": -2.834115090805164,
+        "n_known": 128,
+        "n_new": 48,
+        "new_acc16": 0.125,
+        "new_med_log": -0.3922235950244949
+      }
+    },
+    "k8": {
+      "auroc_estela": 0.3465169270833333,
+      "auroc_estela_mlp": 0.4842122395833333,
+      "auroc_estela_nosig": 0.3455403645833333,
+      "auroc_estela_r0": 0.3538411458333333,
+      "auroc_estela_rec": 0.36865234375,
+      "auroc_orbita": 0.9287109375,
+      "estela": {
+        "accept_known": 0.0546875,
+        "accept_new": 0.0,
+        "known_acc16": 0.09375,
+        "known_med_log": -1.50278019705501,
+        "n_known": 128,
+        "n_new": 48,
+        "new_acc16": 0.0,
+        "new_med_log": -0.7430210640860366,
+        "trigger_known": 0.0546875,
+        "trigger_new": 0.0
+      },
+      "estela_base": {
+        "known_acc16": 0.0390625,
+        "known_med_log": -1.4587865914165628,
+        "n_known": 128,
+        "n_new": 48,
+        "new_acc16": 0.0,
+        "new_med_log": -0.7430210640860366
+      },
+      "estela_mlp": {
+        "accept_known": 0.0546875,
+        "accept_new": 0.0,
+        "known_acc16": 0.0078125,
+        "known_med_log": 0.008308494005057235,
+        "n_known": 128,
+        "n_new": 48,
+        "new_acc16": 0.0,
+        "new_med_log": 0.06367030925829241,
+        "trigger_known": 0.0625,
+        "trigger_new": 0.0
+      },
+      "estela_mlp_base": {
+        "known_acc16": 0.0,
+        "known_med_log": 0.013056160694360792,
+        "n_known": 128,
+        "n_new": 48,
+        "new_acc16": 0.0,
+        "new_med_log": 0.06367030925829241
+      },
+      "estela_nosig": {
+        "accept_known": 0.0546875,
+        "accept_new": 0.0,
+        "known_acc16": 0.09375,
+        "known_med_log": -1.5006071981981457,
+        "n_known": 128,
+        "n_new": 48,
+        "new_acc16": 0.0,
+        "new_med_log": -0.7236071826372013,
+        "trigger_known": 0.0546875,
+        "trigger_new": 0.0
+      },
+      "estela_nosig_base": {
+        "known_acc16": 0.0390625,
+        "known_med_log": -1.4217635977954508,
+        "n_known": 128,
+        "n_new": 48,
+        "new_acc16": 0.0,
+        "new_med_log": -0.7236071826372013
+      },
+      "estela_r0": {
+        "accept_known": 0.015625,
+        "accept_new": 0.0,
+        "known_acc16": 0.421875,
+        "known_med_log": -2.728991541122398,
+        "n_known": 128,
+        "n_new": 48,
+        "new_acc16": 0.041666666666666664,
+        "new_med_log": -1.0498292536408904,
+        "trigger_known": 0.015625,
+        "trigger_new": 0.0
+      },
+      "estela_r0_base": {
+        "known_acc16": 0.40625,
+        "known_med_log": -2.7200962134263023,
+        "n_known": 128,
+        "n_new": 48,
+        "new_acc16": 0.041666666666666664,
+        "new_med_log": -1.0498292536408904
+      },
+      "estela_rec": {
+        "accept_known": 0.0546875,
+        "accept_new": 0.0,
+        "known_acc16": 0.125,
+        "known_med_log": -1.8655186652875084,
+        "n_known": 128,
+        "n_new": 48,
+        "new_acc16": 0.0,
+        "new_med_log": -1.0804382300414708,
+        "trigger_known": 0.0546875,
+        "trigger_new": 0.0
+      },
+      "estela_rec_base": {
+        "known_acc16": 0.0703125,
+        "known_med_log": -1.8217208207581777,
+        "n_known": 128,
+        "n_new": 48,
+        "new_acc16": 0.0,
+        "new_med_log": -1.0804382300414708
+      },
+      "orbita": {
+        "known_acc16": 0.40625,
+        "known_med_log": -2.7200962134263023,
+        "n_known": 128,
+        "n_new": 48,
+        "new_acc16": 0.041666666666666664,
+        "new_med_log": -1.0498292536408904
+      },
+      "orbita_lat": {
+        "known_acc16": 0.4921875,
+        "known_med_log": -2.9871645747768807,
+        "n_known": 128,
+        "n_new": 48,
+        "new_acc16": 0.125,
+        "new_med_log": -0.8533884889485404
+      }
+    }
+  },
+  "h_per_fam": 16,
+  "paso0": {
+    "init_vs_orbita_mismatch": 0,
+    "tape_vs_f64_mismatch": 0,
+    "values": 11088
+  },
+  "phase": "confirm",
+  "prereg": "docs/estela/PREREG.md",
+  "seed": "0xB403",
+  "smoke": false,
+  "steps": 3000,
+  "test_queries": 0,
+  "timing": {
+    "orbita_arms_s": 5.9410632450000005
+  },
+  "total_s": 326.126110925,
+  "variants": {
+    "estela": {
+      "energy_out_norm": 0.4096697861821902,
+      "erank": 3.7599633092493514,
+      "erank_enc_x0": 3.3016631598447495,
+      "eval_s": 2.6615283670000025,
+      "loss_first": [
+        0.16599070514241482,
+        0.08298203772059526,
+        0.010392728810138585,
+        0.0
+      ],
+      "loss_last": [
+        0.14753606171667327,
+        0.08295446586301039,
+        0.014242491516832281,
+        0.0
+      ],
+      "loss_parts": [
+        "jepa",
+        "sigreg",
+        "probe",
+        "rec"
+      ],
+      "resid_norm": 1.0001920660314223,
+      "tape_max": 2536981,
+      "tau_e": {
+        "k2": {
+          "mu": -2.8615728616641167,
+          "sd": 0.9324731076510128,
+          "z_trig": 1.645
+        },
+        "k4": {
+          "mu": -2.8457919687940483,
+          "sd": 0.951416443272004,
+          "z_trig": 1.645
+        },
+        "k8": {
+          "mu": -2.7146000136380852,
+          "sd": 1.0429177391954847,
+          "z_trig": 1.645
+        }
+      },
+      "train_s": 81.465671901
+    },
+    "estela_mlp": {
+      "energy_out_norm": 0.15060477350179727,
+      "erank": 3.2254803926802227,
+      "erank_enc_x0": 3.3016631598447495,
+      "eval_s": 2.8112759070000095,
+      "loss_first": [
+        1.210015049420435,
+        0.0845428506781023,
+        0.5635315771955016,
+        0.0
+      ],
+      "loss_last": [
+        1.7697043929598175,
+        0.08765532534894312,
+        0.4535674697252524,
+        0.0
+      ],
+      "loss_parts": [
+        "jepa",
+        "sigreg",
+        "probe",
+        "rec"
+      ],
+      "resid_norm": 0.6234721445618104,
+      "tape_max": 2431765,
+      "tau_e": {
+        "k2": {
+          "mu": -2.661281093771928,
+          "sd": 1.3794391774495622,
+          "z_trig": 1.645
+        },
+        "k4": {
+          "mu": -2.6194043652914107,
+          "sd": 1.4229531964796716,
+          "z_trig": 1.645
+        },
+        "k8": {
+          "mu": -2.514318838419912,
+          "sd": 1.5550238528738194,
+          "z_trig": 1.645
+        }
+      },
+      "train_s": 73.504671139
+    },
+    "estela_nosig": {
+      "energy_out_norm": 0.40974720326656844,
+      "erank": 3.758882295043168,
+      "erank_enc_x0": 3.3016631598447495,
+      "eval_s": 2.594611557999997,
+      "loss_first": [
+        0.16603305771060428,
+        0.08304243286694273,
+        0.010317622894950904,
+        0.0
+      ],
+      "loss_last": [
+        0.14758134957950386,
+        0.0830922569700371,
+        0.01435774821844583,
+        0.0
+      ],
+      "loss_parts": [
+        "jepa",
+        "sigreg",
+        "probe",
+        "rec"
+      ],
+      "resid_norm": 0.9988716305959618,
+      "tape_max": 2536979,
+      "tau_e": {
+        "k2": {
+          "mu": -2.862407115742008,
+          "sd": 0.9337965802556555,
+          "z_trig": 1.645
+        },
+        "k4": {
+          "mu": -2.846833123451642,
+          "sd": 0.9525146128874852,
+          "z_trig": 1.645
+        },
+        "k8": {
+          "mu": -2.7157107046935973,
+          "sd": 1.0435531517802297,
+          "z_trig": 1.645
+        }
+      },
+      "train_s": 67.765497327
+    },
+    "estela_r0": {
+      "energy_out_norm": 0.0,
+      "erank": 3.605581882802359,
+      "erank_enc_x0": 3.3016631598447495,
+      "eval_s": 0.8270970599999999,
+      "loss_first": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "loss_last": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "loss_parts": [
+        "jepa",
+        "sigreg",
+        "probe",
+        "rec"
+      ],
+      "resid_norm": 0.0,
+      "tape_max": 0,
+      "tau_e": {
+        "k2": {
+          "mu": -2.8555889962094607,
+          "sd": 1.2038844708298393,
+          "z_trig": 1.645
+        },
+        "k4": {
+          "mu": -2.797666814308337,
+          "sd": 1.2307850077057587,
+          "z_trig": 1.645
+        },
+        "k8": {
+          "mu": -2.594399085554791,
+          "sd": 1.3587929485434633,
+          "z_trig": 1.645
+        }
+      },
+      "train_s": 4.537e-6
+    },
+    "estela_rec": {
+      "energy_out_norm": 0.2194127587449191,
+      "erank": 3.7599985042482347,
+      "erank_enc_x0": 3.3016631598447495,
+      "eval_s": 2.3807057590000085,
+      "loss_first": [
+        0.16821778541169277,
+        0.08293964822938577,
+        0.008779431101638495,
+        0.00007671934949067622
+      ],
+      "loss_last": [
+        0.16122911145519517,
+        0.08310521708628739,
+        0.007609461511027724,
+        0.0003397366844471053
+      ],
+      "loss_parts": [
+        "jepa",
+        "sigreg",
+        "probe",
+        "rec"
+      ],
+      "resid_norm": 0.9578402622429955,
+      "tape_max": 2597273,
+      "tau_e": {
+        "k2": {
+          "mu": -2.8386894490160914,
+          "sd": 0.9354014530536175,
+          "z_trig": 1.645
+        },
+        "k4": {
+          "mu": -2.823834776224045,
+          "sd": 0.9598406061467953,
+          "z_trig": 1.645
+        },
+        "k8": {
+          "mu": -2.692443627597838,
+          "sd": 1.061474487378407,
+          "z_trig": 1.645
+        }
+      },
+      "train_s": 83.103302949
+    }
+  }
+}
