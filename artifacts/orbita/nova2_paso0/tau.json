@@ -1,0 +1,12 @@
+{
+  "dk_p5": 0.024506162676043334,
+  "dk_p50": 0.08369915065800855,
+  "dk_p95": 0.3836846139020181,
+  "doc": "docs/orbita_nova2/PASO0_C6.md",
+  "n": 512,
+  "rule": "P5 distancia L2 firma vec(ΔK) al vecino más cercano de la otra familia; H DEV fam 1–2; 16 seeds DEV; k=4",
+  "tau": 0.024506162676043334,
+  "th_p5": 0.26121564900807986,
+  "th_p50": 0.4692660782955337,
+  "th_p95": 0.9390362123419633
+}

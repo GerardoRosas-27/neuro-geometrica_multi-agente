@@ -1,0 +1,4 @@
+0xA403 n=0 lib=0 shadow=0 hits=0 pure=0 t=9s
+0xA403 n=600 lib=400 shadow=125 hits=118 pure=40 t=32s
+0xA403 n=1200 lib=750 shadow=232 hits=286 pure=138 t=55s
+0xA403 n=2400 lib=1434 shadow=447 hits=645 pure=346 t=92s
