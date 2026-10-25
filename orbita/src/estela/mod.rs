@@ -23,7 +23,7 @@ use std::path::PathBuf;
 pub const STEPS: usize = 3000; // pasos de Adam por variante y seed
 pub const BATCH: usize = 16; // episodios por paso
 pub const HTRAIN: usize = 4; // horizonte multi-paso del objetivo JEPA
-pub const LR: f64 = 1e-3;
+pub const LR: f64 = 3e-4; // ENMIENDA_1 §1.2 (v0: 1e-3)
 pub const CLIP: f64 = 1.0; // norma máxima del gradiente
 pub const LAM_SIG: f64 = 0.1; // SIGReg
 pub const LAM_PROBE: f64 = 0.1; // sonda de estado físico (poco peso)
@@ -31,7 +31,7 @@ pub const LAM_REC: f64 = 1.0; // sólo control ESTELA-REC
 pub const N_SLICES: usize = 16; // direcciones de SIGReg por paso
 pub const N_TRAIN: usize = 2048; // trayectorias de entrenamiento (familias 0–7, contexto verdadero)
 pub const N_CAL: usize = 256; // calibración de τ_E (familias 0–7) — no se usa H
-pub const TAU_Q: f64 = 0.95; // cuantil para τ_E(k)
+pub const Z_TRIG: f64 = 1.645; // ENMIENDA_1 §1.3: E4 si ŝ > 1,645 (v0: cuantil 0,95 de s_E)
 pub const LAT_LAM0: f64 = 1e-4; // = ÓRBITA+LAT
 pub const KS: [usize; 3] = [2, 4, 8];
 pub const PRIMARY_NEW: [usize; 3] = [8, 10, 11];
@@ -88,7 +88,6 @@ fn fin(z: &[f64]) -> bool { z.iter().all(|v| v.is_finite()) }
 fn clamp_err(z: &[f64], y: &[f64]) -> f64 { if fin(z) { mt::rel_err(z, y).min(10.0) } else { 10.0 } }
 fn log_rel(e: f64) -> f64 { e.max(1e-12).ln() }
 fn median(mut v: Vec<f64>) -> f64 { if v.is_empty() { return f64::NAN; } v.sort_by(|a, b| a.total_cmp(b)); mt::median(&v) }
-fn quantile(mut v: Vec<f64>, q: f64) -> f64 { v.sort_by(|a, b| a.total_cmp(b)); let i = ((q * (v.len() as f64 - 1.0)).round() as usize).min(v.len() - 1); v[i] }
 
 // ─── ruta única de predicción (evaluación) ───────────────────────────────────
 /// trayectoria q̂_1..q̂_n desde x0 con la MISMA función `model::step` que usa el entrenamiento
@@ -97,7 +96,7 @@ pub fn rollout(th: &[f64], l: &Lay, fz: &Frozen, x0: &[f64], n: usize, lat: Opti
     for _ in 0..n { if !fin(&x) { out.push(x.clone()); continue; } x = model::step(th, l, fz, &x, lat).q; out.push(x.clone()); }
     out
 }
-/// sorpresa por energía (E3): media en los k pasos observados de E(z_obs) − E(ẑ*), predicción a un paso desde lo observado
+/// sorpresa bruta (ENMIENDA_1 §1.3): ln(media en k pasos observados y puntos de ½‖E1(y_t) − ẑ_t‖² + 1e-12), predicción a un paso desde lo observado; mayor = más sorpresa
 pub fn surprise_e(th: &[f64], l: &Lay, fz: &Frozen, e: &Ep, k: usize) -> f64 {
     let mut s = 0.0; let mut n = 0.0;
     for t in 0..k {
@@ -105,11 +104,11 @@ pub fn surprise_e(th: &[f64], l: &Lay, fz: &Frozen, e: &Ep, k: usize) -> f64 {
         let o = model::step(th, l, fz, x, None);
         for i in 0..x.len() / 2 {
             let zo = model::enc(th, l, [e.ys[t][2 * i], e.ys[t][2 * i + 1]], &fz.c);
-            let v = model::energy(th, l, &zo, &o.z0[i]) - model::energy(th, l, &o.zhat[i], &o.z0[i]);
+            let v: f64 = (0..M).map(|j| 0.5 * (zo[j] - o.zhat[i][j]).powi(2)).sum();
             s += if v.is_finite() { v } else { 1e6 }; n += 1.0;
         }
     }
-    s / n
+    (s / n + 1e-12).ln()
 }
 
 // ─── entrenamiento ───────────────────────────────────────────────────────────
@@ -192,7 +191,8 @@ pub fn grad(d: &Orbita, th: &[f64], l: &Lay, v: Variant, eps: &[(&Ep, usize)], d
     (out, parts, tl)
 }
 pub fn train(d: &Orbita, l: &Lay, v: Variant, seed: u64, data: &[Ep], steps: usize) -> (Vec<f64>, TrainLog) {
-    let mut th = model::init(d, l, seed);
+    let mut th = model::init(d, l, seed); let th0 = th.clone();
+    if v == Variant::R0 { return (th, TrainLog { first: [0.0; 4], last: [0.0; 4], tape_max: 0 }); } // ENMIENDA_1 §2: r0 = ÓRBITA congelada, sin entrenar
     let mut rng = Xoshiro256StarStar::seed_from_u64(seed ^ XOR_OPT); // mismo flujo de minibatches para todas las variantes
     let (mut m1, mut m2) = (vec![0.0; l.n], vec![0.0; l.n]);
     let (b1, b2, epsa) = (0.9, 0.999, 1e-8);
@@ -203,6 +203,7 @@ pub fn train(d: &Orbita, l: &Lay, v: Variant, seed: u64, data: &[Ep], steps: usi
         let dirs = rand_dirs(&mut rng);
         let (mut g, parts, tl) = grad(d, &th, l, v, &batch, &dirs);
         log.tape_max = log.tape_max.max(tl);
+        for i in l.w3..l.r1 { g[i] = 0.0; } // ENMIENDA_1 §1.1: codificador congelado (lifting de ÓRBITA)
         if !g.iter().all(|x| x.is_finite()) { continue; }
         let gn = g.iter().map(|x| x * x).sum::<f64>().sqrt(); if gn > CLIP { for x in &mut g { *x *= CLIP / gn; } }
         let t = (s + 1) as i32;
@@ -210,6 +211,11 @@ pub fn train(d: &Orbita, l: &Lay, v: Variant, seed: u64, data: &[Ep], steps: usi
             let mh = m1[i] / (1.0 - b1.powi(t)); let vh = m2[i] / (1.0 - b2.powi(t)); th[i] -= LR * mh / (vh.sqrt() + epsa); }
         if !v.uses_r() { for i in l.r1..l.rb2 + M { th[i] = 0.0; } }
         for j in 0..4 { acc[j] += parts[j]; }
+        if std::env::var("ESTELA_TRACE").is_ok() && (s % 250 == 0 || s + 1 == steps) {
+            let e2n = th[l.e2..l.e2 + model::EH].iter().map(|x| x * x).sum::<f64>().sqrt();
+            let gd: f64 = (0..l.n).filter(|&i| i >= l.w3 && i < l.r1).map(|i| (th[i] - th0[i]).powi(2)).sum::<f64>().sqrt();
+            eprintln!("trace {:?} s={s} jepa={:.4} sig={:.4} probe={:.4} gn={gn:.3} |e2|={e2n:.3} |dg|={gd:.3}", v, parts[0], parts[1], parts[2]);
+        }
         if s + 1 == win { for j in 0..4 { log.first[j] = acc[j] / win as f64; } }
         if s + 1 > steps - win { for j in 0..4 { log.last[j] += parts[j] / win as f64; } }
     }
@@ -234,10 +240,10 @@ fn orbita_lat(d: &Orbita, e: &Ep, k: usize, cg: &[f64], gs: usize) -> (f64, bool
 }
 /// ESTELA (+E3/E4): sorpresa > τ_E(k) dispara LAT sobre ESTELA; árbitro = mejora en pasos retenidos (k_fit_val) frente a sin adaptar
 pub struct EstOut { pub base: f64, pub full: f64, pub trig: bool, pub acc: bool, pub s: f64 }
-fn estela_ep(th: &[f64], l: &Lay, fz: &Frozen, e: &Ep, k: usize, tau_e: f64) -> EstOut {
+fn estela_ep(th: &[f64], l: &Lay, fz: &Frozen, e: &Ep, k: usize, cal: (f64, f64)) -> EstOut {
     let tr0 = rollout(th, l, fz, &e.x0, 16, None); let base = err16(&tr0, e);
-    let s = surprise_e(th, l, fz, e, k);
-    if s <= tau_e { return EstOut { base, full: base, trig: false, acc: false, s }; }
+    let s = (surprise_e(th, l, fz, e, k) - cal.0) / cal.1; // ŝ estandarizada con la calibración
+    if !(s > Z_TRIG) { return EstOut { base, full: base, trig: false, acc: false, s }; }
     let (kf, kv) = k_fit_val(k);
     let stp = |a: &[f64], x: &[f64]| model::step(th, l, fz, x, Some(a)).q;
     let a1 = fit_gn(&stp, &vec![0.0; model::npar_lat()], LAT_LAM0, &e.x0, &e.ys, kf);
@@ -312,7 +318,7 @@ pub fn run(a: &[String]) {
     let wpath = arg_of(a, "--weights").expect("--weights"); let wtxt = std::fs::read_to_string(&wpath).unwrap();
     let d = Orbita::from_json(&wtxt); let raw0 = d.raw.clone(); let l = Lay::new(d.hg);
     let seed = parse_seed(&arg_of(a, "--seed").expect("--seed"));
-    let phase = arg_of(a, "--phase").unwrap_or_else(|| "dev".into()); let smoke = phase == "smoke";
+    let phase = arg_of(a, "--phase").unwrap_or_else(|| "dev".into()); let smoke = phase == "smoke" || phase == "sanity";
     let steps: usize = arg_of(a, "--steps").map(|s| s.parse().unwrap()).unwrap_or(STEPS);
     let hpf: usize = arg_of(a, "--h-per-fam").map(|s| s.parse().unwrap()).unwrap_or(H_PER_FAM);
     if !smoke { assert!(steps == STEPS && hpf == H_PER_FAM, "DEV/CONFIRM usan los valores congelados"); }
@@ -347,11 +353,14 @@ pub fn run(a: &[String]) {
         std::fs::write(&pp, params_to_json(&th)).unwrap();
         // round-trip: se evalúan los parámetros releídos del disco (bits exactos, ver params_to_json)
         let th2 = params_from_json(&std::fs::read_to_string(&pp).unwrap()); assert!(th.iter().zip(&th2).all(|(a, b)| a.to_bits() == b.to_bits())); let th = th2;
-        let mut tau = serde_json::Map::new(); let mut zs = vec![];
-        for e in held.iter().filter(|e| e.fam < N_FAM) { let fz = Frozen::new(&d, &e.c, v); for i in 0..K_POINTS { zs.push(model::enc(&th, &l, [e.x0[2 * i], e.x0[2 * i + 1]], &fz.c)); } }
+        let mut tau = serde_json::Map::new(); let mut zs = vec![]; let mut zp = vec![];
+        for e in held.iter().filter(|e| e.fam < N_FAM) { let fz = Frozen::new(&d, &e.c, v); for i in 0..K_POINTS { zs.push(model::enc(&th, &l, [e.x0[2 * i], e.x0[2 * i + 1]], &fz.c)); }
+            let o = model::step(&th, &l, &fz, &e.x0, None); for z in o.zhat { if fin(&z) { zp.push(z); } } }
         for (ki, &k) in KS.iter().enumerate() {
-            let tau_e = quantile(cal.iter().map(|e| surprise_e(&th, &l, &Frozen::new(&d, &e.c, v), e, k)).collect(), TAU_Q);
-            tau.insert(format!("k{k}"), serde_json::json!(tau_e));
+            let sc: Vec<f64> = cal.iter().map(|e| surprise_e(&th, &l, &Frozen::new(&d, &e.c, v), e, k)).collect();
+            let mu = sc.iter().sum::<f64>() / sc.len() as f64; let sd = (sc.iter().map(|x| (x - mu).powi(2)).sum::<f64>() / sc.len() as f64).sqrt().max(1e-12);
+            let tau_e = (mu, sd);
+            tau.insert(format!("k{k}"), serde_json::json!({"mu": mu, "sd": sd, "z_trig": Z_TRIG}));
             let (mut base, mut full, mut trig, mut acc, mut ss) = (vec![], vec![], vec![], vec![], vec![]);
             for (j, e) in held.iter().enumerate() {
                 let fz = Frozen::new(&d, &ctxs[j][ki].0, v); let r = estela_ep(&th, &l, &fz, e, k, tau_e);
@@ -363,7 +372,7 @@ pub fn run(a: &[String]) {
             ent[format!("auroc_{}", v.name())] = serde_json::json!(det_auroc(&held, &ss));
         }
         variants.insert(v.name().into(), serde_json::json!({"loss_first": log.first, "loss_last": log.last, "loss_parts": ["jepa","sigreg","probe","rec"],
-            "tau_e": tau, "erank": erank(&zs), "train_s": ttrain, "eval_s": ts.elapsed().as_secs_f64() - ttrain, "tape_max": log.tape_max,
+            "tau_e": tau, "erank": erank(&zp), "erank_enc_x0": erank(&zs), "train_s": ttrain, "eval_s": ts.elapsed().as_secs_f64() - ttrain, "tape_max": log.tape_max,
             "resid_norm": th[l.r1..l.rb2 + M].iter().skip(RH_SKIP(&l)).map(|x| x * x).sum::<f64>().sqrt(), "energy_out_norm": th[l.e2..l.e2 + model::EH].iter().map(|x| x * x).sum::<f64>().sqrt()}));
         eprintln!("0x{seed:X} {} train={ttrain:.0}s total={:.0}s", v.name(), t0.elapsed().as_secs_f64());
     }

@@ -78,3 +78,39 @@ fn autodiff_matches_finite_differences() {
         }
     }
 }
+
+/// diagnóstico (no es prueba): traza de entrenamiento fuera de DEV/CONFIRM (seed 0xC400, pesos ÓRBITA 0xA400)
+#[test]
+#[ignore]
+fn diag_trace_c400() {
+    let d = orb("0xA400"); let l = Lay::new(d.hg);
+    let data = gen_known(0xC400, XOR_TRAIN, N_TRAIN);
+    let vs: Vec<Variant> = Variant::all().into_iter().filter(|v| std::env::var("DIAG_V").map_or(true, |s| s.split(',').any(|x| x == v.name()))).collect();
+    for v in vs { let _ = train(&d, &l, v, 0xC400, &data, STEPS); }
+}
+
+/// ENMIENDA_1 §2: ESTELA-r0 «entrenado» = ÓRBITA congelada, bit a bit (conocidas y nuevas, contexto de evaluación)
+#[test]
+fn r0_equals_frozen_orbita_bitwise() {
+    let d = orb("0xA400"); let l = Lay::new(d.hg);
+    let data = gen_known(0xC400, XOR_TRAIN, 64);
+    let (th, _) = train(&d, &l, Variant::R0, 0xC400, &data, 50);
+    assert!(th.iter().zip(&model::init(&d, &l, 0xC400)).all(|(a, b)| a.to_bits() == b.to_bits()));
+    let mut n = 0;
+    for e in &gen_heldout(0xC400, 2) {
+        let (cg, _) = ctx_for_eval(&d, e, 4); let fz = Frozen::new(&d, &cg, Variant::R0);
+        let tr = rollout(&th, &l, &fz, &e.x0, 16, None); let mut z = e.x0.clone();
+        for t in 0..16 { z = d.step(&z, &cg); for (p, q) in tr[t].iter().zip(&z) { assert_eq!(p.to_bits(), q.to_bits()); n += 1; } }
+    }
+    assert!(n > 1000);
+}
+
+/// ENMIENDA_1 §1.1: el codificador no cambia al entrenar (todas las variantes)
+#[test]
+fn encoder_frozen_after_training() {
+    let d = orb("0xA400"); let l = Lay::new(d.hg);
+    let data = gen_known(0xC400, XOR_TRAIN, 64); let th0 = model::init(&d, &l, 0xC400);
+    for v in Variant::all() { let (th, _) = train(&d, &l, v, 0xC400, &data, 30);
+        assert!((l.w3..l.r1).all(|i| th[i].to_bits() == th0[i].to_bits()), "{v:?}");
+        if v != Variant::R0 { assert!((l.r1..l.n).any(|i| th[i] != th0[i]), "{v:?} no entrena"); } }
+}
