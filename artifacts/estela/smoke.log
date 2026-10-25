@@ -1,0 +1,14 @@
+=== estela smoke 2026-10-24T20:49:08-06:00 sha=893d2b2 ===
+0xA401 estela train=48s total=51s
+0xA400 estela train=49s total=52s
+0xA401 estela_nosig train=42s total=93s
+0xA400 estela_nosig train=43s total=96s
+0xA401 estela_rec train=46s total=140s
+0xA400 estela_rec train=47s total=144s
+0xA401 estela_mlp train=44s total=185s
+0xA400 estela_mlp train=45s total=191s
+0xA401 estela_r0 train=104s total=291s
+done 0xA401 2026-10-24T20:53:59-06:00
+0xA400 estela_r0 train=105s total=297s
+done 0xA400 2026-10-24T20:54:05-06:00
+smoke done_count=2 2026-10-24T20:54:05-06:00
