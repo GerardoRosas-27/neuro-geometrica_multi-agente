@@ -1,0 +1,10 @@
+cvo-export 0xB40A: transiciones=61440 (conocidas 52224, nuevas 9216)
+step 3840 l1=1.259e-02 lh=0.000e+00 9s
+done 2602
+0xB40A cst 392.2s
+0xB40A cst_no_fast 862.0s
+0xB40A orbita_eq 4.2s
+0xB40A orbita_eq_lat 9.6s
+0xB40A orbita_v1 4.1s
+0xB40A orbita_v1_lat 8.8s
+0xB40A ok 1281s
