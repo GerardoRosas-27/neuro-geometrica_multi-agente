@@ -1,2 +1,11 @@
 0xC420 cst 377.3s
 0xC420 no_err 65.7s
+0xC420 no_prec 379.2s
+0xC420 t1 404.1s
+0xC420 no_prune 368.5s
+0xC420 no_sleep 441.4s
+0xC420 fixed_w 374.1s
+0xC420 one_layer 159.5s
+0xC420 backprop 403.0s
+0xC420 no_fast 358.2s
+0xC420 ok 3332s
