@@ -1,0 +1,10 @@
+cvo-export 0xA40D: transiciones=61440 (conocidas 52224, nuevas 9216)
+step 3840 l1=2.426e-02 lh=0.000e+00 8s
+done 2602
+0xA40D cst 388.0s
+0xA40D cst_no_fast 1376.1s
+0xA40D orbita_eq 4.7s
+0xA40D orbita_eq_lat 9.8s
+0xA40D orbita_v1 4.7s
+0xA40D orbita_v1_lat 10.0s
+0xA40D ok 1793s
