@@ -46,7 +46,7 @@ Con los mismos datos, el mismo presupuesto de entrenamiento y el mismo acceso a 
 
 ## 8. Tiempo estimado
 - CST v4 con todos sus brazos tardó ≈ 3100–4770 s de pared por semilla (`wall_s` en `metrics_0xA400/0xB400`; CST solo ≈ 380–390 s). Con CST, CST+prior, `no_fast` (≈ 3 × 390 s ≈ 20 min/seed) y 7 jobs: ≈ 1 h por fase.
-- ÓRBITA-eq: el entrenamiento ÓRBITA-v1 original no reporta tiempo de pared por semilla en los docs (no encontrado). Con presupuesto igualado (≈ 10⁵ muestras frente a 8,2 M originales) se espera muy por debajo de la ejecución original; se medirá en tuning. LAT añade minutos por semilla.
+- ÓRBITA-eq: el entrenamiento ÓRBITA-v1 original no reporta tiempo de pared por semilla en los docs (no encontrado). Con presupuesto igualado (número de muestras de CST aún por contar en tuning; previsiblemente muy inferior a las ≈ 8,2 M originales) se espera menos tiempo que la ejecución original; se medirá en tuning. LAT añade minutos por semilla.
 - **Estimación total: ≈ 3–5 h** (tuning + Paso 0 ≈ 1 h; DEV ≈ 1–2 h; CONFIRM ≈ 1–2 h), sujeta a la medición en tuning.
 
 ## 9. Pendiente de implementación (antes de DEV, sin tocar seeds DEV/CONFIRM)
