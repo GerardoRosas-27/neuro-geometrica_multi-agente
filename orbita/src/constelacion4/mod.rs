@@ -15,6 +15,7 @@ use rand_xoshiro::Xoshiro256StarStar;
 use serde_json::json;
 use std::path::PathBuf;
 
+pub mod cvo;
 pub const K: usize = 4;
 pub const HORIZON: usize = 16;
 pub const NEW_FAMS: [usize; 3] = [8, 10, 11];

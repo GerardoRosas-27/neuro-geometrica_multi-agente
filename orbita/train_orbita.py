@@ -117,7 +117,11 @@ def load(d):
     meta = json.load(open(os.path.join(d, "meta.json")))
     z, cd = meta["zdim"], meta["cdim"]
     tr = np.fromfile(os.path.join(d, "train.bin"), dtype="<f8").reshape(-1, z + cd + z)
-    rp = np.fromfile(os.path.join(d, "replay.bin"), dtype="<f8").reshape(-1, z + cd + z * len(KS) + 1)
+    rpath = os.path.join(d, "replay.bin")
+    if os.path.exists(rpath):
+        rp = np.fromfile(rpath, dtype="<f8").reshape(-1, z + cd + z * len(KS) + 1)
+    else:                                              # cvo (ÓRBITA-eq): sin replay del teacher
+        rp = np.zeros((1, z + cd + z * len(KS) + 1))
     T = torch.from_numpy(tr.copy()); R = torch.from_numpy(rp.copy())
     return meta, (T[:, :z], T[:, z:z + cd], T[:, z + cd:]), (R[:, :z], R[:, z:z + cd], R[:, z + cd:z + cd + z * len(KS)].reshape(-1, len(KS), z), R[:, -1])
 
@@ -150,8 +154,8 @@ def main():
     gn = torch.Generator().manual_seed(seed ^ 0x5E)
     opt = torch.optim.Adam(model.parameters(), lr=a.lr)
     gen = torch.Generator().manual_seed(seed ^ 0x7A)
-    any_trusted = bool((rw > 1e-12).any())
-    rprob = rw / rw.sum()
+    any_trusted = bool((rw > 1e-12).any()) and meta["replay_fraction"] > 0
+    rprob = rw / rw.sum() if any_trusted else torch.ones_like(rw)
     ck = a.out + ".ckpt"
     start = 0
     if os.path.exists(ck):                            # reanudación determinista
