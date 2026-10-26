@@ -1,3 +1,5 @@
+> **Mejor arquitectura (rama `exp/mejor-arquitectura`): CONSTELACIÓN v4** — único experimento que cumple los 3 criterios preregistrados (primaria CONFIRM −0,107 [−0,181, −0,024], no-daño 0, E33 16/16). Ganancia atribuible al campo rápido W^F, no a la codificación predictiva. Ver [`docs/RESULTADOS_CONSOLIDADOS.md`](docs/RESULTADOS_CONSOLIDADOS.md).
+
 > **`main` = ÓRBITA.** Ver [`docs/ORBITA_MAIN.md`](docs/ORBITA_MAIN.md). v4 está archivado en el tag `v4-final`.
 
 # Laboratorio neuro-geométrico multi-agente · `main` v4
