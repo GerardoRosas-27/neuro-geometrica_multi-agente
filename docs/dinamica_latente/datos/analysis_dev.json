@@ -1,0 +1,105 @@
+{
+ "n_seeds": 16,
+ "pca_var_explicada_media": 0.7976646552459393,
+ "filas": {
+  "H1 ORB_LIBRE vs AR2 (ho)": {
+   "media": -0.06474825326750738,
+   "ic_lo": -0.10400120886555803,
+   "ic_hi": -0.026177413537483516
+  },
+  "H2 ORB_LIBRE vs PERS (ho)": {
+   "media": 0.3967589905146953,
+   "ic_lo": 0.3601199676360275,
+   "ic_hi": 0.43139533965024757
+  },
+  "H3 ORB_LIBRE vs ORB_SESGO (ho)": {
+   "media": -0.2876390626286143,
+   "ic_lo": -0.3146961108290719,
+   "ic_hi": -0.2634717588268996
+  },
+  "H4 ORB_LIBRE vs PERS (tf)": {
+   "media": 0.26011630317335915,
+   "ic_lo": 0.19294375832189148,
+   "ic_hi": 0.324812250708654
+  },
+  "S ORB_LIBRE vs AR2 (tf)": {
+   "media": -0.0648397504687418,
+   "ic_lo": -0.12930600012013665,
+   "ic_hi": -0.007823443686667271
+  },
+  "S ORB_SESGO vs PERS (ho)": {
+   "media": 0.6843980531433096,
+   "ic_lo": 0.6569436739795803,
+   "ic_hi": 0.7111399382894559
+  },
+  "S ORB_SESGO vs PERS (tf)": {
+   "media": 0.13941816702147858,
+   "ic_lo": 0.09809352464718664,
+   "ic_hi": 0.17629353273517562
+  },
+  "S AR2 vs PERS (ho)": {
+   "media": 0.46150724378220265,
+   "ic_lo": 0.42776139615319225,
+   "ic_hi": 0.5021846801690149
+  },
+  "S AR2 vs PERS (tf)": {
+   "media": 0.32495605364210095,
+   "ic_lo": 0.29329804939142495,
+   "ic_hi": 0.3576553604510159
+  },
+  "S ORB_LIBRE vs AR2 (ho, geométricas)": {
+   "media": -0.17637181469992994,
+   "ic_lo": -0.25663212453472495,
+   "ic_hi": -0.10348764321399449
+  },
+  "S ORB_LIBRE vs AR2 (ho, no geométricas)": {
+   "media": -0.005818482015305373,
+   "ic_lo": -0.05295193127027823,
+   "ic_hi": 0.03868286223386146
+  },
+  "S ORB_LIBRE vs PERS (ho, no geométricas)": {
+   "media": 0.6743269253737376,
+   "ic_lo": 0.6272053543880165,
+   "ic_hi": 0.7182660980620895
+  },
+  "S h3 ORB_LIBRE vs AR2 (ho)": {
+   "media": -0.1489305495240923,
+   "ic_lo": -0.21008959243196754,
+   "ic_hi": -0.09796202201427573
+  },
+  "S h3 ORB_LIBRE vs PERS (ho)": {
+   "media": 0.24434872258756798,
+   "ic_lo": 0.17688414937268762,
+   "ic_hi": 0.30233358636488833
+  },
+  "C1 ORB_LIBRE vs PERS (permutado)": {
+   "media": 0.5571859798010623,
+   "ic_lo": 0.5216159114332067,
+   "ic_hi": 0.5829722816454118
+  },
+  "C2 ORB_LIBRE vs PERS (barajado)": {
+   "media": 0.3219548845306396,
+   "ic_lo": 0.29440759529880156,
+   "ic_hi": 0.3466972020592778
+  },
+  "C2 ORB_LIBRE vs AR2 (barajado)": {
+   "media": -0.014236055621619673,
+   "ic_lo": -0.030513566714217292,
+   "ic_hi": 0.0029603391414689453
+  },
+  "C1 ORB_LIBRE vs AR2 (permutado)": {
+   "media": -0.02163957250683208,
+   "ic_lo": -0.04259587817170202,
+   "ic_hi": -0.0024476561503595246
+  }
+ },
+ "criterios": {
+  "H1": false,
+  "H2": true,
+  "H3_no_inferior": false,
+  "H4": true,
+  "V1_sin_ganancia_espuria_C1": true,
+  "V2_sin_ganancia_espuria_C2": true
+ },
+ "gate_dev_a_confirm": false
+}
