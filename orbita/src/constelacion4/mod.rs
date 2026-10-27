@@ -14,6 +14,7 @@ use rand_xoshiro::rand_core::SeedableRng;
 use rand_xoshiro::Xoshiro256StarStar;
 use serde_json::json;
 use std::path::PathBuf;
+pub mod mejoras;
 
 pub const K: usize = 4;
 pub const HORIZON: usize = 16;
@@ -97,6 +98,11 @@ pub struct Cfg {
     pub v3: bool, pub feat_x: bool, pub feat_s: f64, pub eta_p: f64, pub eta_f: f64, pub t_f: usize, pub pi_norm: bool, pub fast: bool, pub pip_min: f64, pub pip_max: f64,
     // v4: x̂(1) = ÓRBITA(x0, c) cuando el contexto está disponible y aún no se ha observado ninguna transición (W^F vacío)
     pub orb_prior: bool,
+    // mejoras (docs/constelacion_v4_mejoras): todas apagadas por defecto ⇒ v4 bit a bit
+    pub m1_gamma: f64, pub m1_beta: f64, pub m1_lam: f64, pub m1_mmin: f64, pub m1_mmax: f64, pub m1_mu: f64, pub m1_sd: f64, pub m1_const: f64,
+    pub m2: Option<[f64; 6]>,
+    pub m3_h: usize, pub m3_eta_v: f64, pub m3_eta_u: f64, pub m3_s3: usize, pub m3_rho: f64, pub m3_orb: bool,
+    pub gen_path: bool,
 }
 impl Cfg {
     pub fn base() -> Cfg { Cfg { m: 8, h: 8, layers: vec![16, 8, 4], identity_init: false, eta_b: 0.1, t_inf: 8, kappa: 0.1, tol: 1e-3,
@@ -104,7 +110,11 @@ impl Cfg {
         p_every: 500, w_min: 1e-4, u_min_rel: 0.01, b_in: 10.0, rho_max: 0.99, mu_clip: 10.0,
         n_s: 16, n_replay: 16, alpha_s: 0.1, delta_k: 0.05, n_kbuf: 16,
         errors: true, precision: true, prune: true, sleep: true, plastic_w: true, backprop: false,
-        v3: false, feat_x: false, feat_s: 1.0, eta_p: 0.0, eta_f: 0.0, t_f: 0, pi_norm: false, fast: false, pip_min: 0.1, pip_max: 10.0, orb_prior: false } }
+        v3: false, feat_x: false, feat_s: 1.0, eta_p: 0.0, eta_f: 0.0, t_f: 0, pi_norm: false, fast: false, pip_min: 0.1, pip_max: 10.0, orb_prior: false,
+        m1_gamma: 0.0, m1_beta: 0.0, m1_lam: 0.0, m1_mmin: 0.25, m1_mmax: 2.0, m1_mu: 0.0, m1_sd: 1.0, m1_const: 0.0, m2: None,
+        m3_h: 0, m3_eta_v: 0.0, m3_eta_u: 0.0, m3_s3: 0, m3_rho: 1e-3, m3_orb: false, gen_path: false } }
+    /// ¿necesita ÓRBITA dentro del episodio? (sorpresa M1, s̃ de M2, base de M3-orb)
+    pub fn needs_orb(&self) -> bool { self.m1_gamma > 0.0 || self.m2.map_or(false, |t| t[3] != 0.0) || self.m3_orb }
     /// v3 congelada (valores fijados en docs/constelacion_v3/PREREG.md)
     pub fn v3() -> Cfg { let mut c = Cfg::base(); c.v3 = true; c.w_init = 1.0; c.b_in = 40.0; c.pi_min = V3_PI_MIN; c.pi_max = V3_PI_MAX; c.pi_norm = true; c.fast = true;
         c.feat_x = V3_FEAT_X; c.feat_s = V3_FEAT_S; c.eta_p = V3_ETA_P; c.eta_f = V3_ETA_F; c.t_f = V3_T_F; c }
@@ -175,9 +185,12 @@ pub struct Net {
     pub pi: Vec<Vec<f64>>, pub pit: Vec<Vec<f64>>, pub uin: Vec<f64>, pub eta_scale: f64, pub steps: usize, pub nan: bool,
     pub n_pruned: usize, pub n_grown: usize, pub n_rescale_row: usize, pub n_rescale_spec: usize,
     pub curv: Vec<Vec<f64>>, pub wp: Vec<f64>, pub taup: Vec<f64>, pub up: Vec<f64>, pub wf: Vec<f64>, pub pip: Vec<f64>, pub dp: usize,
+    // mejoras: momento M1, MLP rápido M3 (U,b,V,U0), sorpresa del cuadro actual, ÓRBITA congelada y contador de llamadas
+    pub mf: Vec<f64>, pub fu: Vec<f64>, pub fb: Vec<f64>, pub fv: Vec<f64>, pub fu0: Vec<f64>, pub m3h: usize, pub surp: Option<f64>,
+    pub orb: Option<std::sync::Arc<Orbita>>, pub orb_calls: usize, pub m_log: Vec<f64>,
 }
 #[derive(Clone)]
-pub struct PState { pub mu: Vec<Vec<f64>>, pub started: bool, pub xl: Vec<f64> }
+pub struct PState { pub mu: Vec<Vec<f64>>, pub started: bool, pub xl: Vec<f64>, pub ob: Option<Vec<f64>> }
 pub struct StepInfo { pub e0: f64, pub ef: f64, pub e_layer: Vec<f64>, pub iters: f64 }
 
 impl Net {
@@ -193,10 +206,16 @@ impl Net {
             u: (1..=l).map(|i| vec![0.0; sz(i)]).collect(), low: (1..=l).map(|i| vec![0; sz(i)]).collect(), act: (1..=l).map(|i| vec![0.0; sz(i)]).collect(),
             pi: (0..l).map(|i| vec![1.0; dims[i]]).collect(), pit: (1..=l).map(|i| vec![1.0; dims[i]]).collect(), w, uin, eta_scale: 1.0, steps: 0, nan: false,
             n_pruned: 0, n_grown: 0, n_rescale_row: 0, n_rescale_spec: 0, c: c.clone(),
-            curv: vec![], wp: vec![0.0; 2 * dp], taup: vec![c.tau_min; 2 * dp], up: vec![0.0; 2 * dp], wf: vec![0.0; 2 * dp], pip: vec![1.0; 2], dp };
+            curv: vec![], wp: vec![0.0; 2 * dp], taup: vec![c.tau_min; 2 * dp], up: vec![0.0; 2 * dp], wf: vec![0.0; 2 * dp], pip: vec![1.0; 2], dp,
+            mf: vec![0.0; 2 * dp], fu: vec![], fb: vec![], fv: vec![], fu0: vec![], m3h: c.m3_h, surp: None, orb: None, orb_calls: 0, m_log: vec![] };
+        if c.m3_h > 0 { // U0 ~ N(0, 1/d_φ) con RNG propio (no consume el RNG de la red ⇒ resto idéntico a v4)
+            let mut r3 = Xoshiro256StarStar::seed_from_u64(seed ^ 0x3A3A_3A3A); let sd = (1.0 / dp as f64).sqrt();
+            net.fu0 = (0..c.m3_h * dp).map(|_| gauss(&mut r3) * sd).collect(); net.fu = net.fu0.clone(); net.fb = vec![0.0; c.m3_h]; net.fv = vec![0.0; 2 * c.m3_h]; }
         net.update_curv(); net
     }
-    pub fn begin_episode(&mut self) { for v in self.wf.iter_mut() { *v = 0.0; } self.update_curv(); }
+    pub fn begin_episode(&mut self) { for v in self.wf.iter_mut() { *v = 0.0; } for v in self.mf.iter_mut() { *v = 0.0; }
+        if self.m3h > 0 { self.fu.copy_from_slice(&self.fu0); for v in self.fb.iter_mut().chain(self.fv.iter_mut()) { *v = 0.0; } } self.surp = None; self.update_curv(); }
+    pub fn m3_hidden(&self, phi: &[f64]) -> Vec<f64> { let d = self.dp; (0..self.m3h).map(|k| (self.fb[k] + (0..d).map(|j| self.fu[k * d + j] * phi[j]).sum::<f64>()).tanh()).collect() }
     /// curvatura diagonal de la energía respecto de μ_l por el término de abajo: Σ_i Π_{l−1,i} (C⊙W_l)_ij²  (se recalcula al empezar cada episodio y tras cada paso de plasticidad)
     pub fn update_curv(&mut self) { if !self.c.v3 { return; } let l = self.nl();
         self.curv = (1..=l).map(|li| { let (r, cc) = (self.dims[li - 1], self.dims[li]); (0..cc).map(|j| (0..r).map(|i| { let w = self.w[li - 1][i * cc + j] * self.cm[li - 1][i * cc + j]; self.pi[li - 1][i] * w * w }).sum()).collect() }).collect(); }
@@ -204,13 +223,17 @@ impl Net {
     pub fn feat(&self, st: &PState) -> Vec<f64> { let mut f = Vec::with_capacity(self.dp); if self.c.feat_x { f.extend_from_slice(&st.xl); }
         let s = self.c.feat_s / (self.dims[1] as f64).sqrt(); f.extend(self.fl(1, &st.mu[0]).0.iter().map(|v| v * s)); f.push(1.0); f }
     /// x̂(t+1) = x(t) + (W^P + W^F) φ  (v3)
-    pub fn pred_from(&self, st: &PState, phi: &[f64]) -> Vec<f64> { let d = self.dp; (0..2).map(|i| st.xl[i] + (0..d).map(|j| (self.wp[i * d + j] + self.wf[i * d + j]) * phi[j]).sum::<f64>()).collect() }
+    pub fn pred_from(&self, st: &PState, phi: &[f64]) -> Vec<f64> { let d = self.dp;
+        let base: &[f64] = match (&st.ob, self.c.m3_orb) { (Some(o), true) => o, _ => &st.xl };
+        let mut out: Vec<f64> = (0..2).map(|i| base[i] + (0..d).map(|j| (self.wp[i * d + j] + self.wf[i * d + j]) * phi[j]).sum::<f64>()).collect();
+        if self.m3h > 0 { let h = self.m3_hidden(phi); let hh = self.m3h; for i in 0..2 { out[i] += (0..hh).map(|k| self.fv[i * hh + k] * h[k]).sum::<f64>(); } }
+        out }
     pub fn predict1(&self, st: &PState) -> Vec<f64> { if !self.c.v3 { return self.predict(st, 1); } if !st.started { return vec![0.0; 2]; } self.pred_from(st, &self.feat(st)) }
     pub fn nl(&self) -> usize { self.c.layers.len() }
     pub fn n_w(&self) -> usize { self.w.iter().map(|x| x.len()).sum() }
     pub fn hash(&self) -> u64 { let mut h: u64 = 0xcbf29ce484222325; for v in self.w.iter().chain(&self.pi).chain(&self.pit).chain(&self.tau).chain(&self.cm).flatten() { h ^= v.to_bits(); h = h.wrapping_mul(0x100000001b3); }
         if self.c.v3 { for v in self.wp.iter().chain(&self.taup).chain(&self.pip) { h ^= v.to_bits(); h = h.wrapping_mul(0x100000001b3); } } h }
-    pub fn fresh_state(&self) -> PState { PState { mu: (1..=self.nl()).map(|i| vec![0.0; self.dims[i]]).collect(), started: false, xl: vec![0.0; 2] } }
+    pub fn fresh_state(&self) -> PState { PState { mu: (1..=self.nl()).map(|i| vec![0.0; self.dims[i]]).collect(), started: false, xl: vec![0.0; 2], ob: None } }
     /// F_l aplicado por neurona; devuelve (F(μ), s)
     pub fn fl(&self, l: usize, mu: &[f64]) -> (Vec<f64>, Vec<f64>) {
         let (m, h) = (self.c.m, self.c.h); let n = self.c.layers[l - 1];
@@ -408,16 +431,23 @@ pub struct EpOut { pub h1_log: f64, pub h16_err: f64, pub e_mean: f64, pub e_lay
 pub fn run_episode(net: &mut Net, e: &Ep, train: bool, lr_mult: f64, prec_only: bool, k_obs: usize) -> EpOut {
     let np = e.x0.len() / 2; net.begin_episode(); let mut sts: Vec<PState> = (0..np).map(|_| net.fresh_state()).collect();
     let last = if train { HORIZON } else { k_obs };
+    // mejoras: contexto causal de ÓRBITA (reid sobre el prefijo 0..=min(t,K)); sólo si alguna mejora lo usa
+    let orb: Option<std::sync::Arc<Orbita>> = if net.c.needs_orb() { net.orb.clone() } else { None };
+    let ctxs: Vec<Vec<f64>> = match &orb { Some(d) => reid_prefixes(d, &e.x0, &e.ys, K, [0.0; 2]), None => vec![] };
     let mut h1 = vec![]; let mut es = 0.0; let mut el = vec![0.0; net.nl() + 1]; let mut h16 = 10.0; let mut preds = vec![vec![]; HORIZON];
     for t in 0..=last {
         if t >= 1 { let p: Vec<f64> = sts.iter().flat_map(|s| net.predict1(s)).collect(); h1.push(log_rel(clamp_err(&p, e.frame(t)))); if t <= k_obs { preds[t - 1] = p; } }
+        if let (Some(d), true) = (&orb, t >= 1) { let o = d.step(e.frame(t - 1), &ctxs[(t - 1).min(K)]); net.orb_calls += 1; let x = e.frame(t);
+            net.surp = Some((0..np).map(|p| (x[2 * p] - o[2 * p]).powi(2) + (x[2 * p + 1] - o[2 * p + 1]).powi(2)).sum::<f64>() / np as f64); }
         let si = constelacion_step(net, &mut sts, e.frame(t), train, lr_mult, prec_only);
+        if let (Some(d), true) = (&orb, net.c.m3_orb) { let o = d.step(e.frame(t), &ctxs[t.min(K)]); net.orb_calls += 1; for p in 0..np { sts[p].ob = Some(o[2 * p..2 * p + 2].to_vec()); } }
         es += si.ef; for i in 0..el.len() { el[i] += si.e_layer[i]; }
         if t == k_obs {
             if net.c.v3 { // rollout reinyectado (spec §4): x̂(t+1) se observa como si fuera real, sin campo rápido ni plasticidad
-                let mut s2 = sts.clone(); let wf = net.wf.clone(); let nan0 = net.nan;
-                for hh in (k_obs + 1)..=HORIZON { let p: Vec<f64> = s2.iter().flat_map(|s| net.predict1(s)).collect(); preds[hh - 1] = p.clone(); if !fin(&p) { break; } step_ex(net, &mut s2, &p, false, 0.0, false, true); }
-                debug_assert!(wf == net.wf); net.nan = nan0;
+                let mut s2 = sts.clone(); let wf = net.wf.clone(); let nan0 = net.nan; let fr = if net.m3h > 0 { Some((net.fu.clone(), net.fb.clone(), net.fv.clone())) } else { None };
+                for hh in (k_obs + 1)..=HORIZON { let p: Vec<f64> = s2.iter().flat_map(|s| net.predict1(s)).collect(); preds[hh - 1] = p.clone(); if !fin(&p) { break; } step_ex(net, &mut s2, &p, false, 0.0, false, true);
+                    if let (Some(d), true) = (&orb, net.c.m3_orb) { let o = d.step(&p, &ctxs[K]); net.orb_calls += 1; for q in 0..np { s2[q].ob = Some(o[2 * q..2 * q + 2].to_vec()); } } }
+                debug_assert!(wf == net.wf); if let Some(f) = fr { assert!(f.0 == net.fu && f.1 == net.fb && f.2 == net.fv, "M3: (U,b,V) deben estar congelados en el rollout"); } net.nan = nan0;
                 if !fin(&preds[HORIZON - 1]) || preds[HORIZON - 1].is_empty() { preds[HORIZON - 1] = vec![f64::NAN; 2 * np]; }
             } else { for hh in (k_obs + 1)..=HORIZON { preds[hh - 1] = sts.iter().flat_map(|s| net.predict(s, hh - k_obs)).collect(); } }
             h16 = clamp_err(&preds[HORIZON - 1], &e.ys[HORIZON - 1]); }
@@ -702,7 +732,7 @@ pub fn paso0(a: &[String]) {
         let mut r2 = Xoshiro256StarStar::seed_from_u64(seed ^ trial); let mu2: Vec<f64> = (0..tn.dims[2]).map(|_| r2.gen_range(-1.0..1.0)).collect(); let x = [r2.gen_range(-1.0..1.0), r2.gen_range(-1.0..1.0)];
         let mut st = tn.fresh_state(); st.mu[1] = mu2.clone(); st.mu[0] = vec![0.0; tn.dims[1]]; st.started = true;
         // pérdida: L(W) = ½‖x − W1 F(W2 F(F(μ2)))‖² (predicción hacia adelante desde el prior)
-        let loss = |n: &Net| { let p = n.predict(&PState { mu: vec![vec![0.0; n.dims[1]], mu2.clone()], started: true, xl: vec![0.0; 2] }, 1); 0.5 * ((x[0] - p[0]).powi(2) + (x[1] - p[1]).powi(2)) };
+        let loss = |n: &Net| { let p = n.predict(&PState { mu: vec![vec![0.0; n.dims[1]], mu2.clone()], started: true, xl: vec![0.0; 2], ob: None }, 1); 0.5 * ((x[0] - p[0]).powi(2) + (x[1] - p[1]).powi(2)) };
         // nota: el prior de capa 1 viene de μ1(t−1)=0 con Π^τ_1≈0 ⇒ libre; capa 2 anclada en F(μ2)
         let mut acc = Acc { gw: tn.w.iter().map(|w| vec![0.0; w.len()]).collect(), e2: tn.pi.iter().map(|p| vec![0.0; p.len()]).collect(), et2: tn.pit.iter().map(|p| vec![0.0; p.len()]).collect(), red: 0.0, np: 0.0, nt: 0.0 };
         infer_point(&tn, &mut st, &x, Some(&mut acc));
@@ -839,6 +869,8 @@ fn head_update(net: &mut Net, sts: &[PState], x: &[f64], pre: &[Option<Vec<f64>>
         }
     }
     let _ = sts;
+    let plain = !c.gen_path && c.m1_gamma == 0.0 && c.m1_const == 0.0 && c.m1_beta == 0.0 && c.m1_lam == 0.0 && c.m2.is_none() && net.m3h == 0;
+    if c.fast && !imagine && c.eta_f > 0.0 && !plain { fast_general(net, sts, x, pre, &obs); return; }
     if c.fast && !imagine && c.eta_f > 0.0 {
         // NLMS en lote sobre los puntos del cuadro (campo compartido), t_f iteraciones; base = x(t−1) guardado en el estado
         let nrm: f64 = obs.iter().map(|&p| pre[p].as_ref().unwrap().iter().map(|v| v * v).sum::<f64>()).sum::<f64>() + 1e-9;
@@ -846,4 +878,50 @@ fn head_update(net: &mut Net, sts: &[PState], x: &[f64], pre: &[Option<Vec<f64>>
             for &p in &obs { let phi = pre[p].as_ref().unwrap(); let xh = net.pred_from(&sts[p], phi); for i in 0..2 { let e = x[2 * p + i] - xh[i]; for j in 0..d { g[i * d + j] += e * phi[j]; } } }
             for k in 0..2 * d { net.wf[k] += c.eta_f * g[k] / nrm; } }
     }
+}
+
+/// mejoras M1/M2/M3 sobre W^F (docs/constelacion_v4_mejoras/PREREG.md). Con γ=β=λ=0, θ=θ0 y H=0 coincide con NLMS v4.
+fn fast_general(net: &mut Net, sts: &[PState], x: &[f64], pre: &[Option<Vec<f64>>], obs: &[usize]) {
+    let c = net.c.clone(); let d = net.dp;
+    let nrm: f64 = obs.iter().map(|&p| pre[p].as_ref().unwrap().iter().map(|v| v * v).sum::<f64>()).sum::<f64>() + 1e-9;
+    let z = net.surp.map(|s| (s.max(1e-300).ln() - c.m1_mu) / c.m1_sd);
+    let m = if c.m1_const > 0.0 { c.m1_const } else if c.m1_gamma > 0.0 { match z { Some(z) => (1.0 + c.m1_gamma * z.tanh()).clamp(c.m1_mmin, c.m1_mmax), None => 1.0 } } else { 1.0 };
+    net.m_log.push(m);
+    if c.m1_lam > 0.0 { for v in net.wf.iter_mut() { *v *= 1.0 - c.m1_lam; } }
+    let st = if c.needs_orb() { z.map(|z| z.clamp(-2.0, 2.0)).unwrap_or(0.0) } else { 0.0 };
+    let step = c.eta_f * m;
+    for k in 0..c.t_f {
+        let mut g = vec![0.0; 2 * d];
+        let (mut g2, mut g5, mut g3) = (vec![], vec![], [0.0; 2]); if c.m2.is_some() { g2 = vec![0.0; 2 * d]; g5 = vec![0.0; 2 * d]; }
+        for &p in obs { let phi = pre[p].as_ref().unwrap(); let xh = net.pred_from(&sts[p], phi);
+            for i in 0..2 { let e = x[2 * p + i] - xh[i]; for j in 0..d { g[i * d + j] += e * phi[j]; }
+                if c.m2.is_some() { g3[i] += e; for j in 0..d { g2[i * d + j] += xh[i] * phi[j]; g5[i * d + j] += x[2 * p + i] * phi[j]; } } } }
+        if let Some(th) = c.m2 { for q in 0..2 * d { let i = q / d; g[q] = th[0] * g[q] + th[1] * g2[q] + th[2] * g3[i] + th[3] * st * g[q] + th[4] * g5[q]; } }
+        if c.m1_beta > 0.0 { for q in 0..2 * d { net.mf[q] = c.m1_beta * net.mf[q] + g[q]; } } else { net.mf.copy_from_slice(&g); }
+        for q in 0..2 * d { net.wf[q] += step * net.mf[q] / nrm; }
+        if let Some(th) = c.m2 { if th[5] != 0.0 { for q in 0..2 * d { net.wf[q] -= th[5] * net.wf[q]; } } }
+        if net.m3h > 0 && k < c.m3_s3 && (c.m3_eta_v > 0.0 || c.m3_eta_u > 0.0) { m3_step(net, sts, x, pre, obs, nrm); }
+    }
+}
+/// M3: un paso de SGD normalizado sobre ½‖e‖² + ρ/2(‖V‖² + ‖U−U0‖²) (después del paso NLMS)
+fn m3_step(net: &mut Net, sts: &[PState], x: &[f64], pre: &[Option<Vec<f64>>], obs: &[usize], nrm: f64) {
+    let (d, h) = (net.dp, net.m3h); let c = net.c.clone(); let n = obs.len() as f64;
+    let (mut gv, mut gu, mut gb, mut hn) = (vec![0.0; 2 * h], vec![0.0; h * d], vec![0.0; h], 0.0);
+    for &p in obs { let phi = pre[p].as_ref().unwrap(); let hid = net.m3_hidden(phi); let xh = net.pred_from(&sts[p], phi);
+        let e = [x[2 * p] - xh[0], x[2 * p + 1] - xh[1]]; hn += hid.iter().map(|v| v * v).sum::<f64>();
+        for k in 0..h { gv[k] += e[0] * hid[k]; gv[h + k] += e[1] * hid[k]; let dk = (net.fv[k] * e[0] + net.fv[h + k] * e[1]) * (1.0 - hid[k] * hid[k]);
+            gb[k] += dk; if c.m3_eta_u > 0.0 { for j in 0..d { gu[k * d + j] += dk * phi[j]; } } } }
+    hn /= n;
+    for q in 0..2 * h { net.fv[q] += c.m3_eta_v * gv[q] / n / (1e-9 + hn) - c.m3_eta_v * c.m3_rho * net.fv[q]; }
+    if c.m3_eta_u > 0.0 { for q in 0..h * d { net.fu[q] += c.m3_eta_u * gu[q] / n / nrm - c.m3_eta_u * c.m3_rho * (net.fu[q] - net.fu0[q]); }
+        for k in 0..h { net.fb[k] += c.m3_eta_u * gb[k] / n / nrm; } }
+}
+/// reid causal para todos los prefijos 0..=kmax a la vez (≡ reid(d, x0, ys, t, phat) para cada t; t=0 ⇒ primer candidato). Devuelve contextos.
+pub fn reid_prefixes(d: &Orbita, x0: &[f64], ys: &[Vec<f64>], kmax: usize, phat: [f64; 2]) -> Vec<Vec<f64>> {
+    let mut ps = vec![phat]; for i in 0..9 { for j in 0..9 { ps.push([-1.0 + 0.25 * i as f64, -1.0 + 0.25 * j as f64]); } }
+    let mut best = vec![(f64::INFINITY, 0usize, [0.0; 2]); kmax + 1];
+    for g in 0..N_FAM { for p in &ps { let cc = context_of(g, *p); let mut z = x0.to_vec(); let mut r = 0.0;
+        if r < best[0].0 { best[0] = (r, g, *p); }
+        for t in 1..=kmax { z = d.step(&z, &cc); r += if fin(&z) { mt::rel_err(&z, &ys[t - 1]).min(10.0) } else { 10.0 }; if r < best[t].0 { best[t] = (r, g, *p); } } } }
+    best.iter().map(|b| context_of(b.1, b.2)).collect()
 }
