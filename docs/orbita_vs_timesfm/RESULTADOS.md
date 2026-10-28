@@ -41,37 +41,7 @@ Criterios: H1=sí, H1b=no, H2=sí, H3=no, TIMESFM_mejor_que_ORB_SESGO=no, TIMESF
 Gate DEV→CONFIRM: pasa → CONFIRM
 
 ## CONFIRM
-Seeds con resultado: 0/16
+falta (no ejecutado; ver criterio de parada)
 
-| Contraste G=log(MSE_B/MSE_A) | media | IC95 |
-|---|---|---|
-| H1 ORB_SESGO vs TIMESFM (ho) | +nan | [+nan, +nan] |
-| H1b ORB_LIBRE vs TIMESFM (ho) | +nan | [+nan, +nan] |
-| H2 TIMESFM vs PERS (ho) | +nan | [+nan, +nan] |
-| H3 ORB_LIBRE vs TIMESFM (tf) | +nan | [+nan, +nan] |
-| S ORB_SESGO vs TIMESFM (tf) | +nan | [+nan, +nan] |
-| S TIMESFM vs AR2 (ho) | +nan | [+nan, +nan] |
-| S TIMESFM vs VAR2_OLS (ho) | +nan | [+nan, +nan] |
-| S AR2 vs VAR2_OLS (ho) | +nan | [+nan, +nan] |
-| S TIMESFM vs AR2 (tf) | +nan | [+nan, +nan] |
-| S TIMESFM vs VAR2_OLS (tf) | +nan | [+nan, +nan] |
-| S AR2 vs VAR2_OLS (tf) | +nan | [+nan, +nan] |
-| S TIMESFM vs PERS (tf) | +nan | [+nan, +nan] |
-| S ORB_SESGO vs TIMESFM (ho, geométricas) | +nan | [+nan, +nan] |
-| S ORB_LIBRE vs TIMESFM (ho, geométricas) | +nan | [+nan, +nan] |
-| S AR2 vs TIMESFM (ho, geométricas) | +nan | [+nan, +nan] |
-| S PERS vs TIMESFM (ho, geométricas) | +nan | [+nan, +nan] |
-| S ORB_SESGO vs TIMESFM (ho, no geométricas) | +nan | [+nan, +nan] |
-| S ORB_LIBRE vs TIMESFM (ho, no geométricas) | +nan | [+nan, +nan] |
-| S AR2 vs TIMESFM (ho, no geométricas) | +nan | [+nan, +nan] |
-| S PERS vs TIMESFM (ho, no geométricas) | +nan | [+nan, +nan] |
-| S h3 ORB_SESGO vs TIMESFM (ho) | +nan | [+nan, +nan] |
-| S h3 ORB_LIBRE vs TIMESFM (ho) | +nan | [+nan, +nan] |
-| S h3 AR2 vs TIMESFM (ho) | +nan | [+nan, +nan] |
-| S h3 PERS vs TIMESFM (ho) | +nan | [+nan, +nan] |
-| C TIMESFM vs PERS (C1_permutado) | +nan | [+nan, +nan] |
-| C ORB_LIBRE vs TIMESFM (C1_permutado) | +nan | [+nan, +nan] |
-| C TIMESFM vs PERS (C2_barajado) | +nan | [+nan, +nan] |
-| C ORB_LIBRE vs TIMESFM (C2_barajado) | +nan | [+nan, +nan] |
-
-Criterios: H1=no, H1b=no, H2=no, H3=no, TIMESFM_mejor_que_ORB_SESGO=no, TIMESFM_mejor_que_ORB_LIBRE=no
+> Nota: el commit f8198a6 contenía un CONFIRM inválido (NaN, 0/16 seeds: faltaba el binario gemma-embed en el worktree).
+> Se retira aquí; CONFIRM se relanza con `orbita/vstimesfm/orchestrate_confirm.sh` y se añadirá al terminar.
