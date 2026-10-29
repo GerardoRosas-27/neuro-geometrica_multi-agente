@@ -1,8 +1,9 @@
-# Resultados consolidados — selección de la mejor arquitectura
+# Resultados consolidados — selección de la mejor arquitectura y ciclo de mejoras v5
 
-**Ganadora: CONSTELACIÓN v4** (rama `exp/constelacion-v4`, commit `fd80320`). Esta rama (`exp/mejor-arquitectura`) parte de ese commit sin cambios de código; sólo añade documentación.
+**Ganadora: CONSTELACIÓN v4** (rama `exp/constelacion-v4`, commit `fd80320`, confirmada con entrenamiento igualado en `exp/cst-vs-orbita` @ `c1b1f54`).  
+**Reporte de mejoras del siguiente ciclo (CONSTELACIÓN v5):** [`docs/mejoras_v5/REPORTE_MEJORAS.md`](mejoras_v5/REPORTE_MEJORAS.md) · [`docs/mejoras_v5/DIAGNOSTICO.md`](mejoras_v5/DIAGNOSTICO.md) · [`docs/mejoras_v5/PREREG.md`](mejoras_v5/PREREG.md).
 
-Todas las cifras están copiadas de los `RESULTADOS.md` de cada rama (copias literales en `docs/historico/<exp>/`) y, para v4, contrastadas con `artifacts/constelacion_v4/analysis_dev_confirm.json`. Método común: 16 semillas DEV (0xA400–0xA40F) + 16 CONFIRM (0xB400–0xB40F), bootstrap pareado por semilla 10 000 réplicas, semilla 12345, IC95 percentil, δ = 0,05, sin reajuste entre fases, 0 consultas TEST.
+Todas las cifras están copiadas de los `RESULTADOS.md` de cada rama (copias literales en `docs/historico/<exp>/`) y, para v4 y `cst-vs-orbita`, contrastadas con `artifacts/constelacion_v4/analysis_dev_confirm.json` y `artifacts/cst_vs_orbita/analysis.json`. Método común: 16 semillas DEV (0xA400–0xA40F) + 16 CONFIRM (0xB400–0xB40F), bootstrap pareado por semilla 10 000 réplicas, semilla 12345, IC95 percentil, δ = 0,05, sin reajuste entre fases, 0 consultas TEST.
 
 ## Tabla de experimentos
 
@@ -15,8 +16,12 @@ Todas las cifras están copiadas de los `RESULTADOS.md` de cada rama (copias lit
 | CONSTELACIÓN v2 | `exp/constelacion-v2` @ `fdefd62` | +0,807 [+0,702, +0,908] | +0,798 [+0,688, +0,916] | OK formal pero vacío (acc16 = 0) | 0/16 | **Refutada**; colapso 4/16 y 5/16 |
 | CONSTELACIÓN v3 | `exp/constelacion-v3` @ `e5718e8` | −0,089 [−0,152, −0,018] | −0,115 [−0,193, −0,030] | OK (+0,007 / +0,0005) | **0/16** | Primaria + no-daño OK; **E33 falla** |
 | **CONSTELACIÓN v4** | `exp/constelacion-v4` @ `fd80320` | −0,076 [−0,141, −0,001] | **−0,107 [−0,181, −0,024]** | OK (0,000 [0, 0]; acc16 ≈ 0,877) | **16/16 y 16/16** | **Cumple los 3 criterios preregistrados** |
+| **CST v4 vs ÓRBITA-eq+LAT** (entrenamiento igualado 122 880 muestras) | `exp/cst-vs-orbita` @ `c1b1f54` | H1: **−0,6578 [−0,7750, −0,5416]** | H1: **−0,6902 [−0,8083, −0,5725]** | H3: +0,5024 / +0,4771 [+0,4551, +0,4995] | E33-k4: 1,000 vs 0,664 (H2 +0,3359) | **CST gana** (H1∧H3 en DEV y CONFIRM) |
+| CONSTELACIÓN v4 — Mejoras M1/M2/M3 | `exp/constelacion-v4-mejoras` @ `0967539` | Paso 0 PASS; M2 rechazada en meta-val (0,00 ≤ 0,02); M3 degrada conocidas en tuning (−5,76 vs −10,12) | PREREG congelado (pendiente F2) | — | — | **Diagnóstico clave para v5:** el MLP rápido M3 sin separar base afín daña conocidas |
+| ÓRBITA Dinámica Latente (Gemma capa 13 → PCA 16) | `exp/orbita-dinamica-latente` @ `18ba4a4` | H1 ORB_LIBRE vs AR2: **−0,0647 [−0,1040, −0,0262]** | No ejecutado (parada en gate DEV) | H3 vs ORB_SESGO: −0,2876 (no pasa) | — | **No confirmado (parada en DEV)**: AR2 supera a ORB_LIBRE |
+| ÓRBITA vs TimesFM 2.5 (sobre latentes `dinlat`) | `exp/orbita-vs-timesfm` @ `e56ccd6` | H1 ORB_SESGO vs TIMESFM: **+0,3296 [+0,2979, +0,3615]**; H1b ORB_LIBRE vs TIMESFM: +0,0419 [+0,0039, +0,0796] | Pendiente (relanzamiento sin NaN) | H2 TIMESFM vs PERS: +0,3548 | — | **Pasa gate DEV→CONFIRM** (con ORB_SESGO; ORB_LIBRE pierde en geométricas −0,4207) |
 
-Primaria de CONSTELACIÓN: med log rel_err h16 en familias nuevas, CST − ÓRBITA-v1 (<0 = mejor). En ESTELA/ECO/MAREA la primaria tiene definición propia (ver su fila y su documento).
+Primaria de CONSTELACIÓN: med log rel_err h16 en familias nuevas, CST − ÓRBITA-v1 (<0 = mejor). En ESTELA/ECO/MAREA/`cst-vs-orbita`/`dinlat`/`vstimesfm` la primaria tiene definición propia (ver su fila y su documento).
 
 ### Contexto: Nova-2 (`exp/orbita-nova2` @ `b25c97e`) — los tres fracasan
 - **Exp1 (C4 bayesiano):** B1 primaria REFUTADA en CONFIRM (IC inf +0,038 > 0); B3 no-daño falla.
@@ -47,35 +52,21 @@ Veredicto preregistrado: **empate / no concluyente** frente a v4 (el IC de h16 c
 | AUROC detección de novedad | 0,958 / 0,951 | — | ESTELA |
 | ln err nuevas (t≥4, escala MAREA) | −2,83 / −2,81 | −2,91 / −2,84 | MAREA |
 
-LAT (latente de Koopman, `resultados_latente_largo_plazo.md`): Exp. 1 H1a–H3 **rechazadas** (fallan en DEV), H4 no-inferioridad vs oráculos y H5 sin olvido **aceptadas**; Exp. 2 **no aprende a largo plazo** (L1–L3 fallan). CONSTELACIÓN v4 mejora a ÓRBITA en nuevas en −0,076 / −0,107 log y en conocidas (acc16 0,877 vs 0,354 / 0,338), y usa la cabeza de ÓRBITA para h1 en E33.
+## Comparación homologada con presupuesto igualado (`exp/cst-vs-orbita` @ `c1b1f54`)
+Con exactamente las mismas **122 880 transiciones de entrenamiento** por semilla (flujos A+B sin replay del teacher) y evaluación homologada en `reid(k=4)` sin etiquetas verdaderas (`artifacts/cst_vs_orbita/RESULTADOS.md`):
+- **DEV (n=16):** H1 `cst − orbita_eq_lat` = **−0,6578 [−0,7750, −0,5416]** (PASA); H2 `E33-k4 acc16` = **+0,3555 [+0,3223, +0,3838]** (PASA); H3 `known_acc16` = **+0,5024 [+0,4810, +0,5244]** (PASA).
+- **CONFIRM (n=16):** H1 `cst − orbita_eq_lat` = **−0,6902 [−0,8083, −0,5725]** (PASA); H2 `E33-k4 acc16` = **+0,3359 [+0,3066, +0,3643]** (PASA); H3 `known_acc16` = **+0,4771 [+0,4551, +0,4995]** (PASA).
+- **Debilidad expuesta de CST en $k=0$:** cuando se evalúa sin prefijo observado pero con contexto verdadero (`1-paso acc` y `E33-ctx`), CST obtiene `0,0417` y `0,0029` (`0,0137` con `cst_prior`), frente a `0,9819` y `0,3232` de `orbita_v1`. Esta debilidad se resuelve con la **Mejora M5 (`orb_prior_wf`)** en [`docs/mejoras_v5/REPORTE_MEJORAS.md`](mejoras_v5/REPORTE_MEJORAS.md).
 
-No encontré en las ramas un único documento que dé la primaria de CONSTELACIÓN (med log h16 nuevas) para ÓRBITA+LAT; esa comparación no se hizo.
+## Por qué gana CONSTELACIÓN v4 y qué resuelve el reporte de mejoras v5
+1. Es el **único** experimento que cumple los tres criterios preregistrados en DEV y CONFIRM tanto frente a ÓRBITA-v1 congelada como frente a `ÓRBITA-eq+LAT` con presupuesto igualado.
+2. Sin embargo, el análisis cruzado de `constelacion-v4`, `cst-vs-orbita`, `constelacion-v4-mejoras` y `dinlat` revela cinco cuellos de botella estructurales documentados y resueltos en [`docs/mejoras_v5/REPORTE_MEJORAS.md`](mejoras_v5/REPORTE_MEJORAS.md):
+   - **M4:** Campo rápido bifásico en prefijo completo (`W^F_aff` exacto por RLS/Cholesky $3\times 3$ $\oplus$ corrector residual ortogonalizado $g_{\text{res}}\cdot W^F_{\text{res}}$), que cierra la brecha de `0,35–0,45 log` frente a `oracle_icl` e impide por construcción la degradación en conocidas de M3 (`−10,12 → −5,76`).
+   - **M5:** Destilación causal del prior de ÓRBITA en $W^F(0)$ (`orb_prior_wf`) para elevar `1-paso acc` (`0,0417 → ≈0,982`) y `E33-ctx` (`0,0137 → ≥0,95`).
+   - **M6:** Codificación predictiva de transición $u_p(t) = [x_p(t-1), \alpha_\Delta \Delta x_p(t)]$ + pooling de constelación $\bar{\mu}_L$ + banco lento $W^P(\bar{\mu}_L)$ para obtener atribución real de PC (`CST − fixed_w < 0`).
+   - **M7:** Anclaje `VAR(2)` + Koopman-Brenier residual + RLS episódico (`dinlat-v2`) para superar a `AR2` y `TimesFM 2.5` sobre latentes Gemma capa 13.
+   - **M8:** Integración en `agentic_web`, rutas portables con fallback local y gate `cst4-paso0` en CI.
 
-## Estado respecto a `main`
-CONSTELACIÓN v4 **no está en `main`**. Esta rama se propone para revisión; no se ha fusionado.
-
-## Por qué gana CONSTELACIÓN v4
-1. Es el **único** experimento que cumple los tres criterios preregistrados en DEV y CONFIRM: primaria aceptada (IC sup < 0: −0,001 y −0,024), no-daño no vacío (acc16 conocidas 0,877 sin cambio) y E33 16/16.
-2. v3 tiene una primaria ligeramente mejor, pero **falla E33 (0/16)**, que es un criterio preregistrado. MAREA y ECO no compiten en valor absoluto o no hacen nada; ESTELA y v2 son negativos.
-
-### Matiz frente a v3
-Pareado por semilla, v4 − v3 en nuevas: **+0,013 [+0,002, +0,026] DEV; +0,009 [+0,002, +0,017] CONFIRM** — v4 es ligeramente *peor* que v3 en la primaria (~0,01 log, IC excluye 0). Si E33 no importara, v3 sería marginalmente preferible. En conocidas v4 mejora la med log (−9,96/−10,06 vs −9,33/−9,40).
-
-## Limitaciones (honestas)
-- **Atribución a codificación predictiva: NO.** Ningún control requerido (fixed_w, no_err, t1) da IC sup < 0. Toda la ganancia viene del **campo rápido por episodio W^F**: `no_fast` empeora −3,18 / −3,20 log.
-- **E33 se resuelve delegando h1 a ÓRBITA**: acc h1 CST − ÓRBITA = 0 exacto; con la cabeza v3 la misma red sigue en 0/16. Lo propio de CST es la estabilidad a largo horizonte (h16 1,0 vs ÓRBITA ≈ 0,31–0,32; +0,688 / +0,677).
-- **Ventaja pequeña en familias nuevas** (≈ −0,08 / −0,11 log), y en DEV el margen es mínimo (IC sup −0,001).
-- **acc16 absoluta en familias nuevas muy baja**: CST 0,069 / 0,066 (ÓRBITA 0,026 / 0,025).
-
-## Cómo reproducir / ejecutar
-Desde la raíz del repo, con pesos ÓRBITA en `artifacts/orbita/{dev,confirm}/weights_<seed>.json`:
-```bash
-cargo build --release --manifest-path orbita/Cargo.toml   # binario orbita/target/release/orbita
-JOBS=7 orbita/scripts/constelacion_v4.sh dev       # 16 semillas 0xA400–0xA40F (reanudable vía .done)
-JOBS=7 orbita/scripts/constelacion_v4.sh confirm   # 16 semillas 0xB400–0xB40F
-python3 scripts/analyze_constelacion_v4.py > artifacts/constelacion_v4/analysis_dev_confirm.json
-```
-Por semilla: `orbita/target/release/orbita cst4-run --phase dev --weights artifacts/orbita/dev/weights_0xA400.json --seed 0xA400 --out artifacts/constelacion_v4`. `orbita/scripts/constelacion_v4_chain.sh` encadena DEV→CONFIRM→análisis (tiene ruta absoluta del worktree original y hace commit/push; revísalo antes de usarlo). Preregistro: `docs/constelacion_v4/PREREG.md`; diagnóstico: `docs/constelacion_v4/DIAGNOSTICO.md`.
-
-## Documentos originales
-`docs/historico/{estela,eco,marea,constelacion_v2,constelacion_v3,constelacion_v4,orbita_nova2}/` — copias literales de los RESULTADOS de cada rama.
+## Documentos originales e históricos
+- Reporte de mejoras v5: [`docs/mejoras_v5/REPORTE_MEJORAS.md`](mejoras_v5/REPORTE_MEJORAS.md), [`docs/mejoras_v5/DIAGNOSTICO.md`](mejoras_v5/DIAGNOSTICO.md), [`docs/mejoras_v5/PREREG.md`](mejoras_v5/PREREG.md).
+- Copias literales de resultados por rama: `docs/historico/{estela,eco,marea,constelacion_v2,constelacion_v3,constelacion_v4,constelacion_v4_mejoras,cst_vs_orbita,orbita,orbita_nova2,dinamica_latente,orbita_vs_timesfm}/`.

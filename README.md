@@ -1,4 +1,6 @@
-> **Mejor arquitectura (rama `exp/mejor-arquitectura`): CONSTELACIÓN v4** — único experimento que cumple los 3 criterios preregistrados (primaria CONFIRM −0,107 [−0,181, −0,024], no-daño 0, E33 16/16). Ganancia atribuible al campo rápido W^F, no a la codificación predictiva. Ver [`docs/RESULTADOS_CONSOLIDADOS.md`](docs/RESULTADOS_CONSOLIDADOS.md).
+> **Reporte de mejoras v5 (rama `exp/reporte-mejoras-v5`):** diagnóstico cuantitativo post-`cst-vs-orbita` / `constelacion-v4-mejoras` / `dinlat` y propuesta estructural **M4–M8** (campo rápido bifásico afín+residual ortogonalizado en prefijo completo, destilación causal `orb_prior_wf` en $t=0$, PC de transición con pooling de constelación y `dinlat-v2` anclado en `VAR(2)`). Ver [`docs/mejoras_v5/REPORTE_MEJORAS.md`](docs/mejoras_v5/REPORTE_MEJORAS.md), [`docs/mejoras_v5/DIAGNOSTICO.md`](docs/mejoras_v5/DIAGNOSTICO.md) y [`docs/mejoras_v5/PREREG.md`](docs/mejoras_v5/PREREG.md).
+
+> **Mejor arquitectura (rama `exp/mejor-arquitectura` / `exp/cst-vs-orbita`): CONSTELACIÓN v4** — único experimento que cumple los 3 criterios preregistrados (primaria CONFIRM −0,107 [−0,181, −0,024], no-daño 0, E33 16/16; y con entrenamiento igualado vs ÓRBITA-eq+LAT H1 CONFIRM −0,6902 [−0,8083, −0,5725]). Ganancia atribuible al campo rápido W^F, no a la codificación predictiva. Ver [`docs/RESULTADOS_CONSOLIDADOS.md`](docs/RESULTADOS_CONSOLIDADOS.md).
 
 > **`main` = ÓRBITA.** Ver [`docs/ORBITA_MAIN.md`](docs/ORBITA_MAIN.md). v4 está archivado en el tag `v4-final`.
 

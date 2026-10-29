@@ -1,8 +1,8 @@
-//! ÓRBITA runner (separado del código v4; sólo *usa* la librería v4 sin modificarla).
-//!   orbita export --seed S --out DIR        datos TRAIN + replay del teacher (CDT→consolidación) + auditoría
-//!   orbita eval   --seed S --weights W --out DIR [--label L]   protocolo §16 DIST_E: 1 paso TEST + E33 + proceso nuevo
+//! Ã“RBITA runner (separado del cÃ³digo v4; sÃ³lo *usa* la librerÃ­a v4 sin modificarla).
+//!   orbita export --seed S --out DIR        datos TRAIN + replay del teacher (CDTâ†’consolidaciÃ³n) + auditorÃ­a
+//!   orbita eval   --seed S --weights W --out DIR [--label L]   protocolo Â§16 DIST_E: 1 paso TEST + E33 + proceso nuevo
 //!   orbita fresh  --seed S --weights W --test-sha SHA          evaluador en proceso nuevo (E37)
-//!   orbita parity --weights W --probe P                        paridad Rust↔PyTorch
+//!   orbita parity --weights W --probe P                        paridad Rustâ†”PyTorch
 mod model;
 mod gemma_embed;
 mod yo;
@@ -40,7 +40,7 @@ fn fam_of(c: &[f64]) -> (usize, [f64; 2]) {
     (f, [c[N_FAM], c[N_FAM + 1]])
 }
 
-/// Igual que `train_trusted_on` (v4 §16) hasta la máscara de confianza; el replay se
+/// Igual que `train_trusted_on` (v4 Â§16) hasta la mÃ¡scara de confianza; el replay se
 /// materializa en un pool (con objetivos multi-paso del *teacher*, nunca del generador).
 fn export(a: &[String]) {
     let seed = seed_of(a);
@@ -99,7 +99,7 @@ fn row(seed: u64, cond: &str, part: &str, n: usize, params: usize, acc: f64, cos
         accuracy: acc, cosine: cos, energy: en, manifold_distance: md, stability: st, leakage: leak, q, status: status.into(), notes }
 }
 
-/// Copia fiel de `v4_distill::e33_rollout` (privada en v4) para un `Predictor` genérico, variante V0.
+/// Copia fiel de `v4_distill::e33_rollout` (privada en v4) para un `Predictor` genÃ©rico, variante V0.
 fn e33(seed: u64, label: &str, d: &Orbita, iter_ex: &[&Example], deltas: &[Vec<f64>]) -> (usize, Vec<Row>, String) {
     let mut zs: Vec<Vec<f64>> = iter_ex.iter().map(|e| e.input.clone()).collect();
     let mut zp: Vec<Vec<f64>> = iter_ex.iter().zip(deltas).map(|(e, dl)| e.input.iter().zip(dl).map(|(a, b)| a + b).collect()).collect();
@@ -232,6 +232,11 @@ fn main() {
         Some("cst4-run") => constelacion4::run(&a),
         Some("cvo-export") => constelacion4::cvo::export(&a),
         Some("cvo-eval") => constelacion4::cvo::eval(&a),
+        Some("cst4m-run") => constelacion4::mejoras::run(&a),
+        Some("cst4m-paso0") => constelacion4::mejoras::paso0(&a),
+        Some("cst4m-calib") => constelacion4::mejoras::calib(&a),
+        Some("cst4m-tune") => constelacion4::mejoras::tune(&a),
+        Some("cst4m-meta") => constelacion4::mejoras::meta(&a),
         Some("cst4-diag") => constelacion4::diag(&a),
         Some("cst3-paso0") => constelacion3::paso0(&a),
         Some("cst3-f0") => constelacion3::f0(&a),
@@ -244,7 +249,7 @@ fn main() {
     }
 }
 
-/// Benchmark de inferencia (1 hilo): ÓRBITA vs Dφ E3 (ckpt v4) vs M3 (misma arquitectura gated no residual).
+/// Benchmark de inferencia (1 hilo): Ã“RBITA vs DÏ† E3 (ckpt v4) vs M3 (misma arquitectura gated no residual).
 fn bench(a: &[String]) {
     use cdt_rqm_epr::v4_controls::{Dphi, Predictor};
     use std::time::Instant;
@@ -277,7 +282,7 @@ fn bench(a: &[String]) {
     }
 }
 
-/// Experimento D (docs/ablaciones_orbita.md §5): rollout free-run en TEST iterable (rotate+reflect)
+/// Experimento D (docs/ablaciones_orbita.md Â§5): rollout free-run en TEST iterable (rotate+reflect)
 /// hasta h=256, incluidos horizontes no potencia de dos. Sin entrenamiento nuevo.
 fn extrap(a: &[String]) {
     use cdt_rqm_epr::v4_controls::{Dphi, Predictor};
@@ -343,7 +348,7 @@ fn ctx_dump(a: &[String]) {
     for (i, e) in llm_subset(&s) { println!("{i},{},{:.17},{:.17}", e.family_id, e.params[0], e.params[1]); }
 }
 
-/// llm-eval --seed S --weights W --ctx CSV(idx,cond,text_id,c0..c9) : ÓRBITA congelada con contexto sustituido.
+/// llm-eval --seed S --weights W --ctx CSV(idx,cond,text_id,c0..c9) : Ã“RBITA congelada con contexto sustituido.
 fn llm_eval(a: &[String]) {
     let seed = seed_of(a);
     let s = sealed(seed);
@@ -378,7 +383,7 @@ fn llm_eval(a: &[String]) {
                 row += &format!(",{},{:.6}", ok as u8, if fin { m::rel_err(&z, &y).min(10.0) } else { 10.0 });
             }
             if t == 16 {
-                // H-C1: familia inferida por el teacher consolidado a partir de la predicción de ÓRBITA (1 paso)
+                // H-C1: familia inferida por el teacher consolidado a partir de la predicciÃ³n de Ã“RBITA (1 paso)
                 let mut best = (f64::INFINITY, usize::MAX);
                 for g in 0..N_FAM { if let Some(p) = sig.predict(g, ph, &e.input) { let r = m::rel_err(&p, &z1); if r < best.0 { best = (r, g); } } }
                 let mut tz = e.input.clone();
