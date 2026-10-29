@@ -41,7 +41,37 @@ Criterios: H1=sí, H1b=no, H2=sí, H3=no, TIMESFM_mejor_que_ORB_SESGO=no, TIMESF
 Gate DEV→CONFIRM: pasa → CONFIRM
 
 ## CONFIRM
-falta (no ejecutado; ver criterio de parada)
+Seeds con resultado: 16/16
 
-> Nota: el commit f8198a6 contenía un CONFIRM inválido (NaN, 0/16 seeds: faltaba el binario gemma-embed en el worktree).
-> Se retira aquí; CONFIRM se relanza con `orbita/vstimesfm/orchestrate_confirm.sh` y se añadirá al terminar.
+| Contraste G=log(MSE_B/MSE_A) | media | IC95 |
+|---|---|---|
+| H1 ORB_SESGO vs TIMESFM (ho) | +0.3701 | [+0.3284, +0.4096] |
+| H1b ORB_LIBRE vs TIMESFM (ho) | +0.0244 | [-0.0442, +0.0850] |
+| H2 TIMESFM vs PERS (ho) | +0.3502 | [+0.3276, +0.3780] |
+| H3 ORB_LIBRE vs TIMESFM (tf) | +0.0204 | [-0.0609, +0.0939] |
+| S ORB_SESGO vs TIMESFM (tf) | -0.1349 | [-0.1839, -0.0823] |
+| S TIMESFM vs AR2 (ho) | -0.1280 | [-0.1654, -0.0891] |
+| S TIMESFM vs VAR2_OLS (ho) | -0.1111 | [-0.1507, -0.0703] |
+| S AR2 vs VAR2_OLS (ho) | +0.0169 | [+0.0131, +0.0209] |
+| S TIMESFM vs AR2 (tf) | -0.1103 | [-0.1496, -0.0673] |
+| S TIMESFM vs VAR2_OLS (tf) | -0.0939 | [-0.1337, -0.0505] |
+| S AR2 vs VAR2_OLS (tf) | +0.0164 | [+0.0126, +0.0203] |
+| S TIMESFM vs PERS (tf) | +0.2515 | [+0.2254, +0.2767] |
+| S ORB_SESGO vs TIMESFM (ho, geométricas) | +0.1538 | [+0.1086, +0.1882] |
+| S ORB_LIBRE vs TIMESFM (ho, geométricas) | -0.5841 | [-0.6736, -0.5048] |
+| S AR2 vs TIMESFM (ho, geométricas) | -0.3591 | [-0.4002, -0.3193] |
+| S PERS vs TIMESFM (ho, geométricas) | +0.1031 | [+0.0849, +0.1197] |
+| S ORB_SESGO vs TIMESFM (ho, no geométricas) | +0.4287 | [+0.3759, +0.4778] |
+| S ORB_LIBRE vs TIMESFM (ho, no geométricas) | +0.2581 | [+0.1807, +0.3257] |
+| S AR2 vs TIMESFM (ho, no geométricas) | +0.2889 | [+0.2461, +0.3287] |
+| S PERS vs TIMESFM (ho, no geométricas) | -0.4346 | [-0.4663, -0.4074] |
+| S h3 ORB_SESGO vs TIMESFM (ho) | +0.3920 | [+0.3474, +0.4352] |
+| S h3 ORB_LIBRE vs TIMESFM (ho) | +0.0073 | [-0.0809, +0.0744] |
+| S h3 AR2 vs TIMESFM (ho) | +0.1813 | [+0.1511, +0.2093] |
+| S h3 PERS vs TIMESFM (ho) | -0.2026 | [-0.2299, -0.1742] |
+| C TIMESFM vs PERS (C1_permutado) | +0.3178 | [+0.3072, +0.3290] |
+| C ORB_LIBRE vs TIMESFM (C1_permutado) | +0.2227 | [+0.1862, +0.2548] |
+| C TIMESFM vs PERS (C2_barajado) | +0.3104 | [+0.2976, +0.3226] |
+| C ORB_LIBRE vs TIMESFM (C2_barajado) | +0.0147 | [-0.0061, +0.0347] |
+
+Criterios: H1=sí, H1b=no, H2=sí, H3=no, TIMESFM_mejor_que_ORB_SESGO=no, TIMESFM_mejor_que_ORB_LIBRE=no
