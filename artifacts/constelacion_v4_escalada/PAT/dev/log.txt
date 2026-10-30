@@ -1,0 +1,64 @@
+
+thread 'main' (242216) panicked at src/constelacion4/escalada.rs:42:27:
+DEV/CONFIRM: valores congelados
+
+thread 'main' (242224) panicked at src/constelacion4/escalada.rs:42:27:
+DEV/CONFIRM: valores congelados
+
+thread 'main' (242222) panicked at src/constelacion4/escalada.rs:42:27:
+DEV/CONFIRM: valores congelados
+
+thread 'main' (242215) panicked at src/constelacion4/escalada.rs:42:27:
+DEV/CONFIRM: valores congelados
+
+thread 'main' (242226) panicked at src/constelacion4/escalada.rs:42:27:
+DEV/CONFIRM: valores congelados
+
+thread 'main' (242220) panicked at src/constelacion4/escalada.rs:42:27:
+DEV/CONFIRM: valores congelados
+
+thread 'main' (242218) panicked at src/constelacion4/escalada.rs:42:27:
+DEV/CONFIRM: valores congelados
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'main' (242230) panicked at src/constelacion4/escalada.rs:42:27:
+DEV/CONFIRM: valores congelados
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'main' (242231) panicked at src/constelacion4/escalada.rs:42:27:
+DEV/CONFIRM: valores congelados
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'main' (242234) panicked at src/constelacion4/escalada.rs:42:27:
+DEV/CONFIRM: valores congelados
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'main' (242236) panicked at src/constelacion4/escalada.rs:42:27:
+DEV/CONFIRM: valores congelados
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'main' (242239) panicked at src/constelacion4/escalada.rs:42:27:
+DEV/CONFIRM: valores congelados
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'main' (242240) panicked at src/constelacion4/escalada.rs:42:27:
+DEV/CONFIRM: valores congelados
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'main' (242242) panicked at src/constelacion4/escalada.rs:42:27:
+DEV/CONFIRM: valores congelados
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'main' (242243) panicked at src/constelacion4/escalada.rs:42:27:
+DEV/CONFIRM: valores congelados
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'main' (242246) panicked at src/constelacion4/escalada.rs:42:27:
+DEV/CONFIRM: valores congelados
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
