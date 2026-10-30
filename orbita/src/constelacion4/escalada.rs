@@ -39,7 +39,7 @@ pub const CONFIRM: std::ops::RangeInclusive<u64> = 0xB450..=0xB45F;
 pub fn run(a: &[String]) {
     let seed = parse_seed(&arg_of(a, "--seed").unwrap()); let phase = arg_of(a, "--phase").unwrap();
     match phase.as_str() { "dev" => assert!(DEV.contains(&seed)), "confirm" => assert!(CONFIRM.contains(&seed)), _ => assert!(phase == "smoke" && (0xC4E0..=0xC4EF).contains(&seed)) }
-    if phase != "smoke" { assert!(!a.iter().any(|x| x.starts_with("--") && !["--phase", "--seed", "--weights", "--out"].contains(&x.as_str())), "DEV/CONFIRM: valores congelados"); }
+    if phase != "smoke" { assert!(!a.iter().any(|x| x.starts_with("--") && !["--phase", "--seed", "--weights", "--out", "--arms"].contains(&x.as_str())), "DEV/CONFIRM: valores congelados"); }
     let wpath = arg_of(a, "--weights").unwrap(); let d = Orbita::from_json(&std::fs::read_to_string(&wpath).unwrap()); let raw0 = d.raw.clone();
     let out = PathBuf::from(arg_of(a, "--out").unwrap()).join(&phase); std::fs::create_dir_all(&out).unwrap();
     let done = out.join(format!("0x{seed:X}.done")); if done.exists() { eprintln!("skip"); return; }
