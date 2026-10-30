@@ -231,6 +231,8 @@ fn main() {
         Some("cst4-f1") => constelacion4::f1(&a),
         Some("cst4-run") => constelacion4::run(&a),
         Some("cst4-diag") => constelacion4::diag(&a),
+        Some("cst4esc-run") => constelacion4::escalada::run(&a),
+        Some("cst4esc-paso0") => constelacion4::escalada::paso0(&a),
         Some("cst3-paso0") => constelacion3::paso0(&a),
         Some("cst3-f0") => constelacion3::f0(&a),
         Some("cst3-f1") => constelacion3::f1(&a),
