@@ -4,7 +4,7 @@
 Generates 8-D latent dynamical systems with no geometric rule families.
 The learner sees x, a 10-D support-trajectory fingerprint c, and y only in TRAIN.
 """
-import argparse, hashlib, json, math, os
+import argparse, hashlib, json, os
 import numpy as np
 
 Z, C = 8, 10
@@ -34,7 +34,6 @@ def step(m, x):
 def fingerprint(states):
     d = np.diff(states, axis=0)
     dd = np.diff(d, axis=0) if len(d) > 1 else np.zeros((1, Z))
-    # 8 dimensions of mean velocity + two scalar dynamics descriptors.
     c = np.concatenate([
         d.mean(axis=0),
         [np.linalg.norm(d, axis=1).mean(), np.linalg.norm(dd, axis=1).mean()],
@@ -57,13 +56,14 @@ def episode(m, rng, support=5, query_h=16):
 def write_rows(path, rows):
     os.makedirs(path, exist_ok=True)
     arr = np.asarray(rows, dtype=np.float64)
-    np.asarray(arr, dtype="<f8").tofile(os.path.join(path, "data.bin"))
+    arr.astype("<f8").tofile(os.path.join(path, "train.bin"))
     meta = {
         "zdim": Z,
         "cdim": C,
         "rows": int(len(rows)),
         "dtype": "float64-le",
         "layout": "x[8], c[10], y[8]",
+        "replay_fraction": 0.0,
         "sha256": hashlib.sha256(arr.astype("<f8").tobytes()).hexdigest(),
     }
     with open(os.path.join(path, "meta.json"), "w", encoding="utf-8") as f:
