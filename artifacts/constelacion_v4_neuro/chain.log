@@ -1,2 +1,68 @@
 [Sun Nov  1 23:40:52 CST 2026] P1 DEV
 p1 dev 16/16
+[Mon Nov  2 03:18:50 CST 2026] P1 CONFIRM v4 M1 M2 M6 ALL
+
+thread 'main' (573700) panicked at src/constelacion4/mod.rs:560:89:
+called `Result::unwrap()` on an `Err` value: ParseIntError { kind: InvalidDigit }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'main' (573692) panicked at src/constelacion4/mod.rs:560:89:
+called `Result::unwrap()` on an `Err` value: ParseIntError { kind: InvalidDigit }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'main' (573698) panicked at src/constelacion4/mod.rs:560:89:
+called `Result::unwrap()` on an `Err` value: ParseIntError { kind: InvalidDigit }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'main' (573695) panicked at src/constelacion4/mod.rs:560:89:
+called `Result::unwrap()` on an `Err` value: ParseIntError { kind: InvalidDigit }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'main' (573694) panicked at src/constelacion4/mod.rs:560:89:
+called `Result::unwrap()` on an `Err` value: ParseIntError { kind: InvalidDigit }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'main' (573701) panicked at src/constelacion4/mod.rs:560:89:
+called `Result::unwrap()` on an `Err` value: ParseIntError { kind: InvalidDigit }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'main' (573706) panicked at src/constelacion4/mod.rs:560:89:
+called `Result::unwrap()` on an `Err` value: ParseIntError { kind: InvalidDigit }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'main' (573704) panicked at src/constelacion4/mod.rs:560:89:
+called `Result::unwrap()` on an `Err` value: ParseIntError { kind: InvalidDigit }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'main' (573708) panicked at src/constelacion4/mod.rs:560:89:
+called `Result::unwrap()` on an `Err` value: ParseIntError { kind: InvalidDigit }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'main' (573710) panicked at src/constelacion4/mod.rs:560:89:
+called `Result::unwrap()` on an `Err` value: ParseIntError { kind: InvalidDigit }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'main' (573711) panicked at src/constelacion4/mod.rs:560:89:
+called `Result::unwrap()` on an `Err` value: ParseIntError { kind: InvalidDigit }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'main' (573714) panicked at src/constelacion4/mod.rs:560:89:
+called `Result::unwrap()` on an `Err` value: ParseIntError { kind: InvalidDigit }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'main' (573717) panicked at src/constelacion4/mod.rs:560:89:
+called `Result::unwrap()` on an `Err` value: ParseIntError { kind: InvalidDigit }
+
+thread 'main' (573718) panicked at src/constelacion4/mod.rs:560:89:
+called `Result::unwrap()` on an `Err` value: ParseIntError { kind: InvalidDigit }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'main' (573720) panicked at src/constelacion4/mod.rs:560:89:
+called `Result::unwrap()` on an `Err` value: ParseIntError { kind: InvalidDigit }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'main' (573721) panicked at src/constelacion4/mod.rs:560:89:
+called `Result::unwrap()` on an `Err` value: ParseIntError { kind: InvalidDigit }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+p1 confirm 0/16
