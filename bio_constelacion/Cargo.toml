@@ -1,0 +1,22 @@
+[package]
+name = "bio_constelacion"
+version = "0.1.0"
+edition = "2021"
+description = "Arquitectura híbrida BIO-CONSTELACIÓN: fusiona la formulación geométrica residual por punto, levantamiento Koopman y relajación predictiva precondicionada de CONSTELACIÓN v4 con las neuronas piramidales de 3 compartimentos, Ley de Dale estricta, STP Tsodyks-Markram, microcircuito PV/SST/VIP, neuromodulación (DA/ACh/NE/5-HT) e hipocampo CLS + sueño SWR de NEOCORTEX (BioBrain)."
+license = "MIT"
+
+[workspace]
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+
+[lib]
+name = "bio_constelacion"
+path = "src/lib.rs"
+
+[[bin]]
+name = "bio_constelacion"
+path = "src/main.rs"
+
+[dependencies]
