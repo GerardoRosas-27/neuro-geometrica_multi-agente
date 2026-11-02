@@ -1,0 +1,52 @@
+#!/usr/bin/env python3
+"""Análisis preregistrado CONSTELACIÓN v4 (docs/constelacion_v4/PREREG.md). Bootstrap pareado por semilla 10000, semilla 12345, IC95 percentil, δ=0.05."""
+import json,glob,sys,os,numpy as np
+D=0.05;NB=10000;A=os.environ.get('CST4_A','artifacts/constelacion_v4');A2='artifacts/constelacion_v3'
+CTRL=['no_err','no_prec','t1','no_prune','no_sleep','fixed_w','one_layer','backprop','no_fast']
+def ci(x):
+    x=np.asarray(x,float);r=np.random.default_rng(12345)
+    b=x[r.integers(0,len(x),(NB,len(x)))].mean(1);return [float(x.mean()),float(np.quantile(b,.025)),float(np.quantile(b,.975))]
+def load(ph,base=None):
+    ms=[json.load(open(f)) for f in sorted(glob.glob(f'{base or A}/{ph}/metrics_0x*.json'))]
+    for m in ms: assert m['test_queries']==0, m['seed']
+    return ms
+def estela_ref(ph,seed):
+    f=f'/workspace/ngm-estela/artifacts/estela/{ph}/metrics_{seed}.json'
+    if not os.path.exists(f): return None
+    return json.load(open(f))['arms']['k4']['orbita']
+def phase(ph):
+    ms=load(ph);H=lambda a,k:np.array([m['arms'][a]['held'][k] for m in ms]);O=lambda k:np.array([m['orbita'][k] for m in ms])
+    r={'n':len(ms),'seeds':[m['seed'] for m in ms]}
+    r['primary_new_medlog_cst_minus_orbita']=ci(H('cst','new_med_log')-O('new_med_log'))
+    r['noharm_known_acc16_post_minus_pre']=ci(H('cst','known_acc16')-np.array([m['arms']['cst']['pre_known']['known_acc16'] for m in ms]))
+    r['e33_pass']={'cst':sum(m['arms']['cst']['e33']['pass'] for m in ms),'cst_v3head':sum(m['arms']['cst']['e33_v3head']['pass'] for m in ms),'orbita':sum(m['e33_orbita']['pass'] for m in ms),'persist':sum(m['e33_persist']['pass'] for m in ms)}
+    r['e33_acc_mean']={k:np.mean([f(m)['acc'] for m in ms],0).round(4).tolist() for k,f in [('cst',lambda m:m['arms']['cst']['e33']),('cst_v3head',lambda m:m['arms']['cst']['e33_v3head']),('orbita',lambda m:m['e33_orbita']),('persist',lambda m:m['e33_persist'])]}
+    r['e33_acc_min_cst']=np.min([m['arms']['cst']['e33']['acc'] for m in ms],0).round(4).tolist()
+    r['e33_h1_cst_minus_orbita']=ci([m['arms']['cst']['e33']['acc'][0]-m['e33_orbita']['acc'][0] for m in ms])
+    r['e33_h16_cst_minus_orbita']=ci([m['arms']['cst']['e33']['acc'][4]-m['e33_orbita']['acc'][4] for m in ms])
+    r['controls_new_medlog_cst_minus']={c:ci(H('cst','new_med_log')-H(c,'new_med_log')) for c in CTRL if all(c in m['arms'] for m in ms)}
+    r['means']={a:{k:float(H(a,k).mean()) for k in ('new_med_log','new_acc16','known_med_log','known_acc16')} for a in ['cst']+CTRL if all(a in m['arms'] for m in ms)}
+    r['means']['orbita']={k:float(O(k).mean()) for k in ('new_med_log','new_acc16','known_med_log','known_acc16')}
+    r['collapse_cst']=sum(m['arms']['cst']['collapse']['collapsed'] for m in ms); r['nan_any']={a:sum(m['arms'][a]['nan'] for m in ms) for a in ms[0]['arms']}
+    eq=[]
+    for m in ms:
+        e=estela_ref(ph,m['seed'])
+        if e: eq.append(all(abs(e[k]-m['orbita'][k])==0 for k in ('known_med_log','new_med_log','known_acc16','new_acc16')))
+    r['orbita_equals_estela_k4']=f"{sum(eq)}/{len(eq)}"
+    # comparación con v2 (pareada por semilla, informativa)
+    if os.path.isdir(f'{A2}/{ph}'):
+        v2={m['seed']:m for m in load(ph,A2)}
+        pair=[(m['arms']['cst']['held']['new_med_log'],v2[m['seed']]['arms']['cst']['held']['new_med_log']) for m in ms if m['seed'] in v2]
+        if pair: r['v4_minus_v3_new_medlog']=ci([a-b for a,b in pair]); r['v3_primary_same_seeds']=ci([b-m['orbita']['new_med_log'] for (a,b),m in zip(pair,[m for m in ms if m['seed'] in v2])])
+    return r
+out={p:phase(p) for p in (sys.argv[1:] or ['dev','confirm'])}
+if 'dev' in out and 'confirm' in out:
+    d,c=out['dev'],out['confirm'];pd,pc=d['primary_new_medlog_cst_minus_orbita'],c['primary_new_medlog_cst_minus_orbita']
+    v={'primary':'ACEPTADA' if pd[2]<0 and pc[2]<0 else ('REFUTADA (CST peor)' if pc[1]>0 else 'NO ACEPTADA (no concluyente)')}
+    v['no_harm']='OK' if all(x['noharm_known_acc16_post_minus_pre'][1]>-D for x in (d,c)) else 'VETO'
+    att=all(x['controls_new_medlog_cst_minus'][k][2]<0 for x in (d,c) for k in ('fixed_w','no_err','t1'))
+    v['attribution_PC']='SÍ' if att else 'NO'
+    v['e33']='PASS' if all(x['e33_pass']['cst']>=15 for x in (d,c)) else 'FALLA'
+    v['e33_counts']={'dev':d['e33_pass']['cst'],'confirm':c['e33_pass']['cst']}
+    out['verdict']=v
+print(json.dumps(out,indent=1,ensure_ascii=False))
