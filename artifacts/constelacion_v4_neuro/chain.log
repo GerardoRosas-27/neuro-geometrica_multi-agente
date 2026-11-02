@@ -68,3 +68,5 @@ note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
 p1 confirm 0/16
 P1: nada pasa tras CONFIRM; sin fase 2
 CHAIN_STOP
+[Mon Nov  2 03:20:16 CST 2026] P1 DEV
+p1 dev 16/16
