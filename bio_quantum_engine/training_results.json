@@ -1,7 +1,7 @@
 {
-  "training_duration_s": 0.3002307415008545,
+  "training_duration_s": 0.3312957286834717,
   "episodes": 128,
-  "episodes_per_sec": 426.33875318739035,
+  "episodes_per_sec": 386.3617575410833,
   "dev_results": {
     "seed": "0xa400",
     "episodes": 64,

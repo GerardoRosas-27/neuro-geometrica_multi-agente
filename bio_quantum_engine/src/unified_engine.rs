@@ -66,6 +66,8 @@ pub struct BioQuantumConstellationEngine {
     pub wf_inh: Vec<f64>,
     /// Reloj de ciclo circadiano: 0.0 = vigilia plena, 1.0 = sueño profundo
     pub circadian_phase: f64,
+    /// Cota dinámica contráctil de Lyapunov-Brenier para estabilidad en horizontes extremos
+    pub r_bound: f64,
 }
 
 impl BioQuantumConstellationEngine {
@@ -111,6 +113,7 @@ impl BioQuantumConstellationEngine {
             wf_exc,
             wf_inh,
             circadian_phase: 0.0,
+            r_bound: 5.0,
         }
     }
 
@@ -134,6 +137,28 @@ impl BioQuantumConstellationEngine {
 
         let d = self.config.d_basis;
         let n_trans = frames.len() - 1;
+        let n_samples = n_trans * self.config.n_points;
+
+        // 1. Cota dinámica contráctil de Lyapunov-Brenier
+        let mut max_r: f64 = 0.0;
+        for f in frames {
+            for p in 0..self.config.n_points {
+                let r = (f[p * 2].powi(2) + f[p * 2 + 1].powi(2)).sqrt();
+                if r > max_r {
+                    max_r = r;
+                }
+            }
+        }
+        self.r_bound = (max_r * 2.5).max(4.0);
+
+        // 2. Dimensión de Lie adaptativa según Principio de Occam (Few-Shot)
+        let active_d = if n_samples <= 6 {
+            6
+        } else if n_samples <= 12 {
+            12
+        } else {
+            d
+        };
 
         let mut x_mat = Vec::with_capacity(n_trans * self.config.n_points);
         let mut y_mat = Vec::with_capacity(n_trans * self.config.n_points);
@@ -158,70 +183,79 @@ impl BioQuantumConstellationEngine {
                 let residual_dx = true_dx - prior[0] * 0.1;
                 let residual_dy = true_dy - prior[1] * 0.1;
 
-                x_mat.push(phi);
+                x_mat.push(phi[..active_d].to_vec());
                 y_mat.push([residual_dx, residual_dy]);
             }
         }
 
-        // Cholesky Ridge Regression: $A = X^T X + \lambda I$, $B = X^T Y$
-        let lam = 1e-11;
-        let mut a = vec![vec![0.0; d]; d];
-        let mut b = vec![[0.0; 2]; d];
+        let solve_cholesky = |lam_val: f64| -> Vec<[f64; 2]> {
+            let mut a = vec![vec![0.0; active_d]; active_d];
+            let mut b = vec![[0.0; 2]; active_d];
 
-        for (phi, dy) in x_mat.iter().zip(y_mat.iter()) {
-            for i in 0..d {
-                for j in 0..d {
-                    a[i][j] += phi[i] * phi[j];
-                }
-                b[i][0] += phi[i] * dy[0];
-                b[i][1] += phi[i] * dy[1];
-            }
-        }
-
-        for i in 0..d {
-            a[i][i] += lam;
-        }
-
-        // Factorización de Cholesky $A = L L^T$
-        let mut l_mat = vec![vec![0.0; d]; d];
-        for i in 0..d {
-            for j in 0..=i {
-                let mut sum = a[i][j];
-                for k in 0..j {
-                    sum -= l_mat[i][k] * l_mat[j][k];
-                }
-                if i == j {
-                    l_mat[i][j] = sum.max(1e-12).sqrt();
-                } else {
-                    l_mat[i][j] = sum / l_mat[j][j];
+            for (phi, dy) in x_mat.iter().zip(y_mat.iter()) {
+                for i in 0..active_d {
+                    for j in 0..active_d {
+                        a[i][j] += phi[i] * phi[j];
+                    }
+                    b[i][0] += phi[i] * dy[0];
+                    b[i][1] += phi[i] * dy[1];
                 }
             }
-        }
 
-        // Resolver $L z = B$, luego $L^T W = z$
-        let mut w_opt = vec![[0.0; 2]; d];
-        for c in 0..2 {
-            let mut z = vec![0.0; d];
-            for i in 0..d {
-                let mut sum = b[i][c];
-                for k in 0..i {
-                    sum -= l_mat[i][k] * z[k];
-                }
-                z[i] = sum / l_mat[i][i];
+            for i in 0..active_d {
+                a[i][i] += lam_val;
             }
-            for i in (0..d).rev() {
-                let mut sum = z[i];
-                for k in (i + 1)..d {
-                    sum -= l_mat[k][i] * w_opt[k][c];
+
+            let mut l_mat = vec![vec![0.0; active_d]; active_d];
+            for i in 0..active_d {
+                for j in 0..=i {
+                    let mut sum = a[i][j];
+                    for k in 0..j {
+                        sum -= l_mat[i][k] * l_mat[j][k];
+                    }
+                    if i == j {
+                        l_mat[i][j] = sum.max(1e-12).sqrt();
+                    } else {
+                        l_mat[i][j] = sum / l_mat[j][j];
+                    }
                 }
-                w_opt[i][c] = sum / l_mat[i][i];
             }
+
+            let mut w_sol = vec![[0.0; 2]; active_d];
+            for c in 0..2 {
+                let mut z = vec![0.0; active_d];
+                for i in 0..active_d {
+                    let mut sum = b[i][c];
+                    for k in 0..i {
+                        sum -= l_mat[i][k] * z[k];
+                    }
+                    z[i] = sum / l_mat[i][i];
+                }
+                for i in (0..active_d).rev() {
+                    let mut sum = z[i];
+                    for k in (i + 1)..active_d {
+                        sum -= l_mat[k][i] * w_sol[k][c];
+                    }
+                    w_sol[i][c] = sum / l_mat[i][i];
+                }
+            }
+            w_sol
+        };
+
+        // 3. Resolución exacta e hiperprecisa con condicionamiento adaptativo en dos etapas
+        let mut w_opt = solve_cholesky(1e-11);
+        let max_w = w_opt.iter().map(|w| w[0].abs().max(w[1].abs())).fold(0.0f64, f64::max);
+        if max_w > 50.0 {
+            w_opt = solve_cholesky(1e-3);
         }
 
         // Proyección Estricta a la Ley de Dale ($W^{F,E} \ge 0, W^{F,I} \ge 0$)
         for j in 0..d {
-            let wx = w_opt[j][0];
-            let wy = w_opt[j][1];
+            let (wx, wy) = if j < active_d {
+                (w_opt[j][0], w_opt[j][1])
+            } else {
+                (0.0, 0.0)
+            };
 
             if wx >= 0.0 {
                 self.wf_exc[j] = wx + 1e-4;
@@ -322,9 +356,19 @@ impl BioQuantumConstellationEngine {
                 dy += wf_eff_y * phi_p[j];
             }
 
-            // 5. Adición Residual Puntual Equivariante v4
-            next_coords[p * 2] = coords[p * 2] + dx;
-            next_coords[p * 2 + 1] = coords[p * 2 + 1] + dy;
+            // 5. Adición Residual Puntual Equivariante v4 con Envolvente de Lyapunov-Brenier
+            let mut nx = coords[p * 2] + dx;
+            let mut ny = coords[p * 2 + 1] + dy;
+
+            let r_next = (nx * nx + ny * ny).sqrt();
+            if r_next > self.r_bound {
+                let scale = self.r_bound * (1.0 + ((r_next - self.r_bound) / self.r_bound).tanh()) / r_next;
+                nx *= scale;
+                ny *= scale;
+            }
+
+            next_coords[p * 2] = nx;
+            next_coords[p * 2 + 1] = ny;
 
             // 6. Plasticidad rápida BTSP local
             self.pyramidal_units[p].apply_btsp(&phi_p, self.config.eta_btsp);
