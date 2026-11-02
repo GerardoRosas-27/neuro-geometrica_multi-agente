@@ -552,6 +552,12 @@ class BioBrain:
         self.base_learning_rate = 0.035
         self.hippocampal_blend = 0.35
 
+    def reset_working_memory(self) -> None:
+        for col in self.columns:
+            col.reset_short_term_state()
+        self.readout_synapses.reset_short_term_state()
+        self.direct_pathway.reset_short_term_state()
+
     def relay_input(self, x: List[float], c: List[float]) -> List[float]:
         ach_boost = 0.85 + 0.15 * self.acetylcholine
         return [v * ach_boost for v in x] + list(c)

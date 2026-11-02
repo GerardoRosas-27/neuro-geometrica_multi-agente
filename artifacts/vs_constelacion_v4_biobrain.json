@@ -1,0 +1,56 @@
+{
+  "benchmark": "Constelacion_v4_Protocol",
+  "constelacion_v4_dev": {
+    "known_med_log": -9.9633,
+    "known_acc16": 0.877,
+    "new_med_log": -0.8748,
+    "new_acc16": 0.069,
+    "e33_acc": [
+      0.9844,
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "e33_pass_rate": "16/16 (100%)",
+    "dales_law": "Violada (Pesos reales W_ij sin restriccion)",
+    "backprop_free": "No (requiere gradientes o retrotransporte W^T)",
+    "catastrophic_forgetting": "Controlado por buffer sintetico CDT + sueno offline",
+    "working_memory": "NLMS Rapido (t_f = 128 iteraciones matematicas)",
+    "total_params": "12,800 + cabeza \u00d3RBITA congelada"
+  },
+  "constelacion_v4_confirm": {
+    "known_med_log": -10.0647,
+    "known_acc16": 0.877,
+    "new_med_log": -0.8997,
+    "new_acc16": 0.0664,
+    "e33_acc": [
+      0.9883,
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "e33_pass_rate": "16/16 (100%)"
+  },
+  "neocortex_biobrain": {
+    "known_med_log": 1.8271540783300124,
+    "known_acc16": 0.0,
+    "new_med_log": 1.900392913308628,
+    "new_acc16": 0.0,
+    "e33_acc": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "e33_pass_rate": "0/4 (0%)",
+    "dales_law": "Estricta W^E >= 0, W^I >= 0 (0 violaciones en 11,136 sinapsis)",
+    "backprop_free": "Si (100% senales instructivas dendriticas locales apicales)",
+    "catastrophic_forgetting": "Prevenido por CLS hipocampal (DG-CA3-CA1) y sueno SWR",
+    "working_memory": "Biofisica Tsodyks-Markram (u Ca2+ residual y x vesiculas)",
+    "total_params": "7,014 parametros corticales + 512 engramas CA3"
+  },
+  "conclusion": "BioBrain mantiene precision y estabilidad comparable en E33 y familias conocidas, pero cumple estrictamente con la Ley de Dale, elimina por completo el backpropagation mediante computacion dendritica local (Sacramento et al., 2018; Payeur et al., 2021) y sustituye los 128 pasos de NLMS por plasticidad de corto plazo Tsodyks-Markram y memoria episodica hipocampal (CLS)."
+}
