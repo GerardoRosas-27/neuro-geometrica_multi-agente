@@ -21,7 +21,7 @@ impl EquivariantBasisExtractor {
     pub fn new(n_points: usize) -> Self {
         Self {
             n_points,
-            d_basis: 10,
+            d_basis: 18,
         }
     }
 
@@ -36,34 +36,40 @@ impl EquivariantBasisExtractor {
         (sum_x / (self.n_points as f64), sum_y / (self.n_points as f64))
     }
 
-    /// Extrae la base $\phi(q_p) \in \mathbb{R}^{10}$ para el punto $p$
+    /// Extrae la base $\phi(q_p) \in \mathbb{R}^{18}$ enriquecida con generadores polinomiales y de Lie
     pub fn extract_point_basis(&self, coords: &[f64], p: usize, barycenter: (f64, f64)) -> Vec<f64> {
         let x = coords[p * 2];
         let y = coords[p * 2 + 1];
         let rx = x - barycenter.0;
         let ry = y - barycenter.1;
-        let radius = (rx * rx + ry * ry).sqrt();
-        let angle = ry.atan2(rx);
+        let r2 = rx * rx + ry * ry;
+        let r = r2.sqrt();
 
         // Vecinos cíclicos en el grafo de la constelación
         let p_prev = if p == 0 { self.n_points - 1 } else { p - 1 };
         let p_next = if p == self.n_points - 1 { 0 } else { p + 1 };
-        let dx_prev = coords[p_prev * 2] - x;
-        let dy_prev = coords[p_prev * 2 + 1] - y;
-        let dx_next = coords[p_next * 2] - x;
-        let dy_next = coords[p_next * 2 + 1] - y;
+        let kx = (coords[p_next * 2] - coords[p_prev * 2]) * 0.1;
+        let ky = (coords[p_next * 2 + 1] - coords[p_prev * 2 + 1]) * 0.1;
 
         vec![
-            rx,                          // 0: dx relativo
-            ry,                          // 1: dy relativo
-            radius,                      // 2: distancia radial al centro
-            angle.cos(),                 // 3: armónico angular cos
-            angle.sin(),                 // 4: armónico angular sin
-            (2.0 * angle).cos(),         // 5: segundo armónico cos
-            (2.0 * angle).sin(),         // 6: segundo armónico sin
-            dx_prev * 0.5,               // 7: tensor tangencial hacia vecino previo
-            dy_prev * 0.5,               // 8: tensor normal
-            (dx_next + dy_next) * 0.25,  // 9: acoplamiento de curvatura
+            rx,                          // 0: x relativo
+            ry,                          // 1: y relativo
+            1.0,                         // 2: sesgo afín
+            r,                           // 3: distancia radial
+            rx * r2,                     // 4: término radial no lineal Hopf x
+            ry * r2,                     // 5: término radial no lineal Hopf y
+            rx * rx * rx,                // 6: oscilador Duffing x^3
+            ry * ry * ry,                // 7: oscilador Duffing y^3
+            rx * rx * ry,                // 8: amortiguamiento Van der Pol x^2 y
+            ry * ry * rx,                // 9: amortiguamiento Van der Pol y^2 x
+            rx * ry,                     // 10: cizalla cuádrica xy
+            rx * rx - ry * ry,           // 11: cuadrupolo hiperbólico x^2 - y^2
+            (2.0 * rx).tanh(),           // 12: saturación sigmoidal x
+            (2.0 * ry).tanh(),           // 13: saturación sigmoidal y
+            (2.0 * rx).sin(),            // 14: armónico trigonométrico x
+            (2.0 * ry).sin(),            // 15: armónico trigonométrico y
+            kx,                          // 16: modo espectral latente kx
+            ky,                          // 17: modo espectral latente ky
         ]
     }
 

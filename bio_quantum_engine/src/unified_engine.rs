@@ -32,7 +32,7 @@ impl Default for UnifiedEngineConfig {
         Self {
             n_points: 6,
             d_coords: 12,
-            d_basis: 10,
+            d_basis: 18,
             d_latent: 10, // 5 bloques rotacionales 2x2
             epsilon_basin: 0.05,
             temperature: 0.2,
@@ -164,7 +164,7 @@ impl BioQuantumConstellationEngine {
         }
 
         // Cholesky Ridge Regression: $A = X^T X + \lambda I$, $B = X^T Y$
-        let lam = 1e-4;
+        let lam = 1e-11;
         let mut a = vec![vec![0.0; d]; d];
         let mut b = vec![[0.0; 2]; d];
 

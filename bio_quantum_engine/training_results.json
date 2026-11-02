@@ -1,14 +1,14 @@
 {
-  "training_duration_s": 0.18212270736694336,
+  "training_duration_s": 0.3002307415008545,
   "episodes": 128,
-  "episodes_per_sec": 702.8228486747884,
+  "episodes_per_sec": 426.33875318739035,
   "dev_results": {
     "seed": "0xa400",
     "episodes": 64,
-    "known_med_log": -5.482626940396261,
-    "known_acc16": 0.875,
-    "new_med_log": -3.2453717761378815,
-    "new_acc16": 0.609375,
+    "known_med_log": -11.463755124049868,
+    "known_acc16": 1.0,
+    "new_med_log": -9.390664109596552,
+    "new_acc16": 1.0,
     "e33_pass": true,
     "e33_acc_per_h": [
       1.0,
@@ -18,27 +18,27 @@
       1.0
     ],
     "dale_violations": 0,
-    "total_synapses": 2168,
+    "total_synapses": 3352,
     "cdt_bounded_forgetting_pass": true,
     "delta_r": 0.020000000000000018
   },
   "confirm_results": {
     "seed": "0xb400",
     "episodes": 64,
-    "known_med_log": -5.415199097663583,
-    "known_acc16": 0.875,
-    "new_med_log": -3.308161958920003,
-    "new_acc16": 0.546875,
+    "known_med_log": -11.182011372363762,
+    "known_acc16": 1.0,
+    "new_med_log": -8.836349185937316,
+    "new_acc16": 1.0,
     "e33_pass": true,
     "e33_acc_per_h": [
       1.0,
       1.0,
       1.0,
       1.0,
-      0.9375
+      1.0
     ],
     "dale_violations": 0,
-    "total_synapses": 2168,
+    "total_synapses": 3352,
     "cdt_bounded_forgetting_pass": true,
     "delta_r": 0.020000000000000018
   },
@@ -46,7 +46,7 @@
     {
       "episode": 16,
       "family": 7,
-      "rel_err": 0.1894853387760459,
+      "rel_err": 0.0032324913003157186,
       "swr": [
         true,
         0.020000000000000018,
@@ -56,7 +56,7 @@
     {
       "episode": 32,
       "family": 7,
-      "rel_err": 0.17461846036156656,
+      "rel_err": 8.764708513942351e-06,
       "swr": [
         true,
         0.020199999999999996,
@@ -66,7 +66,7 @@
     {
       "episode": 48,
       "family": 7,
-      "rel_err": 0.40351295375345725,
+      "rel_err": 5.243661958214023e-06,
       "swr": [
         true,
         0.02040266666666679,
@@ -76,7 +76,7 @@
     {
       "episode": 64,
       "family": 7,
-      "rel_err": 0.1453321817542077,
+      "rel_err": 0.0024989720921230712,
       "swr": [
         true,
         0.02060803999999994,
@@ -86,7 +86,7 @@
     {
       "episode": 80,
       "family": 7,
-      "rel_err": 0.1670981936687656,
+      "rel_err": 5.237437162205748e-06,
       "swr": [
         true,
         0.020816160640000136,
@@ -96,7 +96,7 @@
     {
       "episode": 96,
       "family": 7,
-      "rel_err": 0.3942820320479797,
+      "rel_err": 8.059069054260183e-06,
       "swr": [
         true,
         0.021027069877333382,
@@ -106,7 +106,7 @@
     {
       "episode": 112,
       "family": 7,
-      "rel_err": 0.17125848015515951,
+      "rel_err": 0.0020118060635291504,
       "swr": [
         true,
         0.021240809664182958,
@@ -116,7 +116,7 @@
     {
       "episode": 128,
       "family": 7,
-      "rel_err": 0.16932628639882705,
+      "rel_err": 4.8990758818060115e-06,
       "swr": [
         true,
         0.02145742262528305,
