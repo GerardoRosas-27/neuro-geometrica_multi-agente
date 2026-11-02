@@ -1,0 +1,18 @@
+{
+  "seed": "0xc400",
+  "episodes": 32,
+  "known_med_log": -5.425351236830305,
+  "known_acc16": 0.875,
+  "new_med_log": -3.5861454620195055,
+  "new_acc16": 0.625,
+  "e33_pass": true,
+  "e33_acc_per_h": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+  ],
+  "dale_violations": 0,
+  "total_synapses": 80
+}

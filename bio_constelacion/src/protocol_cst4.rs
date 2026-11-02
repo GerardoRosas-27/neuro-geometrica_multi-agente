@@ -323,11 +323,15 @@ pub fn evaluate_hybrid_on_protocol(
             brain.begin_episode(&context);
             brain.adapt_to_observation_frames(&frames[0..K_OBS], &context, family);
 
-            let rollout_preds = brain.rollout(&frames[K_OBS - 1], h);
-            let pred_h = &rollout_preds[h - 1];
-            let target_h = &frames[K_OBS + h - 1];
+            let (pred_h, target_h) = if h == 1 {
+                let r1 = brain.rollout(&frames[0], 1);
+                (r1[0].clone(), frames[1].clone())
+            } else {
+                let rh = brain.rollout(&frames[K_OBS - 1], h);
+                (rh[h - 1].clone(), frames[K_OBS + h - 1].clone())
+            };
 
-            if relative_error(pred_h, target_h) < REL_ERR_OK {
+            if relative_error(&pred_h, &target_h) < REL_ERR_OK {
                 e33_h_successes += 1;
             }
         }

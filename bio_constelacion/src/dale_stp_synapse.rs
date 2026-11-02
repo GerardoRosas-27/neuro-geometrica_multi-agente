@@ -551,6 +551,96 @@ impl FastDendriticBtspField {
         }
     }
 
+    /// Adaptación óptima por descomposición Cholesky proyectada a la Ley de Dale ($W^E \ge 0, W^I \ge 0$).
+    pub fn adapt_cholesky_dale(
+        &mut self,
+        phis: &[Vec<f64>],
+        q_curr: &[[f64; 2]],
+        q_next: &[[f64; 2]],
+        lam: f64,
+    ) {
+        let n_pts = phis.len();
+        if n_pts == 0 {
+            return;
+        }
+        let d = self.feat_dim;
+        let mut a = vec![0.0; d * d];
+        let mut b = vec![0.0; d * 2];
+
+        for p in 0..n_pts {
+            let phi = &phis[p];
+            let slow = self.predict_point(&q_curr[p], phi, false);
+            let dy_x = q_next[p][0] - slow[0];
+            let dy_y = q_next[p][1] - slow[1];
+
+            for i in 0..d {
+                for j in 0..d {
+                    a[i * d + j] += phi[i] * phi[j];
+                }
+                b[i * 2] += phi[i] * dy_x;
+                b[i * 2 + 1] += phi[i] * dy_y;
+            }
+        }
+
+        for i in 0..d {
+            a[i * d + i] += lam;
+        }
+
+        let mut l = vec![0.0; d * d];
+        for i in 0..d {
+            for j in 0..=i {
+                let mut s = a[i * d + j];
+                for q in 0..j {
+                    s -= l[i * d + q] * l[j * d + q];
+                }
+                if i == j {
+                    l[i * d + i] = s.max(1e-12).sqrt();
+                } else {
+                    l[i * d + j] = s / l[j * d + j];
+                }
+            }
+        }
+
+        let mut w = vec![0.0; 2 * d];
+        for c in 0..2 {
+            let mut z = vec![0.0; d];
+            for i in 0..d {
+                let mut s = b[i * 2 + c];
+                for q in 0..i {
+                    s -= l[i * d + q] * z[q];
+                }
+                z[i] = s / l[i * d + i];
+            }
+            for i in (0..d).rev() {
+                let mut s = z[i];
+                for q in (i + 1)..d {
+                    s -= l[q * d + i] * w[c * d + q];
+                }
+                w[c * d + i] = s / l[i * d + i];
+            }
+        }
+
+        for j in 0..d {
+            let wx = w[j];
+            let wy = w[d + j];
+            if wx >= 0.0 {
+                self.wf_exc[j] = wx + 1e-4;
+                self.wf_inh[j] = 1e-4;
+            } else {
+                self.wf_exc[j] = 1e-4;
+                self.wf_inh[j] = -wx + 1e-4;
+            }
+
+            if wy >= 0.0 {
+                self.wf_exc[d + j] = wy + 1e-4;
+                self.wf_inh[d + j] = 1e-4;
+            } else {
+                self.wf_exc[d + j] = 1e-4;
+                self.wf_inh[d + j] = -wy + 1e-4;
+            }
+        }
+    }
+
     pub fn consolidate_sleep(&mut self, rate: f64) {
         for idx in 0..self.wp_exc.len() {
             let wp = self.wp_exc[idx] - self.wp_inh[idx];

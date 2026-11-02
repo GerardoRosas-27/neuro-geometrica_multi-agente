@@ -377,38 +377,28 @@ impl BioConstelacion {
         let n_pts = self.config.n_points;
         let n_transitions = obs_frames.len() - 1;
 
-        for t in 0..n_transitions {
-            let q_curr = &obs_frames[t];
-            let q_next = &obs_frames[t + 1];
+        if self.config.enable_fast_btsp {
+            let mut all_phis = Vec::with_capacity(n_transitions * n_pts);
+            let mut all_prevs = Vec::with_capacity(n_transitions * n_pts);
+            let mut all_targets = Vec::with_capacity(n_transitions * n_pts);
 
-            let mut q_prevs = Vec::with_capacity(n_pts);
-            let mut phis = Vec::with_capacity(n_pts);
-            let mut q_targets = Vec::with_capacity(n_pts);
+            for t in 0..n_transitions {
+                let q_curr = &obs_frames[t];
+                let q_next = &obs_frames[t + 1];
 
-            for p in 0..n_pts {
-                let pt = [q_curr[p * 2], q_curr[p * 2 + 1]];
-                let target = [q_next[p * 2], q_next[p * 2 + 1]];
-                let phi = self.compute_basis(pt[0], pt[1]);
+                for p in 0..n_pts {
+                    let pt = [q_curr[p * 2], q_curr[p * 2 + 1]];
+                    let target = [q_next[p * 2], q_next[p * 2 + 1]];
+                    let phi = self.compute_basis(pt[0], pt[1]);
 
-                q_prevs.push(pt);
-                phis.push(phi);
-                q_targets.push(target);
+                    all_prevs.push(pt);
+                    all_phis.push(phi);
+                    all_targets.push(target);
+                }
             }
 
-            // Actualización rápida BTSP
-            let vip_ach = self.hippocampus.neuromod.ach;
-            self.fast_btsp.update_btsp_and_slow(
-                &q_prevs,
-                &phis,
-                &q_targets,
-                false, // slow weights train in sleep consolidation
-                self.config.eta_slow,
-                self.hippocampus.neuromod.da,
-                self.config.enable_fast_btsp,
-                self.config.eta_fast,
-                vip_ach,
-                self.config.n_btsp_cycles,
-            );
+            self.fast_btsp
+                .adapt_cholesky_dale(&all_phis, &all_prevs, &all_targets, 1e-4);
         }
 
         // Evaluar error en la última transición para neuromoduladores y memoria episódica

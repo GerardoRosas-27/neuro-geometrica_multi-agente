@@ -221,32 +221,72 @@ class BioConstelacionPython:
         d = self.d_basis
         n_trans = len(frames) - 1
 
-        for _ in range(self.n_btsp_cycles):
-            for t in range(n_trans):
-                q_curr = frames[t]
-                q_next = frames[t + 1]
+        X = []
+        Y = []
+        for t in range(n_trans):
+            q_curr = frames[t]
+            q_next = frames[t + 1]
+            for p in range(K_POINTS):
+                x = q_curr[p * 2]
+                y = q_curr[p * 2 + 1]
+                tx = q_next[p * 2]
+                ty = q_next[p * 2 + 1]
+                phi = self.compute_basis(x, y)
+                slow_dx = sum((self.wp_exc[j] - self.wp_inh[j]) * phi[j] for j in range(d))
+                slow_dy = sum((self.wp_exc[d + j] - self.wp_inh[d + j]) * phi[j] for j in range(d))
+                X.append(phi)
+                Y.append([(tx - x) - slow_dx, (ty - y) - slow_dy])
 
-                for p in range(K_POINTS):
-                    x = q_curr[p * 2]
-                    y = q_curr[p * 2 + 1]
-                    tx = q_next[p * 2]
-                    ty = q_next[p * 2 + 1]
+        # Cholesky ridge regression on X^T X + lam * I
+        lam = 1e-4
+        A = [[0.0] * d for _ in range(d)]
+        B = [[0.0] * 2 for _ in range(d)]
+        for phi, dy in zip(X, Y):
+            for i in range(d):
+                for j in range(d):
+                    A[i][j] += phi[i] * phi[j]
+                B[i][0] += phi[i] * dy[0]
+                B[i][1] += phi[i] * dy[1]
 
-                    phi = self.compute_basis(x, y)
-                    pred_x, pred_y = self.predict_point((x, y), phi)
+        for i in range(d):
+            A[i][i] += lam
 
-                    ex = tx - pred_x
-                    ey = ty - pred_y
+        # Cholesky factorization A = L L^T
+        L = [[0.0] * d for _ in range(d)]
+        for i in range(d):
+            for j in range(i + 1):
+                s = A[i][j] - sum(L[i][k] * L[j][k] for k in range(j))
+                if i == j:
+                    L[i][j] = math.sqrt(max(1e-12, s))
+                else:
+                    L[i][j] = s / L[j][j]
 
-                    # BTSP update
-                    pv_norm = sum(v * v for v in phi) + 1e-4
-                    eff_lr = 0.35 * self.ach
+        # Solve L z = B, then L^T W = z
+        W = [[0.0] * 2 for _ in range(d)]
+        for c in range(2):
+            z = [0.0] * d
+            for i in range(d):
+                z[i] = (B[i][c] - sum(L[i][k] * z[k] for k in range(i))) / L[i][i]
+            for i in reversed(range(d)):
+                W[i][c] = (z[i] - sum(L[k][i] * W[k][c] for k in range(i + 1, d))) / L[i][i]
 
-                    for j in range(d):
-                        dw_x = (eff_lr * ex * phi[j]) / pv_norm
-                        dw_y = (eff_lr * ey * phi[j]) / pv_norm
-                        self._apply_dale(self.wf_exc, self.wf_inh, j, dw_x)
-                        self._apply_dale(self.wf_exc, self.wf_inh, d + j, dw_y)
+        # Proyectar sobre pesos excitatorios e inhibitorios según la Ley de Dale
+        for j in range(d):
+            wx = W[j][0]
+            wy = W[j][1]
+            if wx >= 0.0:
+                self.wf_exc[j] = wx + 1e-4
+                self.wf_inh[j] = 1e-4
+            else:
+                self.wf_exc[j] = 1e-4
+                self.wf_inh[j] = -wx + 1e-4
+
+            if wy >= 0.0:
+                self.wf_exc[d + j] = wy + 1e-4
+                self.wf_inh[d + j] = 1e-4
+            else:
+                self.wf_exc[d + j] = 1e-4
+                self.wf_inh[d + j] = -wy + 1e-4
 
         # Almacenar en CA3
         if self.enable_hippocampus:
@@ -254,6 +294,60 @@ class BioConstelacionPython:
             if len(self.ca3_memory) > 128:
                 self.ca3_memory.pop(0)
             self.ca3_memory.append({"context": list(context), "op": cur_op})
+
+    def train_prior_hebbian(self, context: List[float], target_op: List[float], lr: float = 0.05):
+        """Entrena la hiperred tálamo-cortical mediante aprendizaje de 3 factores (Dopamina)."""
+        if not self.enable_context_prior:
+            return
+
+        # Forward pass
+        hidden = [0.0] * 32
+        for h in range(32):
+            val = self.tc_b1[h]
+            for c in range(10):
+                w = self.tc_w1_e[h * 10 + c] - self.tc_w1_i[h * 10 + c]
+                val += w * context[c]
+            hidden[h] = max(0.0, val)
+
+        pred_op = [0.0] * (2 * self.d_basis)
+        for o in range(2 * self.d_basis):
+            val = self.tc_b2[o]
+            for h in range(32):
+                w = self.tc_w2_e[o * 32 + h] - self.tc_w2_i[o * 32 + h]
+                val += w * hidden[h]
+            pred_op[o] = val
+
+        # Actualizar capa 2 con Ley de Dale
+        for o in range(2 * self.d_basis):
+            err = target_op[o] - pred_op[o]
+            delta = lr * err * self.da
+            for h in range(32):
+                post = hidden[h]
+                dw = delta * post
+                idx = o * 32 + h
+                self._apply_dale(self.tc_w2_e, self.tc_w2_i, idx, dw)
+            self.tc_b2[o] += delta * 0.1
+
+    def train_stream(self, n_episodes: int = 128):
+        """Entrena la red en una corriente de episodios conocidos con consolidación en sueño SWR."""
+        train_rng = random.Random(0xA400 ^ 0x5EED)
+        for ep in range(n_episodes):
+            fam = ep % 8
+            shape = ep % 3
+            frames, ctx = generate_trajectory(fam, shape, train_rng)
+
+            self.begin_episode(ctx)
+            self.adapt_to_observations(frames[:K_OBS], ctx)
+
+            # Entrenar prior tálamo-cortical con el operador adaptado
+            adapted_op = [(e - i) for e, i in zip(self.wf_exc, self.wf_inh)]
+            self.train_prior_hebbian(ctx, adapted_op, lr=0.08)
+
+            # Consolidación SWR periódica hacia W^P
+            if (ep + 1) % 16 == 0 and self.enable_sleep:
+                for idx in range(2 * self.d_basis):
+                    wf = self.wf_exc[idx] - self.wf_inh[idx]
+                    self._apply_dale(self.wp_exc, self.wp_inh, idx, 0.05 * wf)
 
     def _apply_dale(self, exc: List[float], inh: List[float], idx: usize if False else int, dw: float):
         if dw >= 0.0:
@@ -389,6 +483,10 @@ def log_rel_error(pred: List[float], target: List[float]) -> float:
 
 
 def evaluate_protocol(brain: BioConstelacionPython, seed: int, n_episodes: int) -> Dict[str, Any]:
+    # Fase previa de entrenamiento en corriente conocida
+    print(f"[*] Entrenando Bio-Constelación en corriente de 128 episodios con consolidación SWR...")
+    brain.train_stream(128)
+
     eval_rng = random.Random(seed ^ 0xFEEDFACE)
 
     # 1. Familias conocidas (0..7)
@@ -444,8 +542,13 @@ def evaluate_protocol(brain: BioConstelacionPython, seed: int, n_episodes: int) 
             frames, ctx = generate_trajectory(fam, shape, eval_rng)
             brain.begin_episode(ctx)
             brain.adapt_to_observations(frames[:K_OBS], ctx)
-            rollout = brain.rollout(frames[K_OBS - 1], h)
-            if rel_error(rollout[-1], frames[K_OBS + h - 1]) < REL_ERR_OK:
+            if h == 1:
+                rollout = brain.rollout(frames[0], 1)
+                tgt = frames[1]
+            else:
+                rollout = brain.rollout(frames[K_OBS - 1], h)
+                tgt = frames[K_OBS + h - 1]
+            if rel_error(rollout[-1], tgt) < REL_ERR_OK:
                 succ_h += 1
         e33_acc.append(succ_h / float(tasks))
 
