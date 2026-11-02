@@ -1,0 +1,22 @@
+[package]
+name = "neocortex"
+version = "0.1.0"
+edition = "2021"
+description = "Arquitectura neuronal bioinspirada fiel al cerebro humano: neuronas piramidales multicompartimentales (basal/apical/soma), microcircuito cortical laminado (L2/3, L4, L5/6 + interneuronas PV/SST/VIP), codificación predictiva local sin backpropagation, plasticidad de corto plazo Tsodyks-Markram, trazas de elegibilidad de 3 factores + neuromodulación (DA/ACh/NE/5-HT), hipocampo (DG-CA3-CA1) y consolidación en sueño (Sharp-Wave Ripples)."
+license = "MIT"
+
+[workspace]
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+
+[lib]
+name = "neocortex"
+path = "src/lib.rs"
+
+[[bin]]
+name = "neocortex"
+path = "src/main.rs"
+
+[dependencies]
