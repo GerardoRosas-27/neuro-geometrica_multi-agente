@@ -14,6 +14,8 @@ use rand_xoshiro::rand_core::SeedableRng;
 use rand_xoshiro::Xoshiro256StarStar;
 use serde_json::json;
 use std::path::PathBuf;
+pub mod neuro;
+pub use neuro::{Nm, NState};
 
 pub const K: usize = 4;
 pub const HORIZON: usize = 16;
@@ -97,6 +99,8 @@ pub struct Cfg {
     pub v3: bool, pub feat_x: bool, pub feat_s: f64, pub eta_p: f64, pub eta_f: f64, pub t_f: usize, pub pi_norm: bool, pub fast: bool, pub pip_min: f64, pub pip_max: f64,
     // v4: x̂(1) = ÓRBITA(x0, c) cuando el contexto está disponible y aún no se ha observado ninguna transición (W^F vacío)
     pub orb_prior: bool,
+    // NEURO (docs/constelacion_v4_neuro): M1..M6, todos apagados ≡ v4 bit a bit
+    pub nm: Nm,
 }
 impl Cfg {
     pub fn base() -> Cfg { Cfg { m: 8, h: 8, layers: vec![16, 8, 4], identity_init: false, eta_b: 0.1, t_inf: 8, kappa: 0.1, tol: 1e-3,
@@ -104,7 +108,7 @@ impl Cfg {
         p_every: 500, w_min: 1e-4, u_min_rel: 0.01, b_in: 10.0, rho_max: 0.99, mu_clip: 10.0,
         n_s: 16, n_replay: 16, alpha_s: 0.1, delta_k: 0.05, n_kbuf: 16,
         errors: true, precision: true, prune: true, sleep: true, plastic_w: true, backprop: false,
-        v3: false, feat_x: false, feat_s: 1.0, eta_p: 0.0, eta_f: 0.0, t_f: 0, pi_norm: false, fast: false, pip_min: 0.1, pip_max: 10.0, orb_prior: false } }
+        v3: false, feat_x: false, feat_s: 1.0, eta_p: 0.0, eta_f: 0.0, t_f: 0, pi_norm: false, fast: false, pip_min: 0.1, pip_max: 10.0, orb_prior: false, nm: Nm::default() } }
     /// v3 congelada (valores fijados en docs/constelacion_v3/PREREG.md)
     pub fn v3() -> Cfg { let mut c = Cfg::base(); c.v3 = true; c.w_init = 1.0; c.b_in = 40.0; c.pi_min = V3_PI_MIN; c.pi_max = V3_PI_MAX; c.pi_norm = true; c.fast = true;
         c.feat_x = V3_FEAT_X; c.feat_s = V3_FEAT_S; c.eta_p = V3_ETA_P; c.eta_f = V3_ETA_F; c.t_f = V3_T_F; c }
@@ -175,9 +179,10 @@ pub struct Net {
     pub pi: Vec<Vec<f64>>, pub pit: Vec<Vec<f64>>, pub uin: Vec<f64>, pub eta_scale: f64, pub steps: usize, pub nan: bool,
     pub n_pruned: usize, pub n_grown: usize, pub n_rescale_row: usize, pub n_rescale_spec: usize,
     pub curv: Vec<Vec<f64>>, pub wp: Vec<f64>, pub taup: Vec<f64>, pub up: Vec<f64>, pub wf: Vec<f64>, pub pip: Vec<f64>, pub dp: usize,
+    pub ns: std::cell::RefCell<NState>,
 }
 #[derive(Clone)]
-pub struct PState { pub mu: Vec<Vec<f64>>, pub started: bool, pub xl: Vec<f64> }
+pub struct PState { pub mu: Vec<Vec<f64>>, pub started: bool, pub xl: Vec<f64>, pub cool: Vec<u8>, pub fired: Vec<bool>, pub firedp: Vec<bool> }
 pub struct StepInfo { pub e0: f64, pub ef: f64, pub e_layer: Vec<f64>, pub iters: f64 }
 
 impl Net {
@@ -193,7 +198,7 @@ impl Net {
             u: (1..=l).map(|i| vec![0.0; sz(i)]).collect(), low: (1..=l).map(|i| vec![0; sz(i)]).collect(), act: (1..=l).map(|i| vec![0.0; sz(i)]).collect(),
             pi: (0..l).map(|i| vec![1.0; dims[i]]).collect(), pit: (1..=l).map(|i| vec![1.0; dims[i]]).collect(), w, uin, eta_scale: 1.0, steps: 0, nan: false,
             n_pruned: 0, n_grown: 0, n_rescale_row: 0, n_rescale_spec: 0, c: c.clone(),
-            curv: vec![], wp: vec![0.0; 2 * dp], taup: vec![c.tau_min; 2 * dp], up: vec![0.0; 2 * dp], wf: vec![0.0; 2 * dp], pip: vec![1.0; 2], dp };
+            curv: vec![], wp: vec![0.0; 2 * dp], taup: vec![c.tau_min; 2 * dp], up: vec![0.0; 2 * dp], wf: vec![0.0; 2 * dp], pip: vec![1.0; 2], dp, ns: Default::default() };
         net.update_curv(); net
     }
     pub fn begin_episode(&mut self) { for v in self.wf.iter_mut() { *v = 0.0; } self.update_curv(); }
@@ -210,7 +215,7 @@ impl Net {
     pub fn n_w(&self) -> usize { self.w.iter().map(|x| x.len()).sum() }
     pub fn hash(&self) -> u64 { let mut h: u64 = 0xcbf29ce484222325; for v in self.w.iter().chain(&self.pi).chain(&self.pit).chain(&self.tau).chain(&self.cm).flatten() { h ^= v.to_bits(); h = h.wrapping_mul(0x100000001b3); }
         if self.c.v3 { for v in self.wp.iter().chain(&self.taup).chain(&self.pip) { h ^= v.to_bits(); h = h.wrapping_mul(0x100000001b3); } } h }
-    pub fn fresh_state(&self) -> PState { PState { mu: (1..=self.nl()).map(|i| vec![0.0; self.dims[i]]).collect(), started: false, xl: vec![0.0; 2] } }
+    pub fn fresh_state(&self) -> PState { PState { mu: (1..=self.nl()).map(|i| vec![0.0; self.dims[i]]).collect(), started: false, xl: vec![0.0; 2], cool: vec![0; self.c.layers.iter().sum()], fired: vec![true; self.c.layers.iter().sum()], firedp: vec![true; self.c.layers.iter().sum()] } }
     /// F_l aplicado por neurona; devuelve (F(μ), s)
     pub fn fl(&self, l: usize, mu: &[f64]) -> (Vec<f64>, Vec<f64>) {
         let (m, h) = (self.c.m, self.c.h); let n = self.c.layers[l - 1];
@@ -245,12 +250,12 @@ impl Net {
 }
 
 /// Acumuladores de plasticidad de un paso (promedio sobre puntos)
-struct Acc { gw: Vec<Vec<f64>>, e2: Vec<Vec<f64>>, et2: Vec<Vec<f64>>, red: f64, np: f64, nt: f64 }
+pub(crate) struct Acc { gw: Vec<Vec<f64>>, e2: Vec<Vec<f64>>, et2: Vec<Vec<f64>>, red: f64, np: f64, nt: f64, pub(crate) afire: Vec<f64>, pub(crate) aelig: Vec<f64> }
 
 /// inferencia iterativa de un punto (la misma función en train y eval)
 fn infer_point(net: &Net, st: &mut PState, x: &[f64], acc: Option<&mut Acc>) -> (f64, f64, Vec<f64>, f64) {
     let l = net.nl(); let c = &net.c;
-    let started = st.started;
+    let started = st.started; let is_train = acc.is_some();
     if !c.errors {
         // control «sin neuronas de error»: la capa superior recibe x directamente (reservorio), sin ε ascendente
         let top = &mut st.mu[l - 1]; let mut nt = if started { net.fl(l, top).0 } else { vec![0.0; top.len()] };
@@ -268,6 +273,7 @@ fn infer_point(net: &Net, st: &mut PState, x: &[f64], acc: Option<&mut Acc>) -> 
     let mut e_first = f64::NAN; let mut e_prev = f64::NAN; let mut iters = 0.0;
     let mut fs: Vec<(Vec<f64>, Vec<f64>)>; let mut errs: Vec<Vec<f64>>; let mut el: Vec<f64>;
     let mut it = 0;
+    let gate = c.nm.m1 || c.nm.m2; let mut fmask: Option<Vec<bool>> = None;
     loop {
         fs = (1..=l).map(|i| net.fl(i, &st.mu[i - 1])).collect();
         errs = (0..l).map(|i| { let below: &[f64] = if i == 0 { x } else { &st.mu[i - 1] }; let xh = net.wv(i + 1, &fs[i].0); below.iter().zip(&xh).map(|(a, b)| a - b).collect() }).collect();
@@ -283,8 +289,11 @@ fn infer_point(net: &Net, st: &mut PState, x: &[f64], acc: Option<&mut Acc>) -> 
         for i in 1..=l {
             let back = net.jtl(i, &fs[i - 1].1, &net.wtv(i, &eps[i - 1]));
             let pc = if c.v3 { Some(&net.curv[i - 1]) } else { None };
+            if gate && started && it == 0 { neuro::decide(net, st, i, &back, if i < l { Some(&eps[i]) } else { None }, &mut fmask, l); }
+            let off: usize = c.layers[..i - 1].iter().sum();
             let mu = &mut st.mu[i - 1];
             for j in 0..mu.len() {
+                if let Some(fm) = &fmask { if !fm[off + j / c.m] { continue; } }
                 let mut g = -back[j];
                 if i < l { g += eps[i][j]; }
                 if started { g += net.pit[i - 1][j] * (mu[j] - prior[i - 1][j]); }
@@ -303,7 +312,10 @@ fn infer_point(net: &Net, st: &mut PState, x: &[f64], acc: Option<&mut Acc>) -> 
         for i in 0..l { for j in 0..errs[i].len() { a.e2[i][j] += errs[i][j] * errs[i][j]; } }
         if started { for i in 1..=l { for j in 0..st.mu[i - 1].len() { let d = st.mu[i - 1][j] - prior[i - 1][j]; a.et2[i - 1][j] += d * d; } } a.nt += 1.0; }
         a.red += (e_first - ef).max(0.0); a.np += 1.0;
+        if gate && started { neuro::acc_fire(a, st); }
     }
+    if gate && started { neuro::homeo(net, st, is_train); }
+    if gate && !started { let _ = &fmask; }
     st.started = true;
     (e_first, ef, el, iters)
 }
@@ -329,7 +341,7 @@ pub fn step_ex(net: &mut Net, sts: &mut [PState], x: &[f64], train: bool, lr_mul
     // v3: expectativa temporal previa (antes de inferir x_t): φ(t−1), e^P = x_t − x̂(t)
     let pre: Vec<Option<Vec<f64>>> = if net.c.v3 { sts.iter().map(|s| if s.started { Some(net.feat(s)) } else { None }).collect() } else { vec![] };
     let eprior: Vec<Option<Vec<f64>>> = if net.c.v3 { (0..np).map(|p| pre[p].as_ref().map(|phi| { let xh = net.pred_from(&sts[p], phi); vec![x[2 * p] - xh[0], x[2 * p + 1] - xh[1]] })).collect() } else { vec![] };
-    let mut acc = Acc { gw: net.w.iter().map(|w| vec![0.0; w.len()]).collect(), e2: net.pi.iter().map(|p| vec![0.0; p.len()]).collect(), et2: net.pit.iter().map(|p| vec![0.0; p.len()]).collect(), red: 0.0, np: 0.0, nt: 0.0 };
+    let mut acc = Acc { gw: net.w.iter().map(|w| vec![0.0; w.len()]).collect(), e2: net.pi.iter().map(|p| vec![0.0; p.len()]).collect(), et2: net.pit.iter().map(|p| vec![0.0; p.len()]).collect(), red: 0.0, np: 0.0, nt: 0.0, afire: vec![], aelig: vec![] };
     let prevs: Option<Vec<PState>> = if train && net.c.backprop { Some(sts.to_vec()) } else { None };
     let (mut e0, mut ef, mut it) = (0.0, 0.0, 0.0); let mut elay = vec![0.0; l + 1];
     for p in 0..np {
@@ -337,6 +349,7 @@ pub fn step_ex(net: &mut Net, sts: &mut [PState], x: &[f64], train: bool, lr_mul
         e0 += r.0 / np as f64; ef += r.1 / np as f64; it += r.3 / np as f64; for i in 0..r.2.len() { elay[i] += r.2[i] / np as f64; }
     }
     if !ef.is_finite() || sts.iter().any(|s| s.mu.iter().any(|v| !fin(v))) { net.nan = true; }
+    let lr_mult = if net.c.nm.m6 { neuro::gain(net, e0, train, imagine, lr_mult) } else { lr_mult };
     if train && !net.nan { plasticity(net, &acc, lr_mult, prec_only, prevs.as_deref(), x, sts); net.update_curv(); }
     if net.c.v3 && !net.nan {
         let n_obs = pre.iter().filter(|p| p.is_some()).count();
@@ -357,14 +370,17 @@ fn plasticity(net: &mut Net, a: &Acc, lr_mult: f64, prec_only: bool, prevs: Opti
     if prec_only || !c.plastic_w { net.steps += 1; return; }
     let eta = c.eta_w * net.eta_scale * lr_mult; let red = a.red / np;
     let mut gbp: Option<Vec<Vec<f64>>> = None;
+    let nmon = c.nm.m3 || c.nm.m4 || c.nm.m5; let dec: Vec<Vec<bool>> = if nmon { neuro::row_dec(net, a, np) } else { vec![] };
     if c.backprop { let mut g: Vec<Vec<f64>> = net.w.iter().map(|w| vec![0.0; w.len()]).collect(); if let Some(pv) = prevs { if pv[0].started { for p in 0..pv.len() { bp_grad(net, &pv[p], &x[2 * p..2 * p + 2], &mut g); } } } gbp = Some(g); }
     for li in 0..l {
         let only_out = !c.errors && li > 0; if only_out { continue; }
         for k in 0..net.w[li].len() {
             if net.cm[li][k] == 0.0 { continue; }
-            let g = match &gbp { Some(gb) => gb[li][k] / np, None => a.gw[li][k] / np };
+            let mut g = match &gbp { Some(gb) => gb[li][k] / np, None => a.gw[li][k] / np };
+            if c.nm.m3 { g *= neuro::m3_gate(&c, a, &dec, li, k, net.dims[li + 1], net.dims[li]); }
             let tau = if c.prune && !c.backprop { net.tau[li][k] } else { 1.0 };
-            let dw = eta / tau * g - c.lam * net.w[li][k];
+            let mut dw = eta / tau * g - c.lam * net.w[li][k];
+            if nmon { let ns = net.ns.get_mut(); if c.nm.m5 && ns.cons[li][k] { dw *= neuro::M5_SLOW; } if c.nm.m4 || c.nm.m5 { ns.credit[li][k] += dw.abs() * if dec[li][k / net.dims[li + 1]] { 1.0 } else { -1.0 }; } }
             net.w[li][k] += dw;
             net.act[li][k] = (1.0 - c.zeta) * net.act[li][k] + c.zeta * (a.gw[li][k] / np).abs();
             if c.prune { net.u[li][k] = (1.0 - c.zeta) * net.u[li][k] + c.zeta * dw.abs() * net.w[li][k].abs() * red; }
@@ -379,6 +395,7 @@ fn plasticity(net: &mut Net, a: &Acc, lr_mult: f64, prec_only: bool, prevs: Opti
         for rr in 0..r { let s: f64 = (0..cc).map(|j| (net.w[li][rr * cc + j] * net.cm[li][rr * cc + j]).abs()).sum(); if s > c.b_in { let f = c.b_in / s; for j in 0..cc { net.w[li][rr * cc + j] *= f; } net.n_rescale_row += 1; } }
     }
     net.steps += 1;
+    if nmon { neuro::window(net, a, np); }
     if net.steps % c.p_every == 0 {
         // radio espectral σ_max(W_l J_l) en el estado medio, potencias
         for li in 1..=l {
@@ -428,6 +445,7 @@ pub fn run_episode(net: &mut Net, e: &Ep, train: bool, lr_mult: f64, prec_only: 
 }
 
 // ─── CDT + sueño ─────────────────────────────────────────────────────────────
+#[derive(Clone)]
 pub struct Cdt { pub eps: Vec<(Ep, f64, bool)>, pub ema: Option<f64>, pub kbuf: Vec<Ep>, pub kprev: Option<f64>, pub kbad: usize, pub log: Vec<serde_json::Value>, pub n_sleeps: usize }
 impl Cdt {
     pub fn new(seed: u64, c: &Cfg) -> Cdt { Cdt { eps: vec![], ema: None, kbuf: gen_known_stream(seed, XOR_KBUF, c.n_kbuf, &(0..N_FAM).collect::<Vec<_>>()), kprev: None, kbad: 0, log: vec![], n_sleeps: 0 } }
@@ -702,9 +720,9 @@ pub fn paso0(a: &[String]) {
         let mut r2 = Xoshiro256StarStar::seed_from_u64(seed ^ trial); let mu2: Vec<f64> = (0..tn.dims[2]).map(|_| r2.gen_range(-1.0..1.0)).collect(); let x = [r2.gen_range(-1.0..1.0), r2.gen_range(-1.0..1.0)];
         let mut st = tn.fresh_state(); st.mu[1] = mu2.clone(); st.mu[0] = vec![0.0; tn.dims[1]]; st.started = true;
         // pérdida: L(W) = ½‖x − W1 F(W2 F(F(μ2)))‖² (predicción hacia adelante desde el prior)
-        let loss = |n: &Net| { let p = n.predict(&PState { mu: vec![vec![0.0; n.dims[1]], mu2.clone()], started: true, xl: vec![0.0; 2] }, 1); 0.5 * ((x[0] - p[0]).powi(2) + (x[1] - p[1]).powi(2)) };
+        let loss = |n: &Net| { let p = n.predict(&PState { mu: vec![vec![0.0; n.dims[1]], mu2.clone()], started: true, xl: vec![0.0; 2], cool: vec![], fired: vec![], firedp: vec![] }, 1); 0.5 * ((x[0] - p[0]).powi(2) + (x[1] - p[1]).powi(2)) };
         // nota: el prior de capa 1 viene de μ1(t−1)=0 con Π^τ_1≈0 ⇒ libre; capa 2 anclada en F(μ2)
-        let mut acc = Acc { gw: tn.w.iter().map(|w| vec![0.0; w.len()]).collect(), e2: tn.pi.iter().map(|p| vec![0.0; p.len()]).collect(), et2: tn.pit.iter().map(|p| vec![0.0; p.len()]).collect(), red: 0.0, np: 0.0, nt: 0.0 };
+        let mut acc = Acc { gw: tn.w.iter().map(|w| vec![0.0; w.len()]).collect(), e2: tn.pi.iter().map(|p| vec![0.0; p.len()]).collect(), et2: tn.pit.iter().map(|p| vec![0.0; p.len()]).collect(), red: 0.0, np: 0.0, nt: 0.0, afire: vec![], aelig: vec![] };
         infer_point(&tn, &mut st, &x, Some(&mut acc));
         let pc: Vec<f64> = acc.gw.iter().flatten().cloned().collect();
         let mut fd = vec![]; for li in 0..tn.w.len() { for k in 0..tn.w[li].len() { let mut a1 = tn.clone(); a1.w[li][k] += 1e-6; let mut b1 = tn.clone(); b1.w[li][k] -= 1e-6; fd.push(-(loss(&a1) - loss(&b1)) / 2e-6); } }

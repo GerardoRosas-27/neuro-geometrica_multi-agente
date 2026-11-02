@@ -1,0 +1,72 @@
+{
+ "seed": "0xC4E0",
+ "na": 48,
+ "nb": 8,
+ "new_binary": "cst4n-run --stage p1 --arms v4 (este commit)",
+ "old_binary": "cst4esc-run --arms v4 (exp/constelacion-v4-escalada @7302e80, verificado \u2261 cst4-run de v4)",
+ "equal": {
+  "hash": true,
+  "pre_known": true,
+  "held": true,
+  "collapse": true,
+  "e33": true,
+  "e33_v3head": true,
+  "surprise_auroc_h1": true,
+  "streamA_last_q_h16": true,
+  "eta_scale": true,
+  "prune": true,
+  "sleeps": true
+ },
+ "all_equal": true,
+ "v4_hash": "20b97c03e1fb8198",
+ "arms_smoke": {
+  "ALL": {
+   "hash": "c0e8e5e3eb343ed1",
+   "new_med_log": -1.2259829479206403,
+   "fire_frac_eval": 0.49994715570887444,
+   "nan": false
+  },
+  "M1": {
+   "hash": "fa91c1b8f4f61e94",
+   "new_med_log": -1.2258873921404818,
+   "fire_frac_eval": 0.4571601900703463,
+   "nan": false
+  },
+  "M2": {
+   "hash": "1b64773f4be016cb",
+   "new_med_log": -1.2259782243035025,
+   "fire_frac_eval": 0.5,
+   "nan": false
+  },
+  "M3": {
+   "hash": "99559becfcfdfd97",
+   "new_med_log": -1.2259428095245104,
+   "fire_frac_eval": 1.0,
+   "nan": false
+  },
+  "M4": {
+   "hash": "c7637c1f8057ce21",
+   "new_med_log": -1.2259417517792648,
+   "fire_frac_eval": 1.0,
+   "nan": false
+  },
+  "M5": {
+   "hash": "20b97c03e1fb8198",
+   "new_med_log": -1.2259452418998915,
+   "fire_frac_eval": 1.0,
+   "nan": false
+  },
+  "M6": {
+   "hash": "fcfab566e00a299e",
+   "new_med_log": -1.2259767788506735,
+   "fire_frac_eval": 1.0,
+   "nan": false
+  },
+  "v4": {
+   "hash": "20b97c03e1fb8198",
+   "new_med_log": -1.2259452418998915,
+   "fire_frac_eval": 1.0,
+   "nan": false
+  }
+ }
+}
