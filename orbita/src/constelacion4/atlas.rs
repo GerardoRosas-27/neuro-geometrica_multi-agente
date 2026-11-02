@@ -16,12 +16,16 @@ pub struct Mech { pub m1: bool, pub m2: bool, pub m3: bool, pub m4: bool, pub m5
 impl Mech {
     pub fn from_list(s: &str) -> Mech { let mut n = Mech::default(); for t in s.split(',').filter(|t| !t.is_empty()) { match t { "M1" => n.m1 = true, "M2" => n.m2 = true, "M3" => n.m3 = true, "M4" => n.m4 = true, "M5" => n.m5 = true, "M6" => n.m6 = true, _ => panic!("mecanismo {t}") } } n }
     pub fn all() -> Mech { Mech { m1: true, m2: true, m3: true, m4: true, m5: true, m6: true } }
+    /// ablación leave-one-out (docs/atlas_fw/PREREG_ABLACIONES.md)
+    pub fn without(mut self, i: usize) -> Mech { match i { 1 => self.m1 = false, 2 => self.m2 = false, 3 => self.m3 = false, 4 => self.m4 = false, 5 => self.m5 = false, 6 => self.m6 = false, _ => panic!("mecanismo {i}") } self }
     pub fn off(&self) -> bool { *self == Mech::default() }
     /// hay prior meta-aprendido Θ0 (M3: contextual; M4/M5 solos: Θ̄ constante)
     pub fn meta(&self) -> bool { self.m3 || self.m4 || self.m5 }
 }
 pub fn arms() -> Vec<(&'static str, Mech)> { vec![("v4", Mech::default()), ("M1", Mech::from_list("M1")), ("M2", Mech::from_list("M2")), ("M3", Mech::from_list("M3")),
-    ("M4", Mech::from_list("M4")), ("M5", Mech::from_list("M5")), ("M6", Mech::from_list("M6")), ("ALL", Mech::all())] }
+    ("M4", Mech::from_list("M4")), ("M5", Mech::from_list("M5")), ("M6", Mech::from_list("M6")), ("ALL", Mech::all()),
+    ("ALL-M1", Mech::all().without(1)), ("ALL-M2", Mech::all().without(2)), ("ALL-M3", Mech::all().without(3)),
+    ("ALL-M4", Mech::all().without(4)), ("ALL-M5", Mech::all().without(5)), ("ALL-M6", Mech::all().without(6))] }
 
 // ─── constantes congeladas (PREREG) ─────────────────────────────────────────
 pub const N_LIB: usize = 17; pub const LIB_S: f64 = 0.3;
@@ -30,7 +34,7 @@ pub const LAM_STAR: f64 = 1e-3; pub const LAM_H: f64 = 1e-2; pub const DC: usize
 pub const N_FIT: usize = 192; pub const N_VAL: usize = 96;
 pub const AUDIT_TOL: f64 = 0.05;
 const XOR_META: u64 = 0xA71A_5F00; const XOR_SYN: u64 = 0xA71A_5A11;
-pub fn seeds(phase: &str) -> std::ops::RangeInclusive<u64> { match phase { "dev" => 0xA480..=0xA48F, "confirm" => 0xB480..=0xB48F, "smoke" => 0xC4A0..=0xC4AF, _ => panic!("fase") } }
+pub fn seeds(phase: &str) -> std::ops::RangeInclusive<u64> { match phase { "dev" => 0xA480..=0xA48F, "confirm" => 0xB480..=0xB48F, "smoke" => 0xC4A0..=0xC4AF, "abl_dev" => 0xA490..=0xA49F, "abl_confirm" => 0xB490..=0xB49F, _ => panic!("fase") } }
 
 /// g(x): biblioteca genérica (no contiene las fórmulas de 8/10/11)
 pub fn lib(x: &[f64]) -> [f64; N_LIB] { let (a, b) = (x[0], x[1]); let r = (a * a + b * b).sqrt();
