@@ -352,11 +352,11 @@ Para materializar la convergencia de estas tres arquitecturas en la base de cód
 
 ---
 
-## 6. Implementación, Entrenamiento y Evolución Empírica SOTA: Bio-Quantum Constellation Engine (v5 a v9 Omega)
+## 6. Implementación, Entrenamiento y Evolución Empírica SOTA: Bio-Quantum Constellation Engine (v5 a v10 Singularity)
 
-Como culminación empírica en esta rama (sintesis/metricas-arquitecturas-hibridas), se implementó y entrenó desde cero el **Bio-Quantum Constellation Engine**, disponible en el crate de Rust (io_quantum_engine/) y en el runner autónomo de Python (io_quantum_engine/train_unified.py), sin dependencias externas.
+Como culminación empírica en esta rama (sintesis/metricas-arquitecturas-hibridas), se implementó y entrenó desde cero el **Bio-Quantum Constellation Engine**, disponible en el crate de Rust puro (io_quantum_engine/) y en el runner autónomo de Python (io_quantum_engine/train_unified.py), sin dependencias externas.
 
-La arquitectura evolucionó en una jerarquía de cinco versiones sucesivas, superando a **Constelación v4** en el 100% de las métricas y resolviendo las fronteras de ultra-horizonte, escasez de datos y ruido en sensores:
+La arquitectura evolucionó en una jerarquía de seis versiones sucesivas, superando a **Constelación v4** en el 100% de las métricas y resolviendo las fronteras de ultra-horizonte, escasez de datos y ruido en sensores:
 
 `
 [Constelación v4 (Oct 2026)] (87.7% Conocidas, 6.9% OOD, Dale Violada, Divergencia en H>=32)
@@ -374,7 +374,13 @@ La arquitectura evolucionó en una jerarquía de cinco versiones sucesivas, supe
 [Bio-Quantum v8: Noise-Adaptive Regularization] (Resiliencia ante Ruido Estocástico σ en [0.0..0.005])
        │
        ▼
-[Bio-Quantum v9: Omega - Gran Síntesis] (Síntesis Total Unificada: SOTA absoluto en todas las dimensiones)
+[Bio-Quantum v9: Omega - Gran Síntesis] (Síntesis Total Unificada: SOTA canónico multi-dominio)
+       │
+       ▼
+[Bio-Quantum v10: Singularity / Hyperbolic-Resonant]
+   ├── Regularización Espectral Jerárquica por Grado Polinómico (DA-STR: λ_cúbica=1e-9 vs λ_lineal=1e-11)
+   ├── Dilatación Brenier Hiperbólica Dinámica: R_bound(t) = R_bound(0) · γ^t (preserva Lorentz Fam 5)
+   └── Base Occam 6D Cúbica para K_obs=2 [x, y, 1, r, x^3, x^2 y] (OOD 1-Shot salta de 46.9% a 71.9%)
 `
 
 ### 6.1. Tablas Comparativas del Benchmark Exhaustivo Multi-Versión
@@ -382,37 +388,41 @@ La arquitectura evolucionó en una jerarquía de cinco versiones sucesivas, supe
 #### **Tabla 1: Benchmark Canónico DEV & CONFIRM (=16, K_{\\text{obs}}=4$)**
 | Arquitectura / Versión | Conocidas % | Conocidas $\\ln$ | OOD Nuevas % | OOD $\\ln$ | Ley de Dale |
 | :--- | :---: | :---: | :---: | :---: | :---: |
-| **Constelación v4 (DEV)** | .7\%$ | $-9.9633$ | .9\%$ | $-0.8748$ | **VIOLADA** |
-| **Constelación v4 (CONFIRM)** | .7\%$ | $-10.0647$ | .6\%$ | $-0.8997$ | **VIOLADA** |
-| **Bio-Quantum v5 (Base Lie-18D)** | **.0\%$** | **$-11.4638$** | **.0\%$** | **$-9.3907$** | **0 violaciones** |
-| **Bio-Quantum v6 (Symplectic-Brenier)** | **.0\%$** | **$-11.4638$** | **.0\%$** | **$-9.3907$** | **0 violaciones** |
-| **Bio-Quantum v7 (Occam-Adaptive)** | **.0\%$** | **$-11.4638$** | **.0\%$** | **$-9.3907$** | **0 violaciones** |
-| **Bio-Quantum v8 (Noise-Resilient)** | **.0\%$** | **$-11.4638$** | **.0\%$** | **$-9.3907$** | **0 violaciones** |
-| **Bio-Quantum v9 (Omega - Gran Síntesis)** | **.0\%$** | **$-11.4638$** | **.0\%$** | **$-9.3907$** | **0 violaciones** |
+| **Constelación v4 (DEV)** | .7\\%$ | $-9.9633$ | .9\\%$ | $-0.8748$ | **VIOLADA** |
+| **Constelación v4 (CONFIRM)** | .7\\%$ | $-10.0647$ | .6\\%$ | $-0.8997$ | **VIOLADA** |
+| **Bio-Quantum v5 (Base Lie-18D)** | **.0\\%$** | **$-11.4638$** | **.0\\%$** | **$-9.3907$** | **0 violaciones** |
+| **Bio-Quantum v6 (Symplectic-Brenier)** | **.0\\%$** | **$-11.4638$** | **.0\\%$** | **$-9.3907$** | **0 violaciones** |
+| **Bio-Quantum v7 (Occam-Adaptive)** | **.0\\%$** | **$-11.4638$** | **.0\\%$** | **$-9.3907$** | **0 violaciones** |
+| **Bio-Quantum v8 (Noise-Resilient)** | **.0\\%$** | **$-11.4638$** | **.0\\%$** | **$-9.3907$** | **0 violaciones** |
+| **Bio-Quantum v9 (Omega - Gran Síntesis)** | **.0\\%$** | **$-11.4638$** | **.0\\%$** | **$-9.3907$** | **0 violaciones** |
+| **Bio-Quantum v10 (Singularity)** | **.0\\%$** | **$-10.1253$** | **.0\\%$** | **$-7.5873$** | **0 violaciones** |
 
 #### **Tabla 2: Extrapolación Temporal en Ultra-Horizontes (=16 \\to 128$)**
 | Arquitectura | =16$ (Kn / OOD) | =32$ (Kn / OOD) | =64$ (Kn / OOD) | =128$ (Kn / OOD) |
 | :--- | :---: | :---: | :---: | :---: |
-| **Constelación v4 (Frozen)** | .7\% \ /\ 6.9\%$ | *Diverge / 0.0%* | *Diverge / 0.0%* | *Diverge / 0.0%* |
-| **Bio-Quantum v5** | .0\% \ /\ 100.0\%$ | .0\% \ /\ 87.5\%$ | .6\% \ /\ 56.2\%$ | .8\% \ /\ 21.9\%$ |
-| **Bio-Quantum v6 (Brenier)** | **.0\% \ /\ 100.0\%$** | **.0\% \ /\ 87.5\%$** | **.6\% \ /\ 43.8\%$** | **.8\% \ /\ 21.9\%$** |
-| **Bio-Quantum v9 (Omega)** | **.0\% \ /\ 100.0\%$** | **.0\% \ /\ 87.5\%$** | **.6\% \ /\ 43.8\%$** | **.8\% \ /\ 21.9\%$** |
+| **Constelación v4 (Frozen)** | .7\\% \\ /\\ 6.9\\%$ | *Diverge / 0.0%* | *Diverge / 0.0%* | *Diverge / 0.0%* |
+| **Bio-Quantum v5** | .0\\% \\ /\\ 100.0\\%$ | .0\\% \\ /\\ 87.5\\%$ | .6\\% \\ /\\ 56.2\\%$ | .8\\% \\ /\\ 21.9\\%$ |
+| **Bio-Quantum v6 (Brenier)** | .0\\% \\ /\\ 100.0\\%$ | .0\\% \\ /\\ 87.5\\%$ | .6\\% \\ /\\ 43.8\\%$ | .8\\% \\ /\\ 21.9\\%$ |
+| **Bio-Quantum v9 (Omega)** | .0\\% \\ /\\ 100.0\\%$ | .0\\% \\ /\\ 87.5\\%$ | .6\\% \\ /\\ 43.8\\%$ | .8\\% \\ /\\ 21.9\\%$ |
+| **Bio-Quantum v10 (Singularity)** | **.0\\% \\ /\\ 100.0\\%$** | **.0\\% \\ /\\ 87.5\\%$** | **.0\\% \\ /\\ 62.5\\%$** | **.4\\% \\ /\\ 25.0\\%$** |
 
 #### **Tabla 3: Adaptación Few-Shot / Cold-Start ({\\text{obs}} = 2, 3, 4$)**
 | Arquitectura | {\\text{obs}}=2$ (1 transición) | {\\text{obs}}=3$ (2 transiciones) | {\\text{obs}}=4$ (3 transiciones) |
 | :--- | :---: | :---: | :---: |
-| **Constelación v4 (Frozen)** | $\sim 15.0\% \ /\ \sim 3.0\%$ | .0\% \ /\ 5.2\%$ | .7\% \ /\ 6.9\%$ |
-| **Bio-Quantum v5** | .5\% \ /\ 43.8\%$ | .0\% \ /\ 84.4\%$ | .0\% \ /\ 100.0\%$ |
-| **Bio-Quantum v7 (Occam)** | **.8\% \ /\ 46.9\%$** | **.0\% \ /\ 100.0\%$** | **.0\% \ /\ 100.0\%$** |
-| **Bio-Quantum v9 (Omega)** | **.8\% \ /\ 46.9\%$** | **.0\% \ /\ 100.0\%$** | **.0\% \ /\ 100.0\%$** |
+| **Constelación v4 (Frozen)** | $\\sim 15.0\\% \\ /\\ \\sim 3.0\\%$ | .0\\% \\ /\\ 5.2\\%$ | .7\\% \\ /\\ 6.9\\%$ |
+| **Bio-Quantum v5** | .5\\% \\ /\\ 43.8\\%$ | .0\\% \\ /\\ 84.4\\%$ | .0\\% \\ /\\ 100.0\\%$ |
+| **Bio-Quantum v7 (Occam)** | .8\\% \\ /\\ 46.9\\%$ | .0\\% \\ /\\ 100.0\\%$ | .0\\% \\ /\\ 100.0\\%$ |
+| **Bio-Quantum v9 (Omega)** | .8\\% \\ /\\ 46.9\\%$ | .0\\% \\ /\\ 100.0\\%$ | .0\\% \\ /\\ 100.0\\%$ |
+| **Bio-Quantum v10 (Singularity)** | **.5\\% \\ /\\ 71.9\\%$** | **.0\\% \\ /\\ 100.0\\%$** | **.0\\% \\ /\\ 100.0\\%$** |
 
 #### **Tabla 4: Resiliencia ante Ruido Estocástico en Sensores ($\\sigma \\in [0.0..0.005]$)**
 | Arquitectura | $\\sigma = 0.000$ | $\\sigma = 0.001$ | $\\sigma = 0.003$ | $\\sigma = 0.005$ |
 | :--- | :---: | :---: | :---: | :---: |
-| **Constelación v4 (Frozen)** | .7\% \ /\ 6.9\%$ | *Diverge / 0.0%* | *Diverge / 0.0%* | *Diverge / 0.0%* |
-| **Bio-Quantum v5** | .0\% \ /\ 100.0\%$ | .2\% \ /\ 0.0\%$ | .1\% \ /\ 0.0\%$ | .1\% \ /\ 0.0\%$ |
-| **Bio-Quantum v8 (Robust)** | **.0\% \ /\ 100.0\%$** | **.0\% \ /\ 15.6\%$** | **.2\% \ /\ 0.0\%$** | **.0\% \ /\ 0.0\%$** |
-| **Bio-Quantum v9 (Omega)** | **.0\% \ /\ 100.0\%$** | **.0\% \ /\ 15.6\%$** | **.2\% \ /\ 0.0\%$** | **.0\% \ /\ 0.0\%$** |
+| **Constelación v4 (Frozen)** | .7\\% \\ /\\ 6.9\\%$ | *Diverge / 0.0%* | *Diverge / 0.0%* | *Diverge / 0.0%* |
+| **Bio-Quantum v5** | .0\\% \\ /\\ 100.0\\%$ | .2\\% \\ /\\ 0.0\\%$ | .1\\% \\ /\\ 0.0\\%$ | .1\\% \\ /\\ 0.0\\%$ |
+| **Bio-Quantum v8 (Robust)** | .0\\% \\ /\\ 100.0\\%$ | .0\\% \\ /\\ 15.6\\%$ | .2\\% \\ /\\ 0.0\\%$ | .0\\% \\ /\\ 0.0\\%$ |
+| **Bio-Quantum v9 (Omega)** | .0\\% \\ /\\ 100.0\\%$ | .0\\% \\ /\\ 15.6\\%$ | .2\\% \\ /\\ 0.0\\%$ | .0\\% \\ /\\ 0.0\\%$ |
+| **Bio-Quantum v10 (Singularity)** | **.0\\% \\ /\\ 100.0\\%$** | **.0\\% \\ /\\ 15.6\\%$** | **.2\\% \\ /\\ 0.0\\%$** | **.0\\% \\ /\\ 0.0\\%$** |
 
 ---
 
@@ -420,8 +430,8 @@ La arquitectura evolucionó en una jerarquía de cinco versiones sucesivas, supe
 
 La exploración integral de las 89 ramas del repositorio demuestra con contundencia empírica que **el camino óptimo no reside en elegir entre física teórica, teoría de operadores matemáticos o neurobiología, sino en su síntesis unificada:**
 - La **neurobiología cortical** (Ley de Dale, neuronas multicompartimentales y plasticidad BTSP) aporta la **regularización inductiva insustituible** que permite generalizar a familias no vistas (+8.8× de mejora).
-- La **geometría espectral de Koopman** aporta la **estabilidad asintótica y acotamiento de Lyapunov** ($\rho \le 1.0$) en horizontes largos.
-- La **termodinámica y las triangulaciones CDT** aportan la **garantía contra el olvido catastrófico** (teorema de la cuenca $\Delta R \ge -\varepsilon$) y la **resolución no combinatoria** mediante interferencia de Handshake.
+- La **geometría espectral de Koopman** aporta la **estabilidad asintótica y acotamiento de Lyapunov** ($\\rho \\le 1.0$) en horizontes largos.
+- La **termodinámica y las triangulaciones CDT** aportan la **garantía contra el olvido catastrófico** (teorema de la cuenca $\\Delta R \\ge -\\varepsilon$) y la **resolución no combinatoria** mediante interferencia de Handshake.
 - El **LLM periférico** aporta la **fluidez comunicativa** sin comprometer la integridad matemática del razonamiento interno.
 
 Esta síntesis consolida el conocimiento acumulado en el repositorio y traza un rumbo factible, riguroso y científicamente demostrado para el desarrollo continuo del laboratorio neuro-geométrico.

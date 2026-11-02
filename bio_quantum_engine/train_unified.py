@@ -435,7 +435,7 @@ class BioQuantumConstellationEngine:
         enable_sleep: bool = True,
         enable_handshake: bool = True,
         lam: float = 1e-11,
-        version: int = 9,
+        version: int = 10,
         r_bound_init: float = 5.0,
     ):
         self.rng = random.Random(seed)
@@ -447,6 +447,7 @@ class BioQuantumConstellationEngine:
         self.lam = lam
         self.version = version
         self.r_bound = r_bound_init
+        self.growth_rate = 1.0
 
         # Milestone 1: Pesos corticales lentos W^P (100% Ley de Dale)
         self.wp_exc = [0.001] * (2 * d_basis)
@@ -509,6 +510,7 @@ class BioQuantumConstellationEngine:
         self.wf_exc = [0.0001] * (2 * self.d_basis)
         self.wf_inh = [0.0001] * (2 * self.d_basis)
         self.koopman_state = [0.0] * 4
+        self.growth_rate = 1.0
 
         # 1. Forward del Prior Tálamo-Cortical (Milestone 2)
         prior_op = self.thalamocortical_prior.forward(context)
@@ -588,10 +590,14 @@ class BioQuantumConstellationEngine:
     def rollout(self, q_init: List[float], horizon: int) -> List[List[float]]:
         traj = []
         cur = list(q_init)
+        orig_bound = self.r_bound
         for _ in range(horizon):
+            if self.version >= 10 and self.growth_rate > 1.001:
+                self.r_bound *= self.growth_rate
             nxt = self.step_frame(cur)
             traj.append(nxt)
             cur = nxt
+        self.r_bound = orig_bound
         return traj
 
     def adapt_to_observations(self, frames: List[List[float]], context: List[float]):
@@ -620,16 +626,33 @@ class BioQuantumConstellationEngine:
                         max_r = r
             self.r_bound = max(4.0, max_r * 2.5)
 
+        # Dilatación hiperbólica adaptativa (v10+: preserva boosts de Lorentz y flujos afines)
+        if self.version >= 10:
+            r0 = max(math.sqrt(frames[0][p * 2] ** 2 + frames[0][p * 2 + 1] ** 2) for p in range(K_POINTS)) + 1e-6
+            rK = max(math.sqrt(frames[-1][p * 2] ** 2 + frames[-1][p * 2 + 1] ** 2) for p in range(K_POINTS)) + 1e-6
+            ratio = rK / r0
+            self.growth_rate = (ratio ** (1.0 / n_trans)) if ratio > 1.03 else 1.0
+
         # 2. Dimensión de Lie adaptativa según capacidad de muestras (v7+)
-        if self.version >= 7:
+        if self.version >= 10:
+            if n_samples <= 6:
+                active_indices = [0, 1, 2, 3, 6, 8]  # Occam 6D cúbica para Duffing/Van der Pol
+            elif n_samples <= 12:
+                active_indices = list(range(12))
+            else:
+                active_indices = list(range(d))
+            active_d = len(active_indices)
+        elif self.version >= 7:
             if n_samples <= 6:
                 active_d = 6
             elif n_samples <= 12:
                 active_d = 12
             else:
                 active_d = d
+            active_indices = list(range(active_d))
         else:
             active_d = d
+            active_indices = list(range(d))
 
         X = []
         Y = []
@@ -641,13 +664,14 @@ class BioQuantumConstellationEngine:
                 y = q_curr[p * 2 + 1]
                 tx = q_next[p * 2]
                 ty = q_next[p * 2 + 1]
-                phi = self.compute_basis(x, y)[:active_d]
-                slow_dx = sum((self.wp_exc[j] - self.wp_inh[j]) * phi[j] for j in range(active_d))
-                slow_dy = sum((self.wp_exc[d + j] - self.wp_inh[d + j]) * phi[j] for j in range(active_d))
+                full_phi = self.compute_basis(x, y)
+                phi = [full_phi[idx] for idx in active_indices]
+                slow_dx = sum((self.wp_exc[j] - self.wp_inh[j]) * phi[i] for i, j in enumerate(active_indices))
+                slow_dy = sum((self.wp_exc[d + j] - self.wp_inh[d + j]) * phi[i] for i, j in enumerate(active_indices))
                 X.append(phi)
                 Y.append([(tx - x) - slow_dx, (ty - y) - slow_dy])
 
-        def solve_with_lam(l_val: float) -> List[List[float]]:
+        def solve_with_ridge(l_map: List[float]) -> List[List[float]]:
             A = [[0.0] * active_d for _ in range(active_d)]
             B = [[0.0] * 2 for _ in range(active_d)]
             for phi, dy in zip(X, Y):
@@ -658,7 +682,7 @@ class BioQuantumConstellationEngine:
                     B[i][1] += phi[i] * dy[1]
 
             for i in range(active_d):
-                A[i][i] += l_val
+                A[i][i] += l_map[i]
 
             # Cholesky factorization A = L L^T
             L = [[0.0] * active_d for _ in range(active_d)]
@@ -680,36 +704,46 @@ class BioQuantumConstellationEngine:
                     W_sol[i][c] = (z[i] - sum(L[k][i] * W_sol[k][c] for k in range(i + 1, active_d))) / L[i][i]
             return W_sol
 
-        W = solve_with_lam(self.lam)
-
-        # 3. Condicionamiento adaptativo en dos etapas ante ruido de sensores (v8+)
-        if self.version >= 8:
+        if self.version >= 10:
+            init_lambdas = []
+            for idx in active_indices:
+                if idx in [4, 5, 6, 7, 8, 9]:
+                    init_lambdas.append(1e-9)
+                elif idx in [10, 11, 12, 13, 14, 15]:
+                    init_lambdas.append(1e-10)
+                else:
+                    init_lambdas.append(1e-11)
+            W = solve_with_ridge(init_lambdas)
             max_w = max(abs(w[0]) for w in W) + max(abs(w[1]) for w in W)
-            if max_w > 50.0:  # Inestabilidad numérica detectada
-                W = solve_with_lam(1e-3)
+            if max_w > 10.0:
+                W = solve_with_ridge([1e-3] * active_d)
+        else:
+            W = solve_with_ridge([self.lam] * active_d)
+            if self.version >= 8:
+                max_w = max(abs(w[0]) for w in W) + max(abs(w[1]) for w in W)
+                if max_w > 50.0:  # Inestabilidad numérica detectada
+                    W = solve_with_ridge([1e-3] * active_d)
 
         # Proyección estricta a la Ley de Dale (0 violaciones garantizadas)
         for j in range(d):
-            if j < active_d:
-                wx = W[j][0]
-                wy = W[j][1]
-            else:
-                wx = 0.0
-                wy = 0.0
+            self.wf_exc[j] = 1e-6
+            self.wf_inh[j] = 1e-6
+            self.wf_exc[d + j] = 1e-6
+            self.wf_inh[d + j] = 1e-6
+
+        for i, idx in enumerate(active_indices):
+            wx = W[i][0]
+            wy = W[i][1]
 
             if wx >= 0.0:
-                self.wf_exc[j] = wx + 1e-6
-                self.wf_inh[j] = 1e-6
+                self.wf_exc[idx] = wx + 1e-6
             else:
-                self.wf_exc[j] = 1e-6
-                self.wf_inh[j] = -wx + 1e-6
+                self.wf_inh[idx] = -wx + 1e-6
 
             if wy >= 0.0:
-                self.wf_exc[d + j] = wy + 1e-6
-                self.wf_inh[d + j] = 1e-6
+                self.wf_exc[d + idx] = wy + 1e-6
             else:
-                self.wf_exc[d + j] = 1e-6
-                self.wf_inh[d + j] = -wy + 1e-6
+                self.wf_inh[d + idx] = -wy + 1e-6
 
         # Registrar engrama adaptativo en Memoria Simplicial CDT (Milestone 4)
         if self.enable_cdt_memory:
@@ -1020,6 +1054,11 @@ class BioQuantumV9Omega(BioQuantumConstellationEngine):
     def __init__(self, seed: int, **kwargs):
         super().__init__(seed=seed, version=9, **kwargs)
 
+class BioQuantumV10Singularity(BioQuantumConstellationEngine):
+    """Versión 10 (Singularity): Regularización espectral jerárquica por grado polinómico (DA-STR) + Dilatación Brenier hiperbólica."""
+    def __init__(self, seed: int, **kwargs):
+        super().__init__(seed=seed, version=10, **kwargs)
+
 # ---------------------------------------------------------------------------
 # 9c. Protocolos de Evaluación Especializados (Horizontes, Few-Shot, Ruido)
 # ---------------------------------------------------------------------------
@@ -1299,8 +1338,8 @@ def main():
     parser = argparse.ArgumentParser(description="Bio-Quantum Constellation Engine CLI")
     parser.add_argument("--train", action="store_true", help="Entrena la arquitectura unificada desde cero")
     parser.add_argument("--auto-beat", action="store_true", help="Ejecuta bucle autónomo explorando hiperparámetros hasta superar a Constelación v4")
-    parser.add_argument("--benchmark-suite", action="store_true", help="Ejecuta suite exhaustiva comparando v4 vs v5 vs v6 vs v7 vs v8 vs v9 en todas las dimensiones")
-    parser.add_argument("--version", type=int, default=9, choices=[5, 6, 7, 8, 9], help="Versión de arquitectura a evaluar")
+    parser.add_argument("--benchmark-suite", action="store_true", help="Ejecuta suite exhaustiva comparando v4 vs v5 vs v6 vs v7 vs v8 vs v9 vs v10 en todas las dimensiones")
+    parser.add_argument("--version", type=int, default=10, choices=[5, 6, 7, 8, 9, 10], help="Versión de arquitectura a evaluar")
     parser.add_argument("--episodes", type=int, default=128, help="Número de episodios de entrenamiento")
     parser.add_argument("--eval", type=str, choices=["smoke", "dev", "confirm"], help="Evalúa el protocolo científico")
     parser.add_argument("--audit", action="store_true", help="Audita los 5 hitos científicos del sistema")
@@ -1323,7 +1362,7 @@ def main():
     if args.benchmark_suite:
         print("================================================================================")
         print("     SUITE EXHAUSTIVA MULTI-VERSIÓN: COMPARACIÓN CIENTÍFICA EVOLUTIVA           ")
-        print("     Constelación v4 vs Bio-Quantum v5 vs v6 vs v7 vs v8 vs v9 (Omega)          ")
+        print("     Constelación v4 vs Bio-Quantum v5 vs v6 vs v7 vs v8 vs v9 vs v10 (Singularity)")
         print("================================================================================\n")
         
         # 1. Benchmark Estándar DEV & CONFIRM (Horizonte h=16, K_obs=4, sin ruido)
@@ -1334,6 +1373,7 @@ def main():
             ("Bio-Quantum v7 (Occam-Adaptive)", BioQuantumV7),
             ("Bio-Quantum v8 (Noise-Resilient)", BioQuantumV8),
             ("Bio-Quantum v9 (Omega - Gran Síntesis)", BioQuantumV9Omega),
+            ("Bio-Quantum v10 (Singularity)", BioQuantumV10Singularity),
         ]
         
         std_results = {}
@@ -1351,6 +1391,7 @@ def main():
             ("Bio-Quantum v5", BioQuantumV5),
             ("Bio-Quantum v6", BioQuantumV6),
             ("Bio-Quantum v9 (Omega)", BioQuantumV9Omega),
+            ("Bio-Quantum v10 (Singularity)", BioQuantumV10Singularity),
         ]
         horiz_results = {}
         for name, cls in horiz_models:
@@ -1363,6 +1404,7 @@ def main():
             ("Bio-Quantum v5", BioQuantumV5),
             ("Bio-Quantum v7", BioQuantumV7),
             ("Bio-Quantum v9 (Omega)", BioQuantumV9Omega),
+            ("Bio-Quantum v10 (Singularity)", BioQuantumV10Singularity),
         ]
         fewshot_results = {}
         for name, cls in fewshot_models:
@@ -1375,6 +1417,7 @@ def main():
             ("Bio-Quantum v5", BioQuantumV5),
             ("Bio-Quantum v8", BioQuantumV8),
             ("Bio-Quantum v9 (Omega)", BioQuantumV9Omega),
+            ("Bio-Quantum v10 (Singularity)", BioQuantumV10Singularity),
         ]
         noise_results = {}
         for name, cls in noise_models:

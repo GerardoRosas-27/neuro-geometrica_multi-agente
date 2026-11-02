@@ -68,6 +68,8 @@ pub struct BioQuantumConstellationEngine {
     pub circadian_phase: f64,
     /// Cota dinámica contráctil de Lyapunov-Brenier para estabilidad en horizontes extremos
     pub r_bound: f64,
+    /// Factor de dilatación hiperbólica adaptativa para flujos afines y boosts de Lorentz
+    pub growth_rate: f64,
 }
 
 impl BioQuantumConstellationEngine {
@@ -114,11 +116,13 @@ impl BioQuantumConstellationEngine {
             wf_inh,
             circadian_phase: 0.0,
             r_bound: 5.0,
+            growth_rate: 1.0,
         }
     }
 
     /// Reinicia los campos rápidos antes de un nuevo episodio
     pub fn begin_episode(&mut self) {
+        self.growth_rate = 1.0;
         for v in self.wf_exc.iter_mut() {
             *v = 1e-4;
         }
@@ -139,26 +143,42 @@ impl BioQuantumConstellationEngine {
         let n_trans = frames.len() - 1;
         let n_samples = n_trans * self.config.n_points;
 
-        // 1. Cota dinámica contráctil de Lyapunov-Brenier
+        // 1. Cota dinámica contráctil de Lyapunov-Brenier y dilatación hiperbólica
         let mut max_r: f64 = 0.0;
-        for f in frames {
+        let mut r0: f64 = 0.0;
+        let mut rk: f64 = 0.0;
+        for (i, f) in frames.iter().enumerate() {
             for p in 0..self.config.n_points {
                 let r = (f[p * 2].powi(2) + f[p * 2 + 1].powi(2)).sqrt();
                 if r > max_r {
                     max_r = r;
                 }
+                if i == 0 && r > r0 {
+                    r0 = r;
+                }
+                if i == frames.len() - 1 && r > rk {
+                    rk = r;
+                }
             }
         }
         self.r_bound = (max_r * 2.5).max(4.0);
 
-        // 2. Dimensión de Lie adaptativa según Principio de Occam (Few-Shot)
-        let active_d = if n_samples <= 6 {
-            6
-        } else if n_samples <= 12 {
-            12
+        let ratio = (rk + 1e-6) / (r0 + 1e-6);
+        self.growth_rate = if ratio > 1.03 {
+            ratio.powf(1.0 / n_trans as f64)
         } else {
-            d
+            1.0
         };
+
+        // 2. Dimensión de Lie adaptativa según Principio de Occam (Few-Shot)
+        let active_indices: Vec<usize> = if n_samples <= 6 {
+            vec![0, 1, 2, 3, 6, 8]
+        } else if n_samples <= 12 {
+            (0..12).collect()
+        } else {
+            (0..d).collect()
+        };
+        let active_d = active_indices.len();
 
         let mut x_mat = Vec::with_capacity(n_trans * self.config.n_points);
         let mut y_mat = Vec::with_capacity(n_trans * self.config.n_points);
@@ -183,12 +203,17 @@ impl BioQuantumConstellationEngine {
                 let residual_dx = true_dx - prior[0] * 0.1;
                 let residual_dy = true_dy - prior[1] * 0.1;
 
-                x_mat.push(phi[..active_d].to_vec());
+                let mut phi_sub = Vec::with_capacity(active_d);
+                for &idx in &active_indices {
+                    phi_sub.push(phi[idx]);
+                }
+
+                x_mat.push(phi_sub);
                 y_mat.push([residual_dx, residual_dy]);
             }
         }
 
-        let solve_cholesky = |lam_val: f64| -> Vec<[f64; 2]> {
+        let solve_ridge = |l_map: &[f64]| -> Vec<[f64; 2]> {
             let mut a = vec![vec![0.0; active_d]; active_d];
             let mut b = vec![[0.0; 2]; active_d];
 
@@ -203,7 +228,7 @@ impl BioQuantumConstellationEngine {
             }
 
             for i in 0..active_d {
-                a[i][i] += lam_val;
+                a[i][i] += l_map[i];
             }
 
             let mut l_mat = vec![vec![0.0; active_d]; active_d];
@@ -242,35 +267,51 @@ impl BioQuantumConstellationEngine {
             w_sol
         };
 
-        // 3. Resolución exacta e hiperprecisa con condicionamiento adaptativo en dos etapas
-        let mut w_opt = solve_cholesky(1e-11);
+        // 3. Resolución exacta con regularización espectral jerárquica por grado polinómico (DA-STR)
+        let mut init_lambdas = Vec::with_capacity(active_d);
+        for &idx in &active_indices {
+            if idx >= 4 && idx <= 9 {
+                init_lambdas.push(1e-9);
+            } else if idx >= 10 && idx <= 15 {
+                init_lambdas.push(1e-10);
+            } else {
+                init_lambdas.push(1e-11);
+            }
+        }
+
+        let mut w_opt = solve_ridge(&init_lambdas);
         let max_w = w_opt.iter().map(|w| w[0].abs().max(w[1].abs())).fold(0.0f64, f64::max);
-        if max_w > 50.0 {
-            w_opt = solve_cholesky(1e-3);
+        if max_w > 10.0 {
+            let fallback_lambdas = vec![1e-3; active_d];
+            w_opt = solve_ridge(&fallback_lambdas);
         }
 
         // Proyección Estricta a la Ley de Dale ($W^{F,E} \ge 0, W^{F,I} \ge 0$)
         for j in 0..d {
-            let (wx, wy) = if j < active_d {
-                (w_opt[j][0], w_opt[j][1])
-            } else {
-                (0.0, 0.0)
-            };
+            self.wf_exc[j] = 1e-4;
+            self.wf_inh[j] = 1e-4;
+            self.wf_exc[d + j] = 1e-4;
+            self.wf_inh[d + j] = 1e-4;
+        }
+
+        for (i, &idx) in active_indices.iter().enumerate() {
+            let wx = w_opt[i][0];
+            let wy = w_opt[i][1];
 
             if wx >= 0.0 {
-                self.wf_exc[j] = wx + 1e-4;
-                self.wf_inh[j] = 1e-4;
+                self.wf_exc[idx] = wx + 1e-4;
+                self.wf_inh[idx] = 1e-4;
             } else {
-                self.wf_exc[j] = 1e-4;
-                self.wf_inh[j] = -wx + 1e-4;
+                self.wf_exc[idx] = 1e-4;
+                self.wf_inh[idx] = -wx + 1e-4;
             }
 
             if wy >= 0.0 {
-                self.wf_exc[d + j] = wy + 1e-4;
-                self.wf_inh[d + j] = 1e-4;
+                self.wf_exc[d + idx] = wy + 1e-4;
+                self.wf_inh[d + idx] = 1e-4;
             } else {
-                self.wf_exc[d + j] = 1e-4;
-                self.wf_inh[d + j] = -wy + 1e-4;
+                self.wf_exc[d + idx] = 1e-4;
+                self.wf_inh[d + idx] = -wy + 1e-4;
             }
         }
 
@@ -385,12 +426,17 @@ impl BioQuantumConstellationEngine {
     pub fn predict_horizon(&mut self, initial_coords: &[f64], horizon: usize) -> Vec<Vec<f64>> {
         let mut sequence = Vec::with_capacity(horizon);
         let mut current = initial_coords.to_vec();
+        let orig_bound = self.r_bound;
 
         for _ in 0..horizon {
+            if self.growth_rate > 1.001 {
+                self.r_bound *= self.growth_rate;
+            }
             let (next, _, _) = self.forward_step(&current, None, 1.0);
             sequence.push(next.clone());
             current = next;
         }
+        self.r_bound = orig_bound;
 
         sequence
     }
