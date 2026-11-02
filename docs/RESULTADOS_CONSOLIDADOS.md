@@ -1,6 +1,6 @@
 # Resultados consolidados — selección de la mejor arquitectura
 
-**Ganadora: CONSTELACIÓN v4** (rama `exp/constelacion-v4`, commit `fd80320`). Esta rama (`exp/mejor-arquitectura`) parte de ese commit sin cambios de código; sólo añade documentación.
+**Ganadora: CONSTELACIÓN v4** (rama `exp/constelacion-v4`, commit `fd80320`), integrada en `main` vía la rama `integra/constelacion-v4-main` (código `orbita/src/constelacion4/` + scripts + docs/artefactos de v2, v3, v4, CST-vs-ÓRBITA, mejoras M1–M3 y BIO-CONSTELACIÓN).
 
 Todas las cifras están copiadas de los `RESULTADOS.md` de cada rama (copias literales en `docs/historico/<exp>/`) y, para v4, contrastadas con `artifacts/constelacion_v4/analysis_dev_confirm.json`. Método común: 16 semillas DEV (0xA400–0xA40F) + 16 CONFIRM (0xB400–0xB40F), bootstrap pareado por semilla 10 000 réplicas, semilla 12345, IC95 percentil, δ = 0,05, sin reajuste entre fases, 0 consultas TEST.
 
@@ -15,6 +15,9 @@ Todas las cifras están copiadas de los `RESULTADOS.md` de cada rama (copias lit
 | CONSTELACIÓN v2 | `exp/constelacion-v2` @ `fdefd62` | +0,807 [+0,702, +0,908] | +0,798 [+0,688, +0,916] | OK formal pero vacío (acc16 = 0) | 0/16 | **Refutada**; colapso 4/16 y 5/16 |
 | CONSTELACIÓN v3 | `exp/constelacion-v3` @ `e5718e8` | −0,089 [−0,152, −0,018] | −0,115 [−0,193, −0,030] | OK (+0,007 / +0,0005) | **0/16** | Primaria + no-daño OK; **E33 falla** |
 | **CONSTELACIÓN v4** | `exp/constelacion-v4` @ `fd80320` | −0,076 [−0,141, −0,001] | **−0,107 [−0,181, −0,024]** | OK (0,000 [0, 0]; acc16 ≈ 0,877) | **16/16 y 16/16** | **Cumple los 3 criterios preregistrados** |
+| CST vs ÓRBITA-eq (capacidad igualada) | `exp/cst-vs-orbita` @ `c1b1f54` | H1 −0,658 [−0,775, −0,542] | H1 −0,690 [−0,808, −0,573] | H3 +0,502 / +0,477 acc16 conocidas | H2 +0,356 / +0,336 | **CST gana** a ÓRBITA de igual tamaño (+LAT) en DEV y CONFIRM. Ver `docs/cst_vs_orbita/RESULTADOS.md` |
+| v4 + mejoras M1/M2/M3 | `exp/constelacion-v4-mejoras` @ `ce63ac3` | M1 +0,0001; M3 −0,0013 | M1 +0,0001 [−0,0000, +0,0003] | M1 OK; **M3 falla** (−0,085 acc16 conocidas) | M1 OK | **Negativo**: M1 inerte (= control), M2 rechazada en meta-val, M3 STOP en DEV por no-daño. v4 reproduce 16/16 hashes. Sólo docs/artefactos en `main` |
+| BIO-CONSTELACIÓN (híbrido v4 + neocórtex) | `exp/hibrido-constelacion-neocortex` @ `e9d7002` | hyb − v4 −0,262 [−0,422, −0,171] | −0,112 [−0,185, +0,017] (**no pasa**) | **DAÑO** (−0,81 acc16 conocidas) | **DAÑO** (E33 h16 −0,98) | **Negativo**: primaria no se confirma y destruye conocidas/E33. Sólo docs/artefactos en `main` |
 
 Primaria de CONSTELACIÓN: med log rel_err h16 en familias nuevas, CST − ÓRBITA-v1 (<0 = mejor). En ESTELA/ECO/MAREA la primaria tiene definición propia (ver su fila y su documento).
 
@@ -52,7 +55,7 @@ LAT (latente de Koopman, `resultados_latente_largo_plazo.md`): Exp. 1 H1a–H3 *
 No encontré en las ramas un único documento que dé la primaria de CONSTELACIÓN (med log h16 nuevas) para ÓRBITA+LAT; esa comparación no se hizo.
 
 ## Estado respecto a `main`
-CONSTELACIÓN v4 **no está en `main`**. Esta rama se propone para revisión; no se ha fusionado.
+CONSTELACIÓN v4 **está en `main`** (PR `integra/constelacion-v4-main`). El código de M1–M3 (`mejoras.rs`) y del híbrido (`bio.rs`, crate `bio_constelacion/`) **no** se integró: ambos son negativos y modifican `constelacion4/mod.rs`; quedan en sus ramas. Tras v4 se probaron mejoras (M1–M3) y un híbrido bio; ninguno supera a v4 sin daño, así que v4 sigue siendo la versión estable.
 
 ## Por qué gana CONSTELACIÓN v4
 1. Es el **único** experimento que cumple los tres criterios preregistrados en DEV y CONFIRM: primaria aceptada (IC sup < 0: −0,001 y −0,024), no-daño no vacío (acc16 conocidas 0,877 sin cambio) y E33 16/16.
