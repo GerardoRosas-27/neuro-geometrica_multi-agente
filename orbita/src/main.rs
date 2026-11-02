@@ -9,6 +9,9 @@ mod yo;
 mod fam;
 mod learn;
 mod latent;
+mod constelacion;
+mod constelacion3;
+mod constelacion4;
 use cdt_rqm_epr::field_autonomy_v4::*;
 use cdt_rqm_epr::v4_dataset::{generate_and_seal, DatasetConfig, Example, Sealed, N_FAM};
 use cdt_rqm_epr::v4_distill::{family_fit_residual, onestep_breakdown, TRUST_TAU};
@@ -219,6 +222,28 @@ fn main() {
         Some("fam-eval") => fam::eval(&a),
         Some("demo-step") => fam::demo(&a),
         Some("demo-rule") => fam::demo_rule(&a),
+        Some("cst-paso0") => constelacion::paso0(&a),
+        Some("cst-f0") => constelacion::f0(&a),
+        Some("cst-f1") => constelacion::f1(&a),
+        Some("cst-run") => constelacion::run(&a),
+        Some("cst4-paso0") => constelacion4::paso0(&a),
+        Some("cst4-f0") => constelacion4::f0(&a),
+        Some("cst4-f1") => constelacion4::f1(&a),
+        Some("cst4-run") => constelacion4::run(&a),
+        Some("cst4m-run") => constelacion4::mejoras::run(&a),
+        Some("bio-run") => constelacion4::bio::run(&a),
+        Some("bio-tune") => constelacion4::bio::tune(&a),
+        Some("cst4m-paso0") => constelacion4::mejoras::paso0(&a),
+        Some("cst4m-calib") => constelacion4::mejoras::calib(&a),
+        Some("cst4m-tune") => constelacion4::mejoras::tune(&a),
+        Some("cst4m-meta") => constelacion4::mejoras::meta(&a),
+        Some("cst4-diag") => constelacion4::diag(&a),
+        Some("cst3-paso0") => constelacion3::paso0(&a),
+        Some("cst3-f0") => constelacion3::f0(&a),
+        Some("cst3-f1") => constelacion3::f1(&a),
+        Some("cst3-run") => constelacion3::run(&a),
+        Some("cst3-diag") => constelacion3::diag(&a),
+        Some("cst3-oracle") => constelacion3::oracle_icl(&a),
         Some("gemma-embed") => gemma_embed::run(&a, |k| arg(&a, k)),
         _ => eprintln!("uso: orbita export|eval|fresh|parity ..."),
     }
