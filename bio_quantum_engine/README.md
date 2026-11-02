@@ -192,29 +192,40 @@ flowchart TD
 
 ---
 
-## 5. Instrucciones de Ejecución
+## 5. Instrucciones de Ejecución para Agentes Autónomos (Rust & Python)
 
-### 5.1. Ejecutar Suite Exhaustiva de Benchmarks Multi-Versión
+### 5.1. Ejecución Nativa en Puro Rust (Zero-Dependencies, std únicamente)
+Cualquier agente puede clonar o hacer checkout de la rama `exp/bio-quantum-v10-rust` y ejecutar de forma nativa e instantánea (< 100 ms) sin necesidad de Python:
+
 ```bash
+# Cambiar a la rama dedicada
+git checkout exp/bio-quantum-v10-rust
+
+# 1. Ejecutar todos los tests unitarios científicos (6/6 pass, 0 violaciones Dale)
+cargo test --manifest-path bio_quantum_engine/Cargo.toml
+
+# 2. Ejecutar la suite exhaustiva de benchmarks en modo release
+cargo run --release --manifest-path bio_quantum_engine/Cargo.toml -- benchmark-suite
+
+# 3. Evaluar fases canónicas DEV (0xA400) y CONFIRM (0xB400)
+cargo run --release --manifest-path bio_quantum_engine/Cargo.toml -- eval dev
+cargo run --release --manifest-path bio_quantum_engine/Cargo.toml -- eval confirm
+
+# 4. Auditoría estricta de las 5 restricciones científicas del repositorio
+cargo run --release --manifest-path bio_quantum_engine/Cargo.toml -- audit
+
+# 5. Demostración interactiva de 1 episodio
+cargo run --release --manifest-path bio_quantum_engine/Cargo.toml -- demo
+```
+
+### 5.2. Ejecución Complementaria en Python 3
+```bash
+# Suite exhaustiva multi-versión
 python bio_quantum_engine/train_unified.py --benchmark-suite
-```
 
-### 5.2. Entrenar la Arquitectura Unificada (v9 Omega) desde Cero
-```bash
-python bio_quantum_engine/train_unified.py --train --episodes 128 --version 9
-```
+# Entrenar desde cero
+python bio_quantum_engine/train_unified.py --train --episodes 128 --version 10
 
-### 5.3. Bucle Autónomo de Superación (Auto-Beat)
-```bash
+# Bucle autónomo de superación continua
 python bio_quantum_engine/train_unified.py --auto-beat
-```
-
-### 5.4. Auditoría de los 5 Hitos Científicos
-```bash
-python bio_quantum_engine/train_unified.py --audit
-```
-
-### 5.5. Crate Rust
-```bash
-cargo check --manifest-path bio_quantum_engine/Cargo.toml
 ```
