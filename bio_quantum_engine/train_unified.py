@@ -651,9 +651,10 @@ class BioQuantumConstellationEngine:
             cur_op = [(e - i) for e, i in zip(self.wf_exc, self.wf_inh)]
             self.cdt_memory.record_episode(context, cur_op)
 
-    def train_stream(self, n_episodes: int = 128):
+    def train_stream(self, n_episodes: int = 128, verbose: bool = False) -> List[Dict[str, Any]]:
         """Entrena la hiperred tálamo-cortical y consolida en sueño SWR periódicamente."""
         train_rng = random.Random(0xA400 ^ 0x5EED)
+        history = []
         for ep in range(n_episodes):
             fam = ep % 8
             shape = ep % 3
@@ -666,13 +667,33 @@ class BioQuantumConstellationEngine:
             adapted_op = [(e - i) for e, i in zip(self.wf_exc, self.wf_inh)]
             self.thalamocortical_prior.train_hebbian(ctx, adapted_op, lr=0.08, da=self.da)
 
+            # Error post-adaptación en rollout h=16
+            rollout = self.rollout(frames[K_OBS - 1], HORIZON)
+            pred_final = rollout[-1]
+            tgt_final = frames[K_OBS + HORIZON - 1]
+            ep_err = rel_error(pred_final, tgt_final)
+
             # Consolidación SWR periódica en fase de sueño circadiano hacia W^P
+            swr_status = None
             if (ep + 1) % 16 == 0 and self.enable_sleep:
                 for idx in range(2 * self.d_basis):
                     wf = self.wf_exc[idx] - self.wf_inh[idx]
                     self._apply_dale(self.wp_exc, self.wp_inh, idx, 0.05 * wf)
                 # Consolidar grafo simplicial CDT y verificar cota ΔR >= -ε
-                self.cdt_memory.execute_swr_sleep_consolidation()
+                pass_bound, delta_r = self.cdt_memory.execute_swr_sleep_consolidation()
+                swr_status = (pass_bound, delta_r, self.cdt_memory.current_basin_radius)
+                if verbose:
+                    viol, _ = self.audit_dales_law()
+                    print(f"  * [Ciclo SWR Ep {ep+1:03d}/{n_episodes}] Fam {fam} | Error h=16: {ep_err*100:5.2f}% | Sueño SWR: ΔR={delta_r:+.4f}, R_cuenca={swr_status[2]:.3f} | Dale Viol: {viol}")
+
+            if (ep + 1) % 16 == 0:
+                history.append({
+                    "episode": ep + 1,
+                    "family": fam,
+                    "rel_err": ep_err,
+                    "swr": swr_status
+                })
+        return history
 
     def _apply_dale(self, exc: List[float], inh: List[float], idx: int, dw: float):
         if dw >= 0.0:
@@ -974,10 +995,11 @@ def main():
         print(">>> DEMO COMPLETADA.\n")
 
     if args.train:
-        print(f">>> INICIANDO ENTRENAMIENTO EN CORRIENTE DESDE CERO ({args.episodes} episodios)...")
+        print(f">>> INICIANDO ENTRENAMIENTO EN FLUJO DESDE CERO ({args.episodes} episodios)...")
+        print("  * Dinámica: Adaptación BTSP Cholesky + Dopamina Tálamo-Cortical + Sueño SWR")
         t0 = time.time()
         engine = BioQuantumConstellationEngine(seed=args.seed)
-        engine.train_stream(args.episodes)
+        history = engine.train_stream(args.episodes, verbose=True)
         dur = time.time() - t0
 
         print(f"\n>>> ENTRENAMIENTO COMPLETADO en {dur:.2f}s ({args.episodes / dur:.1f} ep/s)")
@@ -1000,6 +1022,56 @@ def main():
         with open(args.out, "w", encoding="utf-8") as f:
             json.dump(ckpt, f, indent=2)
         print(f">>> Checkpoint guardado exitosamente en {args.out}\n")
+
+        # Evaluación inmediata post-entrenamiento en DEV y CONFIRM
+        print(">>> INICIANDO EVALUACIÓN CIENTÍFICA POST-ENTRENAMIENTO (DEV & CONFIRM)...")
+        
+        # 1. DEV (0xA400, 64 ep)
+        print("\n--- EVALUACIÓN DEV (Semilla 0xA400, 64 episodios) ---")
+        dev_engine = BioQuantumConstellationEngine(seed=0xA400)
+        dev_res = evaluate_protocol(dev_engine, 0xA400, 64)
+
+        # 2. CONFIRM (0xB400, 64 ep)
+        print("\n--- EVALUACIÓN CONFIRM (Semilla 0xB400, 64 episodios) ---")
+        confirm_engine = BioQuantumConstellationEngine(seed=0xB400)
+        confirm_res = evaluate_protocol(confirm_engine, 0xB400, 64)
+
+        print("\n=======================================================================================")
+        print("                 TABLA COMPARATIVA DE RESULTADOS FINALES DE ENTRENAMIENTO              ")
+        print("=======================================================================================")
+        header = f"{'Arquitectura / Fase':<34} | {'Conocidas ln':<12} | {'Conocidas %':<11} | {'Nuevas ln':<11} | {'Nuevas %':<9} | {'E33 Pass':<10} | {'Ley de Dale':<12}"
+        print(header)
+        print("-" * len(header))
+        print(f"{CST4_FROZEN_DEV['name']:<34} | {CST4_FROZEN_DEV['known_med_log']:<12.4f} | {CST4_FROZEN_DEV['known_acc16']*100:<10.1f}% | {CST4_FROZEN_DEV['new_med_log']:<11.4f} | {CST4_FROZEN_DEV['new_acc16']*100:<8.1f}% | {CST4_FROZEN_DEV['e33_pass']:<10} | {'VIOLADA':<12}")
+        print(f"{CST4_FROZEN_CONFIRM['name']:<34} | {CST4_FROZEN_CONFIRM['known_med_log']:<12.4f} | {CST4_FROZEN_CONFIRM['known_acc16']*100:<10.1f}% | {CST4_FROZEN_CONFIRM['new_med_log']:<11.4f} | {CST4_FROZEN_CONFIRM['new_acc16']*100:<8.1f}% | {CST4_FROZEN_CONFIRM['e33_pass']:<10} | {'VIOLADA':<12}")
+        
+        dev_e33_str = "APROBADO" if dev_res["e33_pass"] else "REVISAR"
+        dev_dale_str = "CUMPLE 100%" if dev_res["dale_violations"] == 0 else "VIOLADA"
+        print(f"{'Bio-Quantum (DEV - Evaluado)':<34} | {dev_res['known_med_log']:<12.4f} | {dev_res['known_acc16']*100:<10.1f}% | {dev_res['new_med_log']:<11.4f} | {dev_res['new_acc16']*100:<8.1f}% | {dev_e33_str:<10} | {dev_dale_str:<12}")
+
+        conf_e33_str = "APROBADO" if confirm_res["e33_pass"] else "REVISAR"
+        conf_dale_str = "CUMPLE 100%" if confirm_res["dale_violations"] == 0 else "VIOLADA"
+        print(f"{'Bio-Quantum (CONFIRM - Evaluado)':<34} | {confirm_res['known_med_log']:<12.4f} | {confirm_res['known_acc16']*100:<10.1f}% | {confirm_res['new_med_log']:<11.4f} | {confirm_res['new_acc16']*100:<8.1f}% | {conf_e33_str:<10} | {conf_dale_str:<12}")
+        print("=" * len(header))
+
+        print(f"\n[+] Detalle E33 DEV por horizonte:     {', '.join(f'h={h}: {a*100:.1f}%' for h, a in zip(EVAL_H, dev_res['e33_acc_per_h']))}")
+        print(f"[+] Detalle E33 CONFIRM por horizonte: {', '.join(f'h={h}: {a*100:.1f}%' for h, a in zip(EVAL_H, confirm_res['e33_acc_per_h']))}")
+        print(f"[+] Teorema Cuenca CDT (SWR): DEV ΔR={dev_res['delta_r']:.4f} (Olvido Acotado: {dev_res['cdt_bounded_forgetting_pass']}), CONFIRM ΔR={confirm_res['delta_r']:.4f}")
+        print(f"[+] Auditoría Sináptica Dale: {dev_res['dale_violations']} violaciones en DEV, {confirm_res['dale_violations']} en CONFIRM.\n")
+
+        # Guardar reporte completo en JSON
+        results_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "training_results.json")
+        report = {
+            "training_duration_s": dur,
+            "episodes": args.episodes,
+            "episodes_per_sec": args.episodes / dur,
+            "dev_results": dev_res,
+            "confirm_results": confirm_res,
+            "history": history
+        }
+        with open(results_path, "w", encoding="utf-8") as f:
+            json.dump(report, f, indent=2)
+        print(f">>> Reporte completo de entrenamiento y evaluación guardado en: {results_path}\n")
 
     if args.eval:
         seed = {"smoke": 0xC400, "dev": 0xA400, "confirm": 0xB400}[args.eval]
