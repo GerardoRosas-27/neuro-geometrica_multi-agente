@@ -166,4 +166,52 @@ impl CdtSimplicialBasinMemory {
 
         best_pat.map(|p| (p.features.clone(), min_d))
     }
+
+    /// Consulta asociativa por similitud coseno
+    pub fn query_nearest(&self, context: &[f64]) -> (Option<Vec<f64>>, f64) {
+        if self.patterns.is_empty() {
+            return (None, -1.0);
+        }
+        let mut best_sim = -1.0;
+        let mut best_op = None;
+        let mut norm_a = 0.0;
+        for &a in context {
+            norm_a += a * a;
+        }
+        let norm_a = norm_a.sqrt() + 1e-6;
+
+        for p in &self.patterns {
+            let mut dot = 0.0;
+            let mut norm_b = 0.0;
+            let n = context.len().min(p.features.len());
+            for i in 0..n {
+                dot += context[i] * p.features[i];
+                norm_b += p.features[i] * p.features[i];
+            }
+            let norm_b = norm_b.sqrt() + 1e-6;
+            let sim = dot / (norm_a * norm_b);
+            if sim > best_sim {
+                best_sim = sim;
+                best_op = Some(p.features.clone());
+            }
+        }
+
+        (best_op, best_sim)
+    }
+
+    /// Registra un episodio completo (contexto y operador adaptado) en la memoria CDT
+    pub fn record_episode(&mut self, context: &[f64], op: &[f64]) {
+        if self.patterns.len() >= 128 {
+            self.patterns.remove(0);
+        }
+        let new_id = self.patterns.len();
+        self.patterns.push(SimplicialPattern {
+            id: new_id,
+            features: op.to_vec(),
+            basin_radius: 1.0,
+            retrieval_count: 1,
+            importance_score: 1.0,
+        });
+        self.record_wake_episode(context, 1.0);
+    }
 }

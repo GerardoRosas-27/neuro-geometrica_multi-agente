@@ -231,4 +231,23 @@ impl WheelerFeynmanHandshakeEngine {
         }
         out
     }
+
+    /// Calcula la coherencia constructiva y peso modulador entre características sensoriales y de prior
+    pub fn compute_coherence(&self, sensory_features: &[f64], prior_features: &[f64]) -> (f64, f64) {
+        let mut total_coherence = 0.0;
+        let n = sensory_features.len().min(prior_features.len()).min(self.dim);
+        if n == 0 {
+            return (0.5, 0.0);
+        }
+        for j in 0..n {
+            let amp_ret = sensory_features[j].abs().tanh() + 1e-4;
+            let amp_adv = prior_features[j].abs().tanh() + 1e-4;
+            let phase_diff = self.frequencies[j] * 0.5;
+            let coh = amp_ret * amp_adv * phase_diff.cos();
+            total_coherence += coh;
+        }
+        let mean_coh = total_coherence / (n as f64);
+        let weight = 1.0 / (1.0 + (-mean_coh * 4.0).exp());
+        (weight, -total_coherence)
+    }
 }

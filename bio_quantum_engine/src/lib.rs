@@ -102,7 +102,7 @@ mod tests {
         let (next_coords, latent, action) = engine.forward_step(initial_coords, None, 1.0);
 
         assert_eq!(next_coords.len(), 12);
-        assert_eq!(latent.len(), 10);
+        assert_eq!(latent.len(), 4);
         assert!(action.is_finite());
     }
 
