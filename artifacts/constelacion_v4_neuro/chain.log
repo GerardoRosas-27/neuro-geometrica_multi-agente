@@ -70,3 +70,6 @@ P1: nada pasa tras CONFIRM; sin fase 2
 CHAIN_STOP
 [Mon Nov  2 03:20:16 CST 2026] P1 DEV
 p1 dev 16/16
+[Mon Nov  2 03:20:18 CST 2026] P1 CONFIRM v4 M1 M2 M6 ALL
+[Mon Nov  2 03:22:04 CST 2026] P1 DEV
+p1 dev 16/16
