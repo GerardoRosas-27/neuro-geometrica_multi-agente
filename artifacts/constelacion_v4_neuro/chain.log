@@ -66,3 +66,5 @@ thread 'main' (573721) panicked at src/constelacion4/mod.rs:560:89:
 called `Result::unwrap()` on an `Err` value: ParseIntError { kind: InvalidDigit }
 note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
 p1 confirm 0/16
+P1: nada pasa tras CONFIRM; sin fase 2
+CHAIN_STOP
