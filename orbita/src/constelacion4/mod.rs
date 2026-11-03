@@ -114,14 +114,17 @@ impl Cfg {
     pub fn to_json(&self) -> serde_json::Value { json!(format!("{:?}", self)) }
 }
 #[derive(Clone, Copy, PartialEq, Debug)]
-pub enum Arm { Cst, NoErr, NoPrec, T1, NoPrune, NoSleep, FixedW, OneLayer, Backprop, NoFast }
+pub enum Arm { Cst, NoErr, NoPrec, T1, NoPrune, NoSleep, FixedW, OneLayer, Backprop, NoFast, FieldOnly, NoOrb }
 impl Arm {
     pub fn all() -> [Arm; 9] { [Arm::Cst, Arm::NoErr, Arm::NoPrec, Arm::T1, Arm::NoPrune, Arm::NoSleep, Arm::FixedW, Arm::OneLayer, Arm::Backprop] }
     pub fn all_v3() -> [Arm; 10] { [Arm::Cst, Arm::NoErr, Arm::NoPrec, Arm::T1, Arm::NoPrune, Arm::NoSleep, Arm::FixedW, Arm::OneLayer, Arm::Backprop, Arm::NoFast] }
-    pub fn name(self) -> &'static str { match self { Arm::Cst => "cst", Arm::NoErr => "no_err", Arm::NoPrec => "no_prec", Arm::T1 => "t1", Arm::NoPrune => "no_prune", Arm::NoSleep => "no_sleep", Arm::FixedW => "fixed_w", Arm::OneLayer => "one_layer", Arm::Backprop => "backprop", Arm::NoFast => "no_fast" } }
+    pub fn name(self) -> &'static str { match self { Arm::Cst => "cst", Arm::NoErr => "no_err", Arm::NoPrec => "no_prec", Arm::T1 => "t1", Arm::NoPrune => "no_prune", Arm::NoSleep => "no_sleep", Arm::FixedW => "fixed_w", Arm::OneLayer => "one_layer", Arm::Backprop => "backprop", Arm::NoFast => "no_fast", Arm::FieldOnly => "field_only", Arm::NoOrb => "no_orb" } }
     pub fn cfg(self, b: &Cfg) -> Cfg { let mut c = b.clone(); match self {
         Arm::Cst => {}, Arm::NoErr => c.errors = false, Arm::NoPrec => c.precision = false, Arm::T1 => c.t_inf = 1, Arm::NoPrune => c.prune = false,
-        Arm::NoSleep => c.sleep = false, Arm::FixedW => c.plastic_w = false, Arm::OneLayer => c.layers = vec![28], Arm::Backprop => c.backprop = true, Arm::NoFast => c.fast = false } c }
+        Arm::NoSleep => c.sleep = false, Arm::FixedW => c.plastic_w = false, Arm::OneLayer => c.layers = vec![28], Arm::Backprop => c.backprop = true, Arm::NoFast => c.fast = false,
+        // docs/cst_campo_solo/PREREG.md: sin ÓRBITA; FIELD_ONLY además congela todo salvo W^F (lento W, W^P, Π, poda, sueño)
+        Arm::NoOrb => c.orb_prior = false,
+        Arm::FieldOnly => { c.orb_prior = false; c.eta_w = 0.0; c.eta_p = 0.0; c.eta_pi = 0.0; c.lam = 0.0; c.zeta = 0.0; c.rho_tau = 0.0; c.prune = false; c.p_every = usize::MAX; c.sleep = false; } } c }
 }
 
 // ─── ÓRBITA-neurona ──────────────────────────────────────────────────────────
@@ -630,7 +633,8 @@ pub fn run(a: &[String]) {
     let sa = gen_known_stream(seed, XOR_KNOWN, na, &(0..N_FAM).collect::<Vec<_>>()); let sb = gen_stream(seed, nb, nb); assert!(N_NEW == N_KNOWN_B);
     let (ex, sha) = e33_examples(seed);
     let mut arms = serde_json::Map::new();
-    let arms_list: Vec<Arm> = if base.v3 { Arm::all_v3().to_vec() } else { Arm::all().to_vec() };
+    let mut arms_list: Vec<Arm> = if base.v3 { Arm::all_v3().to_vec() } else { Arm::all().to_vec() };
+    if only.is_some() { arms_list.extend([Arm::FieldOnly, Arm::NoOrb]); }
     for arm in arms_list {
         if let Some(o) = &only { if !o.iter().any(|x| x == arm.name()) { continue; } }
         let ta = std::time::Instant::now(); let c = arm.cfg(&base);
