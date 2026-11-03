@@ -1,0 +1,3 @@
+0xC410 cst 18.8s
+0xC410 no_fast 18.7s
+0xC410 ok 38s

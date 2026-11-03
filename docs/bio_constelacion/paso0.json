@@ -1,0 +1,12 @@
+{
+ "seed": "0xC420",
+ "arm": "v4",
+ "na": 256,
+ "hash_mejoras_bin": "4649f8d2606d26a7",
+ "hash_bio_bin": "4649f8d2606d26a7",
+ "held_sha_mejoras": "1377d95cfb10bed06180830ebe47a7eb00ba31c1dd47e02a1133c97cf61c6e8d",
+ "held_sha_bio": "1377d95cfb10bed06180830ebe47a7eb00ba31c1dd47e02a1133c97cf61c6e8d",
+ "identical": true,
+ "new_med_log": -0.5521562455507805,
+ "known_acc16": 0.875
+}

@@ -1,0 +1,29 @@
+{
+ "seed": "0xC4A0",
+ "na": 48,
+ "nb": 8,
+ "cst4_run_arm": "cst",
+ "atlas_run_arm": "v4",
+ "checks": {
+  "hash": true,
+  "held": true,
+  "pre": true,
+  "collapse": true,
+  "e33": true,
+  "e33_v3head": true,
+  "eta_scale": true,
+  "sleeps": true,
+  "orbita": true,
+  "e33_orbita": true,
+  "streamA": true,
+  "auc_new_preq": true
+ },
+ "all_equal": true,
+ "hash": "ee47dbc3eb3733e5",
+ "held_v4": {
+  "known_acc16": 0.875,
+  "known_med_log": -10.166902739217237,
+  "new_acc16": 0.08333333333333333,
+  "new_med_log": -0.5327995724265111
+ }
+}

@@ -1,0 +1,10 @@
+cvo-export 0xB408: transiciones=61440 (conocidas 52224, nuevas 9216)
+step 3840 l1=2.210e-02 lh=0.000e+00 9s
+done 2602
+0xB408 cst 393.1s
+0xB408 cst_no_fast 861.9s
+0xB408 orbita_eq 4.7s
+0xB408 orbita_eq_lat 9.5s
+0xB408 orbita_v1 4.0s
+0xB408 orbita_v1_lat 8.8s
+0xB408 ok 1282s
