@@ -12,10 +12,12 @@
 use super::*;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct Mech { pub m1: bool, pub m2: bool, pub m3: bool, pub m4: bool, pub m5: bool, pub m6: bool }
+pub struct Mech { pub m1: bool, pub m2: bool, pub m3: bool, pub m4: bool, pub m5: bool, pub m6: bool, pub m7: bool, pub m8: bool, pub da: u32 }
 impl Mech {
-    pub fn from_list(s: &str) -> Mech { let mut n = Mech::default(); for t in s.split(',').filter(|t| !t.is_empty()) { match t { "M1" => n.m1 = true, "M2" => n.m2 = true, "M3" => n.m3 = true, "M4" => n.m4 = true, "M5" => n.m5 = true, "M6" => n.m6 = true, _ => panic!("mecanismo {t}") } } n }
-    pub fn all() -> Mech { Mech { m1: true, m2: true, m3: true, m4: true, m5: true, m6: true } }
+    pub fn from_list(s: &str) -> Mech { let mut n = Mech::default(); for t in s.split(',').filter(|t| !t.is_empty()) { match t { "M1" => n.m1 = true, "M2" => n.m2 = true, "M3" => n.m3 = true, "M4" => n.m4 = true, "M5" => n.m5 = true, "M6" => n.m6 = true, "M7" => n.m7 = true, "M8" => n.m8 = true, _ => panic!("mecanismo {t}") } } n }
+    pub fn all() -> Mech { Mech { m1: true, m2: true, m3: true, m4: true, m5: true, m6: true, ..Mech::default() } }
+    /// Configuración recomendada: BQ10 = Mech::bq(10, false, true) (docs/bio_quantum_v10/frozen.json). Bio-Quantum v10 portado: M1+M2+M6 (núcleo ATLAS sin M3–M5) + M7 DA-STR (factor da) [+ M8 cota Brenier]
+    pub fn bq(da: u32, m8: bool, m7: bool) -> Mech { let mut m = Mech::from_list("M1,M2,M6"); m.m7 = m7; m.m8 = m8; m.da = if m7 { da } else { 0 }; m }
     /// ablación leave-one-out (docs/atlas_fw/PREREG_ABLACIONES.md)
     pub fn without(mut self, i: usize) -> Mech { match i { 1 => self.m1 = false, 2 => self.m2 = false, 3 => self.m3 = false, 4 => self.m4 = false, 5 => self.m5 = false, 6 => self.m6 = false, _ => panic!("mecanismo {i}") } self }
     pub fn off(&self) -> bool { *self == Mech::default() }
@@ -25,7 +27,9 @@ impl Mech {
 pub fn arms() -> Vec<(&'static str, Mech)> { vec![("v4", Mech::default()), ("M1", Mech::from_list("M1")), ("M2", Mech::from_list("M2")), ("M3", Mech::from_list("M3")),
     ("M4", Mech::from_list("M4")), ("M5", Mech::from_list("M5")), ("M6", Mech::from_list("M6")), ("ALL", Mech::all()),
     ("ALL-M1", Mech::all().without(1)), ("ALL-M2", Mech::all().without(2)), ("ALL-M3", Mech::all().without(3)),
-    ("ALL-M4", Mech::all().without(4)), ("ALL-M5", Mech::all().without(5)), ("ALL-M6", Mech::all().without(6))] }
+    ("ALL-M4", Mech::all().without(4)), ("ALL-M5", Mech::all().without(5)), ("ALL-M6", Mech::all().without(6)),
+    ("BQ3", Mech::bq(3, false, true)), ("BQ10", Mech::bq(10, false, true)), ("BQ30", Mech::bq(30, false, true)),
+    ("BQR3", Mech::bq(3, true, true)), ("BQR10", Mech::bq(10, true, true)), ("BQR30", Mech::bq(30, true, true)), ("BQ-M7R", Mech::bq(0, true, false)), ("CORE", Mech::bq(0, false, false))] }
 
 // ─── constantes congeladas (PREREG) ─────────────────────────────────────────
 pub const N_LIB: usize = 17; pub const LIB_S: f64 = 0.3;
@@ -33,8 +37,15 @@ pub const N_IT: usize = 3; pub const LAMS: [f64; 3] = [1e-3, 1e-2, 1e-1]; pub co
 pub const LAM_STAR: f64 = 1e-3; pub const LAM_H: f64 = 1e-2; pub const DC: usize = 9;
 pub const N_FIT: usize = 192; pub const N_VAL: usize = 96;
 pub const AUDIT_TOL: f64 = 0.05;
+/// M7 DA-STR (v10): grado de cada función de biblioteca; penalización ridge λ_j = λ·da^(grado−1) vía reescalado de columnas
+pub const LIB_DEG: [i32; N_LIB] = [1, 1, 2, 2, 2, 3, 3, 3, 3, 1, 1, 2, 2, 1, 1, 2, 2];
+/// M8 cota Brenier-Lyapunov (v10) — OPCIONAL y DESACTIVADA en BQ10: inerte en DEV/CONFIRM (docs/bio_quantum_v10/DIAGNOSTICO_M8.md). r_b = RB_K·max r(contexto)·g^(h−K), g = (r_K/r_0)^(1/K) si >1.03; compresión suave tanh
+pub const RB_K: f64 = 2.5;
+fn colscale(m: &Mech, dp: usize, d: usize) -> Vec<f64> { (0..d).map(|j| if !m.m7 || j < dp { 1.0 } else { (m.da as f64).powf(-((LIB_DEG[j - dp] - 1) as f64) / 2.0) }).collect() }
+fn brenier(p: &mut [f64], rb: f64) { for q in 0..p.len() / 2 { let r = (p[2 * q].powi(2) + p[2 * q + 1].powi(2)).sqrt(); if r > rb && r.is_finite() { let sc = rb * (1.0 + ((r - rb) / rb).tanh()) / r; p[2 * q] *= sc; p[2 * q + 1] *= sc; } } }
+fn rmax(f: &[f64]) -> f64 { (0..f.len() / 2).map(|q| (f[2 * q].powi(2) + f[2 * q + 1].powi(2)).sqrt()).fold(0.0, f64::max) }
 const XOR_META: u64 = 0xA71A_5F00; const XOR_SYN: u64 = 0xA71A_5A11;
-pub fn seeds(phase: &str) -> std::ops::RangeInclusive<u64> { match phase { "dev" => 0xA480..=0xA48F, "confirm" => 0xB480..=0xB48F, "smoke" => 0xC4A0..=0xC4AF, "abl_dev" => 0xA490..=0xA49F, "abl_confirm" => 0xB490..=0xB49F, _ => panic!("fase") } }
+pub fn seeds(phase: &str) -> std::ops::RangeInclusive<u64> { match phase { "dev" => 0xA480..=0xA48F, "confirm" => 0xB480..=0xB48F, "smoke" => 0xC4A0..=0xC4AF, "abl_dev" => 0xA490..=0xA49F, "abl_confirm" => 0xB490..=0xB49F, "bq_tune" => 0xC4B0..=0xC4B3, "bq_dev" => 0xA400..=0xA40F, "bq_confirm" => 0xB400..=0xB40F, _ => panic!("fase") } }
 
 /// g(x): biblioteca genérica (no contiene las fórmulas de 8/10/11)
 pub fn lib(x: &[f64]) -> [f64; N_LIB] { let (a, b) = (x[0], x[1]); let r = (a * a + b * b).sqrt();
@@ -83,7 +94,8 @@ impl<'a> Online<'a> {
     fn refresh(&mut self) { let pr = self.md.prior(&self.frames);
         if self.md.m.m2 { let d = self.md.d; let w = if self.xs.is_empty() { vec![0.0; 2 * d] } else {
                 let yr: Vec<Vec<f64>> = match &pr { Some(p) => self.xs.iter().zip(&self.ys).map(|(x, y)| (0..2).map(|i| y[i] - (0..d).map(|j| p[i * d + j] * x[j]).sum::<f64>()).collect()).collect(), None => self.ys.clone() };
-                sparse_fit(&self.xs, &yr, self.md.lam, self.md.thr) };
+                if self.md.m.m7 { let sc = colscale(&self.md.m, self.dp, d); let xs2: Vec<Vec<f64>> = self.xs.iter().map(|x| x.iter().zip(&sc).map(|(a, b)| a * b).collect()).collect();
+                    let mut w = sparse_fit(&xs2, &yr, self.md.lam, self.md.thr); for i in 0..2 { for j in 0..d { w[i * d + j] *= sc[j]; } } w } else { sparse_fit(&self.xs, &yr, self.md.lam, self.md.thr) } };
             self.th = match &pr { Some(p) => p.iter().zip(&w).map(|(a, b)| a + b).collect(), None => w };
         } else { self.th = match &pr { Some(p) => p.iter().zip(&self.delta).map(|(a, b)| a + b).collect(), None => self.delta.clone() }; } }
     /// observa x(t) dados (x(t−1), ψ(t−1)) de los puntos ya iniciados
@@ -116,7 +128,8 @@ pub fn run_ep(net0: &Net, md: &Model, e: &Ep, k_obs: usize) -> AOut {
         if net.nan { break; }
         if t >= 1 { on.observe(&obs, e.frame(t), &pts); }
         if t == k_obs { let mut s2 = sts.clone(); let nan0 = net.nan;
-            for hh in (k_obs + 1)..=HORIZON { let p = predict(&net, &s2, &on.th); preds[hh - 1] = p.clone(); if !fin(&p) { break; } step_ex(&mut net, &mut s2, &p, false, 0.0, false, true); }
+            let (r0, rk) = (rmax(e.frame(0)), rmax(e.frame(k_obs))); let rb0 = RB_K * (0..=k_obs).map(|t| rmax(e.frame(t))).fold(0.0, f64::max); let ratio = (rk + 1e-6) / (r0 + 1e-6); let g = if ratio > 1.03 { ratio.powf(1.0 / k_obs as f64) } else { 1.0 };
+            for hh in (k_obs + 1)..=HORIZON { let mut p = predict(&net, &s2, &on.th); if md.m.m8 { brenier(&mut p, rb0 * g.powi((hh - k_obs) as i32)); } preds[hh - 1] = p.clone(); if !fin(&p) { break; } step_ex(&mut net, &mut s2, &p, false, 0.0, false, true); }
             net.nan = nan0; if !fin(&preds[HORIZON - 1]) || preds[HORIZON - 1].is_empty() { preds[HORIZON - 1] = vec![f64::NAN; 2 * np]; } }
     }
     AOut { preds, ctx_res: mean(&res), nan: net.nan }

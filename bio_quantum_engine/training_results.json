@@ -1,0 +1,552 @@
+{
+  "title": "Suite Exhaustiva Multi-Versi\u00f3n Bio-Quantum Engine",
+  "date": "2026-11-02",
+  "canonical_dev_confirm": {
+    "Bio-Quantum v5 (Base Lie-18D)": {
+      "dev": {
+        "seed": "0xa400",
+        "episodes": 64,
+        "known_med_log": -11.463755124049868,
+        "known_acc16": 1.0,
+        "new_med_log": -9.390664109596552,
+        "new_acc16": 1.0,
+        "e33_pass": true,
+        "e33_acc_per_h": [
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "dale_violations": 0,
+        "total_synapses": 3352,
+        "cdt_bounded_forgetting_pass": true,
+        "delta_r": 0.020000000000000018
+      },
+      "confirm": {
+        "seed": "0xb400",
+        "episodes": 64,
+        "known_med_log": -11.182011372363762,
+        "known_acc16": 1.0,
+        "new_med_log": -8.836349185937316,
+        "new_acc16": 1.0,
+        "e33_pass": true,
+        "e33_acc_per_h": [
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "dale_violations": 0,
+        "total_synapses": 3352,
+        "cdt_bounded_forgetting_pass": true,
+        "delta_r": 0.020000000000000018
+      }
+    },
+    "Bio-Quantum v6 (Symplectic-Brenier)": {
+      "dev": {
+        "seed": "0xa400",
+        "episodes": 64,
+        "known_med_log": -11.463755124049868,
+        "known_acc16": 1.0,
+        "new_med_log": -9.390664109596552,
+        "new_acc16": 1.0,
+        "e33_pass": true,
+        "e33_acc_per_h": [
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "dale_violations": 0,
+        "total_synapses": 3352,
+        "cdt_bounded_forgetting_pass": true,
+        "delta_r": 0.020000000000000018
+      },
+      "confirm": {
+        "seed": "0xb400",
+        "episodes": 64,
+        "known_med_log": -11.182011372363762,
+        "known_acc16": 1.0,
+        "new_med_log": -8.836349185937316,
+        "new_acc16": 1.0,
+        "e33_pass": true,
+        "e33_acc_per_h": [
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "dale_violations": 0,
+        "total_synapses": 3352,
+        "cdt_bounded_forgetting_pass": true,
+        "delta_r": 0.020000000000000018
+      }
+    },
+    "Bio-Quantum v7 (Occam-Adaptive)": {
+      "dev": {
+        "seed": "0xa400",
+        "episodes": 64,
+        "known_med_log": -11.463755124049868,
+        "known_acc16": 1.0,
+        "new_med_log": -9.390664109596552,
+        "new_acc16": 1.0,
+        "e33_pass": true,
+        "e33_acc_per_h": [
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "dale_violations": 0,
+        "total_synapses": 3352,
+        "cdt_bounded_forgetting_pass": true,
+        "delta_r": 0.020000000000000018
+      },
+      "confirm": {
+        "seed": "0xb400",
+        "episodes": 64,
+        "known_med_log": -11.182011372363762,
+        "known_acc16": 1.0,
+        "new_med_log": -8.836349185937316,
+        "new_acc16": 1.0,
+        "e33_pass": true,
+        "e33_acc_per_h": [
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "dale_violations": 0,
+        "total_synapses": 3352,
+        "cdt_bounded_forgetting_pass": true,
+        "delta_r": 0.020000000000000018
+      }
+    },
+    "Bio-Quantum v8 (Noise-Resilient)": {
+      "dev": {
+        "seed": "0xa400",
+        "episodes": 64,
+        "known_med_log": -11.463755124049868,
+        "known_acc16": 1.0,
+        "new_med_log": -9.390664109596552,
+        "new_acc16": 1.0,
+        "e33_pass": true,
+        "e33_acc_per_h": [
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "dale_violations": 0,
+        "total_synapses": 3352,
+        "cdt_bounded_forgetting_pass": true,
+        "delta_r": 0.020000000000000018
+      },
+      "confirm": {
+        "seed": "0xb400",
+        "episodes": 64,
+        "known_med_log": -11.182011372363762,
+        "known_acc16": 1.0,
+        "new_med_log": -8.836349185937316,
+        "new_acc16": 1.0,
+        "e33_pass": true,
+        "e33_acc_per_h": [
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "dale_violations": 0,
+        "total_synapses": 3352,
+        "cdt_bounded_forgetting_pass": true,
+        "delta_r": 0.020000000000000018
+      }
+    },
+    "Bio-Quantum v9 (Omega - Gran S\u00edntesis)": {
+      "dev": {
+        "seed": "0xa400",
+        "episodes": 64,
+        "known_med_log": -11.463755124049868,
+        "known_acc16": 1.0,
+        "new_med_log": -9.390664109596552,
+        "new_acc16": 1.0,
+        "e33_pass": true,
+        "e33_acc_per_h": [
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "dale_violations": 0,
+        "total_synapses": 3352,
+        "cdt_bounded_forgetting_pass": true,
+        "delta_r": 0.020000000000000018
+      },
+      "confirm": {
+        "seed": "0xb400",
+        "episodes": 64,
+        "known_med_log": -11.182011372363762,
+        "known_acc16": 1.0,
+        "new_med_log": -8.836349185937316,
+        "new_acc16": 1.0,
+        "e33_pass": true,
+        "e33_acc_per_h": [
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "dale_violations": 0,
+        "total_synapses": 3352,
+        "cdt_bounded_forgetting_pass": true,
+        "delta_r": 0.020000000000000018
+      }
+    },
+    "Bio-Quantum v10 (Singularity)": {
+      "dev": {
+        "seed": "0xa400",
+        "episodes": 64,
+        "known_med_log": -10.125332240641248,
+        "known_acc16": 1.0,
+        "new_med_log": -7.587275576107668,
+        "new_acc16": 1.0,
+        "e33_pass": true,
+        "e33_acc_per_h": [
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "dale_violations": 0,
+        "total_synapses": 3352,
+        "cdt_bounded_forgetting_pass": true,
+        "delta_r": 0.020000000000000018
+      },
+      "confirm": {
+        "seed": "0xb400",
+        "episodes": 64,
+        "known_med_log": -10.708020283385046,
+        "known_acc16": 1.0,
+        "new_med_log": -7.491206437661418,
+        "new_acc16": 1.0,
+        "e33_pass": true,
+        "e33_acc_per_h": [
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "dale_violations": 0,
+        "total_synapses": 3352,
+        "cdt_bounded_forgetting_pass": true,
+        "delta_r": 0.020000000000000018
+      }
+    }
+  },
+  "ultra_horizons": {
+    "Bio-Quantum v5": {
+      "16": {
+        "known_acc": 1.0,
+        "known_log": -11.837951077657436,
+        "ood_acc": 1.0,
+        "ood_log": -8.921791593247963
+      },
+      "32": {
+        "known_acc": 1.0,
+        "known_log": -10.57884549706484,
+        "ood_acc": 0.875,
+        "ood_log": -6.387619003709634
+      },
+      "64": {
+        "known_acc": 0.90625,
+        "known_log": -8.868584642234968,
+        "ood_acc": 0.5625,
+        "ood_log": -3.079909441054714
+      },
+      "128": {
+        "known_acc": 0.6875,
+        "known_log": -7.409488908670262,
+        "ood_acc": 0.21875,
+        "ood_log": -5.9440434252225804
+      }
+    },
+    "Bio-Quantum v6": {
+      "16": {
+        "known_acc": 1.0,
+        "known_log": -11.837951077657436,
+        "ood_acc": 1.0,
+        "ood_log": -8.921791593247963
+      },
+      "32": {
+        "known_acc": 1.0,
+        "known_log": -10.57884549706484,
+        "ood_acc": 0.875,
+        "ood_log": -6.387619003709634
+      },
+      "64": {
+        "known_acc": 0.90625,
+        "known_log": -8.868584642234968,
+        "ood_acc": 0.4375,
+        "ood_log": -2.8358801103626794
+      },
+      "128": {
+        "known_acc": 0.6875,
+        "known_log": -6.955529912769799,
+        "ood_acc": 0.21875,
+        "ood_log": -0.8813656761659614
+      }
+    },
+    "Bio-Quantum v9 (Omega)": {
+      "16": {
+        "known_acc": 1.0,
+        "known_log": -11.837951077657436,
+        "ood_acc": 1.0,
+        "ood_log": -8.921791593247963
+      },
+      "32": {
+        "known_acc": 1.0,
+        "known_log": -10.57884549706484,
+        "ood_acc": 0.875,
+        "ood_log": -6.387619003709634
+      },
+      "64": {
+        "known_acc": 0.90625,
+        "known_log": -8.868584642234968,
+        "ood_acc": 0.4375,
+        "ood_log": -2.8358801103626794
+      },
+      "128": {
+        "known_acc": 0.6875,
+        "known_log": -6.955529912769799,
+        "ood_acc": 0.21875,
+        "ood_log": -0.8813656761659614
+      }
+    },
+    "Bio-Quantum v10 (Singularity)": {
+      "16": {
+        "known_acc": 1.0,
+        "known_log": -12.5603834425973,
+        "ood_acc": 1.0,
+        "ood_log": -6.548454738473328
+      },
+      "32": {
+        "known_acc": 1.0,
+        "known_log": -11.336408148416941,
+        "ood_acc": 0.875,
+        "ood_log": -5.186469549877693
+      },
+      "64": {
+        "known_acc": 1.0,
+        "known_log": -9.99269791108223,
+        "ood_acc": 0.625,
+        "ood_log": -3.5204022024782504
+      },
+      "128": {
+        "known_acc": 0.84375,
+        "known_log": -8.744850641963223,
+        "ood_acc": 0.25,
+        "ood_log": -1.8063239551016212
+      }
+    }
+  },
+  "few_shot": {
+    "Bio-Quantum v5": {
+      "2": {
+        "known_acc": 0.625,
+        "known_log": -3.430311972957996,
+        "ood_acc": 0.4375,
+        "ood_log": -2.349041097342098
+      },
+      "3": {
+        "known_acc": 1.0,
+        "known_log": -9.037819632741467,
+        "ood_acc": 0.84375,
+        "ood_log": -4.358373462881602
+      },
+      "4": {
+        "known_acc": 1.0,
+        "known_log": -11.837951077657436,
+        "ood_acc": 1.0,
+        "ood_log": -8.921791593247963
+      }
+    },
+    "Bio-Quantum v7": {
+      "2": {
+        "known_acc": 0.9375,
+        "known_log": -21.942015252662078,
+        "ood_acc": 0.46875,
+        "ood_log": -2.6359744659436872
+      },
+      "3": {
+        "known_acc": 1.0,
+        "known_log": -19.83547754427557,
+        "ood_acc": 1.0,
+        "ood_log": -18.873597195832772
+      },
+      "4": {
+        "known_acc": 1.0,
+        "known_log": -11.837951077657436,
+        "ood_acc": 1.0,
+        "ood_log": -8.921791593247963
+      }
+    },
+    "Bio-Quantum v9 (Omega)": {
+      "2": {
+        "known_acc": 0.9375,
+        "known_log": -21.942015252662078,
+        "ood_acc": 0.46875,
+        "ood_log": -2.6359744659436872
+      },
+      "3": {
+        "known_acc": 1.0,
+        "known_log": -19.83547754427557,
+        "ood_acc": 1.0,
+        "ood_log": -18.873597195832772
+      },
+      "4": {
+        "known_acc": 1.0,
+        "known_log": -11.837951077657436,
+        "ood_acc": 1.0,
+        "ood_log": -8.921791593247963
+      }
+    },
+    "Bio-Quantum v10 (Singularity)": {
+      "2": {
+        "known_acc": 0.875,
+        "known_log": -20.41202253207214,
+        "ood_acc": 0.71875,
+        "ood_log": -14.142069663365818
+      },
+      "3": {
+        "known_acc": 1.0,
+        "known_log": -20.249500614233185,
+        "ood_acc": 1.0,
+        "ood_log": -15.611975699914051
+      },
+      "4": {
+        "known_acc": 1.0,
+        "known_log": -12.5603834425973,
+        "ood_acc": 1.0,
+        "ood_log": -6.548454738473328
+      }
+    }
+  },
+  "noise_resilience": {
+    "Bio-Quantum v5": {
+      "0.0": {
+        "known_acc": 1.0,
+        "known_log": -11.827742008608837,
+        "ood_acc": 1.0,
+        "ood_log": -8.716352760621144
+      },
+      "0.001": {
+        "known_acc": 0.0625,
+        "known_log": NaN,
+        "ood_acc": 0.0,
+        "ood_log": -0.9921779702066187
+      },
+      "0.003": {
+        "known_acc": 0.03125,
+        "known_log": NaN,
+        "ood_acc": 0.0,
+        "ood_log": NaN
+      },
+      "0.005": {
+        "known_acc": 0.03125,
+        "known_log": NaN,
+        "ood_acc": 0.0,
+        "ood_log": NaN
+      }
+    },
+    "Bio-Quantum v8": {
+      "0.0": {
+        "known_acc": 1.0,
+        "known_log": -11.827742008608837,
+        "ood_acc": 1.0,
+        "ood_log": -8.716352760621144
+      },
+      "0.001": {
+        "known_acc": 0.5,
+        "known_log": -2.806434935623727,
+        "ood_acc": 0.15625,
+        "ood_log": -1.920409711889257
+      },
+      "0.003": {
+        "known_acc": 0.0625,
+        "known_log": -1.9748327741288756,
+        "ood_acc": 0.0,
+        "ood_log": -1.0007066013337085
+      },
+      "0.005": {
+        "known_acc": 0.0,
+        "known_log": -1.6940037964397836,
+        "ood_acc": 0.0,
+        "ood_log": -0.7373112267030333
+      }
+    },
+    "Bio-Quantum v9 (Omega)": {
+      "0.0": {
+        "known_acc": 1.0,
+        "known_log": -11.827742008608837,
+        "ood_acc": 1.0,
+        "ood_log": -8.716352760621144
+      },
+      "0.001": {
+        "known_acc": 0.5,
+        "known_log": -2.806434935623727,
+        "ood_acc": 0.15625,
+        "ood_log": -1.920409711889257
+      },
+      "0.003": {
+        "known_acc": 0.0625,
+        "known_log": -1.9748327741288756,
+        "ood_acc": 0.0,
+        "ood_log": -1.0007066013337085
+      },
+      "0.005": {
+        "known_acc": 0.0,
+        "known_log": -1.6940037964397836,
+        "ood_acc": 0.0,
+        "ood_log": -0.7373112267030333
+      }
+    },
+    "Bio-Quantum v10 (Singularity)": {
+      "0.0": {
+        "known_acc": 1.0,
+        "known_log": -13.184573492998602,
+        "ood_acc": 1.0,
+        "ood_log": -7.086207428387336
+      },
+      "0.001": {
+        "known_acc": 0.5,
+        "known_log": -2.806434935623727,
+        "ood_acc": 0.15625,
+        "ood_log": -1.920409711889257
+      },
+      "0.003": {
+        "known_acc": 0.0625,
+        "known_log": -1.9748327741288756,
+        "ood_acc": 0.0,
+        "ood_log": -1.0007066013337085
+      },
+      "0.005": {
+        "known_acc": 0.0,
+        "known_log": -1.7260786706069338,
+        "ood_acc": 0.0,
+        "ood_log": -0.7373112267030333
+      }
+    }
+  }
+}

@@ -1,0 +1,8 @@
+0xC4B0 train 380.6s
+0xC4B0 v4 4.8s
+DIAG_M8 v4 brenier_calls=0 pts=0 activ=0 m6_eps=0 m6_gate_v4=0
+0xC4B0 BQ10 12.8s
+DIAG_M8 BQ10 brenier_calls=0 pts=0 activ=0 m6_eps=0 m6_gate_v4=0
+0xC4B0 BQR10 12.4s
+DIAG_M8 BQR10 brenier_calls=2880 pts=17280 activ=105 m6_eps=240 m6_gate_v4=178
+0xC4B0 ok 412s

@@ -1,0 +1,51 @@
+diff --git a/orbita/src/constelacion4/atlas.rs b/orbita/src/constelacion4/atlas.rs
+index 08e9804..4b6a356 100644
+--- a/orbita/src/constelacion4/atlas.rs
++++ b/orbita/src/constelacion4/atlas.rs
+@@ -42,7 +42,10 @@ pub const LIB_DEG: [i32; N_LIB] = [1, 1, 2, 2, 2, 3, 3, 3, 3, 1, 1, 2, 2, 1, 1,
+ /// M8 cota Brenier-Lyapunov (v10): r_b = RB_K·max r(contexto)·g^(h−K), g = (r_K/r_0)^(1/K) si >1.03; compresión suave tanh
+ pub const RB_K: f64 = 2.5;
+ fn colscale(m: &Mech, dp: usize, d: usize) -> Vec<f64> { (0..d).map(|j| if !m.m7 || j < dp { 1.0 } else { (m.da as f64).powf(-((LIB_DEG[j - dp] - 1) as f64) / 2.0) }).collect() }
+-fn brenier(p: &mut [f64], rb: f64) { for q in 0..p.len() / 2 { let r = (p[2 * q].powi(2) + p[2 * q + 1].powi(2)).sqrt(); if r > rb && r.is_finite() { let sc = rb * (1.0 + ((r - rb) / rb).tanh()) / r; p[2 * q] *= sc; p[2 * q + 1] *= sc; } } }
++pub static DG_CALLS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0); pub static DG_ACT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0); pub static DG_PTS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0); pub static DG_GATE_V4: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0); pub static DG_MAXSHR: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0); pub static DG_SUMSHR: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0); pub static DG_EP_ACT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0); pub static DG_EP_ACT_USED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0); pub static DG_ACT_H16: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
++thread_local! { pub static EP_ACT: std::cell::Cell<bool> = std::cell::Cell::new(false); }
++pub static DG_EPS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
++fn brenier(p: &mut [f64], rb: f64) { use std::sync::atomic::Ordering::Relaxed; DG_CALLS.fetch_add(1, Relaxed); for q in 0..p.len() / 2 { DG_PTS.fetch_add(1, Relaxed); let r = (p[2 * q].powi(2) + p[2 * q + 1].powi(2)).sqrt(); if r > rb && r.is_finite() { DG_ACT.fetch_add(1, Relaxed); EP_ACT.with(|c| c.set(true)); let shr = 1.0 - rb * (1.0 + ((r - rb) / rb).tanh()) / r; DG_MAXSHR.fetch_max(shr.to_bits(), Relaxed); DG_SUMSHR.fetch_add((shr * 1e12) as u64, Relaxed); if (r - rb) / rb < 0.0 { unreachable!() } let sc = rb * (1.0 + ((r - rb) / rb).tanh()) / r; p[2 * q] *= sc; p[2 * q + 1] *= sc; } } }
+ fn rmax(f: &[f64]) -> f64 { (0..f.len() / 2).map(|q| (f[2 * q].powi(2) + f[2 * q + 1].powi(2)).sqrt()).fold(0.0, f64::max) }
+ const XOR_META: u64 = 0xA71A_5F00; const XOR_SYN: u64 = 0xA71A_5A11;
+ pub fn seeds(phase: &str) -> std::ops::RangeInclusive<u64> { match phase { "dev" => 0xA480..=0xA48F, "confirm" => 0xB480..=0xB48F, "smoke" => 0xC4A0..=0xC4AF, "abl_dev" => 0xA490..=0xA49F, "abl_confirm" => 0xB490..=0xB49F, "bq_tune" => 0xC4B0..=0xC4B3, "bq_dev" => 0xA400..=0xA40F, "bq_confirm" => 0xB400..=0xB40F, _ => panic!("fase") } }
+@@ -129,7 +132,7 @@ pub fn run_ep(net0: &Net, md: &Model, e: &Ep, k_obs: usize) -> AOut {
+         if t >= 1 { on.observe(&obs, e.frame(t), &pts); }
+         if t == k_obs { let mut s2 = sts.clone(); let nan0 = net.nan;
+             let (r0, rk) = (rmax(e.frame(0)), rmax(e.frame(k_obs))); let rb0 = RB_K * (0..=k_obs).map(|t| rmax(e.frame(t))).fold(0.0, f64::max); let ratio = (rk + 1e-6) / (r0 + 1e-6); let g = if ratio > 1.03 { ratio.powf(1.0 / k_obs as f64) } else { 1.0 };
+-            for hh in (k_obs + 1)..=HORIZON { let mut p = predict(&net, &s2, &on.th); if md.m.m8 { brenier(&mut p, rb0 * g.powi((hh - k_obs) as i32)); } preds[hh - 1] = p.clone(); if !fin(&p) { break; } step_ex(&mut net, &mut s2, &p, false, 0.0, false, true); }
++            for hh in (k_obs + 1)..=HORIZON { let mut p = predict(&net, &s2, &on.th); if md.m.m8 { let a0 = DG_ACT.load(std::sync::atomic::Ordering::Relaxed); brenier(&mut p, rb0 * g.powi((hh - k_obs) as i32)); if hh == HORIZON && DG_ACT.load(std::sync::atomic::Ordering::Relaxed) > a0 { DG_ACT_H16.fetch_add(1, std::sync::atomic::Ordering::Relaxed); } } preds[hh - 1] = p.clone(); if !fin(&p) { break; } step_ex(&mut net, &mut s2, &p, false, 0.0, false, true); }
+             net.nan = nan0; if !fin(&preds[HORIZON - 1]) || preds[HORIZON - 1].is_empty() { preds[HORIZON - 1] = vec![f64::NAN; 2 * np]; } }
+     }
+     AOut { preds, ctx_res: mean(&res), nan: net.nan }
+@@ -137,10 +140,15 @@ pub fn run_ep(net0: &Net, md: &Model, e: &Ep, k_obs: usize) -> AOut {
+ /// predicción final del brazo (M6: compuerta CLS frente a v4 con el residuo precuencial de los cuadros 1..K)
+ pub fn arm_preds(net: &Net, md: &Model, e: &Ep) -> (Vec<Vec<f64>>, bool, bool) {
+     if md.m.off() { let mut n = net.clone(); let o = run_episode(&mut n, e, false, 0.0, false, K); return (o.preds, false, n.nan); }
+-    let a = run_ep(net, md, e, K);
++    EP_ACT.with(|c| c.set(false)); let a = run_ep(net, md, e, K); let act = EP_ACT.with(|c| c.get()); if act { DG_EP_ACT.fetch_add(1, std::sync::atomic::Ordering::Relaxed); }
+     if md.m.m6 { let mut n = net.clone(); let o = run_episode(&mut n, e, false, 0.0, false, K);
+         let rv = mean(&(1..=K).map(|t| log_rel(clamp_err(&o.preds[t - 1], e.frame(t)))).collect::<Vec<_>>());
+-        if !(rv > a.ctx_res) { return (o.preds, true, n.nan); } }
++        if md.m.m8 { DG_EPS.fetch_add(1, std::sync::atomic::Ordering::Relaxed); }
++        if !(rv > a.ctx_res) { if md.m.m8 { DG_GATE_V4.fetch_add(1, std::sync::atomic::Ordering::Relaxed); } return (o.preds, true, n.nan); } }
++    if act { DG_EP_ACT_USED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
++        let mut m2 = md.clone(); m2.m.m8 = false; let b = run_ep(net, &m2, e, K);
++        let (ea, eb) = (clamp_err(&a.preds[HORIZON - 1], &e.ys[HORIZON - 1]), clamp_err(&b.preds[HORIZON - 1], &e.ys[HORIZON - 1]));
++        eprintln!("DIAG_M8_EP fam={} err_m8={ea:.6e} err_nom8={eb:.6e} dlog={:.3e} bits_eq={}", e.fam, (ea.max(1e-300)).ln() - (eb.max(1e-300)).ln(), ea.to_bits() == eb.to_bits()); }
+     (a.preds, false, a.nan)
+ }
+ pub fn eval_held_atlas(net: &Net, md: &Model, held: &[Ep]) -> (serde_json::Value, serde_json::Value, bool) {
+@@ -297,6 +305,7 @@ pub fn run(a: &[String]) {
+             else { let (md, meta) = meta_train(&net, m, seed); let (h, g, nn) = eval_held_atlas(&net, &md, &held); let (e, r) = e33_atlas(&net, &md, &d, &ex); (h, g, nn, e, r, meta) };
+         armsj.insert(name.into(), json!({"mech": format!("{m:?}"), "pre_known": pre, "held": held_j, "gate_cls": gate_j, "collapse": col, "e33": e33, "e33_v3head": e33raw, "nan": net.nan || nan_e, "meta": meta, "wall_s": ta.elapsed().as_secs_f64()}));
+         eprintln!("0x{seed:X} {name} {:.1}s", ta.elapsed().as_secs_f64());
++        { use std::sync::atomic::Ordering::Relaxed; eprintln!("DIAG_M8 {name} brenier_calls={} pts={} activ={} m6_eps={} m6_gate_v4={} act_h16={} ep_act={} ep_act_used={} max_shrink={:.3e} sum_shrink={:.3e}", DG_CALLS.swap(0, Relaxed), DG_PTS.swap(0, Relaxed), DG_ACT.swap(0, Relaxed), DG_EPS.swap(0, Relaxed), DG_GATE_V4.swap(0, Relaxed), DG_ACT_H16.swap(0, Relaxed), DG_EP_ACT.swap(0, Relaxed), DG_EP_ACT_USED.swap(0, Relaxed), f64::from_bits(DG_MAXSHR.swap(0, Relaxed)), DG_SUMSHR.swap(0, Relaxed) as f64 * 1e-12); }
+     }
+     let orb = orbita_held(&d, &held); let e33o = e33_orbita(&d, &ex);
+     let q = cdt_rqm_epr::v4_provenance::snapshot().delta(&before).total(); assert_eq!(d.raw, raw0); assert_eq!(q, 0, "consultas TEST ≠ 0");

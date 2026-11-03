@@ -1,0 +1,19 @@
+{
+  "suite": "Bio-Quantum v10 Pure Rust Execution",
+  "elapsed_secs": 0.078,
+  "canonical": {
+    "dev": { "known_acc16": 1, "new_acc16": 1, "known_med_log": -12.696734465552574, "new_med_log": -8.755818525504516, "dale_violations": 0 },
+    "confirm": { "known_acc16": 1, "new_acc16": 1, "known_med_log": -12.851390953663692, "new_med_log": -7.592905885997065, "dale_violations": 0 }
+  },
+  "ultra_horizons": [
+    { "H": 16, "known_acc": 1, "ood_acc": 1 },
+    { "H": 32, "known_acc": 1, "ood_acc": 0.84375 },
+    { "H": 64, "known_acc": 1, "ood_acc": 0.5625 },
+    { "H": 128, "known_acc": 0.9375, "ood_acc": 0.28125 }
+  ],
+  "few_shot": [
+    { "k_obs": 2, "known_acc": 0.65625, "ood_acc": 0.875 },
+    { "k_obs": 3, "known_acc": 0.84375, "ood_acc": 1 },
+    { "k_obs": 4, "known_acc": 1, "ood_acc": 1 }
+  ]
+}

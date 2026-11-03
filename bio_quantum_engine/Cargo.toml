@@ -1,0 +1,22 @@
+[package]
+name = "bio_quantum_engine"
+version = "0.1.0"
+edition = "2021"
+description = "Arquitectura Unificada Bio-Cuántica-Geométrica: Integra Bio-Constelación (Ley de Dale, BTSP, dendritas 3-comp), Equivarianza Residual v4, Espectro Koopman-Brenier (TimesFM beater), Memoria Topológica CDT con Olvido Acotado (ΔR ≥ -ε) y Handshake de Wheeler-Feynman en ℂ."
+license = "MIT"
+
+[workspace]
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+
+[lib]
+name = "bio_quantum_engine"
+path = "src/lib.rs"
+
+[[bin]]
+name = "bio_quantum_engine"
+path = "src/main.rs"
+
+[dependencies]
