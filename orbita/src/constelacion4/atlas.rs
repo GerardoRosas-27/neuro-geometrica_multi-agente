@@ -16,7 +16,7 @@ pub struct Mech { pub m1: bool, pub m2: bool, pub m3: bool, pub m4: bool, pub m5
 impl Mech {
     pub fn from_list(s: &str) -> Mech { let mut n = Mech::default(); for t in s.split(',').filter(|t| !t.is_empty()) { match t { "M1" => n.m1 = true, "M2" => n.m2 = true, "M3" => n.m3 = true, "M4" => n.m4 = true, "M5" => n.m5 = true, "M6" => n.m6 = true, "M7" => n.m7 = true, "M8" => n.m8 = true, _ => panic!("mecanismo {t}") } } n }
     pub fn all() -> Mech { Mech { m1: true, m2: true, m3: true, m4: true, m5: true, m6: true, ..Mech::default() } }
-    /// Bio-Quantum v10 portado: M1+M2+M6 (núcleo ATLAS sin M3–M5) + M7 DA-STR (factor da) [+ M8 cota Brenier]
+    /// Configuración recomendada: BQ10 = Mech::bq(10, false, true) (docs/bio_quantum_v10/frozen.json). Bio-Quantum v10 portado: M1+M2+M6 (núcleo ATLAS sin M3–M5) + M7 DA-STR (factor da) [+ M8 cota Brenier]
     pub fn bq(da: u32, m8: bool, m7: bool) -> Mech { let mut m = Mech::from_list("M1,M2,M6"); m.m7 = m7; m.m8 = m8; m.da = if m7 { da } else { 0 }; m }
     /// ablación leave-one-out (docs/atlas_fw/PREREG_ABLACIONES.md)
     pub fn without(mut self, i: usize) -> Mech { match i { 1 => self.m1 = false, 2 => self.m2 = false, 3 => self.m3 = false, 4 => self.m4 = false, 5 => self.m5 = false, 6 => self.m6 = false, _ => panic!("mecanismo {i}") } self }
@@ -39,7 +39,7 @@ pub const N_FIT: usize = 192; pub const N_VAL: usize = 96;
 pub const AUDIT_TOL: f64 = 0.05;
 /// M7 DA-STR (v10): grado de cada función de biblioteca; penalización ridge λ_j = λ·da^(grado−1) vía reescalado de columnas
 pub const LIB_DEG: [i32; N_LIB] = [1, 1, 2, 2, 2, 3, 3, 3, 3, 1, 1, 2, 2, 1, 1, 2, 2];
-/// M8 cota Brenier-Lyapunov (v10): r_b = RB_K·max r(contexto)·g^(h−K), g = (r_K/r_0)^(1/K) si >1.03; compresión suave tanh
+/// M8 cota Brenier-Lyapunov (v10) — OPCIONAL y DESACTIVADA en BQ10: inerte en DEV/CONFIRM (docs/bio_quantum_v10/DIAGNOSTICO_M8.md). r_b = RB_K·max r(contexto)·g^(h−K), g = (r_K/r_0)^(1/K) si >1.03; compresión suave tanh
 pub const RB_K: f64 = 2.5;
 fn colscale(m: &Mech, dp: usize, d: usize) -> Vec<f64> { (0..d).map(|j| if !m.m7 || j < dp { 1.0 } else { (m.da as f64).powf(-((LIB_DEG[j - dp] - 1) as f64) / 2.0) }).collect() }
 fn brenier(p: &mut [f64], rb: f64) { for q in 0..p.len() / 2 { let r = (p[2 * q].powi(2) + p[2 * q + 1].powi(2)).sqrt(); if r > rb && r.is_finite() { let sc = rb * (1.0 + ((r - rb) / rb).tanh()) / r; p[2 * q] *= sc; p[2 * q + 1] *= sc; } } }

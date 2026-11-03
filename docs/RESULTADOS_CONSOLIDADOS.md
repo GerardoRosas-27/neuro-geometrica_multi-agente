@@ -1,12 +1,72 @@
 # Resultados consolidados — selección de la mejor arquitectura
 
-**Ganadora actual: ATLAS-FW** (rama `exp/atlas-fw` @ `ea434ac`, sobre v4): CONFIRM V−v4 new_med_log −0.4082 [−0.4985, −0.3190], known_acc16 +0.0225 [+0.0171, +0.0278], E33 16/16; ablaciones −0.3742 [−0.4856, −0.2462]. Ver [`atlas_fw/README.md`](atlas_fw/README.md).
+**Ganadora actual: BQ10 (bio-quantum v10) = núcleo ATLAS-FW (M1+M2+M6) + M7 DA-STR** (regularización ridge por grado, `da=10`; rama `exp/bio-quantum-v10-rust` @ `f2b6813`, integrada vía `integra/bio-quantum-v10-main`). CONFIRM: BQ10−v4 new_med_log **−0.6083 [−0.7415, −0.4652]**, BQ10−ATLAS-FW(ALL) **−0.1563 [−0.2692, −0.0434]**, known_acc16 +0.0103 vs v4, E33 16/16, 0 NaN, 0 TEST. Ver [`bio_quantum_v10/RESULTADOS.md`](bio_quantum_v10/RESULTADOS.md) y [`bio_quantum_v10/ANALISIS_POR_QUE_GANA.md`](bio_quantum_v10/ANALISIS_POR_QUE_GANA.md).
 
-**Ganadora previa (base de ATLAS-FW): CONSTELACIÓN v4** (rama `exp/constelacion-v4`, commit `fd80320`), integrada en `main` vía la rama `integra/constelacion-v4-main` (código `orbita/src/constelacion4/` + scripts + docs/artefactos de v2, v3, v4, CST-vs-ÓRBITA, mejoras M1–M3 y BIO-CONSTELACIÓN).
+**Ganadora previa: ATLAS-FW** (PR #47, merge `1c845d6`): CONFIRM (seeds propias 0xB480–) V−v4 −0.4082 [−0.4985, −0.3190]. Ver [`atlas_fw/README.md`](atlas_fw/README.md). **Base: CONSTELACIÓN v4** (`fd80320`).
 
-Todas las cifras están copiadas de los `RESULTADOS.md` de cada rama (copias literales en `docs/historico/<exp>/`) y, para v4, contrastadas con `artifacts/constelacion_v4/analysis_dev_confirm.json`. Método común: 16 semillas DEV (0xA400–0xA40F) + 16 CONFIRM (0xB400–0xB40F), bootstrap pareado por semilla 10 000 réplicas, semilla 12345, IC95 percentil, δ = 0,05, sin reajuste entre fases, 0 consultas TEST.
+## Tabla de métricas de las mejores versiones (arnés común BQ10)
 
-## Tabla de experimentos
+Fuente: `artifacts/bio_quantum_v10/{bq_dev,bq_confirm}/metrics_0x*.json` (las 4 arquitecturas se evalúan en la **misma** corrida por semilla, sobre la misma v4 entrenada → contrastes pareados). Generada con `python3 scripts/consolidate_bq10.py --md` (JSON: `artifacts/bio_quantum_v10/consolidado.json`). Bootstrap pareado por semilla 10 000, seed 12345, IC95 percentil. Tiempos = `wall_s` registrado en los artefactos (box, 7 jobs en paralelo, nice 10). ÓRBITA-v1 es la referencia con pesos congelados de `artifacts/orbita/` (su coste de entrenamiento no se mide en este arnés). Nota: las cifras ATLAS-FW aquí (seeds 0xA400/0xB400) difieren de las de su PREREG (seeds 0xA480/0xB480, −0.408); ambas son reales.
+
+#### DEV 0xA400–0xA40F — medias [IC95]
+
+| arquitectura | new_med_log h16 k=4 | known_acc16 | new_acc16 | E33 | tiempo/semilla del brazo (s) |
+|---|---|---|---|---|---|
+| ÓRBITA-v1 (ref., pesos congelados) | -0.7990 [-0.9008, -0.6937] | 0.3540 [0.3145, 0.3936] | 0.0260 [0.0143, 0.0404] | 16/16 | no medido (se entrena aparte) |
+| CONSTELACIÓN v4 | -0.8748 [-1.0116, -0.7460] | 0.8770 [0.8750, 0.8794] | 0.0690 [0.0508, 0.0885] | 16/16 | 4.5 (+380 s entrenar v4, compartido) |
+| ATLAS-FW (ALL) | -1.3856 [-1.5014, -1.2745] | 0.8970 [0.8916, 0.9028] | 0.1549 [0.1328, 0.1771] | 16/16 | 41.6 (sobre v4 entrenada) |
+| **BQ10 (bio-quantum v10)** | -1.5245 [-1.6494, -1.4050] | 0.8877 [0.8833, 0.8931] | 0.1445 [0.1276, 0.1628] | 16/16 | 13.0 (sobre v4 entrenada) |
+
+Pareados (por semilla) — Δ [IC95]:
+
+| contraste | Δ new_med_log | Δ known_acc16 | Δ new_acc16 |
+|---|---|---|---|
+| BQ10-v4 | -0.6496 [-0.7479, -0.5486] | +0.0107 [+0.0073, +0.0142] | +0.0755 [+0.0599, +0.0911] |
+| BQ10-ALL | -0.1388 [-0.2202, -0.0550] | -0.0093 [-0.0142, -0.0049] | -0.0104 [-0.0286, +0.0091] |
+| ALL-v4 | -0.5108 [-0.6051, -0.3963] | +0.0200 [+0.0151, +0.0249] | +0.0859 [+0.0612, +0.1107] |
+| v4-ÓRBITA | -0.0758 [-0.1415, -0.0013] | +0.5229 [+0.4834, +0.5620] | +0.0430 [+0.0247, +0.0612] |
+| BQ10-ÓRBITA | -0.7254 [-0.8288, -0.6243] | +0.5337 [+0.4941, +0.5728] | +0.1185 [+0.1016, +0.1367] |
+
+Wall total por semilla (v4 train + v4, ALL, CORE, BQ10, BQR10 + ÓRBITA): 465 s.
+
+#### CONFIRM 0xB400–0xB40F — medias [IC95]
+
+| arquitectura | new_med_log h16 k=4 | known_acc16 | new_acc16 | E33 | tiempo/semilla del brazo (s) |
+|---|---|---|---|---|---|
+| ÓRBITA-v1 (ref., pesos congelados) | -0.7928 [-0.9119, -0.6826] | 0.3384 [0.3081, 0.3677] | 0.0247 [0.0143, 0.0365] | 16/16 | no medido (se entrena aparte) |
+| CONSTELACIÓN v4 | -0.8997 [-0.9660, -0.8265] | 0.8770 [0.8750, 0.8799] | 0.0664 [0.0482, 0.0872] | 16/16 | 4.5 (+449 s entrenar v4, compartido) |
+| ATLAS-FW (ALL) | -1.3518 [-1.4830, -1.2185] | 0.9028 [0.8975, 0.9082] | 0.1562 [0.1263, 0.1875] | 16/16 | 41.0 (sobre v4 entrenada) |
+| **BQ10 (bio-quantum v10)** | -1.5081 [-1.6382, -1.3865] | 0.8872 [0.8838, 0.8906] | 0.1484 [0.1250, 0.1758] | 16/16 | 12.3 (sobre v4 entrenada) |
+
+Pareados (por semilla) — Δ [IC95]:
+
+| contraste | Δ new_med_log | Δ known_acc16 | Δ new_acc16 |
+|---|---|---|---|
+| BQ10-v4 | -0.6083 [-0.7415, -0.4652] | +0.0103 [+0.0068, +0.0137] | +0.0820 [+0.0664, +0.0977] |
+| BQ10-ALL | -0.1563 [-0.2692, -0.0434] | -0.0156 [-0.0190, -0.0122] | -0.0078 [-0.0286, +0.0130] |
+| ALL-v4 | -0.4520 [-0.5613, -0.3247] | +0.0259 [+0.0205, +0.0312] | +0.0898 [+0.0651, +0.1133] |
+| v4-ÓRBITA | -0.1070 [-0.1811, -0.0238] | +0.5386 [+0.5093, +0.5684] | +0.0417 [+0.0221, +0.0612] |
+| BQ10-ÓRBITA | -0.7153 [-0.8588, -0.5613] | +0.5488 [+0.5186, +0.5791] | +0.1237 [+0.0990, +0.1497] |
+
+Wall total por semilla (v4 train + v4, ALL, CORE, BQ10, BQR10 + ÓRBITA): 533 s.
+
+
+Lectura honesta: BQ10 gana en la primaria (new_med_log) a v4 y a ATLAS-FW con IC excluyendo 0 en DEV y CONFIRM, y es ~3× más barato por semilla que ALL (sin M3–M5). Coste: known_acc16 −0.009/−0.016 frente a ALL (sigue +0.010 sobre v4, dentro del no-daño δ=0.05), y new_acc16 sin diferencia significativa frente a ALL. M8 (cota Brenier, brazo BQR10) es **inerte** (idéntico a BQ10; ver `bio_quantum_v10/DIAGNOSTICO_M8.md`) y queda desactivado.
+
+### Cómo correr BQ10
+```bash
+cargo build --release --manifest-path orbita/Cargo.toml
+# una semilla (DEV): BQ10 + v4 (v4 siempre corre como contraste pareado)
+orbita/target/release/orbita atlas-run --phase bq_dev --seed 0xA400 --weights artifacts/orbita/dev/weights_0xA400.json --out artifacts/bio_quantum_v10 --arms v4,BQ10
+# fases completas (reanudable vía .done) y análisis
+JOBS=7 orbita/scripts/bq10_phase.sh bq_dev v4,ALL,CORE,BQ10,BQR10
+JOBS=7 orbita/scripts/bq10_phase.sh bq_confirm v4,ALL,CORE,BQ10,BQR10
+python3 scripts/analyze_bq10.py --md; python3 scripts/consolidate_bq10.py --md
+```
+Sin `--arms`, `atlas-run` corre todos los brazos (v4, M1…M6, ALL, ablaciones, BQ*); el default no se cambió para no alterar la reproducibilidad de ATLAS-FW. Valores congelados: `docs/bio_quantum_v10/frozen.json` (`primary_arm: BQ10`, `da=10`, `LIB_DEG`, `RB_K`).
+
+## Historial de experimentos
+
 
 | Experimento | Rama @ commit | Primaria DEV | Primaria CONFIRM | No-daño | E33 (CST) | Veredicto |
 |---|---|---|---|---|---|---|
@@ -57,6 +117,8 @@ LAT (latente de Koopman, `resultados_latente_largo_plazo.md`): Exp. 1 H1a–H3 *
 No encontré en las ramas un único documento que dé la primaria de CONSTELACIÓN (med log h16 nuevas) para ÓRBITA+LAT; esa comparación no se hizo.
 
 ## Estado respecto a `main`
+**BQ10 está en `main`** (`orbita/src/constelacion4/atlas.rs`: brazos `BQ3/BQ10/BQ30`, `BQR*`, `CORE`, `BQ-M7R`; M8 opcional e inerte). ATLAS-FW y v4 siguen intactos (Paso 0 hash v4 `1985bdbad5eee41f` en 0xC420). Texto histórico previo:
+
 CONSTELACIÓN v4 **está en `main`** (PR `integra/constelacion-v4-main`). El código de M1–M3 (`mejoras.rs`) y del híbrido (`bio.rs`, crate `bio_constelacion/`) **no** se integró: ambos son negativos y modifican `constelacion4/mod.rs`; quedan en sus ramas. Tras v4 se probaron mejoras (M1–M3) y un híbrido bio; ninguno supera a v4 sin daño, así que v4 sigue siendo la versión estable.
 
 ## Por qué gana CONSTELACIÓN v4
