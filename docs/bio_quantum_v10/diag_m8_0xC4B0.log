@@ -1,0 +1,10 @@
+0xC4B0 train 360.6s
+0xC4B0 v4 4.6s
+DIAG_M8 v4 brenier_calls=0 pts=0 activ=0 m6_eps=0 m6_gate_v4=0 act_h16=0 ep_act=0 ep_act_used=0 max_shrink=0.000e0 sum_shrink=0.000e0
+DIAG_M8_EP fam=7 err_m8=3.745543e0 err_nom8=1.000000e1 dlog=-9.820e-1 bits_eq=false
+DIAG_M8_EP fam=7 err_m8=3.982586e-1 err_nom8=2.098162e0 dlog=-1.662e0 bits_eq=false
+DIAG_M8_EP fam=7 err_m8=3.012905e0 err_nom8=1.000000e1 dlog=-1.200e0 bits_eq=false
+DIAG_M8_EP fam=7 err_m8=3.737356e0 err_nom8=1.000000e1 dlog=-9.842e-1 bits_eq=false
+0xC4B0 BQR10 13.1s
+DIAG_M8 BQR10 brenier_calls=2880 pts=17280 activ=105 m6_eps=240 m6_gate_v4=178 act_h16=10 ep_act=11 ep_act_used=4 max_shrink=9.877e-1 sum_shrink=2.861e1
+0xC4B0 ok 379s
