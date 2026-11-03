@@ -1,0 +1,13 @@
+diff --git a/orbita/src/constelacion4/mejoras.rs b/orbita/src/constelacion4/mejoras.rs
+index b4af9bf..ef55750 100644
+--- a/orbita/src/constelacion4/mejoras.rs
++++ b/orbita/src/constelacion4/mejoras.rs
+@@ -52,6 +52,8 @@ fn eval_arm(net: &mut Net, held: &[Ep], d: &Orbita, ex: &[Example]) -> serde_jso
+         for e in &eps { let o = run_episode(net, e, false, 0.0, false, K); e16.push(o.h16_err); h1.push(log_rel(clamp_err(&o.preds[K], e.frame(K + 1)))); p1.push(log_rel(clamp_err(e.frame(K), e.frame(K + 1)))); }
+         r.insert(format!("{g}_acc16"), json!(e16.iter().filter(|&&x| x < mt::REL_ERR_OK).count() as f64 / e16.len() as f64));
+         r.insert(format!("{g}_med_log"), json!(medlog(&e16)));
++        if std::env::var("DIAG_M1").is_ok() { let ml = &net.m_log; let (mn, mx) = ml.iter().fold((f64::MAX, f64::MIN), |(a, b), &v| (a.min(v), b.max(v))); let mu = if ml.is_empty() { 1.0 } else { mean(ml) }; let sd = if ml.is_empty() { 0.0 } else { (ml.iter().map(|v| (v - mu).powi(2)).sum::<f64>() / ml.len() as f64).sqrt() }; let lo = ml.iter().filter(|&&v| v <= net.c.m1_mmin).count(); let hi = ml.iter().filter(|&&v| v >= net.c.m1_mmax).count();
++            eprintln!("DIAG_M1 {g} n_m={} m_mean={mu:.6} m_sd={sd:.6} m_min={mn:.6} m_max={mx:.6} at_mmin={lo} at_mmax={hi} e16={:?}", ml.len(), e16.iter().map(|v| format!("{:.6e}", v)).collect::<Vec<_>>()); }
+         r.insert(format!("{g}_m_mean"), json!(if net.m_log.is_empty() { 1.0 } else { mean(&net.m_log) }));
+         r.insert(format!("{g}_h1_med_log"), json!(median(h1))); r.insert(format!("{g}_h1_persist_med_log"), json!(median(p1)));
+         for k in [2usize, 8] { r.insert(format!("{g}_med_log_k{k}"), json!(medlog(&h16s(net, &eps, k)))); }
