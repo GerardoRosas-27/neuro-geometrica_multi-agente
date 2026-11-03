@@ -12,11 +12,13 @@
 use super::*;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct Mech { pub m1: bool, pub m2: bool, pub m3: bool, pub m4: bool, pub m5: bool, pub m6: bool, pub m7: bool, pub m8: bool, pub da: u32 }
+pub struct Mech { pub m1: bool, pub m2: bool, pub m3: bool, pub m4: bool, pub m5: bool, pub m6: bool, pub m7: bool, pub m8: bool, pub da: u32, pub nov4: bool }
 impl Mech {
     pub fn from_list(s: &str) -> Mech { let mut n = Mech::default(); for t in s.split(',').filter(|t| !t.is_empty()) { match t { "M1" => n.m1 = true, "M2" => n.m2 = true, "M3" => n.m3 = true, "M4" => n.m4 = true, "M5" => n.m5 = true, "M6" => n.m6 = true, "M7" => n.m7 = true, "M8" => n.m8 = true, _ => panic!("mecanismo {t}") } } n }
     pub fn all() -> Mech { Mech { m1: true, m2: true, m3: true, m4: true, m5: true, m6: true, ..Mech::default() } }
     /// Configuración recomendada: BQ10 = Mech::bq(10, false, true) (docs/bio_quantum_v10/frozen.json). Bio-Quantum v10 portado: M1+M2+M6 (núcleo ATLAS sin M3–M5) + M7 DA-STR (factor da) [+ M8 cota Brenier]
+    /// aislado de v4 (docs/bq10_aislado_k/PREREG.md): M1+M2(+M7) sin φ_v4 ni M6 ni red; nov4=false ⇒ ruta BQ10 intacta
+    pub fn nov4(da: u32, m7: bool) -> Mech { let mut m = Mech::from_list("M1,M2"); m.m7 = m7; m.da = if m7 { da } else { 0 }; m.nov4 = true; m }
     pub fn bq(da: u32, m8: bool, m7: bool) -> Mech { let mut m = Mech::from_list("M1,M2,M6"); m.m7 = m7; m.m8 = m8; m.da = if m7 { da } else { 0 }; m }
     /// ablación leave-one-out (docs/atlas_fw/PREREG_ABLACIONES.md)
     pub fn without(mut self, i: usize) -> Mech { match i { 1 => self.m1 = false, 2 => self.m2 = false, 3 => self.m3 = false, 4 => self.m4 = false, 5 => self.m5 = false, 6 => self.m6 = false, _ => panic!("mecanismo {i}") } self }
@@ -29,7 +31,9 @@ pub fn arms() -> Vec<(&'static str, Mech)> { vec![("v4", Mech::default()), ("M1"
     ("ALL-M1", Mech::all().without(1)), ("ALL-M2", Mech::all().without(2)), ("ALL-M3", Mech::all().without(3)),
     ("ALL-M4", Mech::all().without(4)), ("ALL-M5", Mech::all().without(5)), ("ALL-M6", Mech::all().without(6)),
     ("BQ3", Mech::bq(3, false, true)), ("BQ10", Mech::bq(10, false, true)), ("BQ30", Mech::bq(30, false, true)),
-    ("BQR3", Mech::bq(3, true, true)), ("BQR10", Mech::bq(10, true, true)), ("BQR30", Mech::bq(30, true, true)), ("BQ-M7R", Mech::bq(0, true, false)), ("CORE", Mech::bq(0, false, false))] }
+    ("BQR3", Mech::bq(3, true, true)), ("BQR10", Mech::bq(10, true, true)), ("BQR30", Mech::bq(30, true, true)), ("BQ-M7R", Mech::bq(0, true, false)), ("CORE", Mech::bq(0, false, false)),
+    // docs/bq10_aislado_k: aislamiento de v4 (nov4 = sin φ_v4, sin compuerta M6, sin red: ψ = s·g(x_t) observado, base x̂ = x)
+    ("BQ10_nov4", Mech::nov4(10, true)), ("ATLAS_nov4", Mech::nov4(0, false))] }
 
 // ─── constantes congeladas (PREREG) ─────────────────────────────────────────
 pub const N_LIB: usize = 17; pub const LIB_S: f64 = 0.3;
@@ -135,19 +139,22 @@ pub fn run_ep(net0: &Net, md: &Model, e: &Ep, k_obs: usize) -> AOut {
     AOut { preds, ctx_res: mean(&res), nan: net.nan }
 }
 /// predicción final del brazo (M6: compuerta CLS frente a v4 con el residuo precuencial de los cuadros 1..K)
-pub fn arm_preds(net: &Net, md: &Model, e: &Ep) -> (Vec<Vec<f64>>, bool, bool) {
-    if md.m.off() { let mut n = net.clone(); let o = run_episode(&mut n, e, false, 0.0, false, K); return (o.preds, false, n.nan); }
-    let a = run_ep(net, md, e, K);
-    if md.m.m6 { let mut n = net.clone(); let o = run_episode(&mut n, e, false, 0.0, false, K);
-        let rv = mean(&(1..=K).map(|t| log_rel(clamp_err(&o.preds[t - 1], e.frame(t)))).collect::<Vec<_>>());
+pub fn arm_preds(net: &Net, md: &Model, e: &Ep) -> (Vec<Vec<f64>>, bool, bool) { arm_preds_k(net, md, e, K) }
+pub fn arm_preds_k(net: &Net, md: &Model, e: &Ep, k: usize) -> (Vec<Vec<f64>>, bool, bool) {
+    if md.m.nov4 { let p = nov4_preds(md, e, k); let nan = !fin(&p[HORIZON - 1]); return (p, false, nan); }
+    if md.m.off() { let mut n = net.clone(); let o = run_episode(&mut n, e, false, 0.0, false, k); return (o.preds, false, n.nan); }
+    let a = run_ep(net, md, e, k);
+    if md.m.m6 { let mut n = net.clone(); let o = run_episode(&mut n, e, false, 0.0, false, k);
+        let rv = mean(&(1..=k).map(|t| log_rel(clamp_err(&o.preds[t - 1], e.frame(t)))).collect::<Vec<_>>());
         if !(rv > a.ctx_res) { return (o.preds, true, n.nan); } }
     (a.preds, false, a.nan)
 }
-pub fn eval_held_atlas(net: &Net, md: &Model, held: &[Ep]) -> (serde_json::Value, serde_json::Value, bool) {
+pub fn eval_held_atlas(net: &Net, md: &Model, held: &[Ep]) -> (serde_json::Value, serde_json::Value, bool) { eval_held_atlas_k(net, md, held, K) }
+pub fn eval_held_atlas_k(net: &Net, md: &Model, held: &[Ep], k: usize) -> (serde_json::Value, serde_json::Value, bool) {
     let mut r = serde_json::Map::new(); let mut g = serde_json::Map::new(); let mut nan = false;
     for (name, known) in [("known", true), ("new", false)] {
         let (mut errs, mut nv4) = (vec![], 0usize);
-        for e in held.iter().filter(|e| (e.fam < N_FAM) == known) { let (p, used, nn) = arm_preds(net, md, e); nan |= nn; nv4 += used as usize; errs.push(clamp_err(&p[HORIZON - 1], &e.ys[HORIZON - 1])); }
+        for e in held.iter().filter(|e| (e.fam < N_FAM) == known) { let (p, used, nn) = arm_preds_k(net, md, e, k); nan |= nn; nv4 += used as usize; errs.push(clamp_err(&p[HORIZON - 1], &e.ys[HORIZON - 1])); }
         if errs.is_empty() { continue; }
         r.insert(format!("{name}_acc16"), json!(errs.iter().filter(|&&x| x < mt::REL_ERR_OK).count() as f64 / errs.len() as f64));
         r.insert(format!("{name}_med_log"), json!(median(errs.iter().map(|&x| log_rel(x)).collect())));
@@ -155,14 +162,39 @@ pub fn eval_held_atlas(net: &Net, md: &Model, held: &[Ep]) -> (serde_json::Value
     }
     (serde_json::Value::Object(r), serde_json::Value::Object(g), nan)
 }
-pub fn e33_atlas(net: &Net, md: &Model, d: &Orbita, ex: &[Example]) -> (serde_json::Value, serde_json::Value) {
+pub fn e33_atlas(net: &Net, md: &Model, d: &Orbita, ex: &[Example]) -> (serde_json::Value, serde_json::Value) { e33_atlas_k(net, md, d, ex, K) }
+pub fn e33_atlas_k(net: &Net, md: &Model, d: &Orbita, ex: &[Example], k: usize) -> (serde_json::Value, serde_json::Value) {
     let trs: Vec<(Vec<Vec<f64>>, &Example)> = ex.iter().map(|e| { let ys: Vec<Vec<f64>> = (1..=HORIZON).map(|h| target_h(e, h)).collect();
-        let ep = Ep { fam: e.family_id, p: [0.0; 2], x0: e.input.clone(), ys }; (arm_preds(net, md, &ep).0, e) }).collect();
+        let ep = Ep { fam: e.family_id, p: [0.0; 2], x0: e.input.clone(), ys }; (arm_preds_k(net, md, &ep, k).0, e) }).collect();
     let raw = e33_score(&trs);
     if !net.c.orb_prior { return (raw.clone(), raw); }
     let trs2: Vec<(Vec<Vec<f64>>, &Example)> = trs.iter().map(|(p, e)| { let mut p = p.clone(); p[0] = d.step(&e.input, &e.context); (p, *e) }).collect();
     (e33_score(&trs2), raw)
 }
+
+// ─── nov4 (docs/bq10_aislado_k): aprendiz en contexto sin red v4 ─────────────
+/// ψ_p(t) = LIB_S·g(x_p(t)) (biblioteca M1 sola, dp = 0); x̂_p(t+1) = x_p(t) + Θ ψ_p(t); Θ = ridge/STLSQ (M2) con reescalado DA-STR (M7) sobre
+/// las transiciones vistas. Igual estructura que run_ep: h≤k precuencial (Θ ajustado con transiciones < t), h>k rollout reinyectado desde x(k).
+fn nov4_theta(md: &Model, xs: &[Vec<f64>], ys: &[Vec<f64>]) -> Vec<f64> { let d = N_LIB; if xs.is_empty() { return vec![0.0; 2 * d]; }
+    if md.m.m7 { let sc = colscale(&md.m, 0, d); let xs2: Vec<Vec<f64>> = xs.iter().map(|x| x.iter().zip(&sc).map(|(a, b)| a * b).collect()).collect();
+        let mut w = sparse_fit(&xs2, ys, md.lam, md.thr); for i in 0..2 { for j in 0..d { w[i * d + j] *= sc[j]; } } w } else { sparse_fit(xs, ys, md.lam, md.thr) } }
+fn nov4_step(x: &[f64], th: &[f64]) -> Vec<f64> { let d = N_LIB; let mut o = x.to_vec(); for p in 0..x.len() / 2 { let psi: Vec<f64> = lib(&x[2 * p..2 * p + 2]).iter().map(|z| z * LIB_S).collect();
+    for i in 0..2 { o[2 * p + i] = x[2 * p + i] + (0..d).map(|j| th[i * d + j] * psi[j]).sum::<f64>(); } } o }
+fn nov4_fit(md: &Model, e: &Ep, k: usize) -> Vec<f64> { let (mut xs, mut ys) = (vec![], vec![]);
+    for t in 1..=k { let (a, b) = (e.frame(t - 1), e.frame(t)); for p in 0..a.len() / 2 { xs.push(lib(&a[2 * p..2 * p + 2]).iter().map(|z| z * LIB_S).collect::<Vec<f64>>()); ys.push(vec![b[2 * p] - a[2 * p], b[2 * p + 1] - a[2 * p + 1]]); } }
+    nov4_theta(md, &xs, &ys) }
+pub fn nov4_preds(md: &Model, e: &Ep, k: usize) -> Vec<Vec<f64>> { let mut preds = vec![vec![]; HORIZON];
+    for t in 1..=k { let th = nov4_fit(md, e, t - 1); preds[t - 1] = nov4_step(e.frame(t - 1), &th); }
+    let th = nov4_fit(md, e, k); let mut z = e.frame(k).to_vec();
+    for hh in (k + 1)..=HORIZON { z = nov4_step(&z, &th); preds[hh - 1] = z.clone(); if !fin(&z) { break; } }
+    if !fin(&preds[HORIZON - 1]) || preds[HORIZON - 1].is_empty() { preds[HORIZON - 1] = vec![f64::NAN; e.x0.len()]; } preds }
+/// misma regla de selección que meta_train para M2 (rejilla congelada LAMS×THRS, objetivo 1 paso en k+1 sobre los mismos N_VAL episodios de validación); sin hiperparámetros nuevos
+fn meta_nov4(m: Mech, seed: u64, kk: usize) -> (Model, serde_json::Value) { let mut md = Model::plain(m, N_LIB); let (val, rej) = meta_eps(seed, &m, N_VAL, 0x2);
+    let mut best = (f64::INFINITY, 0.0, 0.0); let mut grid = vec![];
+    for &l in &LAMS { for &th in &THRS { let mut mm = md.clone(); mm.lam = l; mm.thr = th;
+        let o = mean(&val.iter().map(|e| { let t = nov4_fit(&mm, e, kk); log_rel(clamp_err(&nov4_step(e.frame(kk), &t), e.frame(kk + 1))) }).collect::<Vec<_>>()); grid.push(json!([0.0, l, th, o])); if o < best.0 { best = (o, l, th); } } }
+    md.lam = best.1; md.thr = best.2;
+    (md.clone(), json!({"meta": true, "nov4": true, "d": N_LIB, "alpha": 0.0, "lam": md.lam, "thr": md.thr, "objective": "one_step_h(k+1)", "best_obj": best.0, "grid": grid, "syn_rejected": rej, "n_val": N_VAL})) }
 
 // ─── M4: familias sintéticas procedurales ───────────────────────────────────
 #[derive(Clone, Debug)]
@@ -204,37 +236,39 @@ pub fn meta_eps(seed: u64, m: &Mech, n: usize, xor: u64) -> (Vec<Ep>, usize) {
 
 // ─── meta-entrenamiento ─────────────────────────────────────────────────────
 struct Cache { obs: Vec<Vec<(Vec<f64>, Vec<f64>)>>, pts: Vec<Vec<usize>>, sts_k: Vec<PState>, ep: Ep }
-fn cache_ep(net0: &Net, m: &Mech, e: &Ep) -> Cache { let mut net = net0.clone(); net.c.fast = false; net.begin_episode(); let np = e.x0.len() / 2;
+fn cache_ep(net0: &Net, m: &Mech, e: &Ep, kk: usize) -> Cache { let mut net = net0.clone(); net.c.fast = false; net.begin_episode(); let np = e.x0.len() / 2;
     let mut sts: Vec<PState> = (0..np).map(|_| net.fresh_state()).collect(); let (mut obs, mut pts) = (vec![], vec![]); let mut sk = vec![];
     for t in 0..=HORIZON { let pt: Vec<usize> = (0..np).filter(|&p| sts[p].started).collect();
         obs.push(pt.iter().map(|&p| { let s = &sts[p]; let phi = net.feat(s); (s.xl.clone(), psi_of(m, &phi, &s.xl)) }).collect()); pts.push(pt);
-        constelacion_step(&mut net, &mut sts, e.frame(t), false, 0.0, false); if t == K { sk = sts.clone(); } }
+        constelacion_step(&mut net, &mut sts, e.frame(t), false, 0.0, false); if t == kk { sk = sts.clone(); } }
     Cache { obs, pts, sts_k: sk, ep: e.clone() } }
-fn theta_at_k(net: &Net, md: &Model, c: &Cache) -> Vec<f64> { let mut on = Online::new(md, net, &c.ep.x0); on.frames.clear(); on.frames.push(c.ep.x0.clone()); on.refresh();
-    for t in 1..=K { on.observe(&c.obs[t], c.ep.frame(t), &c.pts[t]); } on.th }
-fn objective(net0: &Net, md: &Model, c: &Cache) -> f64 { let th = theta_at_k(net0, md, c); let wp = &net0.wp; let dp = net0.dp;
+fn theta_at_k(net: &Net, md: &Model, c: &Cache, kk: usize) -> Vec<f64> { let mut on = Online::new(md, net, &c.ep.x0); on.frames.clear(); on.frames.push(c.ep.x0.clone()); on.refresh();
+    for t in 1..=kk { on.observe(&c.obs[t], c.ep.frame(t), &c.pts[t]); } on.th }
+fn objective(net0: &Net, md: &Model, c: &Cache, kk: usize) -> f64 { let th = theta_at_k(net0, md, c, kk); let wp = &net0.wp; let dp = net0.dp;
     let pr = |net: &Net, s: &[PState]| -> Vec<f64> { s.iter().flat_map(|s| { let phi = net.feat(s); pred(wp, dp, &s.xl, &psi_of(&md.m, &phi, &s.xl), &th) }).collect() };
-    if !md.m.m5 { let p = pr(net0, &c.sts_k); return log_rel(clamp_err(&p, c.ep.frame(K + 1))); }
+    if !md.m.m5 { let p = pr(net0, &c.sts_k); return log_rel(clamp_err(&p, c.ep.frame(kk + 1))); }
     let mut net = net0.clone(); net.c.fast = false; let mut s2 = c.sts_k.clone(); let mut v = vec![];
-    for hh in (K + 1)..=HORIZON { let p = pr(&net, &s2); v.push(log_rel(clamp_err(&p, c.ep.frame(hh)))); if !fin(&p) { for _ in hh..HORIZON { v.push(log_rel(10.0)); } break; } step_ex(&mut net, &mut s2, &p, false, 0.0, false, true); }
+    for hh in (kk + 1)..=HORIZON { let p = pr(&net, &s2); v.push(log_rel(clamp_err(&p, c.ep.frame(hh)))); if !fin(&p) { for _ in hh..HORIZON { v.push(log_rel(10.0)); } break; } step_ex(&mut net, &mut s2, &p, false, 0.0, false, true); }
     mean(&v) }
-pub fn meta_train(net: &Net, m: Mech, seed: u64) -> (Model, serde_json::Value) {
+pub fn meta_train(net: &Net, m: Mech, seed: u64) -> (Model, serde_json::Value) { meta_train_k(net, m, seed, K) }
+pub fn meta_train_k(net: &Net, m: Mech, seed: u64, kk: usize) -> (Model, serde_json::Value) {
+    if m.nov4 { return meta_nov4(m, seed, kk); }
     let d = net.dp + if m.m1 { N_LIB } else { 0 }; let mut md = Model::plain(m, d);
     if !(m.m2 || m.meta()) { return (md, json!({"meta": false})); }
     let (fit, rej1) = meta_eps(seed, &m, N_FIT, 0x1); let (val, rej2) = meta_eps(seed, &m, N_VAL, 0x2);
-    let cf: Vec<Cache> = if m.meta() { fit.iter().map(|e| cache_ep(net, &m, e)).collect() } else { vec![] }; let cv: Vec<Cache> = val.iter().map(|e| cache_ep(net, &m, e)).collect();
+    let cf: Vec<Cache> = if m.meta() { fit.iter().map(|e| cache_ep(net, &m, e, kk)).collect() } else { vec![] }; let cv: Vec<Cache> = val.iter().map(|e| cache_ep(net, &m, e, kk)).collect();
     if m.meta() { // Θ*_e por episodio (ridge sobre residuos de transiciones 1..=K+1, o 1..=16 con M5) → H (M3) o Θ̄
-        let tmax = if m.m5 { HORIZON } else { K + 1 }; let zero = vec![0.0; 2 * d]; let (mut cs, mut ts) = (vec![], vec![]);
+        let tmax = if m.m5 { HORIZON } else { kk + 1 }; let zero = vec![0.0; 2 * d]; let (mut cs, mut ts) = (vec![], vec![]);
         for c in &cf { let (mut xs, mut ys) = (vec![], vec![]);
             for t in 1..=tmax { for (q, (xl, psi)) in c.obs[t].iter().enumerate() { let p = c.pts[t][q]; let b = pred(&net.wp, net.dp, xl, psi, &zero); let x = c.ep.frame(t); xs.push(psi.clone()); ys.push(vec![x[2 * p] - b[0], x[2 * p + 1] - b[1]]); } }
             let w = ridge(&xs, &ys, LAM_STAR); let mut th = vec![0.0; 2 * d]; for j in 0..d { for i in 0..2 { th[i * d + j] = w[j][i]; } }
-            cs.push(ctx(&(0..=K).map(|t| c.ep.frame(t).to_vec()).collect::<Vec<_>>())); ts.push(th); }
+            cs.push(ctx(&(0..=kk).map(|t| c.ep.frame(t).to_vec()).collect::<Vec<_>>())); ts.push(th); }
         if m.m3 { md.h = Some(ridge(&cs, &ts, LAM_H)); } else { md.tbar = Some((0..2 * d).map(|k| ts.iter().map(|t| t[k]).sum::<f64>() / ts.len() as f64).collect()); }
     }
     let lams: Vec<f64> = if m.m2 { LAMS.to_vec() } else { vec![LAMS[0]] }; let thrs: Vec<f64> = if m.m2 { THRS.to_vec() } else { vec![THRS[0]] }; let als: Vec<f64> = if m.meta() { ALPHAS.to_vec() } else { vec![0.0] };
     let mut best = (f64::INFINITY, 0.0, 0.0, 0.0); let mut grid = vec![];
     for &a in &als { for &l in &lams { for &th in &thrs { let mut mm = md.clone(); mm.alpha = a; mm.lam = l; mm.thr = th;
-        let o = mean(&cv.iter().map(|c| objective(net, &mm, c)).collect::<Vec<_>>()); grid.push(json!([a, l, th, o])); if o < best.0 { best = (o, a, l, th); } } } }
+        let o = mean(&cv.iter().map(|c| objective(net, &mm, c, kk)).collect::<Vec<_>>()); grid.push(json!([a, l, th, o])); if o < best.0 { best = (o, a, l, th); } } } }
     md.alpha = best.1; md.lam = best.2; md.thr = best.3; let (al, la, tr) = (md.alpha, md.lam, md.thr);
     (md, json!({"meta": true, "d": d, "alpha": al, "lam": la, "thr": tr, "objective": if m.m5 { "rollout_h5_h16" } else { "one_step_h5" }, "best_obj": best.0, "grid": grid, "syn_rejected": rej1 + rej2, "n_fit": N_FIT, "n_val": N_VAL}))
 }
@@ -270,7 +304,7 @@ pub fn h0(a: &[String]) {
 fn weights_hash(net: &Net) -> String { format!("{:016x}", net.hash()) }
 pub fn run(a: &[String]) {
     let seed = parse_seed(&arg_of(a, "--seed").unwrap()); let phase = arg_of(a, "--phase").unwrap(); assert!(seeds(&phase).contains(&seed), "semilla fuera de rango de la fase");
-    let allowed = ["--seed", "--phase", "--weights", "--out", "--arms", "--na", "--nb"];
+    let allowed = ["--seed", "--phase", "--weights", "--out", "--arms", "--na", "--nb", "--ks"];
     for (i, x) in a.iter().enumerate() { if x.starts_with("--") { assert!(allowed.contains(&x.as_str()), "flag no permitido {x}"); if phase != "smoke" { assert!(x != "--na" && x != "--nb", "DEV/CONFIRM: presupuesto congelado"); } } else { assert!(i <= 1 || a[i - 1].starts_with("--"), "argumento suelto {x}"); } }
     let wpath = arg_of(a, "--weights").unwrap(); let d = Orbita::from_json(&std::fs::read_to_string(&wpath).unwrap()); let raw0 = d.raw.clone();
     let out = PathBuf::from(arg_of(a, "--out").unwrap()).join(&phase); std::fs::create_dir_all(&out).unwrap();
@@ -289,23 +323,44 @@ pub fn run(a: &[String]) {
     let (_, h16b, fb) = run_stream(&mut net, &mut cdt, &sb, seed);
     let train_s = t0.elapsed().as_secs_f64(); eprintln!("0x{seed:X} train {train_s:.1}s");
     let col = collapse(&mut net.clone(), &held); let hash = weights_hash(&net);
-    let mut armsj = serde_json::Map::new();
+    let ks: Vec<usize> = arg_of(a, "--ks").map(|s| s.split(',').map(|v| v.parse().unwrap()).collect()).unwrap_or(vec![K]);
+    for &k in &ks { assert!(k >= 1 && k < HORIZON, "k fuera de rango (1..15)"); }
+    let mut armsk = serde_json::Map::new(); let mut armsj = serde_json::Map::new();
+    for &k in &ks { let mut aj = serde_json::Map::new();
     for (name, m) in arms() {
         if let Some(o) = &only { if !o.iter().any(|x| x == name) { continue; } }
+        if k != K && m.meta() { continue; } // brazos con M3–M5 (ALL) sólo en k=4
         let ta = std::time::Instant::now();
-        let (held_j, gate_j, nan_e, e33, e33raw, meta) = if m.off() { let mut n = net.clone(); let h = eval_held(&mut n, &held); let (e, r) = e33_net2(&mut n, &d, &ex); (h, json!({}), n.nan, e, r, json!({"meta": false})) }
+        let (held_j, gate_j, nan_e, e33, e33raw, meta) = if k != K || m.nov4 { let (md, meta) = meta_train_k(&net, m, seed, k); let (h, g, nn) = eval_held_atlas_k(&net, &md, &held, k); let (e, r) = e33_atlas_k(&net, &md, &d, &ex, k); (h, g, nn, e, r, meta) }
+            else if m.off() { let mut n = net.clone(); let h = eval_held(&mut n, &held); let (e, r) = e33_net2(&mut n, &d, &ex); (h, json!({}), n.nan, e, r, json!({"meta": false})) }
             else { let (md, meta) = meta_train(&net, m, seed); let (h, g, nn) = eval_held_atlas(&net, &md, &held); let (e, r) = e33_atlas(&net, &md, &d, &ex); (h, g, nn, e, r, meta) };
-        armsj.insert(name.into(), json!({"mech": format!("{m:?}"), "pre_known": pre, "held": held_j, "gate_cls": gate_j, "collapse": col, "e33": e33, "e33_v3head": e33raw, "nan": net.nan || nan_e, "meta": meta, "wall_s": ta.elapsed().as_secs_f64()}));
-        eprintln!("0x{seed:X} {name} {:.1}s", ta.elapsed().as_secs_f64());
+        aj.insert(name.into(), json!({"mech": format!("{m:?}"), "k": k, "pre_known": pre, "held": held_j, "gate_cls": gate_j, "collapse": col, "e33": e33, "e33_v3head": e33raw, "nan": if m.nov4 { nan_e } else { net.nan || nan_e }, "meta": meta, "wall_s": ta.elapsed().as_secs_f64()}));
+        eprintln!("0x{seed:X} k={k} {name} {:.1}s", ta.elapsed().as_secs_f64());
     }
+    aj.insert("orbita".into(), json!({"held": orbita_held_k(&d, &held, k)})); aj.insert("persistence".into(), json!({"held": persist_held(&held, k)}));
+    if k == K { armsj = aj.clone(); armsj.remove("orbita"); armsj.remove("persistence"); } armsk.insert(format!("{k}"), serde_json::Value::Object(aj)); }
     let orb = orbita_held(&d, &held); let e33o = e33_orbita(&d, &ex);
     let q = cdt_rqm_epr::v4_provenance::snapshot().delta(&before).total(); assert_eq!(d.raw, raw0); assert_eq!(q, 0, "consultas TEST ≠ 0");
-    let r = json!({"seed": format!("0x{seed:X}"), "phase": phase, "weights": wpath, "orbita": orb, "e33_orbita": e33o, "arms": armsj, "test_queries": q, "test_sha256": sha, "git_sha": git_sha(),
+    let r = json!({"seed": format!("0x{seed:X}"), "phase": phase, "weights": wpath, "orbita": orb, "e33_orbita": e33o, "arms": armsj, "arms_k": armsk, "ks": ks, "test_queries": q, "test_sha256": sha, "git_sha": git_sha(),
         "v4_train": {"hash": hash, "eta_scale": net.eta_scale, "sleeps": cdt.log.len(), "streamA_last_q_h16": mean(&h16a[h16a.len() * 3 / 4..]), "auc_new_preq": mean(&h16b.iter().zip(&fb).filter(|(_, &f)| f >= N_FAM).map(|(v, _)| *v).collect::<Vec<_>>()), "train_s": train_s, "nan": net.nan},
         "wall_s": t0.elapsed().as_secs_f64()});
     let tmp = out.join(format!("metrics_0x{seed:X}.json.tmp")); std::fs::write(&tmp, serde_json::to_string(&r).unwrap()).unwrap(); std::fs::rename(&tmp, out.join(format!("metrics_0x{seed:X}.json"))).unwrap();
     std::fs::write(&done, "").unwrap(); println!("0x{seed:X} ok {:.0}s", t0.elapsed().as_secs_f64());
 }
+
+fn acc_med(errs: &[f64]) -> (f64, f64) { (errs.iter().filter(|&&x| x < mt::REL_ERR_OK).count() as f64 / errs.len() as f64, median(errs.iter().map(|&x| log_rel(x)).collect())) }
+/// ÓRBITA-v1 congelada con reid(k) (k=4 ≡ orbita_held)
+pub fn orbita_held_k(d: &Orbita, held: &[Ep], k: usize) -> serde_json::Value { let mut r = serde_json::Map::new();
+    for (name, known) in [("known", true), ("new", false)] {
+        let errs: Vec<f64> = held.iter().filter(|e| (e.fam < N_FAM) == known).map(|e| { let c = if e.fam < N_FAM { context_of(e.fam, e.p) } else { let (g, pp, _) = reid(d, &e.x0, &e.ys, k, e.p); context_of(g, pp) };
+            let mut z = e.x0.clone(); for _ in 0..HORIZON { z = d.step(&z, &c); } clamp_err(&z, &e.ys[HORIZON - 1]) }).collect();
+        if errs.is_empty() { continue; } let (a, m) = acc_med(&errs); r.insert(format!("{name}_acc16"), json!(a)); r.insert(format!("{name}_med_log"), json!(m)); }
+    serde_json::Value::Object(r) }
+/// persistencia: x̂16 = x(k)
+pub fn persist_held(held: &[Ep], k: usize) -> serde_json::Value { let mut r = serde_json::Map::new();
+    for (name, known) in [("known", true), ("new", false)] { let errs: Vec<f64> = held.iter().filter(|e| (e.fam < N_FAM) == known).map(|e| clamp_err(e.frame(k), &e.ys[HORIZON - 1])).collect();
+        if errs.is_empty() { continue; } let (a, m) = acc_med(&errs); r.insert(format!("{name}_acc16"), json!(a)); r.insert(format!("{name}_med_log"), json!(m)); }
+    serde_json::Value::Object(r) }
 
 // ─── Paso 0: equivalencias y determinismo ───────────────────────────────────
 pub fn bits(v: &[Vec<f64>]) -> Vec<u64> { v.iter().flatten().map(|x| x.to_bits()).collect() }
@@ -354,5 +409,8 @@ mod tests {
         // fam 11 con p=(0.5,0.5) es exactamente TanhShear(x,0.15,2)∘TanhShear(y,0.15,2): la auditoría debe rechazarla
         assert!(leaks(&[Prim::TanhShear(true, 0.15, 2.0), Prim::TanhShear(false, 0.15, 2.0)], &probe)); assert!(!leaks(&[Prim::Scale(0.1)], &probe)); }
     #[test] fn h0_fit_recovers_params() { for e in gen_heldout(0xC4A4, 1).into_iter().filter(|e| e.fam >= N_FAM) { let (p, l) = fit_p(e.fam, &e); assert!(l < 1e-12, "fam {} loss {l}", e.fam); let _ = p; } }
+    #[test] fn nov4_no_net_and_k4_default() { let md = Model { lam: 1e-3, thr: 0.0, ..Model::plain(Mech::nov4(10, true), N_LIB) };
+        let n1 = small_net(0xC4A5); let n2 = Net::new(&Cfg::v4(), 0xC4A6);
+        for e in gen_heldout(0xC4A5, 1).iter().take(4) { let a = arm_preds_k(&n1, &md, e, 4).0; let b = arm_preds_k(&n2, &md, e, 4).0; assert_eq!(bits(&a), bits(&b)); assert_eq!(bits(&a), bits(&arm_preds(&n1, &md, e).0)); } }
     #[test] fn ctx_dims() { let f = vec![vec![0.1, 0.2, 0.3, 0.4], vec![0.15, 0.2, 0.35, 0.4]]; let c = ctx(&f); assert_eq!(c.len(), DC); assert!(c.iter().all(|v| v.is_finite())); }
 }
