@@ -42,7 +42,7 @@ Consecuencia: en CONFIRM **ALL ≡ CORE** (Δ = 0.0000 exacto, 16/16 semillas); 
 ## 4. Evidencia cuantitativa (artefactos existentes)
 
 ### 4.1 Por semilla, Δ new_med_log BQ10 − ALL
-- DEV: gana en **12/16** semillas; rango −0,443 … +0,182; media −0,139 [−0,220, −0,055].
+- DEV: gana en **13/16** semillas; rango −0,443 … +0,182; media −0,139 [−0,220, −0,055].
 - CONFIRM: gana en **11/16**; rango −0,548 … +0,241; media −0,156 [−0,269, −0,043].
 - Pierde en 0xA408 (+0,13), 0xA40B (+0,18), 0xA40F (+0,09), 0xB401 (+0,08), 0xB403 (+0,17), 0xB404 (+0,12), 0xB40A (+0,24), 0xB40F (+0,07).
 
