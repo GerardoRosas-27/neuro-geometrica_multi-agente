@@ -1,4 +1,6 @@
-> **Mejor arquitectura (en `main`): CONSTELACIÓN v4** (`orbita cst4-run`) — único experimento que cumple los 3 criterios preregistrados (primaria CONFIRM −0,107 [−0,181, −0,024], no-daño 0, E33 16/16). Ganancia atribuible al campo rápido W^F, no a la codificación predictiva. Tabla honesta de todos los experimentos (incl. negativos: ESTELA, v2, v3, mejoras M1–M3, BIO-CONSTELACIÓN) en [`docs/RESULTADOS_CONSOLIDADOS.md`](docs/RESULTADOS_CONSOLIDADOS.md).
+> **Mejor versión (en `main`): ATLAS-FW** (`orbita atlas-run`, brazo `ALL`) — aprendiz en contexto sobre CONSTELACIÓN v4 entrenada. CONFIRM: V−v4 en new_med_log **−0.4082 [−0.4985, −0.3190]**, known_acc16 +0.0225 [+0.0171, +0.0278], E33 16/16; reproducido en ablaciones (−0.3742). Ganancia de M1+M2+M6; M3/M4/M5 sin aporte (quedan como interruptores). Ver [`docs/atlas_fw/README.md`](docs/atlas_fw/README.md).
+
+> Base anterior: **CONSTELACIÓN v4** (`orbita cst4-run`) — único experimento que cumple los 3 criterios preregistrados (primaria CONFIRM −0,107 [−0,181, −0,024], no-daño 0, E33 16/16). Ganancia atribuible al campo rápido W^F, no a la codificación predictiva. Tabla honesta de todos los experimentos (incl. negativos: ESTELA, v2, v3, mejoras M1–M3, BIO-CONSTELACIÓN) en [`docs/RESULTADOS_CONSOLIDADOS.md`](docs/RESULTADOS_CONSOLIDADOS.md).
 
 > **`main` = ÓRBITA.** Ver [`docs/ORBITA_MAIN.md`](docs/ORBITA_MAIN.md). v4 está archivado en el tag `v4-final`.
 
@@ -109,6 +111,7 @@ error a un paso (< 5 %) con la receta §16.
 
 ## 6. Documentación
 
+- **Mejor versión: ATLAS-FW** → [`docs/atlas_fw/README.md`](docs/atlas_fw/README.md) (arquitectura, mecanismos, resultados, reproducción)
 - [`docs/resultados_v4.md`](docs/resultados_v4.md) · [`docs/preregistro_v4.md`](docs/preregistro_v4.md) · [`docs/plan_autonomia_campo_v4.md`](docs/plan_autonomia_campo_v4.md) · [`docs/plan_v4_dphi_teacher_distillation.md`](docs/plan_v4_dphi_teacher_distillation.md)
 - [`docs/protocolo_v4_agente.md`](docs/protocolo_v4_agente.md) · [`docs/handoff_field_autonomy_v4.md`](docs/handoff_field_autonomy_v4.md) · [`docs/comparativa_v4_vs_token_free.md`](docs/comparativa_v4_vs_token_free.md)
 - Prompt Spider: [`docs/experimento_prompt_spider.md`](docs/experimento_prompt_spider.md), [`docs/prompt_spider_metricas.md`](docs/prompt_spider_metricas.md)

@@ -1,6 +1,8 @@
 # Resultados consolidados — selección de la mejor arquitectura
 
-**Ganadora: CONSTELACIÓN v4** (rama `exp/constelacion-v4`, commit `fd80320`), integrada en `main` vía la rama `integra/constelacion-v4-main` (código `orbita/src/constelacion4/` + scripts + docs/artefactos de v2, v3, v4, CST-vs-ÓRBITA, mejoras M1–M3 y BIO-CONSTELACIÓN).
+**Ganadora actual: ATLAS-FW** (rama `exp/atlas-fw` @ `ea434ac`, sobre v4): CONFIRM V−v4 new_med_log −0.4082 [−0.4985, −0.3190], known_acc16 +0.0225 [+0.0171, +0.0278], E33 16/16; ablaciones −0.3742 [−0.4856, −0.2462]. Ver [`atlas_fw/README.md`](atlas_fw/README.md).
+
+**Ganadora previa (base de ATLAS-FW): CONSTELACIÓN v4** (rama `exp/constelacion-v4`, commit `fd80320`), integrada en `main` vía la rama `integra/constelacion-v4-main` (código `orbita/src/constelacion4/` + scripts + docs/artefactos de v2, v3, v4, CST-vs-ÓRBITA, mejoras M1–M3 y BIO-CONSTELACIÓN).
 
 Todas las cifras están copiadas de los `RESULTADOS.md` de cada rama (copias literales en `docs/historico/<exp>/`) y, para v4, contrastadas con `artifacts/constelacion_v4/analysis_dev_confirm.json`. Método común: 16 semillas DEV (0xA400–0xA40F) + 16 CONFIRM (0xB400–0xB40F), bootstrap pareado por semilla 10 000 réplicas, semilla 12345, IC95 percentil, δ = 0,05, sin reajuste entre fases, 0 consultas TEST.
 
