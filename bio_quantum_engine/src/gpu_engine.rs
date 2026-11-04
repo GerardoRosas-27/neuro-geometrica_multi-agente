@@ -28,8 +28,8 @@ pub struct ConfigUniform {
 impl Default for ConfigUniform {
     fn default() -> Self {
         Self {
-            n_points: 512,
-            d_basis: 512,
+            n_points: 1024,
+            d_basis: 1024,
             batch_size: 4096,
             r_bound: 15.0,
             growth_rate: 1.0,
@@ -404,7 +404,7 @@ impl GpuBioQuantumEngine {
         });
 
         let total_invocations = self.config.batch_size * self.config.n_points;
-        let workgroups = (total_invocations + 63) / 64;
+        let workgroups = (total_invocations + 127) / 128;
 
         {
             let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
@@ -467,7 +467,7 @@ impl GpuBioQuantumEngine {
         });
 
         let total_invocations = self.config.batch_size * self.config.n_points;
-        let workgroups = (total_invocations + 63) / 64;
+        let workgroups = (total_invocations + 127) / 128;
 
         {
             let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
@@ -512,7 +512,7 @@ impl GpuBioQuantumEngine {
         });
 
         let total_weights = self.config.d_basis * 2;
-        let workgroups = (total_weights + 63) / 64;
+        let workgroups = (total_weights + 127) / 128;
 
         {
             let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {

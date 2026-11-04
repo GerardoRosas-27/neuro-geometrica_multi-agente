@@ -595,7 +595,7 @@ fn run_gpu_train(total_batches: usize, batch_size: usize, lr: f32) {
     config.learning_rate = lr;
 
     println!("================================================================================");
-    println!("     ENTRENAMIENTO ESCALADO EN GPU (x20): AMD RADEON RX 7800 XT (WGPU / D3D12) ");
+    println!("     ENTRENAMIENTO ESCALADO EN GPU (x50): AMD RADEON RX 7800 XT (WGPU / D3D12) ");
     println!("================================================================================");
     println!("  Lotes a procesar:        {}", total_batches);
     println!("  Tamaño de Batch GPU:     {} episodios simultáneos", batch_size);
@@ -681,15 +681,15 @@ fn run_gpu_train(total_batches: usize, batch_size: usize, lr: f32) {
     println!("  Auditoría Ley de Dale:   {} violaciones en {} sinapsis (100% compliant)", violations, total_syn);
     println!("================================================================================\n");
 
-    let _ = File::create("weights_x20.bin").and_then(|mut f| {
+    let _ = File::create("weights_x50.bin").and_then(|mut f| {
         let bytes: &[u8] = bytemuck::cast_slice(&trained_weights);
         f.write_all(bytes)
     });
-    println!(">>> Pesos sinápticos exportados a 'weights_x20.bin' ({} sinapsis binarias en f32).", trained_weights.len());
+    println!(">>> Pesos sinápticos exportados a 'weights_x50.bin' ({} sinapsis binarias en f32).", trained_weights.len());
 
     let weights_json = format!(
         r#"{{
-  "architecture": "Bio-Quantum v10 Singularity x20",
+  "architecture": "Bio-Quantum v10 Singularity x50",
   "total_synapses": {},
   "d_basis": {},
   "n_points": {},
@@ -697,8 +697,8 @@ fn run_gpu_train(total_batches: usize, batch_size: usize, lr: f32) {
 }}"#,
         trained_weights.len(), config.d_basis, config.n_points, trained_weights
     );
-    let _ = File::create("weights_x20.json").and_then(|mut f| f.write_all(weights_json.as_bytes()));
-    println!(">>> Pesos sinápticos exportados a 'weights_x20.json'.");
+    let _ = File::create("weights_x50.json").and_then(|mut f| f.write_all(weights_json.as_bytes()));
+    println!(">>> Pesos sinápticos exportados a 'weights_x50.json'.");
 
     let json_results = format!(
         r#"{{
