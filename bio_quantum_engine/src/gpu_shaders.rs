@@ -1,11 +1,11 @@
-//! Compute Shaders WGSL para Bio-Quantum v10 (Singularity GPU Ultra - 10x Scale)
+//! Compute Shaders WGSL para Bio-Quantum v10 (Singularity GPU Ultra - Escalado x20)
 //!
-//! Diseñados para saturación masiva de AMD RDNA3 (Radeon RX 7800 XT):
-//! - 256 Puntos / Agentes en constelación (512 canales de coordenadas)
-//! - 256 Dimensiones de base de Lie y Fasores Cuánticos de Wheeler-Feynman
+//! Saturación masiva de arquitectura AMD RDNA3 (Radeon RX 7800 XT):
+//! - 512 Puntos / Agentes por constelación (1,024 canales de coordenadas en 2D)
+//! - 512 Dimensiones de base de Lie, Curvatura no lineal y Fasores Cuánticos Wheeler-Feynman
 //! - Proyección estricta de Ley de Dale (W^E >= 1e-4, W^I >= 1e-4, 0 violaciones)
-//! - Envolvente contractiva / dilatación hiperbólica de Lyapunov-Brenier
-//! - Modos cuánticos retardados y avanzados multi-escala
+//! - Envolvente contractiva hiperbólica de Lyapunov-Brenier
+//! - Modos cuánticos retardados/avanzados y atractores de cuenca CDT en C
 
 pub const WGSL_BIO_QUANTUM_COMPUTE: &str = r#"
 struct ConfigUniform {
@@ -41,13 +41,13 @@ struct ConfigUniform {
 // Métricas de paso (Loss MSE, etc.): [8]
 @group(0) @binding(8) var<storage, read_write> metrics: array<f32>;
 
-// Generador de 256 dimensiones de Lie, Curvatura y Fasores Cuánticos
-fn compute_phi_256(x: f32, y: f32, idx: u32) -> f32 {
+// Generador de 512 dimensiones de Lie, Curvatura y Fasores Cuánticos (Escalado x20)
+fn compute_phi_512(x: f32, y: f32, idx: u32) -> f32 {
     let r2 = x * x + y * y;
     let r = sqrt(max(r2, 1e-12));
     let theta = atan2(y, x);
 
-    // [Sección 1: 0..15] Generadores Fundamentales de Lie, Afines y Cúbicos
+    // [Sección 1: 0..31] Generadores Fundamentales de Lie, Afines y Polinomiales
     if (idx == 0u) { return x; }
     if (idx == 1u) { return y; }
     if (idx == 2u) { return 1.0; }
@@ -64,36 +64,57 @@ fn compute_phi_256(x: f32, y: f32, idx: u32) -> f32 {
     if (idx == 13u) { return y * r2; }
     if (idx == 14u) { return tanh(x); }
     if (idx == 15u) { return tanh(y); }
+    if (idx == 16u) { return x * x * x * x - y * y * y * y; }
+    if (idx == 17u) { return x * y * r2; }
+    if (idx == 18u) { return exp(-0.1 * r2) * x; }
+    if (idx == 19u) { return exp(-0.1 * r2) * y; }
+    if (idx == 20u) { return sin(x * y); }
+    if (idx == 21u) { return cos(x * y); }
+    if (idx == 22u) { return tanh(x * r); }
+    if (idx == 23u) { return tanh(y * r); }
+    if (idx == 24u) { return (x * x * x - 3.0 * x * y * y) * 0.1; }
+    if (idx == 25u) { return (3.0 * x * x * y - y * y * y) * 0.1; }
+    if (idx == 26u) { return 1.0 / (1.0 + r); }
+    if (idx == 27u) { return r / (1.0 + r2); }
+    if (idx == 28u) { return (x - y) * (x - y); }
+    if (idx == 29u) { return (x + y) * (x + y); }
+    if (idx == 30u) { return x * (1.0 - x * x); }
+    if (idx == 31u) { return y * (1.0 - y * y); }
 
-    // [Sección 2: 16..95] Armónicos Espaciales y Modos de Fourier (80 dimensiones)
-    if (idx < 96u) {
-        let k = f32((idx - 16u) / 2u + 1u) * 0.4;
-        let is_sin = ((idx - 16u) % 2u) == 0u;
-        let phase = k * (x + y * 0.7);
+    // [Sección 2: 32..191] Armónicos Espaciales 2D y Modos de Fourier (160 dimensiones)
+    if (idx < 192u) {
+        let mode_idx = idx - 32u;
+        let k = f32(mode_idx / 2u + 1u) * 0.25;
+        let is_sin = (mode_idx % 2u) == 0u;
+        let angle = k * (x * 0.8 + y * 0.6);
         if (is_sin) {
-            return sin(phase) / sqrt(k);
+            return sin(angle) / sqrt(k);
         } else {
-            return cos(phase) / sqrt(k);
+            return cos(angle) / sqrt(k);
         }
     }
 
-    // [Sección 3: 96..175] Fasores de Interferencia Cuántica Wheeler-Feynman en C (80 dimensiones)
-    if (idx < 176u) {
-        let freq_mode = f32(idx - 96u + 1u) * 0.25;
-        let retarded_wave = cos(freq_mode * r - 2.0 * theta);
-        let advanced_wave = sin(freq_mode * r + 2.0 * theta);
-        let handshake = (retarded_wave + advanced_wave) * 0.5;
-        return handshake * exp(-0.015 * r2);
+    // [Sección 3: 192..351] Fasores de Wheeler-Feynman Retardados y Avanzados en C (160 dimensiones)
+    if (idx < 352u) {
+        let wf_idx = idx - 192u;
+        let freq = f32(wf_idx / 2u + 1u) * 0.3;
+        let m_ang = f32(wf_idx % 4u + 1u);
+        let ret_wave = cos(freq * r - m_ang * theta);
+        let adv_wave = sin(freq * r + m_ang * theta);
+        let handshake = (ret_wave + adv_wave) * 0.5;
+        return handshake * exp(-0.01 * r2);
     }
 
-    // [Sección 4: 176..255] Modos Colectivos de Bessel, Deformación y Atractores de Cuenca (80 dimensiones)
-    let m = f32(idx - 176u + 1u) * 0.35;
-    let bessel_mode = cos(m * r) * (1.0 / (1.0 + 0.1 * r));
-    let angular_mod = sin(f32(idx % 8u + 1u) * theta);
-    return bessel_mode * angular_mod;
+    // [Sección 4: 352..511] Modos Radiales de Bessel, Cuenca CDT y Curvatura Extrema (160 dimensiones)
+    let b_idx = idx - 352u;
+    let m_bessel = f32(b_idx % 16u + 1u);
+    let scale_r = f32(b_idx / 16u + 1u) * 0.35;
+    let bessel_approx = cos(scale_r * r - 0.5 * m_bessel * 3.14159) / sqrt(max(scale_r * r, 0.5));
+    let angular = sin(m_bessel * theta);
+    return bessel_approx * angular * exp(-0.008 * r2);
 }
 
-// Kernel 1: Inferencia Forward Masiva (256 Puntos / 256 Dimensiones)
+// Kernel 1: Inferencia Forward y Rollout con Envolvente de Brenier (Escala 512D)
 @compute @workgroup_size(64, 1, 1)
 fn forward_pass(@builtin(global_invocation_id) id: vec3<u32>) {
     let global_point_idx = id.x;
@@ -112,7 +133,7 @@ fn forward_pass(@builtin(global_invocation_id) id: vec3<u32>) {
     let d = config.d_basis;
 
     for (var j: u32 = 0u; j < d; j = j + 1u) {
-        let phi = compute_phi_256(x, y, j);
+        let phi = compute_phi_512(x, y, j);
         let wx = (wp_exc[j] - wp_inh[j]) + (wf_exc[j] - wf_inh[j]);
         let wy = (wp_exc[d + j] - wp_inh[d + j]) + (wf_exc[d + j] - wf_inh[d + j]);
 
@@ -123,7 +144,7 @@ fn forward_pass(@builtin(global_invocation_id) id: vec3<u32>) {
     var pred_x = x + dx;
     var pred_y = y + dy;
 
-    // Envolvente de Lyapunov-Brenier Dinámica
+    // Proyección de Transporte Óptimo de Brenier-Lyapunov Dinámica
     let rb = config.r_bound;
     let r_pred = sqrt(max(pred_x * pred_x + pred_y * pred_y, 1e-12));
     if (r_pred > rb) {
@@ -166,7 +187,7 @@ fn train_step_dale(@builtin(global_invocation_id) id: vec3<u32>) {
     let lr = config.learning_rate / f32(config.n_points);
 
     for (var j: u32 = 0u; j < d; j = j + 1u) {
-        let phi = compute_phi_256(in_x, in_y, j);
+        let phi = compute_phi_512(in_x, in_y, j);
         let gx = err_x * phi * norm_factor;
         let gy = err_y * phi * norm_factor;
 
@@ -182,7 +203,7 @@ fn train_step_dale(@builtin(global_invocation_id) id: vec3<u32>) {
     }
 }
 
-// Kernel 3: Consolidación Circadiana de Sueño SWR en GPU
+// Kernel 3: Consolidación Circadiana de Sueño SWR en GPU (Escala 1,024 Sinapsis)
 @compute @workgroup_size(64, 1, 1)
 fn swr_sleep_consolidation(@builtin(global_invocation_id) id: vec3<u32>) {
     let j = id.x;

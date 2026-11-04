@@ -595,7 +595,7 @@ fn run_gpu_train(total_batches: usize, batch_size: usize, lr: f32) {
     config.learning_rate = lr;
 
     println!("================================================================================");
-    println!("     ENTRENAMIENTO ESCALADO EN GPU (10x): AMD RADEON RX 7800 XT (WGPU / D3D12) ");
+    println!("     ENTRENAMIENTO ESCALADO EN GPU (x20): AMD RADEON RX 7800 XT (WGPU / D3D12) ");
     println!("================================================================================");
     println!("  Lotes a procesar:        {}", total_batches);
     println!("  Tamaño de Batch GPU:     {} episodios simultáneos", batch_size);
@@ -724,8 +724,8 @@ fn main() {
             run_train_from_scratch(n_episodes, lr);
         }
         "gpu-train" => {
-            let batches = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(300);
-            let batch_size = args.get(3).and_then(|s| s.parse().ok()).unwrap_or(2048);
+            let batches = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(400);
+            let batch_size = args.get(3).and_then(|s| s.parse().ok()).unwrap_or(4096);
             let lr = args.get(4).and_then(|s| s.parse().ok()).unwrap_or(0.05);
             run_gpu_train(batches, batch_size, lr);
         }
