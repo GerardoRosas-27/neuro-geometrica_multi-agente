@@ -1,0 +1,16 @@
+{
+  "gpu_training": {
+    "adapter": "D3D12 (AMD Radeon RX 7800 XT)",
+    "backend": "Gl",
+    "total_episodes": 204800,
+    "batch_size": 1024,
+    "n_points": 64,
+    "d_basis": 64,
+    "elapsed_seconds": 2.309,
+    "episodes_per_sec": 88711.6,
+    "initial_loss_mse": 0.000001,
+    "final_loss_mse": 0.000000,
+    "loss_reduction_pct": 12.23,
+    "dale_violations": 0
+  }
+}

@@ -1,8 +1,8 @@
 [package]
 name = "bio_quantum_engine"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
-description = "Arquitectura Unificada Bio-Cuántica-Geométrica: Integra Bio-Constelación (Ley de Dale, BTSP, dendritas 3-comp), Equivarianza Residual v4, Espectro Koopman-Brenier (TimesFM beater), Memoria Topológica CDT con Olvido Acotado (ΔR ≥ -ε) y Handshake de Wheeler-Feynman en ℂ."
+description = "Arquitectura Unificada Bio-Cuántica-Geométrica (v10 Singularity GPU Ultra): Aceleración en GPU AMD RDNA3 (RX 7800 XT) con WGPU, Ley de Dale 100% estricta, Espectro Koopman-Brenier, Memoria Topológica CDT y Handshake en C."
 license = "MIT"
 
 [workspace]
@@ -20,3 +20,8 @@ name = "bio_quantum_engine"
 path = "src/main.rs"
 
 [dependencies]
+wgpu = "30.0"
+pollster = "1.0"
+bytemuck = { version = "1.25", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"

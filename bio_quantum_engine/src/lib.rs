@@ -6,10 +6,13 @@
 //! - Operador Espectral Koopman-Brenier con proyector de transporte óptimo (TimesFM beater).
 //! - Teorema de la Cuenca CDT con olvido acotado $\Delta R \ge -\varepsilon$ en sueño SWR.
 //! - Principio del Handshake de Wheeler-Feynman para inferencia no combinatoria en $\mathbb{C}$.
+//! - Aceleración GPU en AMD RDNA3 (Radeon RX 7800 XT) con WGPU nativo.
 
 pub mod cdt_basin_memory;
 pub mod dendritic_koopman_dale;
 pub mod equivariant_residual;
+pub mod gpu_engine;
+pub mod gpu_shaders;
 pub mod handshake_phasor;
 pub mod koopman_brenier_spectral;
 pub mod protocol_cst4;
@@ -19,6 +22,7 @@ pub mod unified_engine;
 pub use cdt_basin_memory::CdtSimplicialBasinMemory;
 pub use dendritic_koopman_dale::{CorticalPyramidalUnit, DaleSynapse};
 pub use equivariant_residual::{AutonomousThalamocorticalPrior, EquivariantBasisExtractor};
+pub use gpu_engine::{ConfigUniform, GpuBioQuantumEngine, GpuStepResult};
 pub use handshake_phasor::{ComplexPhasor, WheelerFeynmanHandshakeEngine};
 pub use koopman_brenier_spectral::{KoopmanBlock2x2, KoopmanBrenierSpectralOperator};
 pub use protocol_cst4::{compute_log_relative_error, Cst4DataGenerator, TrajectoryEpisode};
@@ -130,5 +134,18 @@ mod tests {
 
         println!("Pérdida inicial: {:.6}, Pérdida tras 10 pasos: {:.6}", loss_0, final_loss);
         assert!(final_loss <= loss_0 + 1e-4, "El entrenamiento debe reducir o mantener estable la pérdida");
+    }
+
+    #[test]
+    fn test_gpu_initialization() {
+        let mut rng = Xoshiro256StarStar::from_seed(2026);
+        let config = ConfigUniform::default();
+        let mut engine = GpuBioQuantumEngine::new(config, &mut rng);
+
+        println!("Adaptador GPU inicializado: {} ({})", engine.adapter_name, engine.adapter_backend);
+        let (violations, total) = engine.audit_dales_law_gpu();
+        println!("Auditoría GPU Dale: {} violaciones en {} sinapsis.", violations, total);
+        assert_eq!(violations, 0, "No debe haber violaciones a la Ley de Dale en GPU");
+        std::mem::forget(engine);
     }
 }
