@@ -16,6 +16,7 @@ use bio_quantum_engine::infinite_learning_loop::{run_infinite_learning_loop, Loo
 use bio_quantum_engine::gemma_field_bridge::GemmaFieldBridge;
 use bio_quantum_engine::gemma_vs_hybrid::run_gemma_vs_hybrid_benchmark;
 use bio_quantum_engine::gpu_engine::{ConfigUniform, GpuBioQuantumEngine};
+use bio_quantum_engine::learned_evaluator::run_learned_evaluation;
 use bio_quantum_engine::protocol_cst4::{
     compute_log_relative_error, compute_relative_error, Cst4DataGenerator, HORIZON, K_OBS,
     NEW_FAMILIES, REL_ERR_OK,
@@ -954,6 +955,18 @@ fn main() {
         }
         "infinite-learning" | "--infinite-learning" | "loop" => {
             run_infinite_learning_cmd(&args);
+        }
+        "test-learned" | "--test-learned" | "eval-learned" | "--eval-learned" => {
+            println!("\n>>> Inicializando puente Bio-Quantum v10 x50 para Evaluación de Aprendizaje en GPU AMD...");
+            let mut bridge = match GemmaFieldBridge::new() {
+                Ok(b) => b,
+                Err(e) => {
+                    eprintln!("Error al inicializar GPU: {}", e);
+                    return;
+                }
+            };
+            run_learned_evaluation(&mut bridge);
+            std::mem::forget(bridge.gpu_engine);
         }
         "demo" => {
             run_interactive_demo();
