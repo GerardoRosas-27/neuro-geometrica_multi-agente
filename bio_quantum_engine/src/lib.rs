@@ -11,6 +11,7 @@
 pub mod cdt_basin_memory;
 pub mod dendritic_koopman_dale;
 pub mod equivariant_residual;
+pub mod gemma_field_bridge;
 pub mod gpu_engine;
 pub mod gpu_shaders;
 pub mod handshake_phasor;
@@ -22,6 +23,7 @@ pub mod unified_engine;
 pub use cdt_basin_memory::CdtSimplicialBasinMemory;
 pub use dendritic_koopman_dale::{CorticalPyramidalUnit, DaleSynapse};
 pub use equivariant_residual::{AutonomousThalamocorticalPrior, EquivariantBasisExtractor};
+pub use gemma_field_bridge::{GemmaE2eOutput, GemmaFieldBridge, GemmaLinguisticEncoder, GpuTelemetry};
 pub use gpu_engine::{ConfigUniform, GpuBioQuantumEngine, GpuStepResult};
 pub use handshake_phasor::{ComplexPhasor, WheelerFeynmanHandshakeEngine};
 pub use koopman_brenier_spectral::{KoopmanBlock2x2, KoopmanBrenierSpectralOperator};
