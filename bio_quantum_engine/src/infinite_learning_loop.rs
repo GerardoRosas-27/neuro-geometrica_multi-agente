@@ -74,7 +74,21 @@ impl RealGemmaClient {
             }
         }
 
-        // 2. Detección automática de IP virtual de WSL (en entornos Windows con WSL)
+        // 2. Loopback 127.0.0.1 (Ollama nativo en Windows con 100% GPU offload)
+        let candidate_127 = "http://127.0.0.1:11434".to_string();
+        if Self::ping_has_model(&candidate_127, &model) {
+            println!(">>> [Ollama GPU] Conectado a Ollama nativo en 127.0.0.1:11434 (100% GPU AMD RDNA3 con {})", model);
+            return Self { base_url: candidate_127, model_name: model };
+        }
+
+        // 3. Localhost
+        let candidate_local = "http://localhost:11434".to_string();
+        if Self::ping_has_model(&candidate_local, &model) {
+            println!(">>> [Ollama GPU] Conectado exitosamente en localhost:11434 con modelo {}", model);
+            return Self { base_url: candidate_local, model_name: model };
+        }
+
+        // 4. Detección automática de IP virtual de WSL (en entornos Windows con WSL)
         if let Ok(output) = std::process::Command::new("wsl").args(["hostname", "-I"]).output() {
             let out_str = String::from_utf8_lossy(&output.stdout);
             if let Some(ip) = out_str.split_whitespace().next() {
@@ -84,20 +98,6 @@ impl RealGemmaClient {
                     return Self { base_url: candidate_wsl, model_name: model };
                 }
             }
-        }
-
-        // 3. Loopback 127.0.0.1
-        let candidate_127 = "http://127.0.0.1:11434".to_string();
-        if Self::ping_has_model(&candidate_127, &model) {
-            println!(">>> [Ollama] Conectado exitosamente en loopback 127.0.0.1:11434 con modelo {}", model);
-            return Self { base_url: candidate_127, model_name: model };
-        }
-
-        // 4. Localhost
-        let candidate_local = "http://localhost:11434".to_string();
-        if Self::ping_has_model(&candidate_local, &model) {
-            println!(">>> [Ollama] Conectado exitosamente en localhost:11434 con modelo {}", model);
-            return Self { base_url: candidate_local, model_name: model };
         }
 
         // Fallback si no se encontró con confirmación de modelo
