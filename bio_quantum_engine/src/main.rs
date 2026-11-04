@@ -12,6 +12,7 @@
 
 use bio_quantum_engine::cdt_basin_memory::CdtSimplicialBasinMemory;
 use bio_quantum_engine::dynamic_reasoning_memory::run_dynamic_reasoning_experiment;
+use bio_quantum_engine::infinite_learning_loop::{run_infinite_learning_loop, LoopConfig};
 use bio_quantum_engine::gemma_field_bridge::GemmaFieldBridge;
 use bio_quantum_engine::gemma_vs_hybrid::run_gemma_vs_hybrid_benchmark;
 use bio_quantum_engine::gpu_engine::{ConfigUniform, GpuBioQuantumEngine};
@@ -860,6 +861,56 @@ fn run_dynamic_reasoning_cmd() {
     std::mem::forget(bridge.gpu_engine);
 }
 
+fn run_infinite_learning_cmd(args: &[String]) {
+    println!("\n>>> Inicializando puente Bio-Quantum v10 x50 para Ciclo Infinito de Auto-Aprendizaje en GPU AMD...");
+    let mut bridge = match GemmaFieldBridge::new() {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("Error al inicializar GPU: {}", e);
+            return;
+        }
+    };
+
+    let mut config = LoopConfig::default();
+
+    let mut idx = 2;
+    while idx < args.len() {
+        match args[idx].as_str() {
+            "--infinite" => {
+                config.max_cycles = 0;
+            }
+            "--cycles" | "-c" => {
+                if idx + 1 < args.len() {
+                    if let Ok(c) = args[idx + 1].parse::<usize>() {
+                        config.max_cycles = c;
+                        idx += 1;
+                    }
+                }
+            }
+            "--lang" | "-l" => {
+                if idx + 1 < args.len() {
+                    config.default_lang = args[idx + 1].clone();
+                    idx += 1;
+                }
+            }
+            "--fast" => {
+                config.delay_ms = 0;
+            }
+            s => {
+                if let Ok(c) = s.parse::<usize>() {
+                    config.max_cycles = c;
+                } else if ["es", "en", "fr", "pt", "it"].contains(&s) {
+                    config.default_lang = s.to_string();
+                }
+            }
+        }
+        idx += 1;
+    }
+
+    run_infinite_learning_loop(&mut bridge, config);
+    std::mem::forget(bridge.gpu_engine);
+}
+
 fn main() {
     print_banner();
     let args: Vec<String> = env::args().collect();
@@ -901,6 +952,9 @@ fn main() {
         "dynamic-reasoning" | "--dynamic-reasoning" => {
             run_dynamic_reasoning_cmd();
         }
+        "infinite-learning" | "--infinite-learning" | "loop" => {
+            run_infinite_learning_cmd(&args);
+        }
         "demo" => {
             run_interactive_demo();
         }
@@ -908,7 +962,7 @@ fn main() {
             run_audit();
         }
         _ => {
-            println!("Uso: bio_quantum_engine [benchmark-suite | gpu-train <batches> <batch_size> <lr> | gpu-audit | gemma-e2e <texto> | gemma-eval | train <episodes> <lr> | eval <dev|confirm|smoke> | demo]");
+            println!("Uso: bio_quantum_engine [infinite-learning [--cycles N | --infinite] | dynamic-reasoning | gemma-vs-hybrid | benchmark-suite | gpu-train | eval | demo]");
         }
     }
 }

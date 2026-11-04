@@ -17,6 +17,7 @@ pub mod gemma_vs_hybrid;
 pub mod gpu_engine;
 pub mod gpu_shaders;
 pub mod handshake_phasor;
+pub mod infinite_learning_loop;
 pub mod koopman_brenier_spectral;
 pub mod phi_gen;
 pub mod protocol_cst4;
@@ -31,6 +32,7 @@ pub use gemma_field_bridge::{GemmaE2eOutput, GemmaFieldBridge, GemmaLinguisticEn
 pub use gemma_vs_hybrid::{run_gemma_vs_hybrid_benchmark, BenchmarkReport, SampleComparison, SystemSummary};
 pub use gpu_engine::{ConfigUniform, GpuBioQuantumEngine, GpuStepResult};
 pub use handshake_phasor::{ComplexPhasor, WheelerFeynmanHandshakeEngine};
+pub use infinite_learning_loop::{run_infinite_learning_loop, LoopConfig, InfiniteLoopTelemetry};
 pub use koopman_brenier_spectral::{KoopmanBlock2x2, KoopmanBrenierSpectralOperator};
 pub use protocol_cst4::{compute_log_relative_error, Cst4DataGenerator, TrajectoryEpisode};
 pub use rng::Xoshiro256StarStar;
