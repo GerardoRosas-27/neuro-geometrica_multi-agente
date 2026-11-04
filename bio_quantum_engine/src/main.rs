@@ -11,6 +11,7 @@
 //! - `demo`: Demostración interactiva paso a paso de interferencia cuántica y microcircuitos dendríticos.
 
 use bio_quantum_engine::cdt_basin_memory::CdtSimplicialBasinMemory;
+use bio_quantum_engine::dynamic_reasoning_memory::run_dynamic_reasoning_experiment;
 use bio_quantum_engine::gemma_field_bridge::GemmaFieldBridge;
 use bio_quantum_engine::gemma_vs_hybrid::run_gemma_vs_hybrid_benchmark;
 use bio_quantum_engine::gpu_engine::{ConfigUniform, GpuBioQuantumEngine};
@@ -846,6 +847,19 @@ fn run_gemma_vs_hybrid_cmd() {
     std::mem::forget(bridge.gpu_engine);
 }
 
+fn run_dynamic_reasoning_cmd() {
+    println!("\n>>> Inicializando puente Bio-Quantum v10 x50 para Razonamiento Dinámico en GPU AMD...");
+    let mut bridge = match GemmaFieldBridge::new() {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("Error al inicializar GPU: {}", e);
+            return;
+        }
+    };
+    run_dynamic_reasoning_experiment(&mut bridge);
+    std::mem::forget(bridge.gpu_engine);
+}
+
 fn main() {
     print_banner();
     let args: Vec<String> = env::args().collect();
@@ -883,6 +897,9 @@ fn main() {
         }
         "gemma-vs-hybrid" | "--gemma-vs-hybrid" => {
             run_gemma_vs_hybrid_cmd();
+        }
+        "dynamic-reasoning" | "--dynamic-reasoning" => {
+            run_dynamic_reasoning_cmd();
         }
         "demo" => {
             run_interactive_demo();
