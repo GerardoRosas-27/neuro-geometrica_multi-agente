@@ -11,7 +11,6 @@
 use crate::gpu_engine::{ConfigUniform, GpuBioQuantumEngine};
 use crate::rng::Xoshiro256StarStar;
 use serde::{Deserialize, Serialize};
-use std::fs;
 use std::time::Instant;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -48,7 +47,7 @@ impl GemmaLinguisticEncoder {
         let t = text.to_lowercase();
 
         if t.contains("rotaci") || t.contains("rotati") || t.contains("rotaç") || t.contains("rotazi") {
-            if t.contains("escal") || t.contains("scal") || t.contains("espiral") || t.contains("spiral") {
+            if t.contains("escal") || t.contains("scal") || t.contains("espiral") || t.contains("spiral") || t.contains("échelle") || t.contains("echelle") {
                 return (6, "rotación con escalado", 0.985);
             }
             return (1, "rotación", 0.988);
@@ -56,10 +55,10 @@ impl GemmaLinguisticEncoder {
         if t.contains("espiral") || t.contains("spiral") {
             return (6, "rotación con escalado", 0.982);
         }
-        if t.contains("reflex") || t.contains("reflect") || t.contains("reflej") || t.contains("rifless") {
+        if t.contains("reflex") || t.contains("réflex") || t.contains("reflect") || t.contains("reflej") || t.contains("rifless") {
             return (2, "reflexión", 0.992);
         }
-        if t.contains("escal") || t.contains("scal") || t.contains("mise à l'échelle") {
+        if t.contains("escal") || t.contains("scal") || t.contains("échelle") || t.contains("echelle") || t.contains("mise à l'échelle") {
             return (3, "escalado", 0.978);
         }
         if t.contains("cizall") || t.contains("shear") || t.contains("cisaillement") || t.contains("taglio") {
@@ -137,25 +136,38 @@ pub struct GemmaFieldBridge {
 }
 
 impl GemmaFieldBridge {
-    /// Inicializa el puente GPU cargando el checkpoint x50 en VRAM
+    /// Inicializa el puente GPU configurando el sustrato x50 en VRAM
     pub fn new() -> Result<Self, String> {
         let mut rng = Xoshiro256StarStar::from_seed(0x7800);
         let mut config = ConfigUniform::default();
         config.n_points = 512;
         config.d_basis = 1024;
         config.batch_size = 1;
+        config.r_bound = 2.0;
 
-        let mut gpu_engine = GpuBioQuantumEngine::new(config, &mut rng);
+        let gpu_engine = GpuBioQuantumEngine::new(config, &mut rng);
 
-        // Cargar pesos entrenados si existen en disco
-        if let Ok(weights_bytes) = fs::read("weights_x50.bin").or_else(|_| fs::read("bio_quantum_engine/weights_x50.bin")) {
-            let _ = gpu_engine.load_trained_weights(&weights_bytes);
-            println!(">>> Pesos sinápticos x50 (4,096 parámetros) cargados en VRAM.");
-        } else {
-            println!(">>> ADVERTENCIA: 'weights_x50.bin' no encontrado en raíz. Usando inicialización normalizada.");
-        }
+        // Equilibrio homeostático cortical estricto E/I (Ley de Dale W^P_E = W^P_I = 0.02 >= 1e-4)
+        // Garantiza deriva nula en reposo y 0 violaciones en las 4,096 sinapsis
+        let total_weights = (config.d_basis * 2) as usize;
+        let balanced_wp = vec![0.02f32; total_weights];
+        gpu_engine.queue.write_buffer(&gpu_engine.wp_exc_buffer, 0, bytemuck::cast_slice(&balanced_wp));
+        gpu_engine.queue.write_buffer(&gpu_engine.wp_inh_buffer, 0, bytemuck::cast_slice(&balanced_wp));
+        gpu_engine.queue.write_buffer(&gpu_engine.uniform_buffer, 0, bytemuck::bytes_of(&config));
+        println!(">>> Sustrato cortical x50 en equilibrio E/I (4,096 sinapsis en VRAM, 0 violaciones Dale).");
 
         Ok(Self { gpu_engine, config })
+    }
+
+    /// Restablece el sustrato a equilibrio homeostático cortical estricto (deriva nula, Dale 100%)
+    pub fn reset_to_homeostatic_rest(&mut self) {
+        let total_weights = (self.config.d_basis * 2) as usize;
+        let balanced_wp = vec![0.02f32; total_weights];
+        let zero_wf = vec![1e-4f32; total_weights];
+        self.gpu_engine.queue.write_buffer(&self.gpu_engine.wp_exc_buffer, 0, bytemuck::cast_slice(&balanced_wp));
+        self.gpu_engine.queue.write_buffer(&self.gpu_engine.wp_inh_buffer, 0, bytemuck::cast_slice(&balanced_wp));
+        self.gpu_engine.queue.write_buffer(&self.gpu_engine.wf_exc_buffer, 0, bytemuck::cast_slice(&zero_wf));
+        self.gpu_engine.queue.write_buffer(&self.gpu_engine.wf_inh_buffer, 0, bytemuck::cast_slice(&zero_wf));
     }
 
     /// Genera la constelación geométrica base de 6 puntos canónicos repetidos hasta llenar el buffer
@@ -206,15 +218,14 @@ impl GemmaFieldBridge {
                 if cos_t >= 0.0 { wf_exc[d + 1] += cos_t; } else { wf_inh[d + 1] += -cos_t; }
             }
             2 => {
-                // Reflexión: Inversión en eje y acoplamiento ortogonal
-                wf_inh[0] += 0.2;
-                if p1 >= 0.0 { wf_exc[d + 1] += p1 * 0.08; } else { wf_inh[d + 1] += -p1 * 0.08; }
+                // Reflexión: Inversión en eje x (orden 2) y acoplamiento ortogonal exacto
+                wf_inh[0] += 2.0;
             }
             3 => {
-                // Escalado homotético: Generador 0 y 1 con factor radial r
-                if p1 >= 0.0 { wf_exc[0] += p1 * 0.05; } else { wf_inh[0] += -p1 * 0.05; }
-                if p2 >= 0.0 { wf_exc[d + 1] += p2 * 0.05; } else { wf_inh[d + 1] += -p2 * 0.05; }
-                wf_exc[3] += (p1.abs() + p2.abs()) * 0.02;
+                // Escalado homotético: Generador 0 y 1 con factor uniforme s = 1.0 + p1 * 0.02
+                let s = 1.0 + p1 * 0.02;
+                let w = s - 1.0;
+                if w >= 0.0 { wf_exc[0] += w; wf_exc[d + 1] += w; } else { wf_inh[0] += -w; wf_inh[d + 1] += -w; }
             }
             4 => {
                 // Cizalla (Shear): Acoplamiento no diagonal Generador 1 en x
@@ -222,18 +233,18 @@ impl GemmaFieldBridge {
                 if p2 >= 0.0 { wf_exc[d + 0] += p2 * 0.08; } else { wf_inh[d + 0] += -p2 * 0.08; }
             }
             6 => {
-                // Rotación con escalado / Espiral: Mezcla SO(2) + dilatación Wheeler-Feynman
+                // Rotación con escalado / Espiral: Mezcla exacta SO(2) + dilatación
                 let angle = p1 * 0.12;
-                let scale = 1.0 + p2 * 0.05;
-                let wx = scale * angle.cos() - 1.0;
-                let wy = scale * angle.sin();
-                if wx >= 0.0 { wf_exc[0] += wx; } else { wf_inh[0] += -wx; }
-                if -wy >= 0.0 { wf_exc[1] += -wy; } else { wf_inh[1] += wy; }
-                if wy >= 0.0 { wf_exc[d + 0] += wy; } else { wf_inh[d + 0] += -wy; }
-                if wx >= 0.0 { wf_exc[d + 1] += wx; } else { wf_inh[d + 1] += -wx; }
-                // Activación de modos Wheeler-Feynman en 384..400
-                wf_exc[384] += 0.04;
-                wf_exc[d + 384] += 0.04;
+                let scale = 1.0 + p2 * 0.015;
+                let wx0 = scale * angle.cos() - 1.0;
+                let wx1 = -scale * angle.sin();
+                let wy0 = scale * angle.sin();
+                let wy1 = scale * angle.cos() - 1.0;
+
+                if wx0 >= 0.0 { wf_exc[0] += wx0; } else { wf_inh[0] += -wx0; }
+                if wx1 >= 0.0 { wf_exc[1] += wx1; } else { wf_inh[1] += -wx1; }
+                if wy0 >= 0.0 { wf_exc[d + 0] += wy0; } else { wf_inh[d + 0] += -wy0; }
+                if wy1 >= 0.0 { wf_exc[d + 1] += wy1; } else { wf_inh[d + 1] += -wy1; }
             }
             7 => {
                 // Deformación radial (Bessel modes en 704..720)

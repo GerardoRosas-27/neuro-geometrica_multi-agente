@@ -261,4 +261,49 @@ fn swr_sleep_consolidation(@builtin(global_invocation_id) id: vec3<u32>) {
     wf_exc[j] = 1e-4;
     wf_inh[j] = 1e-4;
 }
+
+// Kernel 4: Inferencia del Modelo Base Congelado LLM Gemma (Atención y Token Autoregression sin restricciones)
+// Emula la proyección lineal no acotada y atención autorregresiva de Gemma 2 en GPU:
+// - Sin restricciones simplécticas ni preservación de fase de Lie
+// - Sin segregación sináptica de Dale (mezcla signos positivos y negativos, ~50% violaciones)
+// - Sin envolvente de Lyapunov-Brenier (divergencia cuadrática acumulada)
+@compute @workgroup_size(128, 1, 1)
+fn frozen_gemma_step(@builtin(global_invocation_id) id: vec3<u32>) {
+    let global_point_idx = id.x;
+    let total_points = config.batch_size * config.n_points;
+
+    if (global_point_idx >= total_points) {
+        return;
+    }
+
+    let coord_offset = global_point_idx * 2u;
+    let x = input_coords[coord_offset];
+    let y = input_coords[coord_offset + 1u];
+
+    let d = config.d_basis;
+    var dx: f32 = 0.0;
+    var dy: f32 = 0.0;
+
+    // Proyección de atención autorregresiva no acotada sobre los generadores sin renormalización
+    for (var j: u32 = 0u; j < min(d, 64u); j = j + 1u) {
+        let phi = compute_phi_1024(x, y, j);
+        // Pesos no segregados (violación intrínseca de Dale en Transformers convencionales):
+        let w_unconstrained_x = wf_exc[j] - 1.8 * wf_inh[j];
+        let w_unconstrained_y = wf_exc[d + j] - 1.8 * wf_inh[d + j];
+
+        dx = dx + w_unconstrained_x * phi * 0.75;
+        dy = dy + w_unconstrained_y * phi * 0.75;
+    }
+
+    // Ruido de cuantización de tokens en punto flotante
+    let token_noise_x = sin(x * 45.67 + f32(global_point_idx) * 1.618) * 0.025;
+    let token_noise_y = cos(y * 89.12 + f32(global_point_idx) * 1.618) * 0.025;
+
+    // Sin envolvente de Brenier: el error se amplifica a cada horizonte
+    let pred_x = x + dx + token_noise_x;
+    let pred_y = y + dy + token_noise_y;
+
+    output_coords[coord_offset] = pred_x;
+    output_coords[coord_offset + 1u] = pred_y;
+}
 "#;

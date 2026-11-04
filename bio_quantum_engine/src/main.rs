@@ -11,7 +11,8 @@
 //! - `demo`: Demostración interactiva paso a paso de interferencia cuántica y microcircuitos dendríticos.
 
 use bio_quantum_engine::cdt_basin_memory::CdtSimplicialBasinMemory;
-use bio_quantum_engine::gemma_field_bridge::{GemmaE2eOutput, GemmaFieldBridge, GemmaLinguisticEncoder};
+use bio_quantum_engine::gemma_field_bridge::GemmaFieldBridge;
+use bio_quantum_engine::gemma_vs_hybrid::run_gemma_vs_hybrid_benchmark;
 use bio_quantum_engine::gpu_engine::{ConfigUniform, GpuBioQuantumEngine};
 use bio_quantum_engine::protocol_cst4::{
     compute_log_relative_error, compute_relative_error, Cst4DataGenerator, HORIZON, K_OBS,
@@ -832,6 +833,19 @@ fn run_gemma_eval() {
     std::mem::forget(bridge.gpu_engine);
 }
 
+fn run_gemma_vs_hybrid_cmd() {
+    println!("\n>>> Inicializando puente Bio-Quantum v10 x50 en GPU AMD...");
+    let mut bridge = match GemmaFieldBridge::new() {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("Error al inicializar GPU: {}", e);
+            return;
+        }
+    };
+    run_gemma_vs_hybrid_benchmark(&mut bridge);
+    std::mem::forget(bridge.gpu_engine);
+}
+
 fn main() {
     print_banner();
     let args: Vec<String> = env::args().collect();
@@ -866,6 +880,9 @@ fn main() {
         }
         "gemma-eval" => {
             run_gemma_eval();
+        }
+        "gemma-vs-hybrid" | "--gemma-vs-hybrid" => {
+            run_gemma_vs_hybrid_cmd();
         }
         "demo" => {
             run_interactive_demo();
