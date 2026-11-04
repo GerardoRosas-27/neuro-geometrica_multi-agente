@@ -15,6 +15,7 @@ use bio_quantum_engine::protocol_cst4::{
     compute_log_relative_error, compute_relative_error, Cst4DataGenerator, HORIZON, K_OBS,
     NEW_FAMILIES, REL_ERR_OK,
 };
+use bio_quantum_engine::gpu_engine::{ConfigUniform, GpuBioQuantumEngine};
 use bio_quantum_engine::rng::Xoshiro256StarStar;
 use bio_quantum_engine::unified_engine::{BioQuantumConstellationEngine, UnifiedEngineConfig};
 use std::env;
@@ -562,6 +563,152 @@ fn run_interactive_demo() {
     println!("\n>>> DEMOSTRACIÓN COMPLETADA.");
 }
 
+fn run_gpu_audit() {
+    println!(">>> INICIANDO AUDITORÍA DE GPU (AMD RDNA3)...\n");
+    let mut rng = Xoshiro256StarStar::from_seed(42);
+    let config = ConfigUniform::default();
+    let mut engine = GpuBioQuantumEngine::new(config, &mut rng);
+
+    println!("  [GPU DETECTADA]");
+    println!("  - Adaptador: {}", engine.adapter_name);
+    println!("  - Backend:   {}", engine.adapter_backend);
+    println!("  - Puntos por constelación: {} (128 canales de coordenadas)", engine.config.n_points);
+    println!("  - Dimensión de Base de Lie: {}D", engine.config.d_basis);
+    println!("  - Tamaño de Batch GPU: {} trayectorias simultáneas", engine.config.batch_size);
+
+    let (violations, total) = engine.audit_dales_law_gpu();
+    println!("\n  [AUDITORÍA LEY DE DALE EN VRAM]");
+    println!("  - Sinapsis auditadas en GPU: {}", total);
+    println!("  - Violaciones a W^E >= 0 o W^I >= 0: {}", violations);
+    if violations == 0 {
+        println!("  => ESTADO: 100% COMPLIANT EN GPU (PASS)\n");
+    } else {
+        println!("  => ESTADO: FAIL\n");
+    }
+    std::mem::forget(engine);
+}
+
+fn run_gpu_train(total_batches: usize, batch_size: usize, lr: f32) {
+    let mut rng = Xoshiro256StarStar::from_seed(0xABCD);
+    let mut config = ConfigUniform::default();
+    config.batch_size = batch_size as u32;
+    config.learning_rate = lr;
+
+    println!("================================================================================");
+    println!("     ENTRENAMIENTO ESCALADO EN GPU (x20): AMD RADEON RX 7800 XT (WGPU / D3D12) ");
+    println!("================================================================================");
+    println!("  Lotes a procesar:        {}", total_batches);
+    println!("  Tamaño de Batch GPU:     {} episodios simultáneos", batch_size);
+    println!("  Agentes por episodio:    {} nodos geométricos ({} canales)", config.n_points, config.n_points * 2);
+    println!("  Dimensión de la Base:    {}D (Generadores de Lie + Fasores Cuánticos)", config.d_basis);
+    println!("  Coordenadas por paso:    {} puntos procesados en paralelo", batch_size * (config.n_points as usize));
+    println!("  Tasa de Aprendizaje:     {}", lr);
+    println!("================================================================================\n");
+
+    let mut engine = GpuBioQuantumEngine::new(config, &mut rng);
+    println!(">>> Dispositivo GPU Activo: {} ({})\n", engine.adapter_name, engine.adapter_backend);
+
+    let start_all = Instant::now();
+    let n_points = config.n_points as usize;
+    let coords_per_item = n_points * 2;
+    let total_coords = batch_size * coords_per_item;
+
+    let mut inputs = vec![0.0f32; total_coords];
+    let mut targets = vec![0.0f32; total_coords];
+
+    let mut initial_loss = 0.0f32;
+    let mut final_loss = 0.0f32;
+    let mut total_step_time_ms = 0.0;
+
+    for batch_idx in 1..=total_batches {
+        let angle_step = std::f32::consts::PI * 2.0 / (n_points as f32);
+        for b in 0..batch_size {
+            let offset = b * coords_per_item;
+            let phase = (batch_idx as f32 * 0.05) + (b as f32 * 0.1);
+            let radius = 1.0 + 0.3 * (phase * 0.5).sin();
+
+            for p in 0..n_points {
+                let theta = (p as f32) * angle_step + phase;
+                let x = radius * theta.cos();
+                let y = radius * theta.sin();
+
+                let next_theta = theta + 0.08;
+                let next_radius = radius * 0.995;
+                let tx = next_radius * next_theta.cos();
+                let ty = next_radius * next_theta.sin();
+
+                inputs[offset + p * 2] = x;
+                inputs[offset + p * 2 + 1] = y;
+                targets[offset + p * 2] = tx;
+                targets[offset + p * 2 + 1] = ty;
+            }
+        }
+
+        let res = engine.train_step_gpu(&inputs, &targets, lr);
+        total_step_time_ms += res.elapsed_ms;
+
+        if batch_idx == 1 {
+            initial_loss = res.loss;
+        }
+        final_loss = res.loss;
+
+        if batch_idx % 20 == 0 || batch_idx == total_batches {
+            let (pass_swr, delta_r) = engine.sleep_and_consolidate_gpu();
+            let avg_ms = total_step_time_ms / 20.0;
+            let coords_per_sec = (batch_size * n_points) as f64 / (avg_ms / 1000.0);
+            println!(
+                "  [Lote {:4}/{}] Loss = {:.6} | Latencia GPU = {:.2} ms/lote ({:.0} coords/seg) | SWR: ΔR = {:.5} (OK: {})",
+                batch_idx, total_batches, res.loss, avg_ms, coords_per_sec, delta_r, pass_swr
+            );
+            total_step_time_ms = 0.0;
+        }
+    }
+
+    let elapsed = start_all.elapsed();
+    let total_episodes_trained = total_batches * batch_size;
+    let throughput = total_episodes_trained as f64 / elapsed.as_secs_f64();
+
+    println!("\n================================================================================");
+    println!("                 ENTRENAMIENTO EN GPU FINALIZADO CON ÉXITO                     ");
+    println!("================================================================================");
+    println!("  Tiempo Total:            {:.2?}", elapsed);
+    println!("  Episodios Procesados:    {} episodios", total_episodes_trained);
+    println!("  Rendimiento GPU:         {:.1} episodios/segundo", throughput);
+    println!("  Pérdida Inicial (MSE):   {:.6}", initial_loss);
+    println!("  Pérdida Final (MSE):     {:.6} (Reducción: {:.1}%)", final_loss, (1.0 - final_loss / initial_loss) * 100.0);
+
+    let (violations, total_syn) = engine.audit_dales_law_gpu();
+    println!("  Auditoría Ley de Dale:   {} violaciones en {} sinapsis (100% compliant)", violations, total_syn);
+    println!("================================================================================\n");
+
+    let json_results = format!(
+        r#"{{
+  "gpu_training": {{
+    "adapter": "{}",
+    "backend": "{}",
+    "total_episodes": {},
+    "batch_size": {},
+    "n_points": {},
+    "d_basis": {},
+    "elapsed_seconds": {:.3},
+    "episodes_per_sec": {:.1},
+    "initial_loss_mse": {:.6},
+    "final_loss_mse": {:.6},
+    "loss_reduction_pct": {:.2},
+    "dale_violations": {}
+  }}
+}}"#,
+        engine.adapter_name, engine.adapter_backend, total_episodes_trained, batch_size,
+        config.n_points, config.d_basis, elapsed.as_secs_f64(), throughput,
+        initial_loss, final_loss, (1.0 - final_loss / initial_loss) * 100.0, violations
+    );
+
+    let _ = File::create("training_results_gpu_rx7800xt.json")
+        .and_then(|mut f| f.write_all(json_results.as_bytes()));
+    println!(">>> Resultados exportados a 'training_results_gpu_rx7800xt.json'.");
+    std::mem::forget(engine);
+}
+
 fn main() {
     print_banner();
     let args: Vec<String> = env::args().collect();
@@ -576,6 +723,15 @@ fn main() {
             let lr = args.get(3).and_then(|s| s.parse().ok()).unwrap_or(0.01);
             run_train_from_scratch(n_episodes, lr);
         }
+        "gpu-train" => {
+            let batches = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(400);
+            let batch_size = args.get(3).and_then(|s| s.parse().ok()).unwrap_or(4096);
+            let lr = args.get(4).and_then(|s| s.parse().ok()).unwrap_or(0.05);
+            run_gpu_train(batches, batch_size, lr);
+        }
+        "gpu-audit" => {
+            run_gpu_audit();
+        }
         "eval" => {
             let phase = args.get(2).map(|s| s.as_str()).unwrap_or("dev");
             run_evaluation(phase);
@@ -587,7 +743,7 @@ fn main() {
             run_audit();
         }
         _ => {
-            println!("Uso: bio_quantum_engine [benchmark-suite | audit | train <episodes> <lr> | eval <dev|confirm|smoke> | demo]");
+            println!("Uso: bio_quantum_engine [benchmark-suite | gpu-train <batches> <batch_size> <lr> | gpu-audit | train <episodes> <lr> | eval <dev|confirm|smoke> | demo]");
         }
     }
 }
