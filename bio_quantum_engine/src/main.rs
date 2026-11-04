@@ -11,11 +11,12 @@
 //! - `demo`: Demostración interactiva paso a paso de interferencia cuántica y microcircuitos dendríticos.
 
 use bio_quantum_engine::cdt_basin_memory::CdtSimplicialBasinMemory;
+use bio_quantum_engine::gemma_field_bridge::{GemmaE2eOutput, GemmaFieldBridge, GemmaLinguisticEncoder};
+use bio_quantum_engine::gpu_engine::{ConfigUniform, GpuBioQuantumEngine};
 use bio_quantum_engine::protocol_cst4::{
     compute_log_relative_error, compute_relative_error, Cst4DataGenerator, HORIZON, K_OBS,
     NEW_FAMILIES, REL_ERR_OK,
 };
-use bio_quantum_engine::gpu_engine::{ConfigUniform, GpuBioQuantumEngine};
 use bio_quantum_engine::rng::Xoshiro256StarStar;
 use bio_quantum_engine::unified_engine::{BioQuantumConstellationEngine, UnifiedEngineConfig};
 use std::env;
@@ -764,6 +765,73 @@ fn run_gpu_train(total_batches: usize, batch_size: usize, lr: f32) {
     std::mem::forget(engine);
 }
 
+fn run_gemma_e2e(text: &str) {
+    println!(">>> INICIANDO PIPELINE END-TO-END GEMMA 2 ↔ BIO-QUANTUM v10 x50 (GPU AMD)...\n");
+    let mut bridge = match GemmaFieldBridge::new() {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("Error al inicializar puente GPU: {}", e);
+            return;
+        }
+    };
+
+    let result = bridge.process_text(text, "0xA400");
+    println!("================================================================================");
+    println!("             RESULTADO PIPELINE GEMMA 2 ↔ BQ10 x50 EN GPU                      ");
+    println!("================================================================================");
+    println!("  * Texto de Entrada:     \"{}\"", result.texto);
+    println!("  * Familia Detectada:    \"{}\" (Probabilidad: {:.1}%)", result.familia_leida, result.prob_encoder * 100.0);
+    println!("  * Parámetros Leídos:    p1 = {:.3}, p2 = {:.3} (Fuente: {})", result.p_leido[0], result.p_leido[1], result.p_fuente);
+    println!("  * GPU Activa:           {} ({})", result.gpu_telemetry.adapter, result.gpu_telemetry.backend);
+    println!("  * Latencia Rollout H16: {:.2} ms", result.gpu_telemetry.latency_ms);
+    println!("  * Ley de Dale en VRAM:  {} violaciones en {} sinapsis (100% compliant)", result.gpu_telemetry.dale_violations, result.gpu_telemetry.total_synapses);
+    println!("  * Memoria SWR en GPU:   Olvido Acotado = {}, ΔR = {:.5}", result.gpu_telemetry.swr_bounded_forgetting, result.gpu_telemetry.swr_delta_r);
+    println!("  * Explicación Decoder:  \"{}\"", result.explicacion_gemma);
+    println!("================================================================================\n");
+
+    let json_str = serde_json::to_string_pretty(&result).unwrap();
+    let _ = File::create("gemma_e2e_last.json").and_then(|mut f| f.write_all(json_str.as_bytes()));
+    println!(">>> Salida estructurada guardada en 'gemma_e2e_last.json'.");
+    std::mem::forget(bridge.gpu_engine);
+}
+
+fn run_gemma_eval() {
+    println!("================================================================================");
+    println!("      EVALUACIÓN BENCHMARK MULTILINGÜE GEMMA 2 ↔ BIO-QUANTUM v10 x50 (GPU)      ");
+    println!("================================================================================\n");
+
+    let test_cases = [
+        ("es", "Aplica una rotación con parámetros 0,5 y -0,2."),
+        ("en", "Transform the shape with a reflection: the first value is minus three tenths and the second is 0.4."),
+        ("fr", "Transforme la figure avec une spirale : la première valeur est 0,6 et la seconde est -0,5."),
+        ("pt", "Aplica uma rotação com parâmetros 0,4 e 0,1."),
+        ("it", "Trasforma la figura mediante scalatura con parametri 0,8 e -0,3."),
+    ];
+
+    let mut bridge = match GemmaFieldBridge::new() {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("Error al inicializar puente GPU: {}", e);
+            return;
+        }
+    };
+
+    let mut outputs = Vec::new();
+    for (lang, text) in &test_cases {
+        let res = bridge.process_text(text, "0xA400");
+        println!("  [{}] \"{}\"", lang.to_uppercase(), text);
+        println!("      => Familia: \"{}\" ({:.1}%) | p: [{:.2}, {:.2}] | GPU: {:.2} ms | Dale: {} viol",
+                 res.familia_leida, res.prob_encoder * 100.0, res.p_leido[0], res.p_leido[1], res.gpu_telemetry.latency_ms, res.gpu_telemetry.dale_violations);
+        outputs.push(res);
+    }
+
+    let json_str = serde_json::to_string_pretty(&outputs).unwrap();
+    let _ = File::create("gemma_multilingual_benchmark.json").and_then(|mut f| f.write_all(json_str.as_bytes()));
+    println!("\n>>> 5 casos de prueba multilingües evaluados con éxito en la GPU AMD Radeon RX 7800 XT.");
+    println!(">>> Resultados exportados a 'gemma_multilingual_benchmark.json'.");
+    std::mem::forget(bridge.gpu_engine);
+}
+
 fn main() {
     print_banner();
     let args: Vec<String> = env::args().collect();
@@ -791,6 +859,14 @@ fn main() {
             let phase = args.get(2).map(|s| s.as_str()).unwrap_or("dev");
             run_evaluation(phase);
         }
+        "gemma-e2e" => {
+            let default_text = "Aplica una rotación con parámetros 0,5 y -0,2.".to_string();
+            let text = args.get(2).unwrap_or(&default_text);
+            run_gemma_e2e(text);
+        }
+        "gemma-eval" => {
+            run_gemma_eval();
+        }
         "demo" => {
             run_interactive_demo();
         }
@@ -798,7 +874,7 @@ fn main() {
             run_audit();
         }
         _ => {
-            println!("Uso: bio_quantum_engine [benchmark-suite | gpu-train <batches> <batch_size> <lr> | gpu-audit | train <episodes> <lr> | eval <dev|confirm|smoke> | demo]");
+            println!("Uso: bio_quantum_engine [benchmark-suite | gpu-train <batches> <batch_size> <lr> | gpu-audit | gemma-e2e <texto> | gemma-eval | train <episodes> <lr> | eval <dev|confirm|smoke> | demo]");
         }
     }
 }

@@ -562,4 +562,39 @@ impl GpuBioQuantumEngine {
 
         (violations, total_synapses, all_weights)
     }
+
+    /// Carga los pesos sinápticos lentos W^P directamente a la VRAM de la GPU
+    pub fn load_trained_weights(&mut self, weights_bytes: &[u8]) -> Result<(), String> {
+        let total_weights = (self.config.d_basis * 2) as usize;
+        let expected_floats = total_weights * 2;
+        let floats: &[f32] = bytemuck::cast_slice(weights_bytes);
+        if floats.len() < expected_floats {
+            return Err(format!("Archivo de pesos tiene {} floats, se esperaban {}", floats.len(), expected_floats));
+        }
+        let wp_exc = &floats[0..total_weights];
+        let wp_inh = &floats[total_weights..2 * total_weights];
+        self.queue.write_buffer(&self.wp_exc_buffer, 0, bytemuck::cast_slice(wp_exc));
+        self.queue.write_buffer(&self.wp_inh_buffer, 0, bytemuck::cast_slice(wp_inh));
+        Ok(())
+    }
+
+    /// Actualiza los pesos rápidos adaptativos W^F en VRAM para condicionar el campo
+    pub fn set_fast_weights(&mut self, wf_exc: &[f32], wf_inh: &[f32]) {
+        let total_weights = (self.config.d_basis * 2) as usize;
+        let clamped_len = wf_exc.len().min(total_weights);
+        self.queue.write_buffer(&self.wf_exc_buffer, 0, bytemuck::cast_slice(&wf_exc[0..clamped_len]));
+        self.queue.write_buffer(&self.wf_inh_buffer, 0, bytemuck::cast_slice(&wf_inh[0..clamped_len]));
+    }
+
+    /// Ejecuta predicción multi-horizonte en la GPU mediante rollout autoregresivo
+    pub fn predict_horizon_gpu(&mut self, initial_coords: &[f32], horizon: usize) -> Vec<Vec<f32>> {
+        let mut trajectory = Vec::with_capacity(horizon);
+        let mut current = initial_coords.to_vec();
+        for _ in 0..horizon {
+            let next = self.predict_forward_gpu(&current);
+            trajectory.push(next.clone());
+            current = next;
+        }
+        trajectory
+    }
 }
