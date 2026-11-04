@@ -576,7 +576,7 @@ fn run_gpu_audit() {
     println!("  - Dimensión de Base de Lie: {}D", engine.config.d_basis);
     println!("  - Tamaño de Batch GPU: {} trayectorias simultáneas", engine.config.batch_size);
 
-    let (violations, total) = engine.audit_dales_law_gpu();
+    let (violations, total, _) = engine.audit_dales_law_gpu();
     println!("\n  [AUDITORÍA LEY DE DALE EN VRAM]");
     println!("  - Sinapsis auditadas en GPU: {}", total);
     println!("  - Violaciones a W^E >= 0 o W^I >= 0: {}", violations);
@@ -677,9 +677,28 @@ fn run_gpu_train(total_batches: usize, batch_size: usize, lr: f32) {
     println!("  Pérdida Inicial (MSE):   {:.6}", initial_loss);
     println!("  Pérdida Final (MSE):     {:.6} (Reducción: {:.1}%)", final_loss, (1.0 - final_loss / initial_loss) * 100.0);
 
-    let (violations, total_syn) = engine.audit_dales_law_gpu();
+    let (violations, total_syn, trained_weights) = engine.audit_dales_law_gpu();
     println!("  Auditoría Ley de Dale:   {} violaciones en {} sinapsis (100% compliant)", violations, total_syn);
     println!("================================================================================\n");
+
+    let _ = File::create("weights_x20.bin").and_then(|mut f| {
+        let bytes: &[u8] = bytemuck::cast_slice(&trained_weights);
+        f.write_all(bytes)
+    });
+    println!(">>> Pesos sinápticos exportados a 'weights_x20.bin' ({} sinapsis binarias en f32).", trained_weights.len());
+
+    let weights_json = format!(
+        r#"{{
+  "architecture": "Bio-Quantum v10 Singularity x20",
+  "total_synapses": {},
+  "d_basis": {},
+  "n_points": {},
+  "weights": {:?}
+}}"#,
+        trained_weights.len(), config.d_basis, config.n_points, trained_weights
+    );
+    let _ = File::create("weights_x20.json").and_then(|mut f| f.write_all(weights_json.as_bytes()));
+    println!(">>> Pesos sinápticos exportados a 'weights_x20.json'.");
 
     let json_results = format!(
         r#"{{

@@ -528,8 +528,8 @@ impl GpuBioQuantumEngine {
         (true, -0.00042)
     }
 
-    /// Auditoría estricta de violaciones a la Ley de Dale en la GPU
-    pub fn audit_dales_law_gpu(&mut self) -> (usize, usize) {
+    /// Auditoría estricta de violaciones a la Ley de Dale en la GPU y volcado de pesos
+    pub fn audit_dales_law_gpu(&mut self) -> (usize, usize, Vec<f32>) {
         let total_weights = (self.config.d_basis * 2) as usize;
         let buffer_size = (total_weights * std::mem::size_of::<f32>()) as u64;
 
@@ -560,6 +560,6 @@ impl GpuBioQuantumEngine {
             if w < 0.0 { violations += 1; }
         }
 
-        (violations, total_synapses)
+        (violations, total_synapses, all_weights)
     }
 }
