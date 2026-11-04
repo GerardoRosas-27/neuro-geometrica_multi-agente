@@ -1,0 +1,134 @@
+    Finished `release` profile [optimized] target(s) in 0.05s
+WGSL OK (naga)
+adaptador: llvmpipe (LLVM 19.1.7, 256 bits) (Gl)
+paso 0: loss_cpu=1.09455882 loss_gpu=1.09455880 rel=1.83e-8
+paso 1: loss_cpu=1.09091177 loss_gpu=1.09091177 rel=4.22e-9
+paso 2: loss_cpu=1.08404061 loss_gpu=1.08404060 rel=9.42e-9
+paso 3: loss_cpu=1.07437274 loss_gpu=1.07437277 rel=3.03e-8
+paso 4: loss_cpu=1.06232863 loss_gpu=1.06232862 rel=1.36e-8
+max|W_cpu-W_gpu|=7.451e-9  determinista=true
+CHECK-GPU OK
+train: 48 conv, 12288 tokens, H=64
+val: 6 conv, 1536 tokens, H=64
+test: 6 conv, 1536 tokens, H=64
+{'d_field': 16, 'H': 64, 'var_explicada': 0.9209443552621995, 'fit_tokens': 12288, 'train_recon_rel_mse_centrado': 0.07906011492013931, 'val_recon_rel_mse_centrado': 0.08356565237045288, 'test_recon_rel_mse_centrado': 0.08547739684581757}
+datos: train 48 conv/12288 tok, val 6 conv/1536 tok; d=16 F=201 ctx=4 quad=true
+ridge l1=1e-6 l2=1e-6: train_mse=0.253119 val_mse=0.287313
+ridge l1=1e-6 l2=1e-5: train_mse=0.253119 val_mse=0.287270
+ridge l1=1e-6 l2=1e-4: train_mse=0.253123 val_mse=0.286859
+ridge l1=1e-6 l2=1e-3: train_mse=0.253410 val_mse=0.283948
+ridge l1=1e-6 l2=1e-2: train_mse=0.258099 val_mse=0.277860
+ridge l1=1e-6 l2=1e-1: train_mse=0.276836 val_mse=0.283824
+ridge l1=1e-5 l2=1e-6: train_mse=0.253122 val_mse=0.287286
+ridge l1=1e-5 l2=1e-5: train_mse=0.253122 val_mse=0.287243
+ridge l1=1e-5 l2=1e-4: train_mse=0.253127 val_mse=0.286832
+ridge l1=1e-5 l2=1e-3: train_mse=0.253416 val_mse=0.283926
+ridge l1=1e-5 l2=1e-2: train_mse=0.258102 val_mse=0.277843
+ridge l1=1e-5 l2=1e-1: train_mse=0.276832 val_mse=0.283807
+ridge l1=1e-4 l2=1e-6: train_mse=0.253299 val_mse=0.287308
+ridge l1=1e-4 l2=1e-5: train_mse=0.253299 val_mse=0.287266
+ridge l1=1e-4 l2=1e-4: train_mse=0.253305 val_mse=0.286859
+ridge l1=1e-4 l2=1e-3: train_mse=0.253597 val_mse=0.283968
+ridge l1=1e-4 l2=1e-2: train_mse=0.258236 val_mse=0.277870
+ridge l1=1e-4 l2=1e-1: train_mse=0.276898 val_mse=0.283808
+ridge l1=1e-3 l2=1e-6: train_mse=0.255976 val_mse=0.290218
+ridge l1=1e-3 l2=1e-5: train_mse=0.255976 val_mse=0.290176
+ridge l1=1e-3 l2=1e-4: train_mse=0.255981 val_mse=0.289778
+ridge l1=1e-3 l2=1e-3: train_mse=0.256227 val_mse=0.286868
+ridge l1=1e-3 l2=1e-2: train_mse=0.260519 val_mse=0.280348
+ridge l1=1e-3 l2=1e-1: train_mse=0.279000 val_mse=0.286024
+ridge l1=1e-2 l2=1e-6: train_mse=0.278314 val_mse=0.313977
+ridge l1=1e-2 l2=1e-5: train_mse=0.278307 val_mse=0.313931
+ridge l1=1e-2 l2=1e-4: train_mse=0.278245 val_mse=0.313477
+ridge l1=1e-2 l2=1e-3: train_mse=0.277945 val_mse=0.310024
+ridge l1=1e-2 l2=1e-2: train_mse=0.280247 val_mse=0.301080
+ridge l1=1e-2 l2=1e-1: train_mse=0.298515 val_mse=0.305431
+ridge l1=1e-1 l2=1e-6: train_mse=0.342118 val_mse=0.380292
+ridge l1=1e-1 l2=1e-5: train_mse=0.342110 val_mse=0.380234
+ridge l1=1e-1 l2=1e-4: train_mse=0.342035 val_mse=0.379679
+ridge l1=1e-1 l2=1e-3: train_mse=0.341775 val_mse=0.375691
+ridge l1=1e-1 l2=1e-2: train_mse=0.346985 val_mse=0.368879
+ridge l1=1e-1 l2=1e-1: train_mse=0.383732 val_mse=0.388982
+ridge elegido (val): l1=1e-5 l2=1e-2 val_mse(dz)=0.277843  [ridge con 12240 muestras train]
+GPU: llvmpipe (LLVM 19.1.7, 256 bits) (Gl)
+epoch 0 (init): val_mse(dz)=0.277843
+epoch 1: train_mse(dz, media batches pre-update)=0.259508 val_mse(dz)=0.277780
+epoch 2: train_mse(dz, media batches pre-update)=0.259641 val_mse(dz)=0.278133
+epoch 3: train_mse(dz, media batches pre-update)=0.259722 val_mse(dz)=0.277632
+rapido eta=0 gamma=1: val z-MSE campo=0.277632 lenta=0.277632 repeat=0.695443
+rapido eta=0.01 gamma=1: val z-MSE campo=0.268059 lenta=0.277632 repeat=0.695443
+rapido eta=0.01 gamma=0.99: val z-MSE campo=0.269923 lenta=0.277632 repeat=0.695443
+rapido eta=0.01 gamma=0.95: val z-MSE campo=0.273920 lenta=0.277632 repeat=0.695443
+rapido eta=0.03 gamma=1: val z-MSE campo=0.263296 lenta=0.277632 repeat=0.695443
+rapido eta=0.03 gamma=0.99: val z-MSE campo=0.264937 lenta=0.277632 repeat=0.695443
+rapido eta=0.03 gamma=0.95: val z-MSE campo=0.270091 lenta=0.277632 repeat=0.695443
+rapido eta=0.1 gamma=1: val z-MSE campo=0.267164 lenta=0.277632 repeat=0.695443
+rapido eta=0.1 gamma=0.99: val z-MSE campo=0.267742 lenta=0.277632 repeat=0.695443
+rapido eta=0.1 gamma=0.95: val z-MSE campo=0.270432 lenta=0.277632 repeat=0.695443
+rapido eta=0.3 gamma=1: val z-MSE campo=0.296931 lenta=0.277632 repeat=0.695443
+rapido eta=0.3 gamma=0.99: val z-MSE campo=0.293803 lenta=0.277632 repeat=0.695443
+rapido eta=0.3 gamma=0.95: val z-MSE campo=0.292484 lenta=0.277632 repeat=0.695443
+best val dz-mse SGD=0.277632; fast elegido eta=0.03 gamma=1 val z-mse=0.263296; device=gpu
+[test] z-MSE 1 paso: campo=0.273654 lenta=0.282598 repeat=0.721842  (ponderado por token; bootstrap en python/eval.py)
+escrito /workspace/gc_smoke/m/test_pred1.f32 y test_zmse.json
+paridad numpy vs Rust: max err relativo = 2.79e-08
+PARIDAD OK
+{
+ "AVISO": "SMOKE (modelo diminuto aleatorio): NO son resultados",
+ "sanity_identity_maxdiff": 0.0001849830150604248,
+ "ppl": {
+  "gemma": 269.32298414012644,
+  "oracle": 269.1673587906407,
+  "repeat": 270.07874292039014,
+  "campo": 268.8889427716141
+ },
+ "delta_nll": {
+  "campo-gemma": {
+   "media": -0.0016129016876220703,
+   "ic95": [
+    -0.004471381505330403,
+    0.000583648681640625
+   ],
+   "p_le0": 0.907,
+   "n": 6
+  },
+  "campo-repeat": {
+   "media": -0.004415114720662435,
+   "ic95": [
+    -0.005813121795654297,
+    -0.0029694239298502603
+   ],
+   "p_le0": 1.0,
+   "n": 6
+  },
+  "campo-oracle": {
+   "media": -0.0010348955790201824,
+   "ic95": [
+    -0.0020522276560465493,
+    -0.0001373291015625
+   ],
+   "p_le0": 0.9894,
+   "n": 6
+  },
+  "oracle-gemma": {
+   "media": -0.0005780061086018881,
+   "ic95": [
+    -0.0033980210622151694,
+    0.0016007423400878906
+   ],
+   "p_le0": 0.6197,
+   "n": 6
+  },
+  "repeat-gemma": {
+   "media": 0.0028022130330403647,
+   "ic95": [
+    -0.0006318887074788412,
+    0.005946954091389974
+   ],
+   "p_le0": 0.0475,
+   "n": 6
+  }
+ }
+}
+zmse_1paso: {"media": -0.44818789460767433, "ic95": [-0.46208958489328505, -0.4358054721763572], "p_le0": 1.0, "n": 6}
+[SMOKE modelo aleatorio] [campo] Assistant:�ڻ����
