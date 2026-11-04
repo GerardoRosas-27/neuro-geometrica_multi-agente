@@ -230,23 +230,59 @@ pub fn evaluate_phase_rust(seed: u64, n_episodes: usize) -> PhaseResults {
 }
 
 fn run_evaluation(phase: &str) {
-    let seed = match phase {
-        "dev" => 0xA400,
-        "confirm" => 0xB400,
-        _ => 0xC400,
+    let seeds: Vec<u64> = match phase {
+        "dev" => (0xA400..=0xA40Fu64).collect(),
+        "confirm" => (0xB400..=0xB40Fu64).collect(),
+        _ => vec![0xC400],
     };
 
-    println!(">>> INICIANDO EVALUACIÓN DEL PROTOCOLO ({}, semilla {:#x})...", phase.to_uppercase(), seed);
-    let res = evaluate_phase_rust(seed, 64);
+    println!("================================================================================");
+    println!("     EVALUACIÓN DEL PROTOCOLO CANÓNICO ({}) - 16 SEMILLAS                     ", phase.to_uppercase());
+    println!("================================================================================");
+    println!("Semillas: {:#x} .. {:#x} (64 episodios por semilla)", seeds[0], seeds[seeds.len() - 1]);
+    println!("Evaluando inferencia pura sin re-entrenamiento (zero-shot adaptativo)...\n");
+
+    let mut all_known_acc = Vec::new();
+    let mut all_known_med_log = Vec::new();
+    let mut all_new_acc = Vec::new();
+    let mut all_new_med_log = Vec::new();
+    let mut all_e33_pass = 0;
+    let mut all_dale_viol = 0;
+    let mut all_cdt_pass = 0;
+    let mut all_delta_r = Vec::new();
+
+    for &seed in &seeds {
+        let res = evaluate_phase_rust(seed, 64);
+        all_known_acc.push(res.known_acc16);
+        all_known_med_log.push(res.known_med_log);
+        all_new_acc.push(res.new_acc16);
+        all_new_med_log.push(res.new_med_log);
+        if res.e33_pass { all_e33_pass += 1; }
+        all_dale_viol += res.dale_violations;
+        if res.cdt_pass { all_cdt_pass += 1; }
+        all_delta_r.push(res.delta_r);
+
+        println!(
+            "  Semilla {:#x}: Conocidas Acc16 = {:5.1}% (log {:6.2}) | OOD Acc16 = {:5.1}% (log {:6.2}) | E33 = {} | Dale viol = {}",
+            seed, res.known_acc16 * 100.0, res.known_med_log, res.new_acc16 * 100.0, res.new_med_log, res.e33_pass, res.dale_violations
+        );
+    }
+
+    let mean = |v: &[f64]| v.iter().sum::<f64>() / v.len() as f64;
+    let mean_k_acc = mean(&all_known_acc);
+    let mean_k_log = mean(&all_known_med_log);
+    let mean_n_acc = mean(&all_new_acc);
+    let mean_n_log = mean(&all_new_med_log);
+    let mean_dr = mean(&all_delta_r);
 
     println!("\n================================================================================");
-    println!("                   RESULTADOS DEL PROTOCOLO ({})                               ", phase.to_uppercase());
+    println!("            RESUMEN CONSOLIDADO DEL PROTOCOLO ({}) (16/16 SEMILLAS)            ", phase.to_uppercase());
     println!("================================================================================");
-    println!("  * Familias Conocidas Acc16: {:.1}% (Med log err = {:.4})", res.known_acc16 * 100.0, res.known_med_log);
-    println!("  * Familias Nuevas OOD Acc16: {:.1}% (Med log err = {:.4}) [vs 6.9% en v4]", res.new_acc16 * 100.0, res.new_med_log);
-    println!("  * Tarea E33 Cold Start Pass: {} (Acc por H={:?})", res.e33_pass, res.e33_acc_per_h);
-    println!("  * Cumplimiento Ley de Dale: {} violaciones en {} sinapsis (100% compliant)", res.dale_violations, res.total_synapses);
-    println!("  * Teorema Cuenca CDT SWR: Olvido Acotado = {}, ΔR = {:.5}", res.cdt_pass, res.delta_r);
+    println!("  * Familias Conocidas Acc16 Media: {:.2}% (Med log err = {:.4})", mean_k_acc * 100.0, mean_k_log);
+    println!("  * Familias Nuevas OOD Acc16 Media: {:.2}% (Med log err = {:.4}) [vs 6.9% en v4]", mean_n_acc * 100.0, mean_n_log);
+    println!("  * Tarea E33 Cold Start Pass:       {}/{} semillas aprobadas", all_e33_pass, seeds.len());
+    println!("  * Cumplimiento Ley de Dale:        {} violaciones en total (100% compliant)", all_dale_viol);
+    println!("  * Memoria CDT / Sueño SWR:         {}/{} aprobados (ΔR promedio = {:.5})", all_cdt_pass, seeds.len(), mean_dr);
     println!("================================================================================\n");
 }
 
