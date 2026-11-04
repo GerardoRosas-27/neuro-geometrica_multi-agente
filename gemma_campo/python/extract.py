@@ -33,14 +33,34 @@ def main():
     ap.add_argument("--dtype", default="float32")
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     ap.add_argument("--out", required=True)
+    # modo continuo: held-out fijo (n-test, n-val primeros de la permutación), el resto es el flujo de train en shards
+    ap.add_argument("--stream", action="store_true")
+    ap.add_argument("--n-val", type=int, default=60); ap.add_argument("--n-test", type=int, default=60)
+    ap.add_argument("--shard", type=int, default=0); ap.add_argument("--shard-size", type=int, default=200)
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
     convs = load_convs(a)
     rng = np.random.default_rng(a.seed)
-    order = rng.permutation(len(convs))[: a.n_conv]
-    n = len(order)
-    ntr, nva = int(round(a.frac[0] * n)), int(round(a.frac[1] * n))
-    splits = {"train": order[:ntr], "val": order[ntr:ntr + nva], "test": order[ntr + nva:]}
+    # dedup por hash del texto: conversaciones idénticas comparten id y caen en un solo split
+    import hashlib
+    hashes = [hashlib.sha256(format_conv(c).encode()).hexdigest()[:16] for c in convs]
+    first = {}
+    for i, h in enumerate(hashes):
+        first.setdefault(h, i)
+    uniq = np.array(sorted(first.values()))
+    if a.stream:
+        order = uniq[rng.permutation(len(uniq))]
+        test, val, pool = order[:a.n_test], order[a.n_test:a.n_test + a.n_val], order[a.n_test + a.n_val:]
+        sh = pool[a.shard * a.shard_size:(a.shard + 1) * a.shard_size]
+        if len(sh) == 0:
+            raise SystemExit(f"shard {a.shard} vacío: flujo agotado ({len(pool)} conv de train)")
+        splits = {"train": sh, "val": val, "test": test} if a.shard == 0 else {"train": sh}
+        n = len(sh)
+    else:
+        order = uniq[rng.permutation(len(uniq))][: a.n_conv]
+        n = len(order)
+        ntr, nva = int(round(a.frac[0] * n)), int(round(a.frac[1] * n))
+        splits = {"train": order[:ntr], "val": order[ntr:ntr + nva], "test": order[ntr + nva:]}
     model, tok, meta = load_model(a.model, a.tiny_random, a.dtype, a.device)
     assert 1 <= a.layer < meta["layers"], "la capa debe dejar capas por encima para decodificar"
     for name, ids_c in splits.items():
@@ -62,7 +82,9 @@ def main():
                 assert not set(splits[s1].tolist()) & set(splits[s2].tolist())
     save_json(os.path.join(a.out, "extract_meta.json"), {**meta, "layer": a.layer, "dataset": a.jsonl or a.dataset,
               "n_conv": n, "seed": a.seed, "max_tokens": a.max_tokens, "dtype": a.dtype,
-              "split_conv_ids": {k: v.tolist() for k, v in splits.items()}})
+              "split_conv_ids": {k: v.tolist() for k, v in splits.items()},
+              "split_conv_hashes": {k: [hashes[i] for i in v] for k, v in splits.items()},
+              "stream": a.stream, "shard": a.shard if a.stream else None, "shard_size": a.shard_size if a.stream else None})
 
 
 if __name__ == "__main__":

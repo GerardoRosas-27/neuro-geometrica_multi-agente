@@ -26,8 +26,27 @@ def main():
     ap.add_argument("--fit-max", type=int, default=200000, help="máx. tokens de train para ajustar PCA")
     ap.add_argument("--dec-lambda", type=float, default=1e-3)
     ap.add_argument("--seed", type=int, default=12345)
+    ap.add_argument("--frozen", default=None, help="dir con encoder.npz/decoder.npz YA ajustados: solo transforma (modo continuo)")
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
+    if a.frozen:
+        import shutil, hashlib
+        enc = dict(np.load(os.path.join(a.frozen, "encoder.npz"))); dec = dict(np.load(os.path.join(a.frozen, "decoder.npz")))
+        for f in ["encoder.npz", "decoder.npz"]:
+            if os.path.abspath(a.frozen) != os.path.abspath(a.out):
+                shutil.copy(os.path.join(a.frozen, f), os.path.join(a.out, f))
+        info = {"frozen_from": a.frozen, "encoder_sha256": hashlib.sha256(open(os.path.join(a.frozen, "encoder.npz"), "rb").read()).hexdigest()}
+        for split in ["train", "val", "test"]:
+            if not os.path.exists(os.path.join(a.hdir, f"{split}_h.npy")):
+                continue
+            H = np.load(os.path.join(a.hdir, f"{split}_h.npy")); Z = encode(H, enc); L = lengths(a.hdir, split)
+            assert sum(L) == len(Z)
+            Z.astype("<f4").tofile(os.path.join(a.out, f"{split}_z.f32"))
+            save_json(os.path.join(a.out, f"{split}_z.json"), {"d": int(Z.shape[1]), "lengths": L})
+            Hf = H.astype(np.float32)
+            info[f"{split}_recon_rel_mse_centrado"] = float(((decode(Z, dec) - Hf) ** 2).sum() / ((Hf - enc["mean"].astype(np.float32)) ** 2).sum())
+        save_json(os.path.join(a.out, "encoder_info.json"), info); print(info)
+        return
     Htr = np.load(os.path.join(a.hdir, "train_h.npy"))
     rng = np.random.default_rng(a.seed)
     sel = rng.permutation(len(Htr))[: a.fit_max]

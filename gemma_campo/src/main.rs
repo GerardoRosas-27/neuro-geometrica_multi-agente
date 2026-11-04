@@ -8,6 +8,7 @@ const USAGE: &str = "uso:
   gemma_campo check-gpu [--n 96 --d 8 --ctx 2 --steps 5]   (pérdida GPU == referencia CPU)
   gemma_campo train --data DIR --out DIR [--device gpu|cpu] [--ctx 4] [--quad 1] [--epochs 5] [--batch 1024]
                     [--lr 0.05] [--mom 0.9] [--ridge-max 50000] [--init ridge|zero] [--threads 4] [--seed 12345]
+                    [--init-model DIR] [--val-data DIR] [--replay DIR1,DIR2]   (modo continuo)
   gemma_campo predict --data DIR --model DIR --split test [--kmax 8] [--stride 4] [--threads 4]";
 
 fn args() -> (String, HashMap<String, String>) {
@@ -73,9 +74,20 @@ fn train(m: &HashMap<String, String>) {
     let out = PathBuf::from(m.get("out").expect("--out"));
     std::fs::create_dir_all(&out).unwrap();
     let mut lf = std::fs::File::create(out.join("train_log.txt")).unwrap();
-    let tr = Split::load(&dd, "train").unwrap();
-    let va = Split::load(&dd, "val").unwrap();
-    let cfg = FeatCfg { d: tr.d, ctx: g(m, "ctx", 4usize), quad: g(m, "quad", 1u8) == 1 };
+    let mut tr = Split::load(&dd, "train").unwrap();
+    // --replay DIR1,DIR2: concatena el train de shards anteriores (buffer de repetición contra olvido)
+    if let Some(rp) = m.get("replay") { for r in rp.split(',').filter(|x| !x.is_empty()) {
+        let o = Split::load(Path::new(r), "train").unwrap(); assert_eq!(o.d, tr.d);
+        let mut z = tr.z.clone(); z.extend_from_slice(&o.z); let mut l = tr.lengths.clone(); l.extend_from_slice(&o.lengths);
+        tr = Split::new(tr.d, z, l); } }
+    // --val-data DIR: val fijo (held-out) en otro directorio (p.ej. el del shard 0)
+    let vd = m.get("val-data").map(PathBuf::from).unwrap_or(dd.clone());
+    let va = Split::load(&vd, "val").unwrap();
+    // --init-model DIR: continúa desde un model.bin/json (sin rejilla ridge; conserva cfg y lambdas)
+    let init_meta: Option<(ModelMeta, Vec<f32>)> = m.get("init-model").map(|d| { let d = PathBuf::from(d);
+        (serde_json::from_slice(&std::fs::read(d.join("model.json")).unwrap()).unwrap(), data::read_f32(&d.join("model.bin")).unwrap()) });
+    let cfg = match &init_meta { Some((mm, _)) => mm.cfg, None => FeatCfg { d: tr.d, ctx: g(m, "ctx", 4usize), quad: g(m, "quad", 1u8) == 1 } };
+    assert_eq!(cfg.d, tr.d, "d del modelo inicial != d de los datos");
     let (f, d) = (cfg.dim(), cfg.d);
     let threads = g(m, "threads", 4usize);
     let seed = g(m, "seed", 12345u64);
@@ -92,7 +104,9 @@ fn train(m: &HashMap<String, String>) {
     let grid = [1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1];
     let grid2: Vec<f64> = if cfg.quad { grid.to_vec() } else { vec![0.0] };
     let mut best = (f64::INFINITY, [0.0; 3], Vec::new());
-    for &l1 in &grid { for &l2 in &grid2 {
+    if let Some((mm, w)) = &init_meta { best = (cpu::mse_from_stats(&st_va, &w.iter().map(|x| *x as f64).collect::<Vec<_>>()), mm.lam_deg, w.iter().map(|x| *x as f64).collect());
+        log(&mut lf, &format!("init-model: sin rejilla ridge; l1={:e} l2={:e} val_mse(dz) inicial={:.6}", mm.lam_deg[1], mm.lam_deg[2], best.0)); }
+    for &l1 in if init_meta.is_some() { &grid[..0] } else { &grid[..] } { for &l2 in &grid2 {
         let lam = [0.0, l1, l2];
         if let Some(w) = cpu::ridge_solve(&st_tr, &cpu::lam_per_feature(&cfg, lam)) {
             let vm = cpu::mse_from_stats(&st_va, &w);

@@ -1,6 +1,6 @@
 # gemma_campo_chat: Gemma 2 2B congelado → campo predice estados futuros → Gemma decodifica
 
-Preregistro, hipótesis y criterios: [PLAN.md](PLAN.md). Código: `gemma_campo/` (crate Rust, wgpu/WGSL) y `gemma_campo/python/`.
+Preregistro, hipótesis y criterios: [PLAN.md](PLAN.md). Entrenamiento continuo con Gemma real en GPU: [RUNBOOK_ENTRENAMIENTO_INFINITO.md](RUNBOOK_ENTRENAMIENTO_INFINITO.md) (plantilla: [RESULTADOS_PLANTILLA.md](RESULTADOS_PLANTILLA.md)). Código: `gemma_campo/` (crate Rust, wgpu/WGSL) y `gemma_campo/python/`.
 
 ## Requisitos (PC de Bruster, GPU AMD)
 * Rust estable y drivers Vulkan (Linux: mesa RADV; Windows: driver Adrenalin). wgpu elige el adaptador "AMD/Radeon".

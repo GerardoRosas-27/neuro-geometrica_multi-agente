@@ -1,6 +1,7 @@
 # gemma_campo_chat: preregistro
 
 Rama: `exp/gemma-campo-chat` (sale de `origin/main`). Este documento se fija **antes** de ver cualquier número de Gemma real.
+El modo continuo/streaming y sus criterios de éxito están en [RUNBOOK_ENTRENAMIENTO_INFINITO.md](RUNBOOK_ENTRENAMIENTO_INFINITO.md) §5.
 Los números de `smoke/` salen de un Gemma2 **diminuto y aleatorio** con tokenizador de bytes. Sirven para probar la tubería y **no son resultados**.
 
 ## Pipeline
