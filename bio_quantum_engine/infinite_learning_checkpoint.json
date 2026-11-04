@@ -1,8 +1,8 @@
 {
-  "cumulative_cycles": 377,
-  "cumulative_dreams": 23,
+  "cumulative_cycles": 2685,
+  "cumulative_dreams": 167,
   "cumulative_accurate": 8,
-  "cumulative_corrected": 369,
-  "cumulative_avg_mse": 0.8552134,
-  "last_saved_timestamp": "Instant { tv_sec: 79, tv_nsec: 375882712 }"
+  "cumulative_corrected": 2677,
+  "cumulative_avg_mse": 1.482165,
+  "last_saved_timestamp": "Instant { t: 4611711202.598611903s }"
 }
