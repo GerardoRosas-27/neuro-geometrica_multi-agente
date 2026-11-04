@@ -28,9 +28,9 @@ pub struct ConfigUniform {
 impl Default for ConfigUniform {
     fn default() -> Self {
         Self {
-            n_points: 64,
-            d_basis: 64,
-            batch_size: 1024,
+            n_points: 256,
+            d_basis: 256,
+            batch_size: 2048,
             r_bound: 15.0,
             growth_rate: 1.0,
             learning_rate: 0.05,

@@ -589,20 +589,21 @@ fn run_gpu_audit() {
 }
 
 fn run_gpu_train(total_batches: usize, batch_size: usize, lr: f32) {
-    println!("================================================================================");
-    println!("     ENTRENAMIENTO ESCALADO EN GPU: AMD RADEON RX 7800 XT (WGPU / D3D12)       ");
-    println!("================================================================================");
-    println!("  Lotes a procesar:        {}", total_batches);
-    println!("  Tamaño de Batch GPU:     {} episodios simultáneos", batch_size);
-    println!("  Agentes por episodio:    64 nodos geométricos (128 canales)");
-    println!("  Coordenadas por paso:    {} puntos procesados en paralelo", batch_size * 64);
-    println!("  Tasa de Aprendizaje:     {}", lr);
-    println!("================================================================================\n");
-
     let mut rng = Xoshiro256StarStar::from_seed(0xABCD);
     let mut config = ConfigUniform::default();
     config.batch_size = batch_size as u32;
     config.learning_rate = lr;
+
+    println!("================================================================================");
+    println!("     ENTRENAMIENTO ESCALADO EN GPU (10x): AMD RADEON RX 7800 XT (WGPU / D3D12) ");
+    println!("================================================================================");
+    println!("  Lotes a procesar:        {}", total_batches);
+    println!("  Tamaño de Batch GPU:     {} episodios simultáneos", batch_size);
+    println!("  Agentes por episodio:    {} nodos geométricos ({} canales)", config.n_points, config.n_points * 2);
+    println!("  Dimensión de la Base:    {}D (Generadores de Lie + Fasores Cuánticos)", config.d_basis);
+    println!("  Coordenadas por paso:    {} puntos procesados en paralelo", batch_size * (config.n_points as usize));
+    println!("  Tasa de Aprendizaje:     {}", lr);
+    println!("================================================================================\n");
 
     let mut engine = GpuBioQuantumEngine::new(config, &mut rng);
     println!(">>> Dispositivo GPU Activo: {} ({})\n", engine.adapter_name, engine.adapter_backend);
@@ -723,8 +724,8 @@ fn main() {
             run_train_from_scratch(n_episodes, lr);
         }
         "gpu-train" => {
-            let batches = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(100);
-            let batch_size = args.get(3).and_then(|s| s.parse().ok()).unwrap_or(512);
+            let batches = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(300);
+            let batch_size = args.get(3).and_then(|s| s.parse().ok()).unwrap_or(2048);
             let lr = args.get(4).and_then(|s| s.parse().ok()).unwrap_or(0.05);
             run_gpu_train(batches, batch_size, lr);
         }

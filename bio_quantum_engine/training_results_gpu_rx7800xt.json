@@ -2,15 +2,15 @@
   "gpu_training": {
     "adapter": "D3D12 (AMD Radeon RX 7800 XT)",
     "backend": "Gl",
-    "total_episodes": 204800,
-    "batch_size": 1024,
-    "n_points": 64,
-    "d_basis": 64,
-    "elapsed_seconds": 2.309,
-    "episodes_per_sec": 88711.6,
-    "initial_loss_mse": 0.000001,
-    "final_loss_mse": 0.000000,
-    "loss_reduction_pct": 12.23,
+    "total_episodes": 614400,
+    "batch_size": 2048,
+    "n_points": 256,
+    "d_basis": 256,
+    "elapsed_seconds": 8.272,
+    "episodes_per_sec": 74273.3,
+    "initial_loss_mse": 0.000065,
+    "final_loss_mse": 0.000060,
+    "loss_reduction_pct": 8.20,
     "dale_violations": 0
   }
 }
