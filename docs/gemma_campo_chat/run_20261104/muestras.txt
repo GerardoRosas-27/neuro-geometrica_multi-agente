@@ -1,15 +1,15 @@
 === PROMPT: Hi! Any tips for a rainy weekend? ===
-[campo] Assistant: Hi! �’s — —’s,..’s,...,,.,,,,,,,,,,,,,,,,,,,,,,
-[gemma] Assistant: Hi! 😊 Rainy weekends can be cozy, creative, or even productive — here are some fun and practical tips to make the most of it:
+[campo] Assistant: Hi! 😊 Rainy weekends can be cozy and peaceful — here are some fun, relaxing, and productive tips to make the most of them:  🌧️ **Cozy Up & Relax** -
+[gemma] Assistant: Hi! 😊 Rainy weekends can be cozy, creative, or even productive — here are some fun and practical tips to make the most of it:  🌧️ **Cozy Up & Relax**
 === PROMPT: Can you explain how rainbows form? ===
-[campo] Assistant: Certainly! Rain’s — form the a — of — — — — — — — — — — — — — — — — — — — — — — — — — — — — — —
+[campo] Assistant: Certainly! Rainbows form due to a combination of **refraction**, **reflection**, and **dispersion** of light in water droplets. Here’s a step-by-step explanation:  ---  ### 
 [gemma] Assistant: Certainly! Rainbows form due to a combination of **refraction**, **reflection**, and **dispersion** of light in water droplets — typically in the atmosphere after rain. Here’s a step
 === PROMPT: I need help planning a birthday party. ===
-[campo] Assistant: I! happy’s to to you you. to’s you to to to..’s, to to to to. to to to to..’s to to to to.. to to to
-[gemma] Assistant: I’d be happy to help you plan a birthday party! Let’s start by answering a few key questions to make it perfect for your guest and your vibe. Here’s how we can proceed:
+[campo] Assistant: I’d be happy to help you plan a birthday party! Let’s start by answering a few key questions to make it perfect for your guest. Here’s how we can proceed:  ---  **1.
+[gemma] Assistant: I’d be happy to help you plan a birthday party! Let’s start by answering a few key questions to make it perfect for your guest and your vibe. Here’s how we can proceed:  🌟
 === PROMPT: What should I cook tonight? ===
-[campo] Assistant: I! happy! to! you!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-[gemma] Assistant: I can help you pick a delicious and easy dinner! Here are a few options, depending on your mood and what you have on hand:
+[campo] Assistant: I can help you pick a delicious and easy dinner! Here are a few options depending on your mood and what you have on hand:  🍲 **Quick & Easy:** - **Sheet Pan Chicken &
+[gemma] Assistant: I can help you pick a delicious and easy dinner! Here are a few options, depending on your mood and what you have on hand:  🍲 **Quick & Comforting:** - **One-P
 === PROMPT: How do I start learning guitar? ===
-[campo] Assistant: Great! — you’re on to. a’s thing..’s..’s.......................
-[gemma] Assistant: Great question! Starting to learn guitar is exciting and rewarding. Here’s a step-by-step guide to help you get started:
+[campo] Assistant: Great question! Starting to learn guitar is exciting and rewarding. Here’s a step-by-step guide to help you get started:  ---  🎸 **1. Get the Right Gear**  - **Guitar**:
+[gemma] Assistant: Great question! Starting to learn guitar is exciting and rewarding. Here’s a step-by-step guide to help you get started:  ---  🎸 **1. Get the Right Gear**  - **Guitar**:
