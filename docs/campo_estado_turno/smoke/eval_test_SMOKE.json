@@ -1,0 +1,191 @@
+{
+  "split": "test",
+  "n_conv": 8,
+  "zmse_media": {
+    "campo": 0.13590029114857316,
+    "repeat": 0.7153199315071106,
+    "repeat_asst": 1.0901302322745323,
+    "mean": 0.7576954774558544,
+    "ridge": 0.17944321874529123,
+    "mlp": 0.1730610984377563
+  },
+  "T1": {
+    "campo_menos_repeat": {
+      "media": -0.5794196403585374,
+      "ic95": [
+        -0.6413564889924601,
+        -0.532492248469498
+      ],
+      "p_le0": 1.0,
+      "n": 8
+    },
+    "campo_menos_mean": {
+      "media": -0.6217951863072813,
+      "ic95": [
+        -0.7645683791488409,
+        -0.48152853375067955
+      ],
+      "p_le0": 1.0,
+      "n": 8
+    },
+    "campo_menos_repeat_asst": {
+      "media": -0.9542299411259592,
+      "ic95": [
+        -1.0473447384312748,
+        -0.8686614085803741
+      ],
+      "p_le0": 1.0,
+      "n": 8
+    },
+    "campo_menos_ridge": {
+      "media": -0.04354292759671807,
+      "ic95": [
+        -0.07213685661554337,
+        -0.019814018020406377
+      ],
+      "p_le0": 1.0,
+      "n": 8
+    },
+    "pasa": true
+  },
+  "T2": {
+    "campo_menos_mlp": {
+      "media": -0.03716080728918314,
+      "ic95": [
+        -0.06382996467873454,
+        -0.011953284032642841
+      ],
+      "p_le0": 0.9993,
+      "n": 8
+    },
+    "umbral": 0.008653054921887815,
+    "pasa": true
+  },
+  "nll_media": {
+    "none": 5.601632292071978,
+    "campo": 5.518501455585161,
+    "true": 5.518596097826958,
+    "shuf": 5.52303816874822,
+    "mlp": 5.519162873427073
+  },
+  "ppl": {
+    "none": 270.868182762149,
+    "campo": 249.26122815363996,
+    "true": 249.28481991143616,
+    "shuf": 250.39462385009261,
+    "mlp": 249.42614851185886
+  },
+  "n_conv_nll": 8,
+  "n_turnos_nll": 31,
+  "T3": {
+    "campo_menos_none": {
+      "media": -0.0831308364868164,
+      "ic95": [
+        -0.09050114452838898,
+        -0.07634899020195007
+      ],
+      "p_le0": 1.0,
+      "n": 8
+    },
+    "pasa": true
+  },
+  "T4": {
+    "campo_menos_true": {
+      "media": -9.464224179589475e-05,
+      "ic95": [
+        -0.0025746971368789673,
+        0.002166990439096974
+      ],
+      "p_le0": 0.5141,
+      "n": 8
+    },
+    "campo_menos_shuf": {
+      "media": -0.004536713163058037,
+      "ic95": [
+        -0.013202015558878654,
+        0.003997914617260221
+      ],
+      "p_le0": 0.8477,
+      "n": 8
+    },
+    "true_menos_none": {
+      "media": -0.08303619424502051,
+      "ic95": [
+        -0.09112733105818427,
+        -0.07509563366572058
+      ],
+      "p_le0": 1.0,
+      "n": 8
+    },
+    "mlp_menos_campo": {
+      "media": 0.0006614178419113159,
+      "ic95": [
+        -0.0004647374153137207,
+        0.0019706875085830685
+      ],
+      "p_le0": 0.1406,
+      "n": 8
+    },
+    "pasa": false
+  },
+  "no_dano": {
+    "identidad_maxdiff_embeds_vs_ids": 0.0,
+    "limite": 0.0001,
+    "identidad_ok": true,
+    "llm_sha": "390bfad7024e0787ced1e9c5d732472e2d1f68001ed84b4572c8d1fc344aad61",
+    "llm_intacto_tras_eval": true,
+    "llm_sha_adapter_train": "390bfad7024e0787ced1e9c5d732472e2d1f68001ed84b4572c8d1fc344aad61"
+  },
+  "muestras": [
+    {
+      "conv": 67,
+      "turno": 1,
+      "contexto_final": "User: Hi\nAssistant:",
+      "real": " Hello! How can I help you today?\n",
+      "none": "\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007",
+      "campo": "\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd      ",
+      "true": "\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd      ",
+      "shuf": "\ufffd\ufffd\ufffd\ufffd+\ufffd\ufffd\ufffd\ufffd+++"
+    },
+    {
+      "conv": 67,
+      "turno": 3,
+      "contexto_final": "User: Hi\nAssistant: Hello! How can I help you today?\nUser: I'm learning about motion in physics class and \nAssistant:",
+      "real": " Velocity is the rate of change of an object's p\n",
+      "none": "\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd",
+      "campo": "\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd",
+      "true": "\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd",
+      "shuf": "\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd"
+    },
+    {
+      "conv": 67,
+      "turno": 5,
+      "contexto_final": "istant: Velocity is the rate of change of an object's p\nUser: That makes sense. What about acceleration? Is i\nAssistant:",
+      "real": " No, acceleration is the rate of change of veloc\n",
+      "none": "<<<<<<<<<<<<",
+      "campo": "\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd",
+      "true": "\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd",
+      "shuf": "uuuuuuuuuuuu"
+    },
+    {
+      "conv": 67,
+      "turno": 7,
+      "contexto_final": "istant: No, acceleration is the rate of change of veloc\nUser: Okay, I think I understand now. What force caus\nAssistant:",
+      "real": " According to Newton's second law of motion, a f\n",
+      "none": "<<<<<<<<<<<<",
+      "campo": "\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd",
+      "true": "\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd",
+      "shuf": "\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd"
+    },
+    {
+      "conv": 78,
+      "turno": 1,
+      "contexto_final": "User: Hi\nAssistant:",
+      "real": " Hello! How can I help you today?\n",
+      "none": "\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007",
+      "campo": "\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd      ",
+      "true": "\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd      ",
+      "shuf": "\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd      "
+    }
+  ]
+}
