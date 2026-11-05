@@ -1,0 +1,249 @@
+{
+  "AVISO": "test split, resultados reales",
+  "gemma": "D:/agentesIA/qwen3_vl_4b_hf",
+  "layer": 13,
+  "n_conv_test": 60,
+  "bootstrap": {
+    "B": 10000,
+    "seed": 12345
+  },
+  "sanity_identity_maxdiff": 0.0,
+  "nll_por_token_medio": {
+    "gemma": 1.7145656049251556,
+    "oracle": 2.9460724790891013,
+    "repeat": 11.837951612472533,
+    "campo": 5.890708676973978
+  },
+  "ppl": {
+    "gemma": 5.554262244080218,
+    "oracle": 19.03106186139773,
+    "repeat": 138406.68353983868,
+    "campo": 361.66149475006944
+  },
+  "delta_nll": {
+    "campo-gemma": {
+      "media": 4.176143072048823,
+      "ic95": [
+        4.001666848808527,
+        4.35674493432045
+      ],
+      "p_le0": 0.0,
+      "n": 60
+    },
+    "campo-repeat": {
+      "media": -5.947242935498555,
+      "ic95": [
+        -6.1758538575967155,
+        -5.718967073162396
+      ],
+      "p_le0": 1.0,
+      "n": 60
+    },
+    "campo-oracle": {
+      "media": 2.9446361978848774,
+      "ic95": [
+        2.853318386375904,
+        3.037305421233177
+      ],
+      "p_le0": 0.0,
+      "n": 60
+    },
+    "oracle-gemma": {
+      "media": 1.2315068741639454,
+      "ic95": [
+        1.083605648626884,
+        1.4047151692211628
+      ],
+      "p_le0": 0.0,
+      "n": 60
+    },
+    "repeat-gemma": {
+      "media": 10.123386007547378,
+      "ic95": [
+        9.987273692041637,
+        10.25992772857348
+      ],
+      "p_le0": 0.0,
+      "n": 60
+    }
+  },
+  "zmse_1paso": {
+    "campo": {
+      "media": 0.4172398979891218,
+      "ic95": [
+        0.4077064097103499,
+        0.42577661751996904
+      ],
+      "p_le0": 0.0,
+      "n": 60
+    },
+    "lenta": {
+      "media": 0.4189790356565368,
+      "ic95": [
+        0.409613053962695,
+        0.42738977872929623
+      ],
+      "p_le0": 0.0,
+      "n": 60
+    },
+    "repeat": {
+      "media": 1.2386945215791394,
+      "ic95": [
+        1.2141695681083213,
+        1.260485918516854
+      ],
+      "p_le0": 0.0,
+      "n": 60
+    },
+    "campo-repeat": {
+      "media": -0.8214546235900173,
+      "ic95": [
+        -0.8410330361876966,
+        -0.8012949555803632
+      ],
+      "p_le0": 1.0,
+      "n": 60
+    },
+    "campo-lenta": {
+      "media": -0.001739137667414989,
+      "ic95": [
+        -0.002217212483732063,
+        -0.0013203109890407292
+      ],
+      "p_le0": 1.0,
+      "n": 60
+    }
+  },
+  "zmse_k": {
+    "1": {
+      "campo": 0.4121965096143532,
+      "repeat": 1.2896515077765065,
+      "campo-repeat": {
+        "media": -0.8774549981621534,
+        "ic95": [
+          -0.902244185945681,
+          -0.8525407821547267
+        ],
+        "p_le0": 1.0,
+        "n": 60
+      }
+    },
+    "2": {
+      "campo": 0.567079713647006,
+      "repeat": 1.4864953812234387,
+      "campo-repeat": {
+        "media": -0.9194156675764328,
+        "ic95": [
+          -0.9435123443028093,
+          -0.8960357721622813
+        ],
+        "p_le0": 1.0,
+        "n": 60
+      }
+    },
+    "3": {
+      "campo": 0.6552931280443023,
+      "repeat": 1.5905891373906438,
+      "campo-repeat": {
+        "media": -0.9352960093463417,
+        "ic95": [
+          -0.9554013555030896,
+          -0.915473389212681
+        ],
+        "p_le0": 1.0,
+        "n": 60
+      }
+    },
+    "4": {
+      "campo": 0.6910816338720127,
+      "repeat": 1.6155373358857192,
+      "campo-repeat": {
+        "media": -0.9244557020137061,
+        "ic95": [
+          -0.9464530784664547,
+          -0.9019249355024311
+        ],
+        "p_le0": 1.0,
+        "n": 60
+      }
+    },
+    "5": {
+      "campo": 0.7248294066977087,
+      "repeat": 1.6601457056599778,
+      "campo-repeat": {
+        "media": -0.9353162989622691,
+        "ic95": [
+          -0.957041599532805,
+          -0.9131057355951957
+        ],
+        "p_le0": 1.0,
+        "n": 60
+      }
+    },
+    "6": {
+      "campo": 0.748725502678333,
+      "repeat": 1.6541740150926618,
+      "campo-repeat": {
+        "media": -0.905448512414329,
+        "ic95": [
+          -0.9263200307918648,
+          -0.885577536375677
+        ],
+        "p_le0": 1.0,
+        "n": 60
+      }
+    },
+    "7": {
+      "campo": 0.7841050176094803,
+      "repeat": 1.6963564355811358,
+      "campo-repeat": {
+        "media": -0.9122514179716552,
+        "ic95": [
+          -0.9321943569233851,
+          -0.8923501445567802
+        ],
+        "p_le0": 1.0,
+        "n": 60
+      }
+    },
+    "8": {
+      "campo": 0.7938023671050946,
+      "repeat": 1.686997561432286,
+      "campo-repeat": {
+        "media": -0.8931951943271913,
+        "ic95": [
+          -0.9137770875688941,
+          -0.871004869692225
+        ],
+        "p_le0": 1.0,
+        "n": 60
+      }
+    }
+  },
+  "muestras": [
+    {
+      "conv": 1684,
+      "texto_real": ": Hey!\nAssistant: Hello! How can I help you today?\nUser: It's going to be cold tomorrow, what should I wear?\nAssistant: I'd recommend wearing layers, starting with a warm base layer like a thermal top",
+      "argmax_gemma": "book I,: Hi! \ufffd can I assist you today?User: I\u2019s me to be a tomorrow so should I wear?: That\u2019d be dressing layers to as with a warm base layer like a thermal shirt",
+      "argmax_oracle": "book I: Hi! \ufffd can I assist you today?User: I\u2019m a to be a should I do?: If\u2019m be wearing something that such with a light,, or a light or",
+      "argmax_repeat": "bookbook{{: Hi! \ufffd can I assist you today?User: I\u2019m a to be a should I do: If\u2019m be wearing something that such with a light,, or a light",
+      "argmax_campo": "book I: Hi! \ufffd can I assist you today?User: I\u2019m looking to to to's the do to: It! glad to a,, a a pants or or, or or,"
+    },
+    {
+      "conv": 677,
+      "texto_real": ": Hello\nAssistant: Hello! How can I help you today?\nUser: I like music and art, can you tell me about famous artists?\nAssistant: There are many famous artists, but some well-known ones include Leonardo da Vinci",
+      "argmax_gemma": "book I: Hi! How can I assist you today?User: I want to I, and you recommend me about some artists and: Absolutely are so amazing artists across and I of-known ones include:\n\n da Vinci",
+      "argmax_oracle": "book I: Hi! How can I assist you today?User: I want to I, but you recommend me about some artists or: That\u2019s many famous artists across and some of-known ones include:\n\n,,",
+      "argmax_repeat": "bookbook{{: Hi! How can I assist you today?User: I\u2019m to I, but you recommend me about some artists or: That\u2019s many famous artists across and I of-known ones include:\n\n,",
+      "argmax_campo": "book I: Hi! How can I assist you today?User: I\u2019m looking a I recommend me about about music or you: That! many great and that music are are ones include include:\n\n,,"
+    },
+    {
+      "conv": 860,
+      "texto_real": ": Hi\nAssistant: Hello! How can I help you today?\nUser: I have a dog and I'm worried about his safety at home. Do you have any tips?\nAssistant: Yes, I do. Make sure to keep",
+      "argmax_gemma": "book I: Hello! How can I assist you today?: want a question and I want looking about my health while home you have any tips?\n\nAssistant: That, absolutely can! Dogs sure your keep",
+      "argmax_oracle": "book I: Hi! How can I assist you today?User: I\u2019m a question that I want trying about the health. the. you have any tips for: That, I can! It sure your keep",
+      "argmax_repeat": "bookbook{{: Hi! How can I assist you today?User: I\u2019m a question\n\n I want looking about the health. the you have any tips for: That, I can! It sure your",
+      "argmax_campo": "book I: Hi! How can I assist you today?: I\u2019m looking \n\n a want looking to getting.. should have any tips? keeping: I, I\u2019re help! can a check"
+    }
+  ]
+}

@@ -1,0 +1,60 @@
+>>> cargo test --release
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 1 test
+test gpu_igual_a_cpu ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.35s
+
+
+running 6 tests
+test dim_features ... ok
+test gradiente_sgd_coincide_con_diferencias_finitas ... ok
+test repeat_baseline_y_rapido_causal ... ok
+test ridge_ajusta_y_baja_de_repeat ... ok
+test wgsl_valida ... ok
+test sgd_baja_la_perdida ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+    Finished `release` profile [optimized] target(s) in 5.65s
+     Running unittests src\lib.rs (target\release\deps\gemma_campo-42b8e614efe639ca.exe)
+     Running unittests src\main.rs (target\release\deps\gemma_campo-c8c7181a3cbd8a93.exe)
+     Running tests\gpu.rs (target\release\deps\gpu-9e30c413bdc7b1a6.exe)
+     Running tests\unit.rs (target\release\deps\unit-200cd1b45d30fe60.exe)
+   Doc-tests gemma_campo
+
+>>> D:\agentesIA\investigcion-IA\gemma_campo\target\release\gemma_campo.exe validate-wgsl
+WGSL OK (naga)
+
+>>> D:\agentesIA\investigcion-IA\gemma_campo\target\release\gemma_campo.exe check-gpu
+adaptador: AMD Radeon RX 7800 XT (Vulkan)
+paso 0: loss_cpu=1.09455882 loss_gpu=1.09455880 rel=1.83e-8
+paso 1: loss_cpu=1.09091177 loss_gpu=1.09091177 rel=4.22e-9
+paso 2: loss_cpu=1.08404061 loss_gpu=1.08404064 rel=2.72e-8
+paso 3: loss_cpu=1.07437274 loss_gpu=1.07437273 rel=6.64e-9
+paso 4: loss_cpu=1.06232863 loss_gpu=1.06232862 rel=1.36e-8
+max|W_cpu-W_gpu|=1.490e-8  determinista=true
+CHECK-GPU OK
+
+>>> D:\agentesIA\investigcion-IA\gemma_campo\target\release\gemma_campo.exe check-gpu --n 2048 --d 64 --ctx 4 --steps 3
+adaptador: AMD Radeon RX 7800 XT (Vulkan)
+paso 0: loss_cpu=6.89120597 loss_gpu=6.89120593 rel=6.08e-9
+paso 1: loss_cpu=6.88051588 loss_gpu=6.88051581 rel=1.01e-8
+paso 2: loss_cpu=6.86024337 loss_gpu=6.86024337 rel=2.29e-10
+max|W_cpu-W_gpu|=1.490e-8  determinista=true
+CHECK-GPU OK

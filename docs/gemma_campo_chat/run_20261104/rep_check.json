@@ -1,0 +1,19 @@
+{
+  "rep_predict_byte_identical": true,
+  "rep_eval_max_nll_diff": 0.0,
+  "rep_retrain_last_shard": 8,
+  "rep_retrain_max_rel_diff": 0.0,
+  "orig_val_mse_epochs": [
+    0.414183,
+    0.414183,
+    0.41447,
+    0.414951
+  ],
+  "rep_val_mse_epochs": [
+    0.414183,
+    0.414183,
+    0.41447,
+    0.414951
+  ],
+  "REP_OK": true
+}

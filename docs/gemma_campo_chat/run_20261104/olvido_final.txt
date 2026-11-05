@@ -1,0 +1,6 @@
+shard 1 final: [train] z-MSE 1 paso: campo=0.403230 lenta=0.404607 repeat=1.213150  (ponderado por token; bootstrap en python/eval.py)
+escrito D:\agentesIA\gc_infinito_20261104\final/train_pred1.f32 y train_zmse.json
+shard 2 final: [train] z-MSE 1 paso: campo=0.412632 lenta=0.414466 repeat=1.219349  (ponderado por token; bootstrap en python/eval.py)
+escrito D:\agentesIA\gc_infinito_20261104\final/train_pred1.f32 y train_zmse.json
+shard 3 final: [train] z-MSE 1 paso: campo=0.411625 lenta=0.413667 repeat=1.220219  (ponderado por token; bootstrap en python/eval.py)
+escrito D:\agentesIA\gc_infinito_20261104\final/train_pred1.f32 y train_zmse.json
