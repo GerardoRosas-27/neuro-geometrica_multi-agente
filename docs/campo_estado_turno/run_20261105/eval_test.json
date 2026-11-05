@@ -1,0 +1,191 @@
+{
+  "split": "test",
+  "n_conv": 200,
+  "zmse_media": {
+    "campo": 0.3685527244210243,
+    "repeat": 1.0917954957485199,
+    "repeat_asst": 1.1434330561757087,
+    "mean": 0.9872847780585289,
+    "ridge": 0.4062537436932325,
+    "mlp": 0.38687286220490935
+  },
+  "T1": {
+    "campo_menos_repeat": {
+      "media": -0.7232427713274956,
+      "ic95": [
+        -0.7550630325078964,
+        -0.692163755280897
+      ],
+      "p_le0": 1.0,
+      "n": 200
+    },
+    "campo_menos_mean": {
+      "media": -0.6187320536375046,
+      "ic95": [
+        -0.6475693066623062,
+        -0.5908669548947364
+      ],
+      "p_le0": 1.0,
+      "n": 200
+    },
+    "campo_menos_repeat_asst": {
+      "media": -0.7748803317546844,
+      "ic95": [
+        -0.8113546610828489,
+        -0.7396679133661092
+      ],
+      "p_le0": 1.0,
+      "n": 200
+    },
+    "campo_menos_ridge": {
+      "media": -0.03770101927220822,
+      "ic95": [
+        -0.04452476458996535,
+        -0.0311911224257201
+      ],
+      "p_le0": 1.0,
+      "n": 200
+    },
+    "pasa": true
+  },
+  "T2": {
+    "campo_menos_mlp": {
+      "media": -0.018320137783885002,
+      "ic95": [
+        -0.024368760069832206,
+        -0.012354790948331359
+      ],
+      "p_le0": 1.0,
+      "n": 200
+    },
+    "umbral": 0.01934364311024547,
+    "pasa": true
+  },
+  "nll_media": {
+    "none": 1.9457939405404034,
+    "campo": 0.6475953880107791,
+    "true": 0.6301269838271273,
+    "shuf": 0.9346708592687366,
+    "mlp": 0.6469799832911522
+  },
+  "ppl": {
+    "none": 6.999186587659266,
+    "campo": 1.9109402301150247,
+    "true": 1.8778490205803278,
+    "shuf": 2.5463752039981356,
+    "mlp": 1.9097645902627474
+  },
+  "n_conv_nll": 200,
+  "n_turnos_nll": 759,
+  "T3": {
+    "campo_menos_none": {
+      "media": -1.2981985525296238,
+      "ic95": [
+        -1.3309107688946231,
+        -1.2654467306231854
+      ],
+      "p_le0": 1.0,
+      "n": 200
+    },
+    "pasa": true
+  },
+  "T4": {
+    "campo_menos_true": {
+      "media": 0.01746840418365173,
+      "ic95": [
+        0.012052836236839417,
+        0.023955998619875577
+      ],
+      "p_le0": 0.0,
+      "n": 200
+    },
+    "campo_menos_shuf": {
+      "media": -0.2870754712579576,
+      "ic95": [
+        -0.3118449081435307,
+        -0.2625430659422041
+      ],
+      "p_le0": 1.0,
+      "n": 200
+    },
+    "true_menos_none": {
+      "media": -1.3156669567132757,
+      "ic95": [
+        -1.3496889347499663,
+        -1.2817227115775984
+      ],
+      "p_le0": 1.0,
+      "n": 200
+    },
+    "mlp_menos_campo": {
+      "media": -0.0006154047196268981,
+      "ic95": [
+        -0.003264976345001743,
+        0.0019708417281849473
+      ],
+      "p_le0": 0.6672,
+      "n": 200
+    },
+    "pasa": true
+  },
+  "no_dano": {
+    "identidad_maxdiff_embeds_vs_ids": 0.0,
+    "limite": 0.05,
+    "identidad_ok": true,
+    "llm_sha": "78685cdf6081c3802b007200ddbba61ae24eb29c7ca25416baeacdefef7484ee",
+    "llm_intacto_tras_eval": true,
+    "llm_sha_adapter_train": "78685cdf6081c3802b007200ddbba61ae24eb29c7ca25416baeacdefef7484ee"
+  },
+  "muestras": [
+    {
+      "conv": 1813,
+      "turno": 1,
+      "contexto_final": "User: Hi\nAssistant:",
+      "real": " Hello! How can I help you today?\n",
+      "none": " Hello! How can I assist you today? \ud83d\ude0a",
+      "campo": " Hello! How can I help you today?",
+      "true": " Hello! How can I help you today?",
+      "shuf": " Hello! How can I help you today?"
+    },
+    {
+      "conv": 1813,
+      "turno": 3,
+      "contexto_final": "User: Hi\nAssistant: Hello! How can I help you today?\nUser: I'm looking for sports that are good for people with disabilities. Do you have any suggestions?\nAssistant:",
+      "real": " Yes, there are many adaptive sports options. Some popular ones include wheelchair basketball, adaptive skiing, and para-swimming. These sports are designed to be inclusive and accessible for people with different abilities.\n",
+      "none": " Absolutely! There are many wonderful sports and physical activities that are accessible and beneficial for people with disabilities. The key is finding activities that match your abilities, interests, and level of support. Here are some great options:\n\n### \ud83c\udfc3\u200d\u2642\ufe0f Adaptive Sports & Activities:\n\n1. **Wheel",
+      "campo": " Yes, there are many sports that are accessible to people with disabilities. For example, wheelchair basketball, adaptive swimming, and wheelchair tennis are all great options.",
+      "true": " Yes, there are many sports that are accessible to people with disabilities. For example, wheelchair basketball, adaptive swimming, and wheelchair tennis are all great options.",
+      "shuf": " Absolutely! There are many sports and physical activities that are excellent for people with disabilities. They promote physical health, mental well-being, social connection, and independence. Here are some great options:\n\n### 1. **Adaptive Sports (Officially Designed for People with Disabilities)**\nThese are sports modified"
+    },
+    {
+      "conv": 1813,
+      "turno": 5,
+      "contexto_final": "User: Hi\nAssistant: Hello! How can I help you today?\nUser: I'm looking for sports that are good for people with disabilities. Do you have any suggestions?\nAssistant: Yes, there are many adaptive sports options. Some popular ones include wheelchair basketball, adaptive skiing, and para-swimming. These sports are designed to be inclusive and accessible for people with different abilities.\nUser: That's great. What about exercise options for people who use wheelchairs?\nAssistant:",
+      "real": " There are many exercises that can be modified or adapted for people who use wheelchairs. Some examples include chair yoga, wheelchair aerobics, and resistance band exercises. These exercises can help improve strength, flexibility, and overall fitness.\n",
+      "none": " Great question! There are many excellent exercise options for people who use wheelchairs \u2014 they\u2019re not just for competition, but also for health, strength, balance, and fun. Here are some great options:\n\n### 1. **Wheelchair Sports (for fun and fitness)**\n- **Wheel",
+      "campo": " There are many exercise options for people who use wheelchairs, including wheelchair aerobics, cycling, and strength training. These activities can help improve strength, balance, and overall fitness.",
+      "true": " There are many exercise options for people who use wheelchairs, including wheelchair aerobics, wheelchair yoga, and adaptive cycling. These activities can help improve strength, flexibility, and cardiovascular health.",
+      "shuf": " Great question! There are many great exercise options for people who use wheelchairs. Some popular ones include:\n\n1. Wheelchair aerobics \u2013 A fun and low-impact way to improve cardiovascular health and strength.\n2. Wheelchair tennis \u2013 A great way to improve coordination, agility, and"
+    },
+    {
+      "conv": 2198,
+      "turno": 1,
+      "contexto_final": "User: Hello\nAssistant:",
+      "real": " Hello! How can I help you today?\n",
+      "none": " Hi there! How can I assist you today? \ud83d\ude0a",
+      "campo": " Hello! How can I help you today?",
+      "true": " Hello! How can I help you today?",
+      "shuf": " Hello! How can I help you today?"
+    },
+    {
+      "conv": 2198,
+      "turno": 3,
+      "contexto_final": "User: Hello\nAssistant: Hello! How can I help you today?\nUser: What are some popular types of coffee?\nAssistant:",
+      "real": " There are many varieties, but some popular types include Espresso, Cappuccino, Latte, and Mocha.\n",
+      "none": " Great question! There are many popular types of coffee, depending on your taste, region, and brewing method. Here are some of the most widely enjoyed:\n\n### 1. **Espresso**\n- The base for many coffee drinks.\n- Strong, concentrated, and rich in flavor.\n- Often used",
+      "campo": " Some popular types of coffee include espresso, latte, cappuccino, and Americano.",
+      "true": " Some popular types of coffee include espresso, latte, cappuccino, and Americano.",
+      "shuf": " Some popular types of coffee include espresso, latte, cappuccino, macchiato, and Americano. Each has its own unique flavor and preparation method. Would you like to know more about any of these?"
+    }
+  ]
+}
