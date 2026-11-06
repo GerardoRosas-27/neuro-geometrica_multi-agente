@@ -1,0 +1,2 @@
+paridad numpy vs Rust: max err relativo = 1.72e-08
+PARIDAD OK

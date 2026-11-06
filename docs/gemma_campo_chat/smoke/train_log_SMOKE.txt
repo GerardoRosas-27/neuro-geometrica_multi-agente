@@ -1,0 +1,57 @@
+datos: train 48 conv/12288 tok, val 6 conv/1536 tok; d=16 F=201 ctx=4 quad=true
+ridge l1=1e-6 l2=1e-6: train_mse=0.253119 val_mse=0.287313
+ridge l1=1e-6 l2=1e-5: train_mse=0.253119 val_mse=0.287270
+ridge l1=1e-6 l2=1e-4: train_mse=0.253123 val_mse=0.286859
+ridge l1=1e-6 l2=1e-3: train_mse=0.253410 val_mse=0.283948
+ridge l1=1e-6 l2=1e-2: train_mse=0.258099 val_mse=0.277860
+ridge l1=1e-6 l2=1e-1: train_mse=0.276836 val_mse=0.283824
+ridge l1=1e-5 l2=1e-6: train_mse=0.253122 val_mse=0.287286
+ridge l1=1e-5 l2=1e-5: train_mse=0.253122 val_mse=0.287243
+ridge l1=1e-5 l2=1e-4: train_mse=0.253127 val_mse=0.286832
+ridge l1=1e-5 l2=1e-3: train_mse=0.253416 val_mse=0.283926
+ridge l1=1e-5 l2=1e-2: train_mse=0.258102 val_mse=0.277843
+ridge l1=1e-5 l2=1e-1: train_mse=0.276832 val_mse=0.283807
+ridge l1=1e-4 l2=1e-6: train_mse=0.253299 val_mse=0.287308
+ridge l1=1e-4 l2=1e-5: train_mse=0.253299 val_mse=0.287266
+ridge l1=1e-4 l2=1e-4: train_mse=0.253305 val_mse=0.286859
+ridge l1=1e-4 l2=1e-3: train_mse=0.253597 val_mse=0.283968
+ridge l1=1e-4 l2=1e-2: train_mse=0.258236 val_mse=0.277870
+ridge l1=1e-4 l2=1e-1: train_mse=0.276898 val_mse=0.283808
+ridge l1=1e-3 l2=1e-6: train_mse=0.255976 val_mse=0.290218
+ridge l1=1e-3 l2=1e-5: train_mse=0.255976 val_mse=0.290176
+ridge l1=1e-3 l2=1e-4: train_mse=0.255981 val_mse=0.289778
+ridge l1=1e-3 l2=1e-3: train_mse=0.256227 val_mse=0.286868
+ridge l1=1e-3 l2=1e-2: train_mse=0.260519 val_mse=0.280348
+ridge l1=1e-3 l2=1e-1: train_mse=0.279000 val_mse=0.286024
+ridge l1=1e-2 l2=1e-6: train_mse=0.278314 val_mse=0.313977
+ridge l1=1e-2 l2=1e-5: train_mse=0.278307 val_mse=0.313931
+ridge l1=1e-2 l2=1e-4: train_mse=0.278245 val_mse=0.313477
+ridge l1=1e-2 l2=1e-3: train_mse=0.277945 val_mse=0.310024
+ridge l1=1e-2 l2=1e-2: train_mse=0.280247 val_mse=0.301080
+ridge l1=1e-2 l2=1e-1: train_mse=0.298515 val_mse=0.305431
+ridge l1=1e-1 l2=1e-6: train_mse=0.342118 val_mse=0.380292
+ridge l1=1e-1 l2=1e-5: train_mse=0.342110 val_mse=0.380234
+ridge l1=1e-1 l2=1e-4: train_mse=0.342035 val_mse=0.379679
+ridge l1=1e-1 l2=1e-3: train_mse=0.341775 val_mse=0.375691
+ridge l1=1e-1 l2=1e-2: train_mse=0.346985 val_mse=0.368879
+ridge l1=1e-1 l2=1e-1: train_mse=0.383732 val_mse=0.388982
+ridge elegido (val): l1=1e-5 l2=1e-2 val_mse(dz)=0.277843  [ridge con 12240 muestras train]
+GPU: llvmpipe (LLVM 19.1.7, 256 bits) (Gl)
+epoch 0 (init): val_mse(dz)=0.277843
+epoch 1: train_mse(dz, media batches pre-update)=0.259508 val_mse(dz)=0.277780
+epoch 2: train_mse(dz, media batches pre-update)=0.259641 val_mse(dz)=0.278133
+epoch 3: train_mse(dz, media batches pre-update)=0.259722 val_mse(dz)=0.277632
+rapido eta=0 gamma=1: val z-MSE campo=0.277632 lenta=0.277632 repeat=0.695443
+rapido eta=0.01 gamma=1: val z-MSE campo=0.268059 lenta=0.277632 repeat=0.695443
+rapido eta=0.01 gamma=0.99: val z-MSE campo=0.269923 lenta=0.277632 repeat=0.695443
+rapido eta=0.01 gamma=0.95: val z-MSE campo=0.273920 lenta=0.277632 repeat=0.695443
+rapido eta=0.03 gamma=1: val z-MSE campo=0.263296 lenta=0.277632 repeat=0.695443
+rapido eta=0.03 gamma=0.99: val z-MSE campo=0.264937 lenta=0.277632 repeat=0.695443
+rapido eta=0.03 gamma=0.95: val z-MSE campo=0.270091 lenta=0.277632 repeat=0.695443
+rapido eta=0.1 gamma=1: val z-MSE campo=0.267164 lenta=0.277632 repeat=0.695443
+rapido eta=0.1 gamma=0.99: val z-MSE campo=0.267742 lenta=0.277632 repeat=0.695443
+rapido eta=0.1 gamma=0.95: val z-MSE campo=0.270432 lenta=0.277632 repeat=0.695443
+rapido eta=0.3 gamma=1: val z-MSE campo=0.296931 lenta=0.277632 repeat=0.695443
+rapido eta=0.3 gamma=0.99: val z-MSE campo=0.293803 lenta=0.277632 repeat=0.695443
+rapido eta=0.3 gamma=0.95: val z-MSE campo=0.292484 lenta=0.277632 repeat=0.695443
+best val dz-mse SGD=0.277632; fast elegido eta=0.03 gamma=1 val z-mse=0.263296; device=gpu

@@ -1,0 +1,9 @@
+{
+  "d_field": 64,
+  "H": 2560,
+  "var_explicada": 0.998367060873689,
+  "fit_tokens": 32703,
+  "train_recon_rel_mse_centrado": 0.0016339428257197142,
+  "val_recon_rel_mse_centrado": 0.0017189040081575513,
+  "test_recon_rel_mse_centrado": 0.0017252065008506179
+}

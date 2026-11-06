@@ -1,0 +1,40 @@
+epoch 1: train_mse(dz, media batches pre-update)=0.131135 val_mse(dz)=0.135209
+epoch 2: train_mse(dz, media batches pre-update)=0.131570 val_mse(dz)=0.135679
+epoch 3: train_mse(dz, media batches pre-update)=0.131996 val_mse(dz)=0.136284
+rapido eta=0 gamma=1: val z-MSE campo=0.135186 lenta=0.135186 repeat=0.650829
+rapido eta=0.01 gamma=1: val z-MSE campo=0.135039 lenta=0.135186 repeat=0.650829
+rapido eta=0.01 gamma=0.99: val z-MSE campo=0.135040 lenta=0.135186 repeat=0.650829
+rapido eta=0.01 gamma=0.95: val z-MSE campo=0.135046 lenta=0.135186 repeat=0.650829
+rapido eta=0.03 gamma=1: val z-MSE campo=0.134833 lenta=0.135186 repeat=0.650829
+rapido eta=0.03 gamma=0.99: val z-MSE campo=0.134836 lenta=0.135186 repeat=0.650829
+rapido eta=0.03 gamma=0.95: val z-MSE campo=0.134850 lenta=0.135186 repeat=0.650829
+rapido eta=0.1 gamma=1: val z-MSE campo=0.134909 lenta=0.135186 repeat=0.650829
+rapido eta=0.1 gamma=0.99: val z-MSE campo=0.134909 lenta=0.135186 repeat=0.650829
+rapido eta=0.1 gamma=0.95: val z-MSE campo=0.134915 lenta=0.135186 repeat=0.650829
+rapido eta=0.3 gamma=1: val z-MSE campo=0.139757 lenta=0.135186 repeat=0.650829
+rapido eta=0.3 gamma=0.99: val z-MSE campo=0.139717 lenta=0.135186 repeat=0.650829
+rapido eta=0.3 gamma=0.95: val z-MSE campo=0.139578 lenta=0.135186 repeat=0.650829
+best val dz-mse SGD=0.135186; fast elegido eta=0.03 gamma=1 val z-mse=0.134833; device=gpu
+[val] z-MSE 1 paso: campo=0.134833 lenta=0.135186 repeat=0.650829  (ponderado por token; bootstrap en python/eval.py)
+escrito C:/ct_work/smoke/m/val_pred1.f32 y val_zmse.json
+[test] z-MSE 1 paso: campo=0.205082 lenta=0.207554 repeat=0.689542  (ponderado por token; bootstrap en python/eval.py)
+escrito C:/ct_work/smoke/m/test_pred1.f32 y test_zmse.json
+{'n_train': 182, 'n_val': 21, 'ridge_val_mse_lam0.0001': 0.1717554258232327, 'ridge_val_mse_lam0.001': 0.1691662616251119, 'ridge_val_mse_lam0.01': 0.16026915210501264, 'ridge_val_mse_lam0.1': 0.1661040397409175, 'ridge_val_mse_lam1': 0.24688379693469342, 'ridge_val_mse_lam10': 0.5388598291789857, 'ridge_val_mse_lam100': 0.7363694684947203, 'ridge_lambda': 0.01, 'mlp_best_epoch': 29, 'mlp_val_mse': 0.1371162235736847}
+train 60 ej., val 20 ej.; val NLL sin cond=5.5919; adaptador init (z_true)=5.5802; sha LLM=66293a086327ee432bb76582bd0020c4b85d48892926ec9586ae1a9ab7615fa3
+epoch 1: train NLL=5.5457 val NLL(z_true)=5.5084 (2s)
+mejor época=1 val NLL=5.5084; LLM intacto=True
+D:\agentesIA\investigcion-IA\campo_turno\turno_eval.py:48: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  ck = torch.load(os.path.join(a.adapter_dir, "adapter.pt"), map_location="cpu")
+zmse_media {'campo': 0.19322224582235017, 'repeat': 0.7307702203591665, 'repeat_asst': 1.103136380513509, 'mean': 0.8489523977041245, 'ridge': 0.19312401115894318, 'mlp': 0.22026627510786057}
+T1 {'campo_menos_repeat': {'media': -0.5375479745368162, 'ic95': [-0.5789928970237573, -0.4906058485309283], 'p_le0': 1.0, 'n': 6}, 'campo_menos_mean': {'media': -0.6557301518817743, 'ic95': [-0.8263620825794835, -0.49781953170895576], 'p_le0': 1.0, 'n': 6}, 'campo_menos_repeat_asst': {'media': -0.9099141346911589, 'ic95': [-0.9834771131475767, -0.8363511562347412], 'p_le0': 1.0, 'n': 6}, 'campo_menos_ridge': {'media': 9.823466340700786e-05, 'ic95': [-0.03068411722779274, 0.026082441210746765], 'p_le0': 0.4737, 'n': 6}, 'pasa': True}
+T2 {'campo_menos_mlp': {'media': -0.02704402928551038, 'ic95': [-0.065208810629944, 0.01197392741839091], 'p_le0': 0.9208, 'n': 6}, 'umbral': 0.01101331375539303, 'pasa': False}
+nll_media {'none': 5.591133972009023, 'campo': 5.49916825691859, 'true': 5.498766442139943, 'shuf': 5.5053285757700605, 'mlp': 5.499255120754242}
+ppl {'none': 268.03939661692147, 'campo': 244.4884960575394, 'true': 244.39027670093049, 'shuf': 245.99927180115142, 'mlp': 244.50973418847926}
+T3 {'campo_menos_none': {'media': -0.09196571509043376, 'ic95': [-0.09946684042612712, -0.08357316255569458], 'p_le0': 1.0, 'n': 6}, 'pasa': True}
+T4 {'campo_menos_true': {'media': 0.0004018147786458333, 'ic95': [-0.0027141571044921875, 0.0037240982055664062], 'p_le0': 0.4024, 'n': 6}, 'campo_menos_shuf': {'media': -0.006160318851470947, 'ic95': [-0.014739751815795898, 0.002419114112854004], 'p_le0': 0.9204, 'n': 6}, 'true_menos_none': {'media': -0.09236752986907959, 'ic95': [-0.10001295804977417, -0.08537091811498006], 'p_le0': 1.0, 'n': 6}, 'mlp_menos_campo': {'media': 8.686383565266927e-05, 'ic95': [-0.000952462355295817, 0.00113449494043986], 'p_le0': 0.4223, 'n': 6}, 'pasa': False}
+no_dano {'identidad_maxdiff_embeds_vs_ids': 0.0, 'limite': 0.0001, 'identidad_ok': True, 'llm_sha': '66293a086327ee432bb76582bd0020c4b85d48892926ec9586ae1a9ab7615fa3', 'llm_intacto_tras_eval': True, 'llm_sha_adapter_train': '66293a086327ee432bb76582bd0020c4b85d48892926ec9586ae1a9ab7615fa3'}
+---- {'conv': 2, 'turno': 1, 'contexto_final': 'User: Hey!\nAssistant:', 'real': ' Hello! How can I help you today?\n', 'none': '\x07\x07\x07\x07\x07\x07\x07\x07\x07\x07\x07\x07', 'campo': '            ', 'true': '            ', 'shuf': '������������'}
+---- {'conv': 2, 'turno': 3, 'contexto_final': "User: Hey!\nAssistant: Hello! How can I help you today?\nUser: I'm learning about endangered species. What is \nAssistant:", 'real': ' Biodiversity, or biological diversity, refers t\n', 'none': '������������', 'campo': '������������', 'true': '������������', 'shuf': '������������'}
+---- {'conv': 2, 'turno': 5, 'contexto_final': 'istant: Biodiversity, or biological diversity, refers t\nUser: That makes sense. Why is biodiversity important\nAssistant:', 'real': ' Biodiversity is important because it helps main\n', 'none': 'HH""""""""""', 'campo': 'HHHHHHHHHH��', 'true': 'HHHHHHHHHHH�', 'shuf': 'HHHHHHHH����'}
+---- {'conv': 2, 'turno': 7, 'contexto_final': "istant: Biodiversity is important because it helps main\nUser: I'd like to help protect biodiversity. What's a\nAssistant:", 'real': ' One simple way to start is by reducing your use\n', 'none': '<<<<<<<<<<<<', 'campo': '������������', 'true': '������������', 'shuf': '������������'}
+---- {'conv': 25, 'turno': 1, 'contexto_final': 'User: Hi there\nAssistant:', 'real': ' Hello! How can I help you today?\n', 'none': '����\x07\x07\x07\x07\x07\x07\x07\x07', 'campo': '�����       ', 'true': '�����       ', 'shuf': '��������++++'}

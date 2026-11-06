@@ -1,0 +1,21 @@
+datos: train 800 conv/134503 tok, val 60 conv/9600 tok; d=64 F=2337 ctx=4 quad=true
+init-model: sin rejilla ridge; l1=1e-4 l2=1e-3 val_mse(dz) inicial=0.415231
+ridge elegido (val): l1=1e-4 l2=1e-3 val_mse(dz)=0.415231  [ridge con 50000 muestras train]
+GPU: AMD Radeon RX 7800 XT (Vulkan)
+epoch 0 (init): val_mse(dz)=0.415231
+epoch 1: train_mse(dz, media batches pre-update)=0.413643 val_mse(dz)=0.414183
+epoch 2: train_mse(dz, media batches pre-update)=0.412338 val_mse(dz)=0.414796
+rapido eta=0 gamma=1: val z-MSE campo=0.414183 lenta=0.414183 repeat=1.211024
+rapido eta=0.01 gamma=1: val z-MSE campo=0.413012 lenta=0.414183 repeat=1.211024
+rapido eta=0.01 gamma=0.99: val z-MSE campo=0.413358 lenta=0.414183 repeat=1.211024
+rapido eta=0.01 gamma=0.95: val z-MSE campo=0.413915 lenta=0.414183 repeat=1.211024
+rapido eta=0.03 gamma=1: val z-MSE campo=0.411846 lenta=0.414183 repeat=1.211024
+rapido eta=0.03 gamma=0.99: val z-MSE campo=0.412393 lenta=0.414183 repeat=1.211024
+rapido eta=0.03 gamma=0.95: val z-MSE campo=0.413629 lenta=0.414183 repeat=1.211024
+rapido eta=0.1 gamma=1: val z-MSE campo=0.413886 lenta=0.414183 repeat=1.211024
+rapido eta=0.1 gamma=0.99: val z-MSE campo=0.413192 lenta=0.414183 repeat=1.211024
+rapido eta=0.1 gamma=0.95: val z-MSE campo=0.414594 lenta=0.414183 repeat=1.211024
+rapido eta=0.3 gamma=1: val z-MSE campo=0.439993 lenta=0.414183 repeat=1.211024
+rapido eta=0.3 gamma=0.99: val z-MSE campo=0.431028 lenta=0.414183 repeat=1.211024
+rapido eta=0.3 gamma=0.95: val z-MSE campo=0.426947 lenta=0.414183 repeat=1.211024
+best val dz-mse SGD=0.414183; fast elegido eta=0.03 gamma=1 val z-mse=0.411846; device=gpu
