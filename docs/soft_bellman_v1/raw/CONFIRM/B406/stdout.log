@@ -1,0 +1,10 @@
+CONFIRM b406 epoch=0 nll=0.26772 mlp=0.92826 sec=0.00
+CONFIRM b406 epoch=20 nll=0.10252 mlp=0.48861 sec=0.04
+CONFIRM b406 epoch=40 nll=0.05640 mlp=0.46721 sec=0.08
+CONFIRM b406 epoch=60 nll=0.04255 mlp=0.44793 sec=0.12
+CONFIRM b406 epoch=80 nll=0.03630 mlp=0.43480 sec=0.16
+CONFIRM b406 epoch=100 nll=0.03255 mlp=0.42722 sec=0.20
+CONFIRM b406 epoch=120 nll=0.02994 mlp=0.41925 sec=0.24
+CONFIRM b406 epoch=140 nll=0.02796 mlp=0.40847 sec=0.28
+CONFIRM b406 epoch=160 nll=0.02639 mlp=0.39771 sec=0.32
+DONE CONFIRM b406 seconds=0.369

@@ -13,7 +13,7 @@ assert len(rows)==32*16, f'Expected 512 rows, got {len(rows)}'
 for phase in ['DEV','CONFIRM']:
     assert len({r['seed'] for r in rows if r['phase']==phase})==16
 with (DOC/'metrics.csv').open('w') as f:
-    w=csv.DictWriter(f,fieldnames=list(rows[0]));w.writeheader();w.writerows(rows)
+    w=csv.DictWriter(f,fieldnames=list(rows[0]),lineterminator="\n");w.writeheader();w.writerows(rows)
 def quantile(xs,p):
     xs=sorted(xs); i=(len(xs)-1)*p;lo=int(i);hi=min(lo+1,len(xs)-1);return xs[lo]+(i-lo)*(xs[hi]-xs[lo])
 def bootstrap(d):

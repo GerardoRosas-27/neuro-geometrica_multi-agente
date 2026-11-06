@@ -1,0 +1,10 @@
+CONFIRM b400 epoch=0 nll=0.29810 mlp=0.90461 sec=0.01
+CONFIRM b400 epoch=20 nll=0.11515 mlp=0.42275 sec=0.11
+CONFIRM b400 epoch=40 nll=0.06490 mlp=0.39312 sec=0.15
+CONFIRM b400 epoch=60 nll=0.05052 mlp=0.36269 sec=0.19
+CONFIRM b400 epoch=80 nll=0.04396 mlp=0.35128 sec=0.24
+CONFIRM b400 epoch=100 nll=0.03994 mlp=0.34374 sec=0.28
+CONFIRM b400 epoch=120 nll=0.03708 mlp=0.33716 sec=0.33
+CONFIRM b400 epoch=140 nll=0.03489 mlp=0.33092 sec=0.37
+CONFIRM b400 epoch=160 nll=0.03313 mlp=0.32515 sec=0.41
+DONE CONFIRM b400 seconds=0.459
