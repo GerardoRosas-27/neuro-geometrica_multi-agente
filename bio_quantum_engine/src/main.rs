@@ -284,7 +284,7 @@ fn run_evaluation(phase: &str) {
     println!("            RESUMEN CONSOLIDADO DEL PROTOCOLO ({}) (16/16 SEMILLAS)            ", phase.to_uppercase());
     println!("================================================================================");
     println!("  * Familias Conocidas Acc16 Media: {:.2}% (Med log err = {:.4})", mean_k_acc * 100.0, mean_k_log);
-    println!("  * Familias Nuevas OOD Acc16 Media: {:.2}% (Med log err = {:.4}) [vs 6.9% en v4]", mean_n_acc * 100.0, mean_n_log);
+    println!("  * Familias Nuevas OOD Acc16 Media: {:.2}% (Med log err = {:.4}) [no comparable con v4: arnés distinto]", mean_n_acc * 100.0, mean_n_log);
     println!("  * Tarea E33 Cold Start Pass:       {}/{} semillas aprobadas", all_e33_pass, seeds.len());
     println!("  * Cumplimiento Ley de Dale:        {} violaciones en total (100% compliant)", all_dale_viol);
     println!("  * Memoria CDT / Sueño SWR:         {}/{} aprobados (ΔR promedio = {:.5})", all_cdt_pass, seeds.len(), mean_dr);
@@ -456,14 +456,14 @@ fn run_benchmark_suite() {
 
     let elapsed = start_time.elapsed();
     println!("\n================================================================================");
-    println!("                   TABLA COMPARATIVA FINAL vs CONSTELACIÓN v4                  ");
+    println!("          MÉTRICAS DEL ARNÉS PROPIO (no comparable con v4 / ATLAS-FW)         ");
     println!("================================================================================");
-    println!("  Métrica                        Constelación v4        Bio-Quantum v10 (Rust)   ");
+    println!("  Métrica                                              Bio-Quantum v10 (arnés propio)");
     println!("  ------------------------------------------------------------------------------");
-    println!("  Acc16 DEV OOD                     6.9%                   {:5.1}% (+14.5x)     ", dev_res.new_acc16 * 100.0);
-    println!("  Acc16 CONFIRM OOD                 6.9%                   {:5.1}% (+14.5x)     ", confirm_res.new_acc16 * 100.0);
-    println!("  Acc16 Familias Conocidas         87.5%                  {:5.1}% (+12.5%)      ", confirm_res.known_acc16 * 100.0);
-    println!("  Violaciones Ley de Dale          N/A (no biológico)     0 (100% compliant)    ");
+    println!("  Acc16 DEV OOD                                        {:5.1}%  (sin baseline v4) ", dev_res.new_acc16 * 100.0);
+    println!("  Acc16 CONFIRM OOD                                    {:5.1}%  (sin baseline v4) ", confirm_res.new_acc16 * 100.0);
+    println!("  Acc16 Familias Conocidas CONFIRM                     {:5.1}%                    ", confirm_res.known_acc16 * 100.0);
+    println!("  Violaciones Ley de Dale                              0 (auditoría del motor)   ");
     println!("  Ultra-Horizonte H=64 OOD          0.0%                   {:5.1}%               ", ultra_results[2].2 * 100.0);
     println!("  Ultra-Horizonte H=128 OOD         0.0%                   {:5.1}%               ", ultra_results[3].2 * 100.0);
     println!("  Few-Shot K_obs=2 (1-Shot) OOD     0.0%                   {:5.1}%               ", fewshot_results[0].2 * 100.0);

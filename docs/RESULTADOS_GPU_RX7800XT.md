@@ -1,3 +1,5 @@
+> Lectura e interpretación (limitaciones, por qué no es comparable con ATLAS-FW / BQ10 canónico, y tabla DEV/CONFIRM): [`docs/bq10/README.md`](bq10/README.md).
+
 # Resultados de Entrenamiento Escalado x50 en GPU: AMD Radeon RX 7800 XT
 
 ## Bio-Quantum v10 (Singularity GPU Ultra - Escalado x50)
