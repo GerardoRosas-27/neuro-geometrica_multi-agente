@@ -1,0 +1,18 @@
+   Compiling soft-bellman-simplicial-v2 v0.2.0 (/workspace/ngm-soft-bellman-v1/soft_bellman_simplicial)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.44s
+     Running unittests src/main.rs (soft_bellman_simplicial/target/debug/deps/soft_bellman_simplicial_v2-9ac214a97422c1d7)
+
+running 11 tests
+test tests::barycentric_formula_and_permutation ... ok
+test tests::boundaries_and_coherent_orientation ... ok
+test tests::hodge_weighted_adjoint_psd ... ok
+test tests::cm_and_spd ... ok
+test tests::regge_interior_only ... ok
+test tests::goals_unreachable_and_dedup ... ok
+test tests::vertex_relabel_invariance ... ok
+test tests::replay_and_no_label_leak ... ok
+test tests::executable_and_refinement ... ok
+test tests::learning_smoke ... ok
+test tests::gradient_all_variants ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s

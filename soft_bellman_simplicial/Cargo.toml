@@ -1,0 +1,8 @@
+[package]
+name = "soft-bellman-simplicial-v2"
+version = "0.2.0"
+edition = "2021"
+license = "MIT"
+[workspace]
+[profile.release]
+opt-level = 3
