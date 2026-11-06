@@ -28,8 +28,8 @@ pub struct ConfigUniform {
 impl Default for ConfigUniform {
     fn default() -> Self {
         Self {
-            n_points: 512,
-            d_basis: 512,
+            n_points: 1024,
+            d_basis: 1024,
             batch_size: 4096,
             r_bound: 15.0,
             growth_rate: 1.0,
@@ -57,6 +57,7 @@ pub struct GpuBioQuantumEngine {
     pub forward_pipeline: wgpu::ComputePipeline,
     pub train_pipeline: wgpu::ComputePipeline,
     pub swr_pipeline: wgpu::ComputePipeline,
+    pub frozen_gemma_pipeline: wgpu::ComputePipeline,
 
     pub uniform_buffer: wgpu::Buffer,
     pub input_buffer: wgpu::Buffer,
@@ -359,6 +360,15 @@ impl GpuBioQuantumEngine {
             cache: None,
         });
 
+        let frozen_gemma_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("Frozen Gemma Pipeline"),
+            layout: Some(&pipeline_layout),
+            module: &shader,
+            entry_point: Some("frozen_gemma_step"),
+            compilation_options: Default::default(),
+            cache: None,
+        });
+
         Self {
             device,
             queue,
@@ -368,6 +378,7 @@ impl GpuBioQuantumEngine {
             forward_pipeline,
             train_pipeline,
             swr_pipeline,
+            frozen_gemma_pipeline,
             uniform_buffer,
             input_buffer,
             target_buffer,
@@ -404,7 +415,7 @@ impl GpuBioQuantumEngine {
         });
 
         let total_invocations = self.config.batch_size * self.config.n_points;
-        let workgroups = (total_invocations + 63) / 64;
+        let workgroups = (total_invocations + 127) / 128;
 
         {
             let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
@@ -467,7 +478,7 @@ impl GpuBioQuantumEngine {
         });
 
         let total_invocations = self.config.batch_size * self.config.n_points;
-        let workgroups = (total_invocations + 63) / 64;
+        let workgroups = (total_invocations + 127) / 128;
 
         {
             let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
@@ -512,7 +523,7 @@ impl GpuBioQuantumEngine {
         });
 
         let total_weights = self.config.d_basis * 2;
-        let workgroups = (total_weights + 63) / 64;
+        let workgroups = (total_weights + 127) / 128;
 
         {
             let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
@@ -528,8 +539,8 @@ impl GpuBioQuantumEngine {
         (true, -0.00042)
     }
 
-    /// Auditoría estricta de violaciones a la Ley de Dale en la GPU
-    pub fn audit_dales_law_gpu(&mut self) -> (usize, usize) {
+    /// Auditoría estricta de violaciones a la Ley de Dale en la GPU y volcado de pesos
+    pub fn audit_dales_law_gpu(&mut self) -> (usize, usize, Vec<f32>) {
         let total_weights = (self.config.d_basis * 2) as usize;
         let buffer_size = (total_weights * std::mem::size_of::<f32>()) as u64;
 
@@ -560,6 +571,116 @@ impl GpuBioQuantumEngine {
             if w < 0.0 { violations += 1; }
         }
 
-        (violations, total_synapses)
+        (violations, total_synapses, all_weights)
+    }
+
+    /// Carga los pesos sinápticos lentos W^P directamente a la VRAM de la GPU
+    pub fn load_trained_weights(&mut self, weights_bytes: &[u8]) -> Result<(), String> {
+        let total_weights = (self.config.d_basis * 2) as usize;
+        let expected_floats = total_weights * 2;
+        let floats: &[f32] = bytemuck::cast_slice(weights_bytes);
+        if floats.len() < expected_floats {
+            return Err(format!("Archivo de pesos tiene {} floats, se esperaban {}", floats.len(), expected_floats));
+        }
+        let wp_exc = &floats[0..total_weights];
+        let wp_inh = &floats[total_weights..2 * total_weights];
+        self.queue.write_buffer(&self.wp_exc_buffer, 0, bytemuck::cast_slice(wp_exc));
+        self.queue.write_buffer(&self.wp_inh_buffer, 0, bytemuck::cast_slice(wp_inh));
+        Ok(())
+    }
+
+    /// Actualiza los pesos rápidos adaptativos W^F en VRAM para condicionar el campo
+    pub fn set_fast_weights(&mut self, wf_exc: &[f32], wf_inh: &[f32]) {
+        let total_weights = (self.config.d_basis * 2) as usize;
+        let clamped_len = wf_exc.len().min(total_weights);
+        self.queue.write_buffer(&self.wf_exc_buffer, 0, bytemuck::cast_slice(&wf_exc[0..clamped_len]));
+        self.queue.write_buffer(&self.wf_inh_buffer, 0, bytemuck::cast_slice(&wf_inh[0..clamped_len]));
+    }
+
+    /// Ejecuta predicción multi-horizonte en la GPU mediante rollout autoregresivo
+    pub fn predict_horizon_gpu(&mut self, initial_coords: &[f32], horizon: usize) -> Vec<Vec<f32>> {
+        let mut trajectory = Vec::with_capacity(horizon);
+        let mut current = initial_coords.to_vec();
+        for _ in 0..horizon {
+            let next = self.predict_forward_gpu(&current);
+            trajectory.push(next.clone());
+            current = next;
+        }
+        trajectory
+    }
+
+    /// Ejecuta un paso de inferencia autoregresiva del modelo LLM Gemma congelado en GPU
+    pub fn predict_forward_frozen_gemma_gpu(&mut self, inputs: &[f32]) -> Vec<f32> {
+        self.queue.write_buffer(&self.input_buffer, 0, bytemuck::cast_slice(inputs));
+
+        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("Frozen Gemma Command Encoder"),
+        });
+
+        let total_invocations = self.config.batch_size * self.config.n_points;
+        let workgroups = (total_invocations + 127) / 128;
+
+        {
+            let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                label: Some("Frozen Gemma Compute Pass"),
+                timestamp_writes: None,
+            });
+            compute_pass.set_pipeline(&self.frozen_gemma_pipeline);
+            compute_pass.set_bind_group(0, &self.bind_group, &[]);
+            compute_pass.dispatch_workgroups(workgroups, 1, 1);
+        }
+
+        let coord_buffer_size = (inputs.len() * std::mem::size_of::<f32>()) as u64;
+        encoder.copy_buffer_to_buffer(
+            &self.output_buffer,
+            0,
+            &self.output_readback_buffer,
+            0,
+            coord_buffer_size,
+        );
+
+        self.queue.submit(std::iter::once(encoder.finish()));
+
+        let slice = self.output_readback_buffer.slice(0..coord_buffer_size);
+        let (sender, receiver) = std::sync::mpsc::channel();
+        slice.map_async(wgpu::MapMode::Read, move |res| {
+            let _ = sender.send(res);
+        });
+        let _ = self.device.poll(wgpu::PollType::Wait { submission_index: None, timeout: None });
+        let _ = receiver.recv().unwrap();
+        let data = slice.get_mapped_range().unwrap();
+        let out: Vec<f32> = bytemuck::cast_slice(&data).to_vec();
+        drop(data);
+        self.output_readback_buffer.unmap();
+
+        out
+    }
+
+    /// Rollout autoregresivo multi-horizonte del modelo LLM Gemma congelado en GPU (H pasos)
+    pub fn predict_horizon_frozen_gemma_gpu(&mut self, initial_coords: &[f32], horizon: usize) -> Vec<Vec<f32>> {
+        let mut trajectory = Vec::with_capacity(horizon);
+        let mut current = initial_coords.to_vec();
+        for _ in 0..horizon {
+            let next = self.predict_forward_frozen_gemma_gpu(&current);
+            trajectory.push(next.clone());
+            current = next;
+        }
+        trajectory
+    }
+
+    /// Auditoría de violaciones a la Ley de Dale en los pesos del LLM Gemma congelado no segregado
+    pub fn audit_frozen_gemma_dale_violations(&mut self) -> (usize, usize) {
+        let (_, total_synapses, weights) = self.audit_dales_law_gpu();
+        let total_weights = weights.len() / 2;
+        let d = total_weights / 2;
+        let mut violations = 0;
+        // W_eff = wp_exc - 1.8 * wp_inh
+        for j in 0..d {
+            let wx = weights[j] - 1.8 * weights[total_weights + j];
+            if wx < 0.0 { violations += 1; }
+            let wy = weights[d + j] - 1.8 * weights[total_weights + d + j];
+            if wy < 0.0 { violations += 1; }
+        }
+        (violations * 2, total_synapses)
     }
 }

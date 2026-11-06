@@ -1,0 +1,8 @@
+{
+  "cumulative_cycles": 21135,
+  "cumulative_dreams": 1320,
+  "cumulative_accurate": 8,
+  "cumulative_corrected": 21127,
+  "cumulative_avg_mse": 6.7105513,
+  "last_saved_timestamp": "Instant { t: 4611725130.466285603s }"
+}
