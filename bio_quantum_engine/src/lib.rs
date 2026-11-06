@@ -10,21 +10,32 @@
 
 pub mod cdt_basin_memory;
 pub mod dendritic_koopman_dale;
+pub mod dynamic_reasoning_memory;
 pub mod equivariant_residual;
+pub mod gemma_field_bridge;
+pub mod gemma_vs_hybrid;
 pub mod gpu_engine;
 pub mod gpu_shaders;
 pub mod handshake_phasor;
+pub mod infinite_learning_loop;
 pub mod koopman_brenier_spectral;
+pub mod learned_evaluator;
+pub mod phi_gen;
 pub mod protocol_cst4;
 pub mod rng;
 pub mod unified_engine;
 
 pub use cdt_basin_memory::CdtSimplicialBasinMemory;
+pub use dynamic_reasoning_memory::{run_dynamic_reasoning_experiment, DynamicReasoningReport};
 pub use dendritic_koopman_dale::{CorticalPyramidalUnit, DaleSynapse};
 pub use equivariant_residual::{AutonomousThalamocorticalPrior, EquivariantBasisExtractor};
+pub use gemma_field_bridge::{GemmaE2eOutput, GemmaFieldBridge, GemmaLinguisticEncoder, GpuTelemetry};
+pub use gemma_vs_hybrid::{run_gemma_vs_hybrid_benchmark, BenchmarkReport, SampleComparison, SystemSummary};
 pub use gpu_engine::{ConfigUniform, GpuBioQuantumEngine, GpuStepResult};
 pub use handshake_phasor::{ComplexPhasor, WheelerFeynmanHandshakeEngine};
+pub use infinite_learning_loop::{run_infinite_learning_loop, LoopConfig, InfiniteLoopTelemetry};
 pub use koopman_brenier_spectral::{KoopmanBlock2x2, KoopmanBrenierSpectralOperator};
+pub use learned_evaluator::{run_learned_evaluation, LearnedEvaluationReport};
 pub use protocol_cst4::{compute_log_relative_error, Cst4DataGenerator, TrajectoryEpisode};
 pub use rng::Xoshiro256StarStar;
 pub use unified_engine::{BioQuantumConstellationEngine, UnifiedEngineConfig};

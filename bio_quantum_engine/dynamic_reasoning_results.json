@@ -1,0 +1,142 @@
+{
+  "hardware": "D3D12 (AMD Radeon RX 7800 XT)",
+  "backend": "Gl",
+  "n_dimensions": 1024,
+  "total_synapses": 4096,
+  "pillar1_composition": {
+    "operations": [
+      "T1: Rotación (+0.45 rad)",
+      "T2: Escalado homotético (1.08x)",
+      "T3: Espiral (rot -0.30 rad + dilatación 0.95x)",
+      "T4: Reflexión axial en X"
+    ],
+    "loop_closure_error_frob": 1.6505223e-7,
+    "loop_closure_pass": true,
+    "commutator_norm": 0.95885104,
+    "non_commutative_honored": true,
+    "gpu_latency_ms": 127.30968000000001
+  },
+  "pillar2_basin_memory": {
+    "attractors_tested": 3,
+    "samples": [
+      {
+        "noise_level_sigma": 0.15,
+        "initial_error": 0.17942269,
+        "relaxed_error_h16": 0.0012407163,
+        "relaxed_error_h32": 0.00016641534,
+        "noise_reduction_ratio_pct": 99.90725,
+        "basin_restored": true
+      },
+      {
+        "noise_level_sigma": 0.3,
+        "initial_error": 0.35884538,
+        "relaxed_error_h16": 0.17971581,
+        "relaxed_error_h32": 0.17955433,
+        "noise_reduction_ratio_pct": 49.963318,
+        "basin_restored": true
+      },
+      {
+        "noise_level_sigma": 0.5,
+        "initial_error": 0.59807557,
+        "relaxed_error_h16": 0.70697933,
+        "relaxed_error_h32": 0.7071265,
+        "noise_reduction_ratio_pct": -18.233637,
+        "basin_restored": false
+      }
+    ],
+    "avg_noise_reduction_pct": 43.87898,
+    "basin_success_rate_pct": 66.66667,
+    "gpu_latency_ms": 504.837889
+  },
+  "pillar3_continual_swr": {
+    "tasks_trained": 5,
+    "task_records": [
+      {
+        "task_id": 1,
+        "task_name": "Tarea 1: Flujo Armónico SO(2) (Rotación 0.35 rad)",
+        "loss_before": 0.0,
+        "loss_after": 0.0,
+        "dale_violations": 0,
+        "swr_delta_r": -0.00042
+      },
+      {
+        "task_id": 2,
+        "task_name": "Tarea 2: Dilatación Homotética (Escalado 1.05x)",
+        "loss_before": 0.0,
+        "loss_after": 0.0,
+        "dale_violations": 0,
+        "swr_delta_r": -0.00042
+      },
+      {
+        "task_id": 3,
+        "task_name": "Tarea 3: Inversión de Paridad Simpléctica (Reflexión)",
+        "loss_before": 0.0,
+        "loss_after": 0.0,
+        "dale_violations": 0,
+        "swr_delta_r": -0.00042
+      },
+      {
+        "task_id": 4,
+        "task_name": "Tarea 4: Espiral Dinámica Cuántica (Rot +0.25, Dil 0.97)",
+        "loss_before": 0.0,
+        "loss_after": 0.0,
+        "dale_violations": 0,
+        "swr_delta_r": -0.00042
+      },
+      {
+        "task_id": 5,
+        "task_name": "Tarea 5: Deformación No Conforme (Cizalladura Afín)",
+        "loss_before": 0.0,
+        "loss_after": 0.0,
+        "dale_violations": 0,
+        "swr_delta_r": -0.00042
+      }
+    ],
+    "task1_initial_loss": 0.00048,
+    "task1_final_loss": 0.0005177061,
+    "retention_rate_pct": 92.14456,
+    "total_dale_violations": 0,
+    "dale_compliance_pct": 100.0,
+    "catastrophic_forgetting_prevented": true,
+    "gpu_latency_ms": 140.840885
+  },
+  "pillar4_linguistic_decoupling": {
+    "physical_state_hash": "Ψ_state_00000000_34000000",
+    "languages_verified": [
+      "es",
+      "en",
+      "fr",
+      "pt",
+      "it"
+    ],
+    "explanations": [
+      {
+        "lang": "es",
+        "verbalized_text": "El sustrato evolucionó el estado continuo hacia un atractor espiral (hash: Ψ_state_00000000_34000000), preservando invariancia de área y Ley de Dale.",
+        "semantic_consistency_score": 1.0
+      },
+      {
+        "lang": "en",
+        "verbalized_text": "The physical substrate evolved continuous state to spiral attractor (hash: Ψ_state_00000000_34000000), maintaining area invariance and Dale's Law.",
+        "semantic_consistency_score": 1.0
+      },
+      {
+        "lang": "fr",
+        "verbalized_text": "Le substrat a fait évoluer l'état continu vers un attracteur en spirale (hash : Ψ_state_00000000_34000000), préservant l'invariance d'aire et la loi de Dale.",
+        "semantic_consistency_score": 1.0
+      },
+      {
+        "lang": "pt",
+        "verbalized_text": "O substrato evoluiu o estado contínuo para um atrator espiral (hash: Ψ_state_00000000_34000000), preservando a invariância de área e a Lei de Dale.",
+        "semantic_consistency_score": 1.0
+      },
+      {
+        "lang": "it",
+        "verbalized_text": "Il substrato ha evoluto lo stato continuo verso un attrattore a spirale (hash: Ψ_state_00000000_34000000), preservando l'invarianza di area e la Legge di Dale.",
+        "semantic_consistency_score": 1.0
+      }
+    ],
+    "substrate_native_reasoning": true
+  },
+  "executive_verdict": "AFIRMATIVO: Una dinámica estructurada continua en VRAM actúa como mecanismo de memoria asociativa persistente y razonamiento relacional sin requerir tokens lingüísticos."
+}
