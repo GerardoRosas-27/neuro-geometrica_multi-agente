@@ -82,6 +82,16 @@ Evaluación del arnés propio (`docs/bq10_gpu_amd/logs/eval_{dev,confirm}.log`):
 
 Cuando se evalúa *con* los pesos GPU (`eval_trained`), x50 queda en 0.00 % acc16 y med log ≈ +0.59 / +0.45 (DEV), peor que persistencia. Ver [`bq10_gpu_amd/EVAL_PESOS_ENTRENADOS.md`](bq10_gpu_amd/EVAL_PESOS_ENTRENADOS.md).
 
+## Campo sobre LLM congelado (no entra en la tabla CST4)
+
+Línea principal: `gemma_campo` @ `a420311` (`docs/gemma_campo_chat/run_20261104/`). Camino alterno: estado por turno @ `a2c9c9f` (`docs/campo_estado_turno/run_20261105/`). Informe y reproducción: [`campo/README.md`](campo/README.md).
+
+**No desplaza** a ATLAS-FW ni al BQ10 canónico: otro arnés (activaciones de `qwen/qwen3-vl-4b`, capa 13), otras métricas (z-MSE y NLL de lenguaje), un solo run. Las dos ramas no son comparables entre sí (token vs turno; test n=60 vs n=200).
+
+Línea principal (test n=60, bootstrap 10 000 / semilla 12345, `eval_test.json`): z-MSE k=1 con `e(x_t)` campo 0.197222 vs repeat 1.238695 (Δ −1.041472 [−1.063950, −1.016694]); NLL campo 1.7339503705501556 vs LLM intacto 1.7145656049251556 vs oracle 1.7150465667247772 (campo−oracle +0.01890380382537842 [0.010692580093940099, 0.027486240863800047] ≤ 0.05 → H2 éxito). H1, H1k, H3, OLV, EST, REP también éxito.
+
+Camino alterno (test n=200): T1–T4 y no-daño pasan. z-MSE campo 0.3685527244210243 vs repeat 1.0917954957485199 vs mlp 0.38687286220490935. NLL campo 0.6475953880107791 vs none 1.9457939405404034 vs shuf 0.9346708592687366 vs mlp 0.6469799832911522 (campo≈mlp en decodificación; T3 vs none infla el estilo del adaptador).
+
 ## Historial de experimentos
 
 

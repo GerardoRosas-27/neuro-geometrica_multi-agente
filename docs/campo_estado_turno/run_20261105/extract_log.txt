@@ -1,0 +1,6 @@
+[aviso] HF_TOKEN no definido: gemma-2-2b está bajo licencia y probablemente fallará la descarga
+The tokenizer you are loading from 'D:/agentesIA/qwen3_vl_4b_hf' with an incorrect regex pattern: https://huggingface.co/mistralai/Mistral-Small-3.1-24B-Instruct-2503/discussions/84#69121093e8b480e709447d5e. This will lead to incorrect tokenization. You should set the `fix_mistral_regex=True` flag when loading this tokenizer to fix this issue.
+`torch_dtype` is deprecated! Use `dtype` instead!
+train: 1600 conv, 12385 turnos, H=2560
+val: 200 conv, 1565 turnos, H=2560
+test: 200 conv, 1548 turnos, H=2560

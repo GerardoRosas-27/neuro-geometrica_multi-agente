@@ -1,0 +1,1 @@
+{'d_field': 64, 'var_explicada': 0.7814175983846907, 'encoder_sha256': '8f5813d05fb95cdc6f437fe376127494b88b933ac241ae8d4d449be5a26b3fa0', 'train_turnos': 12385, 'train_z_var_media': 0.9999166131019592, 'val_turnos': 1565, 'val_z_var_media': 0.9685525894165039, 'test_turnos': 1548, 'test_z_var_media': 0.9627315402030945}

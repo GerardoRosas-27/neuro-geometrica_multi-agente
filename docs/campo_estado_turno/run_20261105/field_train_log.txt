@@ -1,0 +1,74 @@
+datos: train 1600 conv/12385 tok, val 200 conv/1565 tok; d=64 F=2337 ctx=4 quad=true
+ridge l1=1e-6 l2=1e-6: train_mse=0.390535 val_mse=0.690893
+ridge l1=1e-6 l2=1e-5: train_mse=0.391550 val_mse=0.682622
+ridge l1=1e-6 l2=1e-4: train_mse=0.396393 val_mse=0.661768
+ridge l1=1e-6 l2=1e-3: train_mse=0.410338 val_mse=0.614043
+ridge l1=1e-6 l2=1e-2: train_mse=0.463706 val_mse=0.574400
+ridge l1=1e-6 l2=1e-1: train_mse=0.569551 val_mse=0.612603
+ridge l1=1e-5 l2=1e-6: train_mse=0.390871 val_mse=0.688772
+ridge l1=1e-5 l2=1e-5: train_mse=0.391844 val_mse=0.681504
+ridge l1=1e-5 l2=1e-4: train_mse=0.396521 val_mse=0.661036
+ridge l1=1e-5 l2=1e-3: train_mse=0.410431 val_mse=0.613510
+ridge l1=1e-5 l2=1e-2: train_mse=0.463761 val_mse=0.573999
+ridge l1=1e-5 l2=1e-1: train_mse=0.569603 val_mse=0.612205
+ridge l1=1e-4 l2=1e-6: train_mse=0.393382 val_mse=0.684727
+ridge l1=1e-4 l2=1e-5: train_mse=0.393885 val_mse=0.678773
+ridge l1=1e-4 l2=1e-4: train_mse=0.397563 val_mse=0.658595
+ridge l1=1e-4 l2=1e-3: train_mse=0.411205 val_mse=0.611665
+ridge l1=1e-4 l2=1e-2: train_mse=0.464246 val_mse=0.572687
+ridge l1=1e-4 l2=1e-1: train_mse=0.570084 val_mse=0.610932
+ridge l1=1e-3 l2=1e-6: train_mse=0.398092 val_mse=0.679223
+ridge l1=1e-3 l2=1e-5: train_mse=0.398502 val_mse=0.673894
+ridge l1=1e-3 l2=1e-4: train_mse=0.402248 val_mse=0.654788
+ridge l1=1e-3 l2=1e-3: train_mse=0.417322 val_mse=0.610884
+ridge l1=1e-3 l2=1e-2: train_mse=0.469148 val_mse=0.571910
+ridge l1=1e-3 l2=1e-1: train_mse=0.574453 val_mse=0.609492
+ridge l1=1e-2 l2=1e-6: train_mse=0.407352 val_mse=0.679608
+ridge l1=1e-2 l2=1e-5: train_mse=0.407788 val_mse=0.674501
+ridge l1=1e-2 l2=1e-4: train_mse=0.412214 val_mse=0.656697
+ridge l1=1e-2 l2=1e-3: train_mse=0.434545 val_mse=0.623160
+ridge l1=1e-2 l2=1e-2: train_mse=0.501865 val_mse=0.600219
+ridge l1=1e-2 l2=1e-1: train_mse=0.631372 val_mse=0.655738
+ridge l1=1e-1 l2=1e-6: train_mse=0.414077 val_mse=0.686100
+ridge l1=1e-1 l2=1e-5: train_mse=0.414538 val_mse=0.680955
+ridge l1=1e-1 l2=1e-4: train_mse=0.419236 val_mse=0.663165
+ridge l1=1e-1 l2=1e-3: train_mse=0.444873 val_mse=0.633109
+ridge l1=1e-1 l2=1e-2: train_mse=0.533766 val_mse=0.633477
+ridge l1=1e-1 l2=1e-1: train_mse=0.749986 val_mse=0.769810
+ridge elegido (val): l1=1e-3 l2=1e-2 val_mse(dz)=0.571910  [ridge con 10785 muestras train]
+GPU: AMD Radeon RX 7800 XT (Vulkan)
+epoch 0 (init): val_mse(dz)=0.571910
+epoch 1: train_mse(dz, media batches pre-update)=0.479584 val_mse(dz)=0.572664
+epoch 2: train_mse(dz, media batches pre-update)=0.480459 val_mse(dz)=0.573132
+epoch 3: train_mse(dz, media batches pre-update)=0.480405 val_mse(dz)=0.573387
+epoch 4: train_mse(dz, media batches pre-update)=0.480428 val_mse(dz)=0.572981
+epoch 5: train_mse(dz, media batches pre-update)=0.480780 val_mse(dz)=0.573287
+epoch 6: train_mse(dz, media batches pre-update)=0.480680 val_mse(dz)=0.572981
+epoch 7: train_mse(dz, media batches pre-update)=0.480455 val_mse(dz)=0.573300
+epoch 8: train_mse(dz, media batches pre-update)=0.480533 val_mse(dz)=0.572694
+epoch 9: train_mse(dz, media batches pre-update)=0.480244 val_mse(dz)=0.573475
+epoch 10: train_mse(dz, media batches pre-update)=0.480386 val_mse(dz)=0.572691
+epoch 11: train_mse(dz, media batches pre-update)=0.480449 val_mse(dz)=0.573097
+epoch 12: train_mse(dz, media batches pre-update)=0.481021 val_mse(dz)=0.572598
+epoch 13: train_mse(dz, media batches pre-update)=0.480262 val_mse(dz)=0.572814
+epoch 14: train_mse(dz, media batches pre-update)=0.480178 val_mse(dz)=0.573604
+epoch 15: train_mse(dz, media batches pre-update)=0.480431 val_mse(dz)=0.572715
+epoch 16: train_mse(dz, media batches pre-update)=0.480709 val_mse(dz)=0.572690
+epoch 17: train_mse(dz, media batches pre-update)=0.480395 val_mse(dz)=0.572697
+epoch 18: train_mse(dz, media batches pre-update)=0.480861 val_mse(dz)=0.572776
+epoch 19: train_mse(dz, media batches pre-update)=0.480326 val_mse(dz)=0.572531
+epoch 20: train_mse(dz, media batches pre-update)=0.480877 val_mse(dz)=0.573520
+rapido eta=0 gamma=1: val z-MSE campo=0.571910 lenta=0.571910 repeat=1.250798
+rapido eta=0.01 gamma=1: val z-MSE campo=0.572270 lenta=0.571910 repeat=1.250798
+rapido eta=0.01 gamma=0.99: val z-MSE campo=0.572269 lenta=0.571910 repeat=1.250798
+rapido eta=0.01 gamma=0.95: val z-MSE campo=0.572263 lenta=0.571910 repeat=1.250798
+rapido eta=0.03 gamma=1: val z-MSE campo=0.573092 lenta=0.571910 repeat=1.250798
+rapido eta=0.03 gamma=0.99: val z-MSE campo=0.573086 lenta=0.571910 repeat=1.250798
+rapido eta=0.03 gamma=0.95: val z-MSE campo=0.573063 lenta=0.571910 repeat=1.250798
+rapido eta=0.1 gamma=1: val z-MSE campo=0.576945 lenta=0.571910 repeat=1.250798
+rapido eta=0.1 gamma=0.99: val z-MSE campo=0.576907 lenta=0.571910 repeat=1.250798
+rapido eta=0.1 gamma=0.95: val z-MSE campo=0.576768 lenta=0.571910 repeat=1.250798
+rapido eta=0.3 gamma=1: val z-MSE campo=0.594866 lenta=0.571910 repeat=1.250798
+rapido eta=0.3 gamma=0.99: val z-MSE campo=0.594654 lenta=0.571910 repeat=1.250798
+rapido eta=0.3 gamma=0.95: val z-MSE campo=0.593863 lenta=0.571910 repeat=1.250798
+best val dz-mse SGD=0.571910; fast elegido eta=0 gamma=1 val z-mse=0.571910; device=gpu

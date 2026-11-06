@@ -1,0 +1,8 @@
+# Versiones probadas en el smoke (CPU) de exp/gemma-campo-chat. torch se instala APARTE desde el índice ROCm:
+#   pip install torch --index-url https://download.pytorch.org/whl/rocm6.2   (usa el rocmX.Y que corresponda a tu driver)
+# y se registra con: python -c "import torch;print(torch.__version__, torch.version.hip)" >> $RUN/env.txt
+transformers==4.57.6
+huggingface_hub==0.36.2
+safetensors==0.8.0
+numpy==2.2.6
+# `datasets` NO es necesario: usa fetch_jsonl.py (datasets 5.x es incompatible con huggingface_hub<1.0 que pide transformers 4.57)

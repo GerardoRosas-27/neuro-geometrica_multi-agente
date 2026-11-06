@@ -1,0 +1,10 @@
+{"evento": "shard_ok", "shard": 0, "try": 0, "lr": 0.05, "val_dz_mse_lenta": 0.43141, "val_z_mse_campo": 0.428104, "olvido_shard1_z_mse": null, "datos": "train 200 conv/32703 tok", "t": "2026-11-04T23:56:40-06:00"}
+{"evento": "shard_ok", "shard": 1, "try": 0, "lr": 0.048795, "val_dz_mse_lenta": 0.423617, "val_z_mse_campo": 0.420708, "olvido_shard1_z_mse": 0.407513, "datos": "train 400 conv/66791 tok", "t": "2026-11-04T23:59:53-06:00"}
+{"evento": "shard_ok", "shard": 2, "try": 0, "lr": 0.0476731, "val_dz_mse_lenta": 0.418779, "val_z_mse_campo": 0.416145, "olvido_shard1_z_mse": 0.404656, "datos": "train 600 conv/100153 tok", "t": "2026-11-05T00:03:04-06:00"}
+{"evento": "shard_ok", "shard": 3, "try": 0, "lr": 0.0466252, "val_dz_mse_lenta": 0.417151, "val_z_mse_campo": 0.41465, "olvido_shard1_z_mse": 0.402799, "datos": "train 600 conv/101175 tok", "t": "2026-11-05T00:06:15-06:00"}
+{"evento": "shard_ok", "shard": 4, "try": 0, "lr": 0.0456435, "val_dz_mse_lenta": 0.415353, "val_z_mse_campo": 0.412983, "olvido_shard1_z_mse": 0.403927, "datos": "train 800 conv/135143 tok", "t": "2026-11-05T00:09:30-06:00"}
+{"evento": "shard_ok", "shard": 5, "try": 0, "lr": 0.0447214, "val_dz_mse_lenta": 0.415231, "val_z_mse_campo": 0.412838, "olvido_shard1_z_mse": 0.403589, "datos": "train 800 conv/134486 tok", "t": "2026-11-05T00:12:47-06:00"}
+{"evento": "shard_ok", "shard": 6, "try": 0, "lr": 0.0438529, "val_dz_mse_lenta": 0.414183, "val_z_mse_campo": 0.411846, "olvido_shard1_z_mse": 0.40323, "datos": "train 800 conv/134503 tok", "t": "2026-11-05T00:16:01-06:00"}
+{"evento": "shard_ok", "shard": 7, "try": 0, "lr": 0.0430331, "val_dz_mse_lenta": 0.414183, "val_z_mse_campo": 0.411846, "olvido_shard1_z_mse": 0.40323, "datos": "train 800 conv/134339 tok", "t": "2026-11-05T00:19:18-06:00"}
+{"evento": "shard_ok", "shard": 8, "try": 0, "lr": 0.0422577, "val_dz_mse_lenta": 0.414183, "val_z_mse_campo": 0.411846, "olvido_shard1_z_mse": 0.40323, "datos": "train 800 conv/135143 tok", "t": "2026-11-05T00:22:36-06:00"}
+{"evento": "fin", "next_shard": 9}
