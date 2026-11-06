@@ -1,0 +1,10 @@
+DEV a40e epoch=0 nll=0.30503 mlp=0.96471 sec=0.00
+DEV a40e epoch=20 nll=0.10689 mlp=0.41420 sec=0.05
+DEV a40e epoch=40 nll=0.05745 mlp=0.40399 sec=0.10
+DEV a40e epoch=60 nll=0.04348 mlp=0.37297 sec=0.14
+DEV a40e epoch=80 nll=0.03705 mlp=0.35308 sec=0.18
+DEV a40e epoch=100 nll=0.03308 mlp=0.34321 sec=0.22
+DEV a40e epoch=120 nll=0.03027 mlp=0.33627 sec=0.26
+DEV a40e epoch=140 nll=0.02813 mlp=0.33066 sec=0.31
+DEV a40e epoch=160 nll=0.02642 mlp=0.32614 sec=0.35
+DONE DEV a40e seconds=0.395

@@ -1,0 +1,19 @@
+{
+  "phase": "DEV",
+  "workers": 4,
+  "seed_start": 41984,
+  "seed_end": 41999,
+  "source_sha256": "8f56f2cffac5e70e146b4df639bdb1cc5e87f3ca34dffe6d3650b1b465e5fad4",
+  "start_epoch": 1794005886.2460456,
+  "command": [
+    "soft_bellman/run.py",
+    "DEV",
+    "--workers",
+    "4"
+  ],
+  "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)",
+  "system": "Linux x86_64",
+  "nice": 10,
+  "elapsed_seconds": 1.7912592887878418,
+  "completed": 16
+}
