@@ -1,0 +1,88 @@
+{
+  "DEV": {
+    "maps": 48,
+    "refined_vs_coarse_oracle_relative_improvement": 0.10309806441806518,
+    "coarse_vs_edge_oracle_relative_improvement": 0.08220297625362735,
+    "max_abs_interior_regge_deficit": 0.0,
+    "min_cm_volume2": 0.020562919899,
+    "min_transition": 0.185004505192,
+    "max_hodge_symmetry_error": 0.0,
+    "ranges": {
+      "vertices": [
+        12.0,
+        12.0
+      ],
+      "edges": [
+        28.0,
+        33.0
+      ],
+      "faces": [
+        24.0,
+        34.0
+      ],
+      "tetrahedra": [
+        7.0,
+        12.0
+      ],
+      "steiner_states": [
+        43.0,
+        58.0
+      ],
+      "steiner_actions": [
+        452.0,
+        702.0
+      ],
+      "refined_states": [
+        143.0,
+        193.0
+      ],
+      "refined_actions": [
+        4542.0,
+        7182.0
+      ]
+    }
+  },
+  "CONFIRM": {
+    "maps": 48,
+    "refined_vs_coarse_oracle_relative_improvement": 0.11060481902378673,
+    "coarse_vs_edge_oracle_relative_improvement": 0.07420153247218754,
+    "max_abs_interior_regge_deficit": 0.0,
+    "min_cm_volume2": 0.025977178003,
+    "min_transition": 0.163192845886,
+    "max_hodge_symmetry_error": 0.0,
+    "ranges": {
+      "vertices": [
+        12.0,
+        12.0
+      ],
+      "edges": [
+        28.0,
+        33.0
+      ],
+      "faces": [
+        24.0,
+        34.0
+      ],
+      "tetrahedra": [
+        7.0,
+        12.0
+      ],
+      "steiner_states": [
+        43.0,
+        58.0
+      ],
+      "steiner_actions": [
+        452.0,
+        702.0
+      ],
+      "refined_states": [
+        143.0,
+        193.0
+      ],
+      "refined_actions": [
+        4542.0,
+        7182.0
+      ]
+    }
+  }
+}

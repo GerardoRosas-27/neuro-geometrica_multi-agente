@@ -1,0 +1,9 @@
+{
+  "cpu": "Intel(R) Xeon(R) Processor",
+  "os": "Linux-6.12.94+-x86_64-with-glibc2.41",
+  "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)",
+  "workers": 4,
+  "nice": 10,
+  "build_jobs": 2,
+  "dependencies": "Rust std; Python std only for orchestration/statistics"
+}
