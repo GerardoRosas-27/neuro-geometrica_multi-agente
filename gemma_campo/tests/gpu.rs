@@ -3,7 +3,7 @@ use gemma_campo::{cpu::{self, Rng}, features::FeatCfg, gpu::Gpu};
 
 #[test]
 fn gpu_igual_a_cpu() {
-    let cfg = FeatCfg { d: 6, ctx: 2, quad: true };
+    let cfg = FeatCfg { d: 6, ctx: 2, quad: true, bq10: true };
     let (n, f, d) = (3000, cfg.dim(), 6); // n*d=18000 > 256*NWG=16384: varios elementos por hilo en la reducción
     let mut r = Rng(12345);
     let phi: Vec<f32> = (0..n * f).map(|i| if i % f == 0 { 1.0 } else { r.normal() as f32 }).collect();

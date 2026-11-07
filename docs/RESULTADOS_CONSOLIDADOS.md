@@ -1,3 +1,35 @@
+# Resultados Consolidados — Arquitectura Ganadora BQ10 y Líneas de Investigación
+
+## Estructura de las Líneas de Investigación
+
+El proyecto cuenta con dos líneas de investigación principales basadas en la arquitectura ganadora **BQ10 (M1+M2+M6+M7 da=10)** ejecutada nativamente sobre GPU AMD Radeon RX 7800 XT (WGPU/Vulkan):
+
+### 1. Línea Principal: Sustrato de Campo Continuo Token a Token (`gemma_campo`)
+* **Objetivo:** Operar como memoria latente continua paso a paso durante el flujo generativo del LLM, acoplando innovación causal $e(x_t)$ y proyección en subespacio contextual $V_{\text{ctx}}$ ($k_{\text{skip}}=16$).
+* **Ramas:** `exp/gemma-campo-chat`, `exp/gemma-campo-infinito`.
+* **Resultados en Test ($n=60$ conversaciones, bootstrap 10,000):**
+  * $z$-MSE a 1 paso: **0.195968** (vs repeat 1.238695, mejora de **84.2%**).
+  * $\Delta\text{NLL}(\text{campo}-\text{oracle}) = \mathbf{+0.018593}$ (IC95 $[+0.010154, +0.027282] \le 0.05 \implies$ **ÉXITO H2**).
+  * $\Delta\text{NLL}(\text{campo}-\text{repeat}) = \mathbf{-1.315852}$ (IC95 $[-1.389505, -1.242132] < 0 \implies$ **ÉXITO H3/H4**).
+  * Perplejidad (PPL): **5.661** (campo) vs **5.554** (LLM completo intacto) vs **21.104** (repeat).
+  * Olvido catastrófico en Shard 0 tras 9 shards continuos (3 horas): **+0.064%** ($\le 5.0\%$).
+  * Reproducibilidad bit a bit: $\max|W_a - W_b| = 0.000\times 10^0$.
+  * Todas las hipótesis prerregistradas cumplidas: **H1, H1k, H2, H3, OLV, EST, REP**.
+  * Reporte detallado: [`docs/gemma_campo_chat/run_3h_bq10/RESULTADOS.md`](gemma_campo_chat/run_3h_bq10/RESULTADOS.md).
+
+### 2. Segunda Línea de Investigación: Campo de Estado Continuo por Turno (`campo_estado_turno`)
+* **Objetivo:** Predecir y condensar la trayectoria de la conversación a nivel de turno semántico completo ($z_{\text{turn}} \in \mathbb{R}^{64}$ con $F=2721$ modos ortogonales de Lie) y condicionar la generación del LLM congelado mediante un adaptador soft-prompt ($z \to P \cdot H$).
+* **Rama:** `exp/campo-estado-turno`.
+* **Resultados en Test ($n=200$ conversaciones, 759 turnos de asistente, bootstrap 10,000):**
+  * **T1 (Predicción de Dinámica de Turno):** $z\text{-MSE}(\text{campo}) = \mathbf{0.368282}$ vs repeat $1.091795$ ($\Delta = -0.723514$, $P \le 0 = 1.0 \implies$ **ÉXITO**).
+  * **T2 (vs Control MLP 2 capas):** $\Delta = \mathbf{-0.018591}$ (IC95 $[-0.024680, -0.012612] \le 0.019344 \implies$ **ÉXITO**). El campo BQ10 supera al MLP.
+  * **T3 (Eficacia Decodificación Soft-Prompt):** $\text{NLL}(\text{campo}) - \text{NLL}(\text{none}) = \mathbf{-1.317461}$ ($P \le 0 = 1.0 \implies$ **ÉXITO**). La perplejidad cae de **6.999** a **1.874** (reducción del 73.2% en incertidumbre).
+  * **T4 (Especificidad Contextual):** $\text{NLL}(\text{campo}) - \text{NLL}(\text{shuf}) = \mathbf{-0.411890}$ ($P \le 0 = 1.0 \implies$ **ÉXITO**). Brecha vs oráculo perfecto $z_{\text{true}}$ es de solo $+0.044$ nats.
+  * **No-Daño:** Pesos del LLM 100% intactos (SHA-256 verificado: `78685cdf...`), identidad $\max|\text{embeds} - \text{ids}| = 0.0 < 0.05$.
+  * Reporte detallado: [`docs/campo_estado_turno/run_3h_bq10/RESULTADOS.md`](campo_estado_turno/run_3h_bq10/RESULTADOS.md).
+
+---
+
 # Resultados consolidados — selección de la mejor arquitectura
 
 **Ganadora actual: BQ10 (bio-quantum v10) = núcleo ATLAS-FW (M1+M2+M6) + M7 DA-STR** (regularización ridge por grado, `da=10`; rama `exp/bio-quantum-v10-rust` @ `f2b6813`, integrada vía `integra/bio-quantum-v10-main`). CONFIRM: BQ10−v4 new_med_log **−0.6083 [−0.7415, −0.4652]**, BQ10−ATLAS-FW(ALL) **−0.1563 [−0.2692, −0.0434]**, known_acc16 +0.0103 vs v4, E33 16/16, 0 NaN, 0 TEST. Ver [`bio_quantum_v10/RESULTADOS.md`](bio_quantum_v10/RESULTADOS.md) y [`bio_quantum_v10/ANALISIS_POR_QUE_GANA.md`](bio_quantum_v10/ANALISIS_POR_QUE_GANA.md).

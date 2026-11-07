@@ -1,4 +1,22 @@
-> **Mejor versión (en `main`): BQ10 — bio-quantum v10** (`orbita atlas-run --arms v4,BQ10`) = núcleo ATLAS-FW (M1+M2+M6) + M7 DA-STR. CONFIRM: BQ10−v4 new_med_log **−0.608 [−0.742, −0.465]**, BQ10−ATLAS-FW −0.156 [−0.269, −0.043], known_acc16 +0.010 vs v4, E33 16/16. Tabla completa (v4 / ATLAS-FW / BQ10 / ÓRBITA, DEV y CONFIRM) en [`docs/RESULTADOS_CONSOLIDADOS.md`](docs/RESULTADOS_CONSOLIDADOS.md); detalles en [`docs/bio_quantum_v10/`](docs/bio_quantum_v10/).
+> **Arquitectura Ganadora: BQ10 (bio-quantum v10)** = núcleo ATLAS-FW (M1 decay + M2 momentum + M6 dual-rate timescale) + M7 DA-STR (regularización ridge por grado `da=10`) ejecutado sobre AMD Radeon RX 7800 XT (WGPU/Vulkan).
+>
+> ## Estructura de las Líneas de Investigación en el Repositorio
+>
+> 1. **Línea Principal: Sustrato de Campo Continuo Token a Token (`gemma_campo`)**
+>    - **Ramas:** `exp/gemma-campo-chat`, `exp/gemma-campo-infinito`
+>    - **Objetivo:** Memoria continua latente durante la generación del LLM, acoplando innovación causal de embeddings $e(x_t)$ y subespacio contextual $V_{\text{ctx}}$ ($k_{\text{skip}}=16$).
+>    - **Resultados Test (3h GPU AMD RX 7800 XT):** $\Delta\text{NLL}_{\text{campo}-\text{oracle}} = \mathbf{+0.0186} \le 0.05$ (**Pasa H2**), PPL = **5.661** vs 5.554 del LLM intacto, $z$-MSE = **0.196** (vs 1.239 de repeat), olvido catastrófico **+0.064%** ($\le 5\%$). Pasa H1, H1k, H2, H3, OLV, EST, REP.
+>    - **Reporte:** [`docs/gemma_campo_chat/run_3h_bq10/RESULTADOS.md`](docs/gemma_campo_chat/run_3h_bq10/RESULTADOS.md).
+>
+> 2. **Segunda Línea de Investigación: Campo de Estado Continuo por Turno (`campo_estado_turno`)**
+>    - **Rama:** `exp/campo-estado-turno`
+>    - **Objetivo:** Dinámicas latentes a nivel de turno de diálogo completo ($z_t \in \mathbb{R}^{64}$, $F=2721$ modos de Lie) acopladas a decodificador soft-prompt $z \to P \cdot H$ con LLM congelado.
+>    - **Resultados Test (3h GPU AMD RX 7800 XT):** $z$-MSE = **0.368** (supera a MLP 0.387 y repeat 1.092, **Pasa T1 y T2**). NLL cae de 1.946 a **0.628** (PPL cae de 7.00 a **1.87**, **Pasa T3**), supera al control barajado por −0.412 nats (**Pasa T4**). Pesos del LLM 100% intactos.
+>    - **Reporte:** [`docs/campo_estado_turno/run_3h_bq10/RESULTADOS.md`](docs/campo_estado_turno/run_3h_bq10/RESULTADOS.md).
+>
+> Ver reporte consolidado global en [`docs/RESULTADOS_CONSOLIDADOS.md`](docs/RESULTADOS_CONSOLIDADOS.md).
+>
+> CONFIRM BQ10: BQ10−v4 new_med_log **−0.608 [−0.742, −0.465]**, BQ10−ATLAS-FW −0.156 [−0.269, −0.043], known_acc16 +0.010 vs v4, E33 16/16. Detalles en [`docs/bio_quantum_v10/`](docs/bio_quantum_v10/).
 >
 > Anterior: **ATLAS-FW** (`orbita atlas-run`, brazo `ALL`) — aprendiz en contexto sobre CONSTELACIÓN v4 entrenada. CONFIRM: V−v4 en new_med_log **−0.4082 [−0.4985, −0.3190]**, known_acc16 +0.0225 [+0.0171, +0.0278], E33 16/16; reproducido en ablaciones (−0.3742). Ganancia de M1+M2+M6; M3/M4/M5 sin aporte (quedan como interruptores). Ver [`docs/atlas_fw/README.md`](docs/atlas_fw/README.md).
 

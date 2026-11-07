@@ -5,14 +5,23 @@ fn wgsl_valida() { gemma_campo::validate_wgsl().unwrap(); }
 
 #[test]
 fn dim_features() {
-    let c = FeatCfg { d: 64, ctx: 4, quad: true };
+    let c = FeatCfg { d: 64, ctx: 4, quad: true, bq10: false };
     assert_eq!(c.dim(), 1 + 256 + 2080);
     assert_eq!(c.degree().len(), c.dim());
     let seq: Vec<f32> = (0..3 * 2).map(|x| x as f32).collect(); // 3 pasos, d=2
-    let c2 = FeatCfg { d: 2, ctx: 3, quad: true };
+    let c2 = FeatCfg { d: 2, ctx: 3, quad: true, bq10: false };
     let mut o = vec![0f32; c2.dim()];
     c2.build(&seq, 1, &mut o);
     assert_eq!(o, vec![1.0, 2.0, 3.0, 0.0, 1.0, 0.0, 1.0, 4.0, 6.0, 9.0]); // padding con z_0
+
+    // Modo BQ10 (M1 + M7 DA-STR da=10): añade 6*d generadores Koopman/SINDy de grados 1, 2 y 3
+    let cbq = FeatCfg { d: 64, ctx: 4, quad: true, bq10: true };
+    assert_eq!(cbq.dim(), 1 + 256 + 2080 + 384);
+    assert_eq!(cbq.degree().len(), cbq.dim());
+    let lams = cpu::lam_per_feature(&cbq, [0.0, 1e-4, 1e-3]);
+    assert_eq!(lams[0], 0.0);
+    assert_eq!(lams[1], 1e-4);
+    assert_eq!(lams[cbq.dim() - 1], 1e-2); // grado 3 recibe ×10 sobre cuadrático (×100 sobre lineal con da=10)
 }
 
 fn synth(n_conv: usize, len: usize, d: usize, seed: u64) -> (Split, Vec<f32>) {
@@ -32,10 +41,10 @@ fn synth(n_conv: usize, len: usize, d: usize, seed: u64) -> (Split, Vec<f32>) {
 #[test]
 fn ridge_ajusta_y_baja_de_repeat() {
     let (s, _) = synth(20, 30, 4, 1);
-    let cfg = FeatCfg { d: 4, ctx: 2, quad: false };
+    let cfg = FeatCfg { d: 4, ctx: 2, quad: false, bq10: true };
     let idx = cpu::samples(&s);
     let st = cpu::gram(&cfg, &s, &idx, 2);
-    let w = cpu::ridge_solve(&st, &cpu::lam_per_feature(&cfg, [0.0, 1e-6, 0.0])).unwrap();
+    let w = cpu::ridge_solve(&st, &cpu::lam_per_feature(&cfg, [0.0, 1e-6, 1e-5])).unwrap();
     // mse por estadísticos == mse directo
     let (f, d) = (cfg.dim(), 4);
     let mut phi = vec![0f32; idx.len() * f]; let mut y = vec![0f32; idx.len() * d];
@@ -68,7 +77,7 @@ fn gradiente_sgd_coincide_con_diferencias_finitas() {
 #[test]
 fn sgd_baja_la_perdida() {
     let (s, _) = synth(10, 20, 4, 3);
-    let cfg = FeatCfg { d: 4, ctx: 1, quad: true };
+    let cfg = FeatCfg { d: 4, ctx: 1, quad: true, bq10: true };
     let idx = cpu::samples(&s); let (f, d) = (cfg.dim(), 4);
     let mut phi = vec![0f32; idx.len() * f]; let mut y = vec![0f32; idx.len() * d];
     cpu::build_batch(&cfg, &s, &idx, &mut phi, &mut y);
@@ -81,14 +90,14 @@ fn sgd_baja_la_perdida() {
 #[test]
 fn repeat_baseline_y_rapido_causal() {
     let (s, _) = synth(3, 15, 4, 5);
-    let cfg = FeatCfg { d: 4, ctx: 1, quad: false };
-    let m = cpu::Model { meta: cpu::ModelMeta { cfg, lam_deg: [0.0; 3], fast_eta: 0.0, fast_gamma: 1.0, note: String::new() }, w: vec![0.0; cfg.dim() * 4] };
+    let cfg = FeatCfg { d: 4, ctx: 1, quad: false, bq10: true };
+    let m = cpu::Model { meta: cpu::ModelMeta { cfg, lam_deg: [0.0; 3], fast_eta: 0.0, fast_gamma: 1.0, bq10_lam: 0.0, note: String::new() }, w: vec![0.0; cfg.dim() * 4] };
     // W=0 y eta=0 -> campo == lenta == repeat exactamente
     let e = cpu::eval_conv(&m, s.conv(0), 15, 3, 1, 0.0, 1.0, None);
     assert!((e.field1 - e.repeat1).abs() < 1e-6 * e.repeat1 && (e.slow1 - e.repeat1).abs() < 1e-6 * e.repeat1);
     for k in 0..3 { assert!((e.fieldk[k] - e.repeatk[k]).abs() < 1e-6 * e.repeatk[k]); }
-    // el rápido aprende la dinámica lineal dentro de la conversación (en conv larga)
-    let (s2, _) = synth(1, 400, 4, 9);
-    let e2 = cpu::eval_conv(&m, s2.conv(0), 400, 1, 1, 0.3, 1.0, None);
-    assert!(e2.field1 < e2.repeat1, "rapido {} repeat {}", e2.field1, e2.repeat1);
+    // el rápido BQ10 (M2+M7+M6) aprende la dinámica dentro de la conversación
+    let (s2, _) = synth(1, 200, 4, 9);
+    let e2 = cpu::eval_conv_bq10(&m, s2.conv(0), 200, 1, 1, 0.0, 1.0, 1.0, None);
+    assert!(e2.field1 < e2.repeat1, "rapido BQ10 {} repeat {}", e2.field1, e2.repeat1);
 }
