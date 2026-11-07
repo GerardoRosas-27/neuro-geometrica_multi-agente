@@ -178,7 +178,7 @@ pub fn run_learned_evaluation(bridge: &mut GemmaFieldBridge) -> LearnedEvaluatio
         Ok(b) => b,
         Err(e) => {
             eprintln!("Error leyendo {}: {}", CHECKPOINT_WEIGHTS_FILE, e);
-            return panic!("No se pudo leer weights file");
+            panic!("No se pudo leer weights file");
         }
     };
 

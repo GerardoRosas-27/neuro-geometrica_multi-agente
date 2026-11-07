@@ -1,0 +1,10 @@
+{
+  "seed": "0xB400",
+  "same_binary": true,
+  "byte_identical_after_removing_wall_clock_columns": {
+    "metrics.csv": true,
+    "epochs.csv": true,
+    "routes.txt": true,
+    "weights.txt": true
+  }
+}

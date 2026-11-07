@@ -1,0 +1,10 @@
+DEV a400 epoch=0 nll=0.26452 mlp=0.93297 sec=0.00
+DEV a400 epoch=20 nll=0.09763 mlp=0.38500 sec=0.05
+DEV a400 epoch=40 nll=0.05977 mlp=0.37097 sec=0.09
+DEV a400 epoch=60 nll=0.04781 mlp=0.34645 sec=0.13
+DEV a400 epoch=80 nll=0.04184 mlp=0.33754 sec=0.17
+DEV a400 epoch=100 nll=0.03796 mlp=0.33225 sec=0.22
+DEV a400 epoch=120 nll=0.03510 mlp=0.32826 sec=0.26
+DEV a400 epoch=140 nll=0.03285 mlp=0.32423 sec=0.30
+DEV a400 epoch=160 nll=0.03100 mlp=0.31944 sec=0.35
+DONE DEV a400 seconds=0.392

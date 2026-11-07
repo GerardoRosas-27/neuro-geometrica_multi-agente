@@ -1,0 +1,2164 @@
+{
+  "bootstrap": {
+    "resamples": 10000,
+    "seed": 12345,
+    "delta": 0.05,
+    "unit": "independent trained model seed; paired maps within seed",
+    "method": "percentile with linearly interpolated quantiles; CPython random.Random"
+  },
+  "phases": {
+    "DEV": {
+      "train": {
+        "full": {
+          "nll": 0.13155070659375,
+          "accuracy": 0.92123349226875,
+          "success": 1.0,
+          "regret": 8.16488375e-05,
+          "interior_fraction": 0.4883128156625,
+          "eval_ms": 5.52183125,
+          "maps_total": 192,
+          "states_total": 10150,
+          "starts_total": 2112
+        },
+        "diagonal": {
+          "nll": 0.45863207200625,
+          "accuracy": 0.80679962741875,
+          "success": 1.0,
+          "regret": 0.00699330709375,
+          "interior_fraction": 0.50600085678125,
+          "eval_ms": 5.063125,
+          "maps_total": 192,
+          "states_total": 10150,
+          "starts_total": 2112
+        },
+        "edge_diagonal": {
+          "nll": 0.1655521194375,
+          "accuracy": 0.95738636361875,
+          "success": 1.0,
+          "regret": 0.08511386115,
+          "interior_fraction": 0.0,
+          "eval_ms": 0.258175,
+          "maps_total": 192,
+          "states_total": 2304,
+          "starts_total": 2112
+        },
+        "no_phi": {
+          "nll": 0.6881183921,
+          "accuracy": 0.7434862041,
+          "success": 1.0,
+          "regret": 0.0237037865375,
+          "interior_fraction": 0.30718118686875,
+          "eval_ms": 5.22204375,
+          "maps_total": 192,
+          "states_total": 10150,
+          "starts_total": 2112
+        },
+        "untrained": {
+          "nll": 1.24182453046875,
+          "accuracy": 0.728030613925,
+          "success": 1.0,
+          "regret": 0.02614296335625,
+          "interior_fraction": 0.307544191925,
+          "eval_ms": 5.3647125,
+          "maps_total": 192,
+          "states_total": 10150,
+          "starts_total": 2112
+        },
+        "euclidean": {
+          "nll": 1.08424200035625,
+          "accuracy": 0.72885957243125,
+          "success": 1.0,
+          "regret": 0.02623412079375,
+          "interior_fraction": 0.31100063131875,
+          "eval_ms": 4.644275,
+          "maps_total": 192,
+          "states_total": 10150,
+          "starts_total": 2112
+        },
+        "oracle": {
+          "nll": 0.0,
+          "accuracy": 1.0,
+          "success": 1.0,
+          "regret": 0.0,
+          "interior_fraction": 0.480318813125,
+          "eval_ms": 0.02104375,
+          "maps_total": 192,
+          "states_total": 10150,
+          "starts_total": 2112
+        },
+        "paired": {
+          "diagonal": {
+            "regret": {
+              "difference": -0.00691165825625,
+              "ci95": [
+                -0.00774888915203125,
+                -0.0061645340556249996
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.3270813654125,
+              "ci95": [
+                -0.3476591652195312,
+                -0.30655058813453123
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "edge_diagonal": {
+            "regret": {
+              "difference": -0.08503221231250001,
+              "ci95": [
+                -0.09102521635921874,
+                -0.07915926180796874
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.03400141284375,
+              "ci95": [
+                -0.0649575185975,
+                -0.0066158778648437696
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "no_phi": {
+            "regret": {
+              "difference": -0.0236221377,
+              "ci95": [
+                -0.02655471944359375,
+                -0.020865019799531252
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.55656768550625,
+              "ci95": [
+                -0.6040331223867187,
+                -0.512503126304375
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "untrained": {
+            "regret": {
+              "difference": -0.02606131451875,
+              "ci95": [
+                -0.02879640164890625,
+                -0.0235125474203125
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -1.110273823875,
+              "ci95": [
+                -1.219261742396406,
+                -1.0102625562464063
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "euclidean": {
+            "regret": {
+              "difference": -0.02615247195625,
+              "ci95": [
+                -0.028839627751875,
+                -0.02368885306546875
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.9526912937625,
+              "ci95": [
+                -1.0348508993873438,
+                -0.8728774843893751
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          }
+        }
+      },
+      "val": {
+        "full": {
+          "nll": 0.1375109951375,
+          "accuracy": 0.912355617275,
+          "success": 1.0,
+          "regret": 0.00018014438125,
+          "interior_fraction": 0.4898674242375,
+          "eval_ms": 1.9373125,
+          "maps_total": 64,
+          "states_total": 3374,
+          "starts_total": 704
+        },
+        "diagonal": {
+          "nll": 0.50716965364375,
+          "accuracy": 0.7928251134875,
+          "success": 1.0,
+          "regret": 0.0090957121875,
+          "interior_fraction": 0.4970643939375,
+          "eval_ms": 1.6510625,
+          "maps_total": 64,
+          "states_total": 3374,
+          "starts_total": 704
+        },
+        "edge_diagonal": {
+          "nll": 0.21093068071875,
+          "accuracy": 0.9488636363625,
+          "success": 1.0,
+          "regret": 0.09045572101875,
+          "interior_fraction": 0.0,
+          "eval_ms": 0.08762500000000001,
+          "maps_total": 64,
+          "states_total": 768,
+          "starts_total": 704
+        },
+        "no_phi": {
+          "nll": 0.77873665359375,
+          "accuracy": 0.73118439144375,
+          "success": 1.0,
+          "regret": 0.02600869531875,
+          "interior_fraction": 0.31396780303125,
+          "eval_ms": 1.72555,
+          "maps_total": 64,
+          "states_total": 3374,
+          "starts_total": 704
+        },
+        "untrained": {
+          "nll": 1.3380189388375001,
+          "accuracy": 0.71974712721875,
+          "success": 1.0,
+          "regret": 0.02704323945625,
+          "interior_fraction": 0.30714962121875,
+          "eval_ms": 1.76249375,
+          "maps_total": 64,
+          "states_total": 3374,
+          "starts_total": 704
+        },
+        "euclidean": {
+          "nll": 1.16898289285625,
+          "accuracy": 0.7187298923000001,
+          "success": 1.0,
+          "regret": 0.02753054461875,
+          "interior_fraction": 0.30980113636875,
+          "eval_ms": 1.4278625,
+          "maps_total": 64,
+          "states_total": 3374,
+          "starts_total": 704
+        },
+        "oracle": {
+          "nll": 0.0,
+          "accuracy": 1.0,
+          "success": 1.0,
+          "regret": 0.0,
+          "interior_fraction": 0.48226799241875,
+          "eval_ms": 0.006325,
+          "maps_total": 64,
+          "states_total": 3374,
+          "starts_total": 704
+        },
+        "paired": {
+          "diagonal": {
+            "regret": {
+              "difference": -0.00891556780625,
+              "ci95": [
+                -0.01080748469375,
+                -0.0070714742854687505
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.36965865850625,
+              "ci95": [
+                -0.4077721058464063,
+                -0.3332301106778125
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "edge_diagonal": {
+            "regret": {
+              "difference": -0.0902755766375,
+              "ci95": [
+                -0.1012584246834375,
+                -0.07969378138703126
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.07341968558125,
+              "ci95": [
+                -0.16458738779687498,
+                0.004948211246249991
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "no_phi": {
+            "regret": {
+              "difference": -0.0258285509375,
+              "ci95": [
+                -0.0305054198828125,
+                -0.021646254001406254
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.64122565845625,
+              "ci95": [
+                -0.7805036130775,
+                -0.5294251504510938
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "untrained": {
+            "regret": {
+              "difference": -0.026863095075,
+              "ci95": [
+                -0.032173731248125004,
+                -0.022159912605625002
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -1.2005079437,
+              "ci95": [
+                -1.4342932619064062,
+                -0.9940774884623438
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "euclidean": {
+            "regret": {
+              "difference": -0.0273504002375,
+              "ci95": [
+                -0.032789532720625,
+                -0.0227043642984375
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -1.03147189771875,
+              "ci95": [
+                -1.2107072437298438,
+                -0.8666719166687501
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          }
+        }
+      },
+      "test": {
+        "full": {
+          "nll": 0.14268975845625,
+          "accuracy": 0.91388851698125,
+          "success": 1.0,
+          "regret": 9.543383125e-05,
+          "interior_fraction": 0.49707228535,
+          "eval_ms": 11.29119375,
+          "maps_total": 384,
+          "states_total": 20357,
+          "starts_total": 4224
+        },
+        "diagonal": {
+          "nll": 0.51296180665625,
+          "accuracy": 0.795909934075,
+          "success": 1.0,
+          "regret": 0.0083142526,
+          "interior_fraction": 0.52186090819375,
+          "eval_ms": 10.5025875,
+          "maps_total": 384,
+          "states_total": 20357,
+          "starts_total": 4224
+        },
+        "edge_diagonal": {
+          "nll": 0.2158189288625,
+          "accuracy": 0.946022727275,
+          "success": 1.0,
+          "regret": 0.09112749036250001,
+          "interior_fraction": 0.0,
+          "eval_ms": 0.5748125,
+          "maps_total": 384,
+          "states_total": 4608,
+          "starts_total": 4224
+        },
+        "no_phi": {
+          "nll": 0.739175489275,
+          "accuracy": 0.73896753139375,
+          "success": 1.0,
+          "regret": 0.02403061755625,
+          "interior_fraction": 0.3248895202,
+          "eval_ms": 10.675575,
+          "maps_total": 384,
+          "states_total": 20357,
+          "starts_total": 4224
+        },
+        "untrained": {
+          "nll": 1.2818594363625,
+          "accuracy": 0.72989638864375,
+          "success": 1.0,
+          "regret": 0.025944066418749998,
+          "interior_fraction": 0.32199337121875,
+          "eval_ms": 11.08858125,
+          "maps_total": 384,
+          "states_total": 20357,
+          "starts_total": 4224
+        },
+        "euclidean": {
+          "nll": 1.12478945386875,
+          "accuracy": 0.7291273649375,
+          "success": 1.0,
+          "regret": 0.02619572916875,
+          "interior_fraction": 0.32498421718125003,
+          "eval_ms": 8.9950125,
+          "maps_total": 384,
+          "states_total": 20357,
+          "starts_total": 4224
+        },
+        "oracle": {
+          "nll": 0.0,
+          "accuracy": 1.0,
+          "success": 1.0,
+          "regret": 0.0,
+          "interior_fraction": 0.49695785985,
+          "eval_ms": 0.039474999999999996,
+          "maps_total": 384,
+          "states_total": 20357,
+          "starts_total": 4224
+        },
+        "paired": {
+          "diagonal": {
+            "regret": {
+              "difference": -0.00821881876875,
+              "ci95": [
+                -0.008920385122968751,
+                -0.00755626805078125
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.3702720482,
+              "ci95": [
+                -0.3896999138871875,
+                -0.35183795789125
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "edge_diagonal": {
+            "regret": {
+              "difference": -0.09103205653125,
+              "ci95": [
+                -0.09602991480062499,
+                -0.0858380408153125
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.07312917040625,
+              "ci95": [
+                -0.1004318975290625,
+                -0.04901909455328126
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "no_phi": {
+            "regret": {
+              "difference": -0.023935183725,
+              "ci95": [
+                -0.025508623121875,
+                -0.02233793879140625
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.59648573081875,
+              "ci95": [
+                -0.6249384620773438,
+                -0.568731915855
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "untrained": {
+            "regret": {
+              "difference": -0.0258486325875,
+              "ci95": [
+                -0.0275923415125,
+                -0.024146690703437498
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -1.13916967790625,
+              "ci95": [
+                -1.2115234784639062,
+                -1.0684000726737501
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "euclidean": {
+            "regret": {
+              "difference": -0.0261002953375,
+              "ci95": [
+                -0.0277666489078125,
+                -0.02440625422703125
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.9820996954125,
+              "ci95": [
+                -1.0331581730709376,
+                -0.9296169547912501
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          }
+        }
+      },
+      "ood_geometry": {
+        "full": {
+          "nll": 0.14492305483125,
+          "accuracy": 0.90995465295,
+          "success": 1.0,
+          "regret": 9.158760625e-05,
+          "interior_fraction": 0.57441132703125,
+          "eval_ms": 13.61446875,
+          "maps_total": 128,
+          "states_total": 12335,
+          "starts_total": 2176
+        },
+        "diagonal": {
+          "nll": 0.556315059825,
+          "accuracy": 0.7826397726062501,
+          "success": 1.0,
+          "regret": 0.010262947706250001,
+          "interior_fraction": 0.5723728553875,
+          "eval_ms": 11.58855625,
+          "maps_total": 128,
+          "states_total": 12335,
+          "starts_total": 2176
+        },
+        "edge_diagonal": {
+          "nll": 0.30965645785,
+          "accuracy": 0.9140625000125,
+          "success": 1.0,
+          "regret": 0.11397126973125,
+          "interior_fraction": 0.0,
+          "eval_ms": 0.40235625,
+          "maps_total": 128,
+          "states_total": 2304,
+          "starts_total": 2176
+        },
+        "no_phi": {
+          "nll": 0.80351101066875,
+          "accuracy": 0.72135234746875,
+          "success": 1.0,
+          "regret": 0.0304090082125,
+          "interior_fraction": 0.40798428745625,
+          "eval_ms": 11.65445625,
+          "maps_total": 128,
+          "states_total": 12335,
+          "starts_total": 2176
+        },
+        "untrained": {
+          "nll": 1.41587512588125,
+          "accuracy": 0.7109002492125001,
+          "success": 1.0,
+          "regret": 0.030579630406250002,
+          "interior_fraction": 0.4041471536375,
+          "eval_ms": 11.91548125,
+          "maps_total": 128,
+          "states_total": 12335,
+          "starts_total": 2176
+        },
+        "euclidean": {
+          "nll": 1.2484130979875,
+          "accuracy": 0.7090931417875,
+          "success": 1.0,
+          "regret": 0.03209639705,
+          "interior_fraction": 0.40604939891874997,
+          "eval_ms": 10.65765,
+          "maps_total": 128,
+          "states_total": 12335,
+          "starts_total": 2176
+        },
+        "oracle": {
+          "nll": 0.0,
+          "accuracy": 1.0,
+          "success": 1.0,
+          "regret": 0.0,
+          "interior_fraction": 0.56581101190625,
+          "eval_ms": 0.029687500000000002,
+          "maps_total": 128,
+          "states_total": 12335,
+          "starts_total": 2176
+        },
+        "paired": {
+          "diagonal": {
+            "regret": {
+              "difference": -0.0101713601,
+              "ci95": [
+                -0.0111215663396875,
+                -0.0093463608296875
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.41139200499375,
+              "ci95": [
+                -0.44411288083140626,
+                -0.3794130027267188
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "edge_diagonal": {
+            "regret": {
+              "difference": -0.113879682125,
+              "ci95": [
+                -0.1250284350140625,
+                -0.10306691919093751
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.16473340301875,
+              "ci95": [
+                -0.21238821105140626,
+                -0.11902853353796876
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "no_phi": {
+            "regret": {
+              "difference": -0.03031742060625,
+              "ci95": [
+                -0.034024480854375,
+                -0.027097851240312498
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.6585879558375,
+              "ci95": [
+                -0.7235463553967187,
+                -0.5960636962667187
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "untrained": {
+            "regret": {
+              "difference": -0.0304880428,
+              "ci95": [
+                -0.033588089513125,
+                -0.027640993530468748
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -1.27095207105,
+              "ci95": [
+                -1.4264182052404688,
+                -1.1345016984684375
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "euclidean": {
+            "regret": {
+              "difference": -0.03200480944375,
+              "ci95": [
+                -0.035721976012968754,
+                -0.028528567172968755
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -1.10349004315625,
+              "ci95": [
+                -1.2271637731615626,
+                -0.9918750846292189
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          }
+        }
+      },
+      "changed_law": {
+        "full": {
+          "nll": 4.63450127849375,
+          "accuracy": 0.657234191075,
+          "success": 1.0,
+          "regret": 0.092193858725,
+          "interior_fraction": 0.486936891225,
+          "eval_ms": 3.99398125,
+          "maps_total": 128,
+          "states_total": 6775,
+          "starts_total": 1408
+        },
+        "diagonal": {
+          "nll": 2.10940915384375,
+          "accuracy": 0.641559651275,
+          "success": 1.0,
+          "regret": 0.100142977025,
+          "interior_fraction": 0.500099770025,
+          "eval_ms": 3.57056875,
+          "maps_total": 128,
+          "states_total": 6775,
+          "starts_total": 1408
+        },
+        "edge_diagonal": {
+          "nll": 2.08835894985,
+          "accuracy": 0.73224431818125,
+          "success": 1.0,
+          "regret": 0.15357383478125,
+          "interior_fraction": 0.0,
+          "eval_ms": 0.179925,
+          "maps_total": 128,
+          "states_total": 1536,
+          "starts_total": 1408
+        },
+        "no_phi": {
+          "nll": 1.12770783433125,
+          "accuracy": 0.67075899314375,
+          "success": 1.0,
+          "regret": 0.05349864865625,
+          "interior_fraction": 0.31910511364375,
+          "eval_ms": 3.49196875,
+          "maps_total": 128,
+          "states_total": 6775,
+          "starts_total": 1408
+        },
+        "untrained": {
+          "nll": 2.03623966293125,
+          "accuracy": 0.6625515694625,
+          "success": 1.0,
+          "regret": 0.0563359721125,
+          "interior_fraction": 0.31633522726875,
+          "eval_ms": 3.53798125,
+          "maps_total": 128,
+          "states_total": 6775,
+          "starts_total": 1408
+        },
+        "euclidean": {
+          "nll": 1.72843583058125,
+          "accuracy": 0.66216316126875,
+          "success": 1.0,
+          "regret": 0.05748682238125,
+          "interior_fraction": 0.31865530304375,
+          "eval_ms": 3.05190625,
+          "maps_total": 128,
+          "states_total": 6775,
+          "starts_total": 1408
+        },
+        "oracle": {
+          "nll": 0.0,
+          "accuracy": 1.0,
+          "success": 1.0,
+          "regret": 0.0,
+          "interior_fraction": 0.5979217397125,
+          "eval_ms": 0.0125625,
+          "maps_total": 128,
+          "states_total": 6775,
+          "starts_total": 1408
+        },
+        "paired": {
+          "diagonal": {
+            "regret": {
+              "difference": -0.007949118300000002,
+              "ci95": [
+                -0.014377337706250005,
+                -0.0022982189192187535
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": 2.52509212465,
+              "ci95": [
+                2.1287929740354685,
+                2.9478950903253125
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "edge_diagonal": {
+            "regret": {
+              "difference": -0.061379976056249994,
+              "ci95": [
+                -0.07567720901984375,
+                -0.04714823722046874
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": 2.54614232864375,
+              "ci95": [
+                2.009241168772187,
+                3.107624072914687
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "no_phi": {
+            "regret": {
+              "difference": 0.03869521006875,
+              "ci95": [
+                0.03044099281390625,
+                0.04764118947609375
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": 3.5067934441625,
+              "ci95": [
+                2.996734839825156,
+                4.028885299747812
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "untrained": {
+            "regret": {
+              "difference": 0.0358578866125,
+              "ci95": [
+                0.027639226246562502,
+                0.044816237934999996
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": 2.5982616155625,
+              "ci95": [
+                2.1281132894824997,
+                3.0842095215003122
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "euclidean": {
+            "regret": {
+              "difference": 0.03470703634375,
+              "ci95": [
+                0.025720127442031247,
+                0.04452880551078125
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": 2.9060654479125,
+              "ci95": [
+                2.4361505516998436,
+                3.3889364400846866
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          }
+        }
+      },
+      "runtime": {
+        "phase": "DEV",
+        "workers": 4,
+        "seed_start": 41984,
+        "seed_end": 41999,
+        "source_sha256": "b02e6ab2b3fbc1a530af5ebc1b096c050a64731a95b611e41f7bb1d7dd20a59c",
+        "start_epoch": 1794007033.4205902,
+        "command": [
+          "soft_bellman_simplicial/run.py",
+          "DEV",
+          "--workers",
+          "4"
+        ],
+        "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)",
+        "system": "Linux x86_64",
+        "nice": 10,
+        "elapsed_seconds": 9.5986967086792,
+        "completed": 16
+      }
+    },
+    "CONFIRM": {
+      "train": {
+        "full": {
+          "nll": 0.1299957624125,
+          "accuracy": 0.9220203577,
+          "success": 1.0,
+          "regret": 4.753643125e-05,
+          "interior_fraction": 0.4871358676,
+          "eval_ms": 5.23131875,
+          "maps_total": 192,
+          "states_total": 10138,
+          "starts_total": 2112
+        },
+        "diagonal": {
+          "nll": 0.46064133431875,
+          "accuracy": 0.804364658175,
+          "success": 1.0,
+          "regret": 0.0074896485,
+          "interior_fraction": 0.502039366875,
+          "eval_ms": 4.74755,
+          "maps_total": 192,
+          "states_total": 10138,
+          "starts_total": 2112
+        },
+        "edge_diagonal": {
+          "nll": 0.16906376146875,
+          "accuracy": 0.9540719696875,
+          "success": 1.0,
+          "regret": 0.08825720826875,
+          "interior_fraction": 0.0,
+          "eval_ms": 0.23074375,
+          "maps_total": 192,
+          "states_total": 2304,
+          "starts_total": 2112
+        },
+        "no_phi": {
+          "nll": 0.67085590118125,
+          "accuracy": 0.74444727893125,
+          "success": 1.0,
+          "regret": 0.02182793529375,
+          "interior_fraction": 0.3192347582875,
+          "eval_ms": 4.78165,
+          "maps_total": 192,
+          "states_total": 10138,
+          "starts_total": 2112
+        },
+        "untrained": {
+          "nll": 1.2075863048,
+          "accuracy": 0.73012416655625,
+          "success": 1.0,
+          "regret": 0.02373630106875,
+          "interior_fraction": 0.3237058080875,
+          "eval_ms": 4.86568125,
+          "maps_total": 192,
+          "states_total": 10138,
+          "starts_total": 2112
+        },
+        "euclidean": {
+          "nll": 1.0719126566625,
+          "accuracy": 0.7303780975625,
+          "success": 1.0,
+          "regret": 0.0240548704625,
+          "interior_fraction": 0.3248263888875,
+          "eval_ms": 4.31756875,
+          "maps_total": 192,
+          "states_total": 10138,
+          "starts_total": 2112
+        },
+        "oracle": {
+          "nll": 0.0,
+          "accuracy": 1.0,
+          "success": 1.0,
+          "regret": 0.0,
+          "interior_fraction": 0.482354797975,
+          "eval_ms": 0.0207,
+          "maps_total": 192,
+          "states_total": 10138,
+          "starts_total": 2112
+        },
+        "paired": {
+          "diagonal": {
+            "regret": {
+              "difference": -0.00744211206875,
+              "ci95": [
+                -0.00839511558546875,
+                -0.0064750412373437505
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.33064557190625,
+              "ci95": [
+                -0.3534348271420313,
+                -0.30827132840453125
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "edge_diagonal": {
+            "regret": {
+              "difference": -0.0882096718375,
+              "ci95": [
+                -0.09565064826140625,
+                -0.08071585531640625
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.03906799905625,
+              "ci95": [
+                -0.070603787125,
+                -0.009635318402968754
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "no_phi": {
+            "regret": {
+              "difference": -0.021780398862499998,
+              "ci95": [
+                -0.025214723418437498,
+                -0.018948386378125
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.54086013876875,
+              "ci95": [
+                -0.595252318836875,
+                -0.4882512082001562
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "untrained": {
+            "regret": {
+              "difference": -0.023688764637500002,
+              "ci95": [
+                -0.0274844852896875,
+                -0.0204188912903125
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -1.0775905423875,
+              "ci95": [
+                -1.2174180599003126,
+                -0.94488574424875
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "euclidean": {
+            "regret": {
+              "difference": -0.02400733403125,
+              "ci95": [
+                -0.027651588519375,
+                -0.020948575317187502
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.94191689425,
+              "ci95": [
+                -1.05674966764875,
+                -0.83475108222125
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          }
+        }
+      },
+      "val": {
+        "full": {
+          "nll": 0.1372296640375,
+          "accuracy": 0.91646178164375,
+          "success": 1.0,
+          "regret": 6.799310625e-05,
+          "interior_fraction": 0.474120671,
+          "eval_ms": 1.84081875,
+          "maps_total": 64,
+          "states_total": 3316,
+          "starts_total": 704
+        },
+        "diagonal": {
+          "nll": 0.5140827488687499,
+          "accuracy": 0.8005305851875,
+          "success": 1.0,
+          "regret": 0.0078380377375,
+          "interior_fraction": 0.47668087121249997,
+          "eval_ms": 1.53745625,
+          "maps_total": 64,
+          "states_total": 3316,
+          "starts_total": 704
+        },
+        "edge_diagonal": {
+          "nll": 0.32359579396875,
+          "accuracy": 0.93892045454375,
+          "success": 1.0,
+          "regret": 0.08055135268125,
+          "interior_fraction": 0.0,
+          "eval_ms": 0.0861625,
+          "maps_total": 64,
+          "states_total": 768,
+          "starts_total": 704
+        },
+        "no_phi": {
+          "nll": 0.72784857986875,
+          "accuracy": 0.7354216407687499,
+          "success": 1.0,
+          "regret": 0.02240687681875,
+          "interior_fraction": 0.3121685606,
+          "eval_ms": 1.584725,
+          "maps_total": 64,
+          "states_total": 3316,
+          "starts_total": 704
+        },
+        "untrained": {
+          "nll": 1.24826495614375,
+          "accuracy": 0.72691472146875,
+          "success": 1.0,
+          "regret": 0.023439415287499998,
+          "interior_fraction": 0.3086174242375,
+          "eval_ms": 1.5858375,
+          "maps_total": 64,
+          "states_total": 3316,
+          "starts_total": 704
+        },
+        "euclidean": {
+          "nll": 1.08960080878125,
+          "accuracy": 0.727862815775,
+          "success": 1.0,
+          "regret": 0.0229905392,
+          "interior_fraction": 0.31122159090625,
+          "eval_ms": 1.35784375,
+          "maps_total": 64,
+          "states_total": 3316,
+          "starts_total": 704
+        },
+        "oracle": {
+          "nll": 0.0,
+          "accuracy": 1.0,
+          "success": 1.0,
+          "regret": 0.0,
+          "interior_fraction": 0.46979166666875,
+          "eval_ms": 0.005325,
+          "maps_total": 64,
+          "states_total": 3316,
+          "starts_total": 704
+        },
+        "paired": {
+          "diagonal": {
+            "regret": {
+              "difference": -0.00777004463125,
+              "ci95": [
+                -0.0093112105575,
+                -0.006333350714375001
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.37685308483125,
+              "ci95": [
+                -0.43695812169578124,
+                -0.325169306538125
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "edge_diagonal": {
+            "regret": {
+              "difference": -0.080483359575,
+              "ci95": [
+                -0.09297668975328126,
+                -0.0680269962275
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.18636612993125,
+              "ci95": [
+                -0.408098365045,
+                -0.0339354941476563
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "no_phi": {
+            "regret": {
+              "difference": -0.0223388837125,
+              "ci95": [
+                -0.02527437926921875,
+                -0.01955787064265625
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.59061891583125,
+              "ci95": [
+                -0.6627978731125,
+                -0.5226146509667188
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "untrained": {
+            "regret": {
+              "difference": -0.02337142218125,
+              "ci95": [
+                -0.02663243251328125,
+                -0.020324968151562497
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -1.11103529210625,
+              "ci95": [
+                -1.2332108856143749,
+                -0.9916205594029688
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "euclidean": {
+            "regret": {
+              "difference": -0.02292254609375,
+              "ci95": [
+                -0.0256556718828125,
+                -0.02022544042359375
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.95237114474375,
+              "ci95": [
+                -1.0603183325190624,
+                -0.8475585521623438
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          }
+        }
+      },
+      "test": {
+        "full": {
+          "nll": 0.13702789796875,
+          "accuracy": 0.91459004819375,
+          "success": 1.0,
+          "regret": 0.0001073328625,
+          "interior_fraction": 0.47898290945,
+          "eval_ms": 10.53114375,
+          "maps_total": 384,
+          "states_total": 20232,
+          "starts_total": 4224
+        },
+        "diagonal": {
+          "nll": 0.48498289190625,
+          "accuracy": 0.802818877525,
+          "success": 1.0,
+          "regret": 0.0081404752375,
+          "interior_fraction": 0.494710497825,
+          "eval_ms": 9.2880375,
+          "maps_total": 384,
+          "states_total": 20232,
+          "starts_total": 4224
+        },
+        "edge_diagonal": {
+          "nll": 0.2153899275,
+          "accuracy": 0.9446022727375,
+          "success": 1.0,
+          "regret": 0.08375407076875,
+          "interior_fraction": 0.0,
+          "eval_ms": 0.48562500000000003,
+          "maps_total": 384,
+          "states_total": 4608,
+          "starts_total": 4224
+        },
+        "no_phi": {
+          "nll": 0.73000977765,
+          "accuracy": 0.7407267818875,
+          "success": 1.0,
+          "regret": 0.02259997173125,
+          "interior_fraction": 0.31204229798125,
+          "eval_ms": 9.37546875,
+          "maps_total": 384,
+          "states_total": 20232,
+          "starts_total": 4224
+        },
+        "untrained": {
+          "nll": 1.2566407988375,
+          "accuracy": 0.72918281924375,
+          "success": 1.0,
+          "regret": 0.0242071439375,
+          "interior_fraction": 0.31140309344375,
+          "eval_ms": 9.542412500000001,
+          "maps_total": 384,
+          "states_total": 20232,
+          "starts_total": 4224
+        },
+        "euclidean": {
+          "nll": 1.095485075675,
+          "accuracy": 0.73117132471875,
+          "success": 1.0,
+          "regret": 0.02484226680625,
+          "interior_fraction": 0.3141414141375,
+          "eval_ms": 8.144125,
+          "maps_total": 384,
+          "states_total": 20232,
+          "starts_total": 4224
+        },
+        "oracle": {
+          "nll": 0.0,
+          "accuracy": 1.0,
+          "success": 1.0,
+          "regret": 0.0,
+          "interior_fraction": 0.47213147094375,
+          "eval_ms": 0.03364375,
+          "maps_total": 384,
+          "states_total": 20232,
+          "starts_total": 4224
+        },
+        "paired": {
+          "diagonal": {
+            "regret": {
+              "difference": -0.008033142375,
+              "ci95": [
+                -0.008604925058124999,
+                -0.007461236696875001
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.3479549939375,
+              "ci95": [
+                -0.36823560074296874,
+                -0.32763730678359376
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "edge_diagonal": {
+            "regret": {
+              "difference": -0.08364673790625,
+              "ci95": [
+                -0.08764779048,
+                -0.07993704139515626
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.07836202953124999,
+              "ci95": [
+                -0.11132075561468749,
+                -0.05127047329515625
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "no_phi": {
+            "regret": {
+              "difference": -0.02249263886875,
+              "ci95": [
+                -0.02439478753640625,
+                -0.020687517040156252
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.59298187968125,
+              "ci95": [
+                -0.6434639575759376,
+                -0.5453692616757813
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "untrained": {
+            "regret": {
+              "difference": -0.024099811074999998,
+              "ci95": [
+                -0.026076767198749996,
+                -0.022145131636875003
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -1.11961290086875,
+              "ci95": [
+                -1.2228800329514062,
+                -1.0137875500567188
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "euclidean": {
+            "regret": {
+              "difference": -0.02473493394375,
+              "ci95": [
+                -0.02694863420921875,
+                -0.0228637921615625
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.95845717770625,
+              "ci95": [
+                -1.0378452763959374,
+                -0.8811405827845313
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          }
+        }
+      },
+      "ood_geometry": {
+        "full": {
+          "nll": 0.142052625525,
+          "accuracy": 0.91641622414375,
+          "success": 1.0,
+          "regret": 0.00011303195625,
+          "interior_fraction": 0.5637150954125,
+          "eval_ms": 12.685656250000001,
+          "maps_total": 128,
+          "states_total": 12267,
+          "starts_total": 2176
+        },
+        "diagonal": {
+          "nll": 0.6172127686625,
+          "accuracy": 0.77329348218125,
+          "success": 1.0,
+          "regret": 0.01001995325,
+          "interior_fraction": 0.574041309225,
+          "eval_ms": 10.41793125,
+          "maps_total": 128,
+          "states_total": 12267,
+          "starts_total": 2176
+        },
+        "edge_diagonal": {
+          "nll": 0.3856900157125,
+          "accuracy": 0.91084558823125,
+          "success": 1.0,
+          "regret": 0.10355132658125,
+          "interior_fraction": 0.0,
+          "eval_ms": 0.35515,
+          "maps_total": 128,
+          "states_total": 2304,
+          "starts_total": 2176
+        },
+        "no_phi": {
+          "nll": 0.8869682277187501,
+          "accuracy": 0.70749733685,
+          "success": 1.0,
+          "regret": 0.03345657276875,
+          "interior_fraction": 0.38815104166250003,
+          "eval_ms": 10.502675,
+          "maps_total": 128,
+          "states_total": 12267,
+          "starts_total": 2176
+        },
+        "untrained": {
+          "nll": 1.6510852780375,
+          "accuracy": 0.68837680794375,
+          "success": 1.0,
+          "regret": 0.0339052743,
+          "interior_fraction": 0.3854126546375,
+          "eval_ms": 10.43760625,
+          "maps_total": 128,
+          "states_total": 12267,
+          "starts_total": 2176
+        },
+        "euclidean": {
+          "nll": 1.42711929051875,
+          "accuracy": 0.68851377880625,
+          "success": 1.0,
+          "regret": 0.0348831559625,
+          "interior_fraction": 0.390479290675,
+          "eval_ms": 9.66519375,
+          "maps_total": 128,
+          "states_total": 12267,
+          "starts_total": 2176
+        },
+        "oracle": {
+          "nll": 0.0,
+          "accuracy": 1.0,
+          "success": 1.0,
+          "regret": 0.0,
+          "interior_fraction": 0.5556739101875,
+          "eval_ms": 0.02203125,
+          "maps_total": 128,
+          "states_total": 12267,
+          "starts_total": 2176
+        },
+        "paired": {
+          "diagonal": {
+            "regret": {
+              "difference": -0.009906921293749999,
+              "ci95": [
+                -0.01131116865890625,
+                -0.00864580165296875
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.4751601431375,
+              "ci95": [
+                -0.5089550660028125,
+                -0.4424354060634375
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "edge_diagonal": {
+            "regret": {
+              "difference": -0.103438294625,
+              "ci95": [
+                -0.10781985051265626,
+                -0.09881890329937501
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.2436373901875,
+              "ci95": [
+                -0.37283655916453123,
+                -0.129549103273125
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "no_phi": {
+            "regret": {
+              "difference": -0.0333435408125,
+              "ci95": [
+                -0.03888575038125,
+                -0.028432905978281253
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.74491560219375,
+              "ci95": [
+                -0.8391143027331249,
+                -0.6606840561245312
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "untrained": {
+            "regret": {
+              "difference": -0.03379224234375,
+              "ci95": [
+                -0.03916012470953125,
+                -0.028841269678906253
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -1.5090326525125,
+              "ci95": [
+                -1.6818024227629687,
+                -1.3405628094751563
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "euclidean": {
+            "regret": {
+              "difference": -0.03477012400625,
+              "ci95": [
+                -0.0401938292221875,
+                -0.02977674704328125
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -1.28506666499375,
+              "ci95": [
+                -1.4109667492965625,
+                -1.165721690301875
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          }
+        }
+      },
+      "changed_law": {
+        "full": {
+          "nll": 4.8683542710125,
+          "accuracy": 0.65638030558125,
+          "success": 1.0,
+          "regret": 0.0928099484625,
+          "interior_fraction": 0.47940848215,
+          "eval_ms": 3.53125625,
+          "maps_total": 128,
+          "states_total": 6762,
+          "starts_total": 1408
+        },
+        "diagonal": {
+          "nll": 2.059732331,
+          "accuracy": 0.63866623405625,
+          "success": 1.0,
+          "regret": 0.099863383375,
+          "interior_fraction": 0.51416227001875,
+          "eval_ms": 3.13648125,
+          "maps_total": 128,
+          "states_total": 6762,
+          "starts_total": 1408
+        },
+        "edge_diagonal": {
+          "nll": 1.7722232342875,
+          "accuracy": 0.74360795453125,
+          "success": 1.0,
+          "regret": 0.1462318956875,
+          "interior_fraction": 0.0,
+          "eval_ms": 0.167375,
+          "maps_total": 128,
+          "states_total": 1536,
+          "starts_total": 1408
+        },
+        "no_phi": {
+          "nll": 1.078161871125,
+          "accuracy": 0.6829634210062501,
+          "success": 1.0,
+          "regret": 0.0501550814375,
+          "interior_fraction": 0.33686079545625003,
+          "eval_ms": 3.183075,
+          "maps_total": 128,
+          "states_total": 6762,
+          "starts_total": 1408
+        },
+        "untrained": {
+          "nll": 1.8833255081937499,
+          "accuracy": 0.67131453705625,
+          "success": 1.0,
+          "regret": 0.054059814649999996,
+          "interior_fraction": 0.3307528409125,
+          "eval_ms": 3.2496125,
+          "maps_total": 128,
+          "states_total": 6762,
+          "starts_total": 1408
+        },
+        "euclidean": {
+          "nll": 1.6129484565,
+          "accuracy": 0.67500006863125,
+          "success": 1.0,
+          "regret": 0.0527838919875,
+          "interior_fraction": 0.33357007575,
+          "eval_ms": 2.74620625,
+          "maps_total": 128,
+          "states_total": 6762,
+          "starts_total": 1408
+        },
+        "oracle": {
+          "nll": 0.0,
+          "accuracy": 1.0,
+          "success": 1.0,
+          "regret": 0.0,
+          "interior_fraction": 0.58437499999375,
+          "eval_ms": 0.0103,
+          "maps_total": 128,
+          "states_total": 6762,
+          "starts_total": 1408
+        },
+        "paired": {
+          "diagonal": {
+            "regret": {
+              "difference": -0.007053434912500002,
+              "ci95": [
+                -0.0134184439453125,
+                -0.0009709070993750084
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": 2.8086219400125,
+              "ci95": [
+                2.4117617591096874,
+                3.2379818349268747
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "edge_diagonal": {
+            "regret": {
+              "difference": -0.053421947225,
+              "ci95": [
+                -0.069673428070625,
+                -0.03906431913468749
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": 3.096131036725,
+              "ci95": [
+                2.5021378043806246,
+                3.6601558126954687
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "no_phi": {
+            "regret": {
+              "difference": 0.042654867025,
+              "ci95": [
+                0.035024928263125,
+                0.05134691692640624
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": 3.7901923998875,
+              "ci95": [
+                3.3101654307775,
+                4.2728472747506245
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "untrained": {
+            "regret": {
+              "difference": 0.0387501338125,
+              "ci95": [
+                0.03165066686015625,
+                0.046997588149375
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": 2.98502876281875,
+              "ci95": [
+                2.5359806175367186,
+                3.4457226599760937
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "euclidean": {
+            "regret": {
+              "difference": 0.040026056474999995,
+              "ci95": [
+                0.03285792695765625,
+                0.0480715466771875
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": 3.2554058145124998,
+              "ci95": [
+                2.801182481247344,
+                3.7111027582029683
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          }
+        }
+      },
+      "runtime": {
+        "phase": "CONFIRM",
+        "workers": 4,
+        "seed_start": 46080,
+        "seed_end": 46095,
+        "source_sha256": "b02e6ab2b3fbc1a530af5ebc1b096c050a64731a95b611e41f7bb1d7dd20a59c",
+        "start_epoch": 1794007086.2444873,
+        "command": [
+          "soft_bellman_simplicial/run.py",
+          "CONFIRM",
+          "--workers",
+          "4"
+        ],
+        "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)",
+        "system": "Linux x86_64",
+        "nice": 10,
+        "elapsed_seconds": 9.349267959594727,
+        "completed": 16
+      }
+    }
+  },
+  "primary_pass": true
+}

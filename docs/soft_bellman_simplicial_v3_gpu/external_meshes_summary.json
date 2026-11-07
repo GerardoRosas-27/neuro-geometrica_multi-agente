@@ -1,0 +1,53 @@
+[
+  {
+    "mesh_name": "corridor_l_obstacle_3d",
+    "format_tested": "Medit ASCII (.mesh)",
+    "vertices": 16,
+    "edges": 47,
+    "faces": 50,
+    "tetrahedra": 18,
+    "coarse_states": 84,
+    "refined_states": 281,
+    "edge_only_oracle_cost": 7.138449579645297,
+    "coarse_steiner_oracle_cost": 6.862848421939359,
+    "refined_steiner_oracle_cost": 6.674965682833802,
+    "v3_continuous_snell_cost": 6.67843559966558,
+    "v3_regret_vs_coarse_pct": -2.687117810794748,
+    "v3_regret_vs_refined_pct": 0.051984040018382416,
+    "interior_fraction_pct": 75.0
+  },
+  {
+    "mesh_name": "snell_refraction_prism_3d",
+    "format_tested": "Legacy VTK UnstructuredGrid (.vtk)",
+    "vertices": 18,
+    "edges": 57,
+    "faces": 64,
+    "tetrahedra": 24,
+    "coarse_states": 106,
+    "refined_states": 355,
+    "edge_only_oracle_cost": 5.4897382611355825,
+    "coarse_steiner_oracle_cost": 4.783225259294059,
+    "refined_steiner_oracle_cost": 4.724763531504506,
+    "v3_continuous_snell_cost": 4.733560876238072,
+    "v3_regret_vs_coarse_pct": -1.0383032444371332,
+    "v3_regret_vs_refined_pct": 0.18619650856399605,
+    "interior_fraction_pct": 100.0
+  },
+  {
+    "mesh_name": "corridor_l_obstacle_3d",
+    "format_tested": "Simplicial JSON (.json)",
+    "vertices": 16,
+    "edges": 47,
+    "faces": 50,
+    "tetrahedra": 18,
+    "coarse_states": 84,
+    "refined_states": 281,
+    "edge_only_oracle_cost": 7.138449579645297,
+    "coarse_steiner_oracle_cost": 6.862848421939359,
+    "refined_steiner_oracle_cost": 6.674965682833802,
+    "v3_continuous_snell_cost": 6.67843559966558,
+    "v3_regret_vs_coarse_pct": -2.687117810794748,
+    "v3_regret_vs_refined_pct": 0.051984040018382416,
+    "interior_fraction_pct": 75.0
+  }
+]

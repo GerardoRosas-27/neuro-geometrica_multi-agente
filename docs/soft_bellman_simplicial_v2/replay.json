@@ -1,0 +1,12 @@
+{
+  "seed": "0xB400",
+  "four_models_retrained": true,
+  "same_binary": true,
+  "identical_after_removing_wall_clock_fields": {
+    "metrics.csv": true,
+    "epochs.csv": true,
+    "geometry.csv": true,
+    "routes.txt": true,
+    "weights.txt": true
+  }
+}

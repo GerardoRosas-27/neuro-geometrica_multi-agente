@@ -154,7 +154,7 @@ mod tests {
         let mut engine = GpuBioQuantumEngine::new(config, &mut rng);
 
         println!("Adaptador GPU inicializado: {} ({})", engine.adapter_name, engine.adapter_backend);
-        let (violations, total) = engine.audit_dales_law_gpu();
+        let (violations, total, _) = engine.audit_dales_law_gpu();
         println!("Auditoría GPU Dale: {} violaciones en {} sinapsis.", violations, total);
         assert_eq!(violations, 0, "No debe haber violaciones a la Ley de Dale en GPU");
         std::mem::forget(engine);

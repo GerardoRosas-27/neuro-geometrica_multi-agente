@@ -1,0 +1,22 @@
+{
+  "source_sha256": "b02e6ab2b3fbc1a530af5ebc1b096c050a64731a95b611e41f7bb1d7dd20a59c",
+  "preregistration_commit": "4b2c05b2e4da614a584f3df7df6742f4c6b6fe6d",
+  "epochs": 120,
+  "train_maps": 12,
+  "validation_maps": 4,
+  "test_maps": 24,
+  "ood_geometry_maps": 8,
+  "changed_law_maps": 8,
+  "tau": 0.03,
+  "metric_epsilon": 0.01,
+  "adam_lr": 0.03,
+  "training_models_per_seed": [
+    "full9",
+    "diagonal6",
+    "edge_diagonal6",
+    "no_phi6"
+  ],
+  "dev_completed": 16,
+  "confirm_started": false,
+  "notes": "No source or hyperparameter changes after DEV; complete/diagonal primary comparison uses exactly same Steiner graph and labels."
+}
