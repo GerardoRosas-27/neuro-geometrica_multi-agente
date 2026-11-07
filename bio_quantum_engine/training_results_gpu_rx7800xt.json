@@ -4,13 +4,13 @@
     "backend": "Gl",
     "total_episodes": 1638400,
     "batch_size": 4096,
-    "n_points": 512,
-    "d_basis": 512,
-    "elapsed_seconds": 34.185,
-    "episodes_per_sec": 47927.4,
-    "initial_loss_mse": 0.000146,
-    "final_loss_mse": 0.000253,
-    "loss_reduction_pct": -73.93,
+    "n_points": 1024,
+    "d_basis": 1024,
+    "elapsed_seconds": 86.804,
+    "episodes_per_sec": 18874.7,
+    "initial_loss_mse": 0.000552,
+    "final_loss_mse": 0.000478,
+    "loss_reduction_pct": 13.47,
     "dale_violations": 0
   }
 }

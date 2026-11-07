@@ -1,0 +1,14 @@
+{
+  "adapter_name": "AMD Radeon RX 7800 XT",
+  "adapter_backend": "Vulkan",
+  "driver_info": "AMD proprietary driver (26.5.1 (LLPC))",
+  "num_states_dispatched": 1260,
+  "num_edges_dispatched": 14548,
+  "num_tets_dispatched": 240,
+  "bellman_layers": 58,
+  "gpu_dispatch_ms": 18.0944,
+  "max_cost_abs_diff_vs_cpu": 1.3684710191697036e-6,
+  "max_value_abs_diff_vs_cpu": 1.6064319297015572e-6,
+  "min_cm_volume2_gpu": 0.05376594141125679,
+  "mean_cm_log_barrier_gpu": 2.468348407227716
+}

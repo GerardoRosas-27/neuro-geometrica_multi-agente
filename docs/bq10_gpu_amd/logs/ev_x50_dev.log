@@ -1,0 +1,18 @@
+pesos=x50/weights_x50.bin d_basis=1024 sinapsis=4096 (wp; wf=1e-4 fijo) | Dale viol (w<0)=0 | w<1e-4=0 | CONGELADO, sin adaptación
+  Semilla 0xa400: known acc16=  0.0% log=  0.618 | new acc16=  0.0% log=  0.460 | E33=false [0.0, 0.0, 0.0, 0.0, 0.0]
+  Semilla 0xa401: known acc16=  0.0% log=  0.613 | new acc16=  0.0% log=  0.446 | E33=false [0.0, 0.0, 0.0, 0.0, 0.0]
+  Semilla 0xa402: known acc16=  0.0% log=  0.589 | new acc16=  0.0% log=  0.394 | E33=false [0.0, 0.0, 0.0, 0.0, 0.0]
+  Semilla 0xa403: known acc16=  0.0% log=  0.549 | new acc16=  0.0% log=  0.455 | E33=false [0.0, 0.0, 0.0, 0.0, 0.0]
+  Semilla 0xa404: known acc16=  0.0% log=  0.597 | new acc16=  0.0% log=  0.440 | E33=false [0.0, 0.0, 0.0, 0.0, 0.0]
+  Semilla 0xa405: known acc16=  0.0% log=  0.595 | new acc16=  0.0% log=  0.425 | E33=false [0.0, 0.0, 0.0, 0.0, 0.0]
+  Semilla 0xa406: known acc16=  0.0% log=  0.588 | new acc16=  0.0% log=  0.428 | E33=false [0.0, 0.0, 0.0, 0.0, 0.0]
+  Semilla 0xa407: known acc16=  0.0% log=  0.610 | new acc16=  0.0% log=  0.455 | E33=false [0.0, 0.0, 0.0, 0.0, 0.0]
+  Semilla 0xa408: known acc16=  0.0% log=  0.562 | new acc16=  0.0% log=  0.442 | E33=false [0.0, 0.0, 0.0, 0.0, 0.0]
+  Semilla 0xa409: known acc16=  0.0% log=  0.619 | new acc16=  0.0% log=  0.454 | E33=false [0.0, 0.0, 0.0, 0.0, 0.0]
+  Semilla 0xa40a: known acc16=  0.0% log=  0.573 | new acc16=  0.0% log=  0.482 | E33=false [0.0, 0.0, 0.0, 0.0, 0.0]
+  Semilla 0xa40b: known acc16=  0.0% log=  0.547 | new acc16=  0.0% log=  0.455 | E33=false [0.0, 0.0, 0.0, 0.0, 0.0]
+  Semilla 0xa40c: known acc16=  0.0% log=  0.597 | new acc16=  0.0% log=  0.438 | E33=false [0.0, 0.0, 0.0, 0.0, 0.0]
+  Semilla 0xa40d: known acc16=  0.0% log=  0.603 | new acc16=  0.0% log=  0.503 | E33=false [0.0, 0.0, 0.0, 0.0, 0.0]
+  Semilla 0xa40e: known acc16=  0.0% log=  0.588 | new acc16=  0.0% log=  0.473 | E33=false [0.0, 0.0, 0.0, 0.0, 0.0]
+  Semilla 0xa40f: known acc16=  0.0% log=  0.611 | new acc16=  0.0% log=  0.425 | E33=false [0.0, 0.0, 0.0, 0.0, 0.0]
+RESUMEN DEV x50/weights_x50.bin: known acc16=0.00% medlog=0.5910 | new acc16=0.00% medlog=0.4485 | E33 0/16 | Dale viol 0

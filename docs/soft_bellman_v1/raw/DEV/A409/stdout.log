@@ -1,0 +1,10 @@
+DEV a409 epoch=0 nll=0.31022 mlp=0.98602 sec=0.00
+DEV a409 epoch=20 nll=0.11540 mlp=0.46219 sec=0.05
+DEV a409 epoch=40 nll=0.06193 mlp=0.44779 sec=0.10
+DEV a409 epoch=60 nll=0.04698 mlp=0.41811 sec=0.15
+DEV a409 epoch=80 nll=0.04049 mlp=0.40500 sec=0.19
+DEV a409 epoch=100 nll=0.03667 mlp=0.39884 sec=0.24
+DEV a409 epoch=120 nll=0.03404 mlp=0.39408 sec=0.28
+DEV a409 epoch=140 nll=0.03208 mlp=0.38972 sec=0.33
+DEV a409 epoch=160 nll=0.03054 mlp=0.38573 sec=0.38
+DONE DEV a409 seconds=0.427

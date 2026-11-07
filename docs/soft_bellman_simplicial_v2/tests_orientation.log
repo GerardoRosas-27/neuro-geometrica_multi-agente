@@ -1,0 +1,17 @@
+running 14 tests
+test orientation_audit::gauge_exact_form_has_no_face_curl ... ok
+test orientation_audit::hodge_edge_orientation_covariance ... ok
+test tests::barycentric_formula_and_permutation ... ok
+test orientation_audit::symmetric_transport_and_positive_face_density ... ok
+test tests::cm_and_spd ... ok
+test tests::boundaries_and_coherent_orientation ... ok
+test tests::goals_unreachable_and_dedup ... ok
+test tests::executable_and_refinement ... ok
+test tests::hodge_weighted_adjoint_psd ... ok
+test tests::learning_smoke ... ok
+test tests::regge_interior_only ... ok
+test tests::replay_and_no_label_leak ... ok
+test tests::vertex_relabel_invariance ... ok
+test tests::gradient_all_variants ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s

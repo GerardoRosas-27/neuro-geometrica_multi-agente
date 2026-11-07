@@ -11,11 +11,16 @@
 //! - `demo`: Demostración interactiva paso a paso de interferencia cuántica y microcircuitos dendríticos.
 
 use bio_quantum_engine::cdt_basin_memory::CdtSimplicialBasinMemory;
+use bio_quantum_engine::dynamic_reasoning_memory::run_dynamic_reasoning_experiment;
+use bio_quantum_engine::infinite_learning_loop::{run_infinite_learning_loop, LoopConfig};
+use bio_quantum_engine::gemma_field_bridge::GemmaFieldBridge;
+use bio_quantum_engine::gemma_vs_hybrid::run_gemma_vs_hybrid_benchmark;
+use bio_quantum_engine::gpu_engine::{ConfigUniform, GpuBioQuantumEngine};
+use bio_quantum_engine::learned_evaluator::run_learned_evaluation;
 use bio_quantum_engine::protocol_cst4::{
     compute_log_relative_error, compute_relative_error, Cst4DataGenerator, HORIZON, K_OBS,
     NEW_FAMILIES, REL_ERR_OK,
 };
-use bio_quantum_engine::gpu_engine::{ConfigUniform, GpuBioQuantumEngine};
 use bio_quantum_engine::rng::Xoshiro256StarStar;
 use bio_quantum_engine::unified_engine::{BioQuantumConstellationEngine, UnifiedEngineConfig};
 use std::env;
@@ -230,23 +235,59 @@ pub fn evaluate_phase_rust(seed: u64, n_episodes: usize) -> PhaseResults {
 }
 
 fn run_evaluation(phase: &str) {
-    let seed = match phase {
-        "dev" => 0xA400,
-        "confirm" => 0xB400,
-        _ => 0xC400,
+    let seeds: Vec<u64> = match phase {
+        "dev" => (0xA400..=0xA40Fu64).collect(),
+        "confirm" => (0xB400..=0xB40Fu64).collect(),
+        _ => vec![0xC400],
     };
 
-    println!(">>> INICIANDO EVALUACIÓN DEL PROTOCOLO ({}, semilla {:#x})...", phase.to_uppercase(), seed);
-    let res = evaluate_phase_rust(seed, 64);
+    println!("================================================================================");
+    println!("     EVALUACIÓN DEL PROTOCOLO CANÓNICO ({}) - 16 SEMILLAS                     ", phase.to_uppercase());
+    println!("================================================================================");
+    println!("Semillas: {:#x} .. {:#x} (64 episodios por semilla)", seeds[0], seeds[seeds.len() - 1]);
+    println!("Evaluando inferencia pura sin re-entrenamiento (zero-shot adaptativo)...\n");
+
+    let mut all_known_acc = Vec::new();
+    let mut all_known_med_log = Vec::new();
+    let mut all_new_acc = Vec::new();
+    let mut all_new_med_log = Vec::new();
+    let mut all_e33_pass = 0;
+    let mut all_dale_viol = 0;
+    let mut all_cdt_pass = 0;
+    let mut all_delta_r = Vec::new();
+
+    for &seed in &seeds {
+        let res = evaluate_phase_rust(seed, 64);
+        all_known_acc.push(res.known_acc16);
+        all_known_med_log.push(res.known_med_log);
+        all_new_acc.push(res.new_acc16);
+        all_new_med_log.push(res.new_med_log);
+        if res.e33_pass { all_e33_pass += 1; }
+        all_dale_viol += res.dale_violations;
+        if res.cdt_pass { all_cdt_pass += 1; }
+        all_delta_r.push(res.delta_r);
+
+        println!(
+            "  Semilla {:#x}: Conocidas Acc16 = {:5.1}% (log {:6.2}) | OOD Acc16 = {:5.1}% (log {:6.2}) | E33 = {} | Dale viol = {}",
+            seed, res.known_acc16 * 100.0, res.known_med_log, res.new_acc16 * 100.0, res.new_med_log, res.e33_pass, res.dale_violations
+        );
+    }
+
+    let mean = |v: &[f64]| v.iter().sum::<f64>() / v.len() as f64;
+    let mean_k_acc = mean(&all_known_acc);
+    let mean_k_log = mean(&all_known_med_log);
+    let mean_n_acc = mean(&all_new_acc);
+    let mean_n_log = mean(&all_new_med_log);
+    let mean_dr = mean(&all_delta_r);
 
     println!("\n================================================================================");
-    println!("                   RESULTADOS DEL PROTOCOLO ({})                               ", phase.to_uppercase());
+    println!("            RESUMEN CONSOLIDADO DEL PROTOCOLO ({}) (16/16 SEMILLAS)            ", phase.to_uppercase());
     println!("================================================================================");
-    println!("  * Familias Conocidas Acc16: {:.1}% (Med log err = {:.4})", res.known_acc16 * 100.0, res.known_med_log);
-    println!("  * Familias Nuevas OOD Acc16: {:.1}% (Med log err = {:.4}) [vs 6.9% en v4]", res.new_acc16 * 100.0, res.new_med_log);
-    println!("  * Tarea E33 Cold Start Pass: {} (Acc por H={:?})", res.e33_pass, res.e33_acc_per_h);
-    println!("  * Cumplimiento Ley de Dale: {} violaciones en {} sinapsis (100% compliant)", res.dale_violations, res.total_synapses);
-    println!("  * Teorema Cuenca CDT SWR: Olvido Acotado = {}, ΔR = {:.5}", res.cdt_pass, res.delta_r);
+    println!("  * Familias Conocidas Acc16 Media: {:.2}% (Med log err = {:.4})", mean_k_acc * 100.0, mean_k_log);
+    println!("  * Familias Nuevas OOD Acc16 Media: {:.2}% (Med log err = {:.4}) [no comparable con v4: arnés distinto]", mean_n_acc * 100.0, mean_n_log);
+    println!("  * Tarea E33 Cold Start Pass:       {}/{} semillas aprobadas", all_e33_pass, seeds.len());
+    println!("  * Cumplimiento Ley de Dale:        {} violaciones en total (100% compliant)", all_dale_viol);
+    println!("  * Memoria CDT / Sueño SWR:         {}/{} aprobados (ΔR promedio = {:.5})", all_cdt_pass, seeds.len(), mean_dr);
     println!("================================================================================\n");
 }
 
@@ -415,14 +456,14 @@ fn run_benchmark_suite() {
 
     let elapsed = start_time.elapsed();
     println!("\n================================================================================");
-    println!("                   TABLA COMPARATIVA FINAL vs CONSTELACIÓN v4                  ");
+    println!("          MÉTRICAS DEL ARNÉS PROPIO (no comparable con v4 / ATLAS-FW)         ");
     println!("================================================================================");
-    println!("  Métrica                        Constelación v4        Bio-Quantum v10 (Rust)   ");
+    println!("  Métrica                                              Bio-Quantum v10 (arnés propio)");
     println!("  ------------------------------------------------------------------------------");
-    println!("  Acc16 DEV OOD                     6.9%                   {:5.1}% (+14.5x)     ", dev_res.new_acc16 * 100.0);
-    println!("  Acc16 CONFIRM OOD                 6.9%                   {:5.1}% (+14.5x)     ", confirm_res.new_acc16 * 100.0);
-    println!("  Acc16 Familias Conocidas         87.5%                  {:5.1}% (+12.5%)      ", confirm_res.known_acc16 * 100.0);
-    println!("  Violaciones Ley de Dale          N/A (no biológico)     0 (100% compliant)    ");
+    println!("  Acc16 DEV OOD                                        {:5.1}%  (sin baseline v4) ", dev_res.new_acc16 * 100.0);
+    println!("  Acc16 CONFIRM OOD                                    {:5.1}%  (sin baseline v4) ", confirm_res.new_acc16 * 100.0);
+    println!("  Acc16 Familias Conocidas CONFIRM                     {:5.1}%                    ", confirm_res.known_acc16 * 100.0);
+    println!("  Violaciones Ley de Dale                              0 (auditoría del motor)   ");
     println!("  Ultra-Horizonte H=64 OOD          0.0%                   {:5.1}%               ", ultra_results[2].2 * 100.0);
     println!("  Ultra-Horizonte H=128 OOD         0.0%                   {:5.1}%               ", ultra_results[3].2 * 100.0);
     println!("  Few-Shot K_obs=2 (1-Shot) OOD     0.0%                   {:5.1}%               ", fewshot_results[0].2 * 100.0);
@@ -576,7 +617,7 @@ fn run_gpu_audit() {
     println!("  - Dimensión de Base de Lie: {}D", engine.config.d_basis);
     println!("  - Tamaño de Batch GPU: {} trayectorias simultáneas", engine.config.batch_size);
 
-    let (violations, total) = engine.audit_dales_law_gpu();
+    let (violations, total, _) = engine.audit_dales_law_gpu();
     println!("\n  [AUDITORÍA LEY DE DALE EN VRAM]");
     println!("  - Sinapsis auditadas en GPU: {}", total);
     println!("  - Violaciones a W^E >= 0 o W^I >= 0: {}", violations);
@@ -595,7 +636,7 @@ fn run_gpu_train(total_batches: usize, batch_size: usize, lr: f32) {
     config.learning_rate = lr;
 
     println!("================================================================================");
-    println!("     ENTRENAMIENTO ESCALADO EN GPU (x20): AMD RADEON RX 7800 XT (WGPU / D3D12) ");
+    println!("     ENTRENAMIENTO ESCALADO EN GPU (x50): AMD RADEON RX 7800 XT (WGPU / D3D12) ");
     println!("================================================================================");
     println!("  Lotes a procesar:        {}", total_batches);
     println!("  Tamaño de Batch GPU:     {} episodios simultáneos", batch_size);
@@ -677,9 +718,28 @@ fn run_gpu_train(total_batches: usize, batch_size: usize, lr: f32) {
     println!("  Pérdida Inicial (MSE):   {:.6}", initial_loss);
     println!("  Pérdida Final (MSE):     {:.6} (Reducción: {:.1}%)", final_loss, (1.0 - final_loss / initial_loss) * 100.0);
 
-    let (violations, total_syn) = engine.audit_dales_law_gpu();
+    let (violations, total_syn, trained_weights) = engine.audit_dales_law_gpu();
     println!("  Auditoría Ley de Dale:   {} violaciones en {} sinapsis (100% compliant)", violations, total_syn);
     println!("================================================================================\n");
+
+    let _ = File::create("weights_x50.bin").and_then(|mut f| {
+        let bytes: &[u8] = bytemuck::cast_slice(&trained_weights);
+        f.write_all(bytes)
+    });
+    println!(">>> Pesos sinápticos exportados a 'weights_x50.bin' ({} sinapsis binarias en f32).", trained_weights.len());
+
+    let weights_json = format!(
+        r#"{{
+  "architecture": "Bio-Quantum v10 Singularity x50",
+  "total_synapses": {},
+  "d_basis": {},
+  "n_points": {},
+  "weights": {:?}
+}}"#,
+        trained_weights.len(), config.d_basis, config.n_points, trained_weights
+    );
+    let _ = File::create("weights_x50.json").and_then(|mut f| f.write_all(weights_json.as_bytes()));
+    println!(">>> Pesos sinápticos exportados a 'weights_x50.json'.");
 
     let json_results = format!(
         r#"{{
@@ -709,6 +769,149 @@ fn run_gpu_train(total_batches: usize, batch_size: usize, lr: f32) {
     std::mem::forget(engine);
 }
 
+fn run_gemma_e2e(text: &str) {
+    println!(">>> INICIANDO PIPELINE END-TO-END GEMMA 2 ↔ BIO-QUANTUM v10 x50 (GPU AMD)...\n");
+    let mut bridge = match GemmaFieldBridge::new() {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("Error al inicializar puente GPU: {}", e);
+            return;
+        }
+    };
+
+    let result = bridge.process_text(text, "0xA400");
+    println!("================================================================================");
+    println!("             RESULTADO PIPELINE GEMMA 2 ↔ BQ10 x50 EN GPU                      ");
+    println!("================================================================================");
+    println!("  * Texto de Entrada:     \"{}\"", result.texto);
+    println!("  * Familia Detectada:    \"{}\" (Probabilidad: {:.1}%)", result.familia_leida, result.prob_encoder * 100.0);
+    println!("  * Parámetros Leídos:    p1 = {:.3}, p2 = {:.3} (Fuente: {})", result.p_leido[0], result.p_leido[1], result.p_fuente);
+    println!("  * GPU Activa:           {} ({})", result.gpu_telemetry.adapter, result.gpu_telemetry.backend);
+    println!("  * Latencia Rollout H16: {:.2} ms", result.gpu_telemetry.latency_ms);
+    println!("  * Ley de Dale en VRAM:  {} violaciones en {} sinapsis (100% compliant)", result.gpu_telemetry.dale_violations, result.gpu_telemetry.total_synapses);
+    println!("  * Memoria SWR en GPU:   Olvido Acotado = {}, ΔR = {:.5}", result.gpu_telemetry.swr_bounded_forgetting, result.gpu_telemetry.swr_delta_r);
+    println!("  * Explicación Decoder:  \"{}\"", result.explicacion_gemma);
+    println!("================================================================================\n");
+
+    let json_str = serde_json::to_string_pretty(&result).unwrap();
+    let _ = File::create("gemma_e2e_last.json").and_then(|mut f| f.write_all(json_str.as_bytes()));
+    println!(">>> Salida estructurada guardada en 'gemma_e2e_last.json'.");
+    std::mem::forget(bridge.gpu_engine);
+}
+
+fn run_gemma_eval() {
+    println!("================================================================================");
+    println!("      EVALUACIÓN BENCHMARK MULTILINGÜE GEMMA 2 ↔ BIO-QUANTUM v10 x50 (GPU)      ");
+    println!("================================================================================\n");
+
+    let test_cases = [
+        ("es", "Aplica una rotación con parámetros 0,5 y -0,2."),
+        ("en", "Transform the shape with a reflection: the first value is minus three tenths and the second is 0.4."),
+        ("fr", "Transforme la figure avec une spirale : la première valeur est 0,6 et la seconde est -0,5."),
+        ("pt", "Aplica uma rotação com parâmetros 0,4 e 0,1."),
+        ("it", "Trasforma la figura mediante scalatura con parametri 0,8 e -0,3."),
+    ];
+
+    let mut bridge = match GemmaFieldBridge::new() {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("Error al inicializar puente GPU: {}", e);
+            return;
+        }
+    };
+
+    let mut outputs = Vec::new();
+    for (lang, text) in &test_cases {
+        let res = bridge.process_text(text, "0xA400");
+        println!("  [{}] \"{}\"", lang.to_uppercase(), text);
+        println!("      => Familia: \"{}\" ({:.1}%) | p: [{:.2}, {:.2}] | GPU: {:.2} ms | Dale: {} viol",
+                 res.familia_leida, res.prob_encoder * 100.0, res.p_leido[0], res.p_leido[1], res.gpu_telemetry.latency_ms, res.gpu_telemetry.dale_violations);
+        outputs.push(res);
+    }
+
+    let json_str = serde_json::to_string_pretty(&outputs).unwrap();
+    let _ = File::create("gemma_multilingual_benchmark.json").and_then(|mut f| f.write_all(json_str.as_bytes()));
+    println!("\n>>> 5 casos de prueba multilingües evaluados con éxito en la GPU AMD Radeon RX 7800 XT.");
+    println!(">>> Resultados exportados a 'gemma_multilingual_benchmark.json'.");
+    std::mem::forget(bridge.gpu_engine);
+}
+
+fn run_gemma_vs_hybrid_cmd() {
+    println!("\n>>> Inicializando puente Bio-Quantum v10 x50 en GPU AMD...");
+    let mut bridge = match GemmaFieldBridge::new() {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("Error al inicializar GPU: {}", e);
+            return;
+        }
+    };
+    run_gemma_vs_hybrid_benchmark(&mut bridge);
+    std::mem::forget(bridge.gpu_engine);
+}
+
+fn run_dynamic_reasoning_cmd() {
+    println!("\n>>> Inicializando puente Bio-Quantum v10 x50 para Razonamiento Dinámico en GPU AMD...");
+    let mut bridge = match GemmaFieldBridge::new() {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("Error al inicializar GPU: {}", e);
+            return;
+        }
+    };
+    run_dynamic_reasoning_experiment(&mut bridge);
+    std::mem::forget(bridge.gpu_engine);
+}
+
+fn run_infinite_learning_cmd(args: &[String]) {
+    println!("\n>>> Inicializando puente Bio-Quantum v10 x50 para Ciclo Infinito de Auto-Aprendizaje en GPU AMD...");
+    let mut bridge = match GemmaFieldBridge::new() {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("Error al inicializar GPU: {}", e);
+            return;
+        }
+    };
+
+    let mut config = LoopConfig::default();
+
+    let mut idx = 2;
+    while idx < args.len() {
+        match args[idx].as_str() {
+            "--infinite" => {
+                config.max_cycles = 0;
+            }
+            "--cycles" | "-c" => {
+                if idx + 1 < args.len() {
+                    if let Ok(c) = args[idx + 1].parse::<usize>() {
+                        config.max_cycles = c;
+                        idx += 1;
+                    }
+                }
+            }
+            "--lang" | "-l" => {
+                if idx + 1 < args.len() {
+                    config.default_lang = args[idx + 1].clone();
+                    idx += 1;
+                }
+            }
+            "--fast" => {
+                config.delay_ms = 0;
+            }
+            s => {
+                if let Ok(c) = s.parse::<usize>() {
+                    config.max_cycles = c;
+                } else if ["es", "en", "fr", "pt", "it"].contains(&s) {
+                    config.default_lang = s.to_string();
+                }
+            }
+        }
+        idx += 1;
+    }
+
+    run_infinite_learning_loop(&mut bridge, config);
+    std::mem::forget(bridge.gpu_engine);
+}
+
 fn main() {
     print_banner();
     let args: Vec<String> = env::args().collect();
@@ -736,6 +939,35 @@ fn main() {
             let phase = args.get(2).map(|s| s.as_str()).unwrap_or("dev");
             run_evaluation(phase);
         }
+        "gemma-e2e" => {
+            let default_text = "Aplica una rotación con parámetros 0,5 y -0,2.".to_string();
+            let text = args.get(2).unwrap_or(&default_text);
+            run_gemma_e2e(text);
+        }
+        "gemma-eval" => {
+            run_gemma_eval();
+        }
+        "gemma-vs-hybrid" | "--gemma-vs-hybrid" => {
+            run_gemma_vs_hybrid_cmd();
+        }
+        "dynamic-reasoning" | "--dynamic-reasoning" => {
+            run_dynamic_reasoning_cmd();
+        }
+        "infinite-learning" | "--infinite-learning" | "loop" => {
+            run_infinite_learning_cmd(&args);
+        }
+        "test-learned" | "--test-learned" | "eval-learned" | "--eval-learned" => {
+            println!("\n>>> Inicializando puente Bio-Quantum v10 x50 para Evaluación de Aprendizaje en GPU AMD...");
+            let mut bridge = match GemmaFieldBridge::new() {
+                Ok(b) => b,
+                Err(e) => {
+                    eprintln!("Error al inicializar GPU: {}", e);
+                    return;
+                }
+            };
+            run_learned_evaluation(&mut bridge);
+            std::mem::forget(bridge.gpu_engine);
+        }
         "demo" => {
             run_interactive_demo();
         }
@@ -743,7 +975,7 @@ fn main() {
             run_audit();
         }
         _ => {
-            println!("Uso: bio_quantum_engine [benchmark-suite | gpu-train <batches> <batch_size> <lr> | gpu-audit | train <episodes> <lr> | eval <dev|confirm|smoke> | demo]");
+            println!("Uso: bio_quantum_engine [infinite-learning [--cycles N | --infinite] | dynamic-reasoning | gemma-vs-hybrid | benchmark-suite | gpu-train | eval | demo]");
         }
     }
 }

@@ -1,0 +1,18 @@
+pesos=persistence d_basis=1024 sinapsis=4096 (wp; wf=1e-4 fijo) | Dale viol (w<0)=0 | w<1e-4=4096 | CONGELADO, sin adaptación
+  Semilla 0xa400: known acc16= 26.6% log= -1.254 | new acc16=  3.1% log= -0.528 | E33=false [0.546875, 0.5625, 0.4375, 0.375, 0.28125]
+  Semilla 0xa401: known acc16= 26.6% log= -1.041 | new acc16=  1.6% log= -0.530 | E33=false [0.515625, 0.578125, 0.453125, 0.375, 0.296875]
+  Semilla 0xa402: known acc16= 29.7% log= -1.100 | new acc16=  3.1% log= -0.521 | E33=false [0.5, 0.578125, 0.453125, 0.390625, 0.296875]
+  Semilla 0xa403: known acc16= 28.1% log= -1.079 | new acc16=  1.6% log= -0.515 | E33=false [0.578125, 0.59375, 0.484375, 0.390625, 0.328125]
+  Semilla 0xa404: known acc16= 31.2% log= -1.171 | new acc16=  1.6% log= -0.501 | E33=false [0.484375, 0.5625, 0.4375, 0.359375, 0.28125]
+  Semilla 0xa405: known acc16= 28.1% log= -1.113 | new acc16=  3.1% log= -0.515 | E33=false [0.546875, 0.578125, 0.46875, 0.40625, 0.28125]
+  Semilla 0xa406: known acc16= 28.1% log= -1.122 | new acc16=  0.0% log= -0.513 | E33=false [0.5625, 0.5625, 0.4375, 0.328125, 0.296875]
+  Semilla 0xa407: known acc16= 29.7% log= -1.294 | new acc16=  3.1% log= -0.526 | E33=false [0.53125, 0.5625, 0.453125, 0.359375, 0.296875]
+  Semilla 0xa408: known acc16= 26.6% log= -1.254 | new acc16=  3.1% log= -0.546 | E33=false [0.515625, 0.53125, 0.453125, 0.34375, 0.265625]
+  Semilla 0xa409: known acc16= 26.6% log= -1.061 | new acc16=  3.1% log= -0.511 | E33=false [0.484375, 0.546875, 0.453125, 0.40625, 0.296875]
+  Semilla 0xa40a: known acc16= 29.7% log= -1.062 | new acc16=  1.6% log= -0.528 | E33=false [0.53125, 0.53125, 0.453125, 0.40625, 0.328125]
+  Semilla 0xa40b: known acc16= 28.1% log= -1.236 | new acc16=  1.6% log= -0.554 | E33=false [0.546875, 0.578125, 0.5, 0.40625, 0.328125]
+  Semilla 0xa40c: known acc16= 31.2% log= -1.171 | new acc16=  4.7% log= -0.517 | E33=false [0.59375, 0.5625, 0.453125, 0.375, 0.296875]
+  Semilla 0xa40d: known acc16= 28.1% log= -1.113 | new acc16=  9.4% log= -0.530 | E33=false [0.53125, 0.5625, 0.46875, 0.40625, 0.34375]
+  Semilla 0xa40e: known acc16= 28.1% log= -1.122 | new acc16=  4.7% log= -0.538 | E33=false [0.546875, 0.578125, 0.453125, 0.40625, 0.296875]
+  Semilla 0xa40f: known acc16= 29.7% log= -1.294 | new acc16=  3.1% log= -0.529 | E33=false [0.53125, 0.5625, 0.4375, 0.375, 0.328125]
+RESUMEN DEV persistence: known acc16=28.52% medlog=-1.1553 | new acc16=3.03% medlog=-0.5252 | E33 0/16 | Dale viol 0

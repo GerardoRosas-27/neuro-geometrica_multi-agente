@@ -24,6 +24,10 @@
 
 > **`main` = ÓRBITA.** Ver [`docs/ORBITA_MAIN.md`](docs/ORBITA_MAIN.md). v4 está archivado en el tag `v4-final`.
 
+> **BQ10-GPU** (crate `bio_quantum_engine/`, entrenamiento WGPU en AMD RX 7800 XT, escala x50): código, pesos, logs y evaluación del *arnés propio*. No es comparable con la tabla canónica de arriba ni desplaza al BQ10 de `orbita atlas-run` ni a ATLAS-FW. Informe honesto: [`docs/bq10/README.md`](docs/bq10/README.md).
+
+> **Campo sobre LLM congelado** (línea principal `gemma_campo` a nivel token @ `a420311`; camino alterno estado por turno @ `a2c9c9f`). No es comparable con ATLAS-FW ni con el BQ10 canónico. Informe y reproducción: [`docs/campo/README.md`](docs/campo/README.md).
+
 # Laboratorio neuro-geométrico multi-agente · `main` v4
 
 Crate Rust `cdt_rqm_epr` con **una sola arquitectura de campo: v4** (Dφ
@@ -131,7 +135,9 @@ error a un paso (< 5 %) con la receta §16.
 
 ## 6. Documentación
 
-- **Mejor versión: ATLAS-FW** → [`docs/atlas_fw/README.md`](docs/atlas_fw/README.md) (arquitectura, mecanismos, resultados, reproducción)
+- **Mejor versión canónica: BQ10** (`orbita atlas-run`) → [`docs/bio_quantum_v10/`](docs/bio_quantum_v10/) · previa: **ATLAS-FW** → [`docs/atlas_fw/README.md`](docs/atlas_fw/README.md)
+- **BQ10-GPU** (arnés propio, no comparable) → [`docs/bq10/README.md`](docs/bq10/README.md)
+- **Campo sobre LLM** (principal: gemma_campo; alterno: por turno) → [`docs/campo/README.md`](docs/campo/README.md)
 - [`docs/resultados_v4.md`](docs/resultados_v4.md) · [`docs/preregistro_v4.md`](docs/preregistro_v4.md) · [`docs/plan_autonomia_campo_v4.md`](docs/plan_autonomia_campo_v4.md) · [`docs/plan_v4_dphi_teacher_distillation.md`](docs/plan_v4_dphi_teacher_distillation.md)
 - [`docs/protocolo_v4_agente.md`](docs/protocolo_v4_agente.md) · [`docs/handoff_field_autonomy_v4.md`](docs/handoff_field_autonomy_v4.md) · [`docs/comparativa_v4_vs_token_free.md`](docs/comparativa_v4_vs_token_free.md)
 - Prompt Spider: [`docs/experimento_prompt_spider.md`](docs/experimento_prompt_spider.md), [`docs/prompt_spider_metricas.md`](docs/prompt_spider_metricas.md)

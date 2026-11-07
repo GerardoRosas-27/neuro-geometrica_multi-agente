@@ -8,7 +8,7 @@ superando categóricamente a Constelación v4 en todas las métricas:
 1. [Bio-Constelación]: Ley de Dale 100% estricta (W^E >= 0, W^I >= 0),
    microcircuitos dendríticos multicompartimentales L2/3 y L5, plasticidad BTSP
    con mesetas de calcio y dinámica Tsodyks-Markram (u, x).
-   Superación OOD: 100% en DEV y CONFIRM (vs 6.9% en v4: ganancia de +14.5x) con 0 violaciones.
+   Nota: las cifras OOD de este script no son comparables con v4 (arnés distinto); la comparación «+14.5x vs 6.9% en v4» quedó marcada como no verificada y se retiró de las impresiones del binario Rust.
 
 2. [Constelación v4 Superada]: Formulación residual puntual equivariante:
    q̂_p(t+1) = q_p(t) + Δq̂_p(t) sobre base receptiva de 18 dimensiones

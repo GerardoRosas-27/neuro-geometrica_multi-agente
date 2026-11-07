@@ -1,0 +1,10 @@
+CONFIRM b40a epoch=0 nll=0.30609 mlp=0.97915 sec=0.00
+CONFIRM b40a epoch=20 nll=0.10025 mlp=0.46816 sec=0.05
+CONFIRM b40a epoch=40 nll=0.05452 mlp=0.46124 sec=0.09
+CONFIRM b40a epoch=60 nll=0.04242 mlp=0.42064 sec=0.13
+CONFIRM b40a epoch=80 nll=0.03691 mlp=0.40263 sec=0.17
+CONFIRM b40a epoch=100 nll=0.03349 mlp=0.39702 sec=0.21
+CONFIRM b40a epoch=120 nll=0.03104 mlp=0.39220 sec=0.25
+CONFIRM b40a epoch=140 nll=0.02915 mlp=0.38724 sec=0.29
+CONFIRM b40a epoch=160 nll=0.02762 mlp=0.38138 sec=0.33
+DONE CONFIRM b40a seconds=0.384

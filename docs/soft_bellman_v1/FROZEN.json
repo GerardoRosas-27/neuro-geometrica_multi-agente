@@ -1,0 +1,15 @@
+{
+  "source_sha256": "8f56f2cffac5e70e146b4df639bdb1cc5e87f3ca34dffe6d3650b1b465e5fad4",
+  "preregistration_commit": "3a1901f8c080540e9c5d4f3f5b0a53a6cb526d96",
+  "epochs": 160,
+  "train_maps": 24,
+  "validation_maps": 8,
+  "test_maps": 64,
+  "ood3d_maps": 16,
+  "tau": 0.2,
+  "epsilon": 0.01,
+  "adam_lr": 0.03,
+  "dev_completed": 16,
+  "confirm_started": false,
+  "notes": "No hyperparameter or source changes after DEV; freeze before first CONFIRM label or run."
+}
