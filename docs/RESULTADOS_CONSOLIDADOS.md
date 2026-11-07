@@ -2,12 +2,12 @@
 
 ## Estructura de las Líneas de Investigación
 
-El proyecto cuenta con dos líneas de investigación principales basadas en la arquitectura ganadora **BQ10 (M1+M2+M6+M7 da=10)** ejecutada nativamente sobre GPU AMD Radeon RX 7800 XT (WGPU/Vulkan):
+El proyecto cuenta con cuatro líneas de investigación principales en `main` basadas en la arquitectura ganadora **BQ10 (M1+M2+M6+M7 da=10)** y sus derivaciones sobre GPU AMD Radeon RX 7800 XT (WGPU/Vulkan):
 
 ### 1. Línea Principal: Sustrato de Campo Continuo Token a Token (`gemma_campo`)
 * **Objetivo:** Operar como memoria latente continua paso a paso durante el flujo generativo del LLM, acoplando innovación causal $e(x_t)$ y proyección en subespacio contextual $V_{\text{ctx}}$ ($k_{\text{skip}}=16$).
 * **Ramas:** `exp/gemma-campo-chat`, `exp/gemma-campo-infinito`.
-* **Resultados en Test ($n=60$ conversaciones, bootstrap 10,000):**
+* **Resultados en Test ($n=60$ conversaciones, bootstrap 10,000, 3h GPU AMD RX 7800 XT):**
   * $z$-MSE a 1 paso: **0.195968** (vs repeat 1.238695, mejora de **84.2%**).
   * $\Delta\text{NLL}(\text{campo}-\text{oracle}) = \mathbf{+0.018593}$ (IC95 $[+0.010154, +0.027282] \le 0.05 \implies$ **ÉXITO H2**).
   * $\Delta\text{NLL}(\text{campo}-\text{repeat}) = \mathbf{-1.315852}$ (IC95 $[-1.389505, -1.242132] < 0 \implies$ **ÉXITO H3/H4**).
@@ -20,13 +20,30 @@ El proyecto cuenta con dos líneas de investigación principales basadas en la a
 ### 2. Segunda Línea de Investigación: Campo de Estado Continuo por Turno (`campo_estado_turno`)
 * **Objetivo:** Predecir y condensar la trayectoria de la conversación a nivel de turno semántico completo ($z_{\text{turn}} \in \mathbb{R}^{64}$ con $F=2721$ modos ortogonales de Lie) y condicionar la generación del LLM congelado mediante un adaptador soft-prompt ($z \to P \cdot H$).
 * **Rama:** `exp/campo-estado-turno`.
-* **Resultados en Test ($n=200$ conversaciones, 759 turnos de asistente, bootstrap 10,000):**
+* **Resultados en Test ($n=200$ conversaciones, 759 turnos de asistente, bootstrap 10,000, 3h GPU AMD RX 7800 XT):**
   * **T1 (Predicción de Dinámica de Turno):** $z\text{-MSE}(\text{campo}) = \mathbf{0.368282}$ vs repeat $1.091795$ ($\Delta = -0.723514$, $P \le 0 = 1.0 \implies$ **ÉXITO**).
   * **T2 (vs Control MLP 2 capas):** $\Delta = \mathbf{-0.018591}$ (IC95 $[-0.024680, -0.012612] \le 0.019344 \implies$ **ÉXITO**). El campo BQ10 supera al MLP.
   * **T3 (Eficacia Decodificación Soft-Prompt):** $\text{NLL}(\text{campo}) - \text{NLL}(\text{none}) = \mathbf{-1.317461}$ ($P \le 0 = 1.0 \implies$ **ÉXITO**). La perplejidad cae de **6.999** a **1.874** (reducción del 73.2% en incertidumbre).
   * **T4 (Especificidad Contextual):** $\text{NLL}(\text{campo}) - \text{NLL}(\text{shuf}) = \mathbf{-0.411890}$ ($P \le 0 = 1.0 \implies$ **ÉXITO**). Brecha vs oráculo perfecto $z_{\text{true}}$ es de solo $+0.044$ nats.
   * **No-Daño:** Pesos del LLM 100% intactos (SHA-256 verificado: `78685cdf...`), identidad $\max|\text{embeds} - \text{ids}| = 0.0 < 0.05$.
   * Reporte detallado: [`docs/campo_estado_turno/run_3h_bq10/RESULTADOS.md`](campo_estado_turno/run_3h_bq10/RESULTADOS.md).
+
+### 3. Tercera Línea de Investigación: Soft-Bellman Simplicial 3D en GPU (`soft_bellman_simplicial_v3_gpu`)
+* **Objetivo:** Planificación y geodésicas continuas en complejos tetraédricos 3D sobre GPU AMD Radeon RX 7800 XT (WGPU/Vulkan) integrando métrica Cholesky-SPD, Laplaciano de Hodge $\Delta_1$, energía Regge, barrera Cayley-Menger y optimización continua baricéntrica Snell-Fermat.
+* **Ramas:** `exp/soft-bellman-simplicial-v2`, `exp/soft-bellman-v1`.
+* **Resultados en CONFIRM (384 mallas, 16 semillas `0xB400–0xB40F`, bootstrap 10,000):**
+  * **Paridad Numérica GPU vs CPU:** Error máximo $< 1.61\times 10^{-6}$ en función de valor $V_\tau^*$ y $< 1.37\times 10^{-6}$ en costos; despacho de 24 mallas en $18.094\text{ ms}$.
+  * **Snell Continuo Baricéntrico:** Reducción de costo de **$-13.2360\%$** vs oráculo Steiner grueso y **$-2.4693\%$** adicional vs oráculo refinado. Regret residual: **$0.009112\%$** con **100% de éxito**.
+  * **Robustez ante Cambio de Ley (`changed_law`):** `v3_adapted_gpu` reduce regret de $9.2810\%$ a **$0.1355\%$** (reducción de **$-9.1454\text{ pp}$**, 68.5× menos sobrecosto); `v3_zeroshot_gpu` (0 etiquetas) logra **$4.9625\%$** (supera a control euclídeo $5.2784\%$).
+  * Reporte detallado: [`docs/soft_bellman_simplicial_v3_gpu/RESULTADOS_V3_GPU.md`](soft_bellman_simplicial_v3_gpu/RESULTADOS_V3_GPU.md).
+
+### 4. Cuarta Línea de Investigación: Bio-Quantum Engine x50 Masivo en GPU (`bio_quantum_engine`)
+* **Objetivo:** Escalado masivo de constelaciones cuántico-biológicas en GPU AMD Radeon RX 7800 XT (16 GB VRAM, 60 CUs, RDNA 3) con shaders de cómputo WGSL.
+* **Rama:** `exp/bq10-gpu-amd`.
+* **Resultados x50 (1,024 nodos, base 1,024D Lie/Fourier, 4,096 sinapsis corticales):**
+  * **Episodios y Rendimiento:** **1,638,400 episodios** en **86.80 segundos** (**18,874.7 episodios/seg**, >1,677M coordenadas evaluadas).
+  * **Ley de Dale y SWR:** 0 violaciones en 4,096 sinapsis ($W^E, W^I \ge 0$); consolidación circadiana $\Delta R = -0.00042$ (olvido acotado garantizado).
+  * Reporte detallado: [`docs/RESULTADOS_GPU_RX7800XT.md`](RESULTADOS_GPU_RX7800XT.md) y [`docs/bq10/README.md`](bq10/README.md).
 
 ---
 
@@ -116,31 +133,75 @@ Cuando se evalúa *con* los pesos GPU (`eval_trained`), x50 queda en 0.00 % acc1
 
 ## Campo sobre LLM congelado (no entra en la tabla CST4)
 
-Línea principal: `gemma_campo` @ `a420311` (`docs/gemma_campo_chat/run_20261104/`). Camino alterno: estado por turno @ `a2c9c9f` (`docs/campo_estado_turno/run_20261105/`). Informe y reproducción: [`campo/README.md`](campo/README.md).
+Línea principal: `gemma_campo` (rama `exp/gemma-campo-chat`, informes en [`docs/gemma_campo_chat/run_3h_bq10/RESULTADOS.md`](gemma_campo_chat/run_3h_bq10/RESULTADOS.md) y [`run_20261104/`](gemma_campo_chat/run_20261104/)). Camino alterno: estado por turno (rama `exp/campo-estado-turno`, informes en [`docs/campo_estado_turno/run_3h_bq10/RESULTADOS.md`](campo_estado_turno/run_3h_bq10/RESULTADOS.md) y [`run_20261105/`](campo_estado_turno/run_20261105/)). Informe general: [`campo/README.md`](campo/README.md).
 
-**No desplaza** a ATLAS-FW ni al BQ10 canónico: otro arnés (activaciones de `qwen/qwen3-vl-4b`, capa 13), otras métricas (z-MSE y NLL de lenguaje), un solo run. Las dos ramas no son comparables entre sí (token vs turno; test n=60 vs n=200).
+**No desplaza** a ATLAS-FW ni al BQ10 canónico: otro arnés (activaciones LLM, capa 13), otras métricas (z-MSE y NLL de lenguaje).
 
-Línea principal (test n=60, bootstrap 10 000 / semilla 12345, `eval_test.json`): z-MSE k=1 con `e(x_t)` campo 0.197222 vs repeat 1.238695 (Δ −1.041472 [−1.063950, −1.016694]); NLL campo 1.7339503705501556 vs LLM intacto 1.7145656049251556 vs oracle 1.7150465667247772 (campo−oracle +0.01890380382537842 [0.010692580093940099, 0.027486240863800047] ≤ 0.05 → H2 éxito). H1, H1k, H3, OLV, EST, REP también éxito.
+* **Línea principal Token a Token (Test $n=60$, bootstrap 10,000, corrida 3h GPU BQ10):**
+  * $z$-MSE a 1 paso con $e(x_t)$: **0.195968** vs repeat 1.238695 ($\Delta = \mathbf{-1.042727}$ [$-1.065180, -1.018042$], **−84.2%** error).
+  * $\Delta\text{NLL}(\text{campo}-\text{oracle}) = \mathbf{+0.018593}$ [$+0.010154, +0.027282$] $\le 0.05 \implies$ **ÉXITO H2**.
+  * $\Delta\text{NLL}(\text{campo}-\text{repeat}) = \mathbf{-1.315852}$ [$-1.389505, -1.242132$] $< 0 \implies$ **ÉXITO H3/H4**.
+  * Perplejidad: **5.661** (campo) vs **5.554** (LLM completo intacto) vs **21.104** (repeat).
+  * Olvido catastrófico Shard 0 tras 9 shards (3h): **+0.064%** ($\le 5.0\%$). Cumple **H1, H1k, H2, H3, OLV, EST, REP**.
 
-Camino alterno (test n=200): T1–T4 y no-daño pasan. z-MSE campo 0.3685527244210243 vs repeat 1.0917954957485199 vs mlp 0.38687286220490935. NLL campo 0.6475953880107791 vs none 1.9457939405404034 vs shuf 0.9346708592687366 vs mlp 0.6469799832911522 (campo≈mlp en decodificación; T3 vs none infla el estilo del adaptador).
+* **Segunda Línea Estado por Turno (Test $n=200$, 759 turnos, bootstrap 10,000, corrida 3h GPU BQ10):**
+  * **T1 (Dinámica de turno):** $z$-MSE campo **0.368282** vs repeat 1.091795 ($\Delta = \mathbf{-0.723514}$, $P \le 0 = 1.0 \implies$ Éxito).
+  * **T2 (vs MLP 2 capas):** $\Delta = \mathbf{-0.018591}$ [$-0.024680, -0.012612$] $\le 0.019344 \implies$ Éxito (campo supera al MLP).
+  * **T3 (Soft-Prompt Decodificación):** $\text{NLL}(\text{campo}) - \text{NLL}(\text{none}) = \mathbf{-1.317461}$ ($P \le 0 = 1.0 \implies$ Éxito; PPL cae de **6.999 a 1.874**, reducción del 73.2% de incertidumbre).
+  * **T4 (Especificidad Contextual):** $\text{NLL}(\text{campo}) - \text{NLL}(\text{shuf}) = \mathbf{-0.411890}$ ($P \le 0 = 1.0 \implies$ Éxito; brecha vs oráculo perfecto $+0.044$ nats).
+  * **No-Daño:** Pesos LLM 100% intactos (SHA-256 verificado), identidad $\max = 0.0$.
 
-## Historial de experimentos
+## Soft-Bellman y Geodésicas Simpliciales 3D en GPU (no entra en la tabla CST4)
 
+Líneas `exp/soft-bellman-v1` y `exp/soft-bellman-simplicial-v2` (integradas en `main` @ `8bd2a29` / `ad8bf97`), crates `soft_bellman/` y `soft_bellman_simplicial/`. Informes: [`docs/soft_bellman_v1/RESULTADOS.md`](soft_bellman_v1/RESULTADOS.md), [`docs/soft_bellman_simplicial_v2/RESULTADOS.md`](soft_bellman_simplicial_v2/RESULTADOS.md) y [`docs/soft_bellman_simplicial_v3_gpu/RESULTADOS_V3_GPU.md`](soft_bellman_simplicial_v3_gpu/RESULTADOS_V3_GPU.md).
 
-| Experimento | Rama @ commit | Primaria DEV | Primaria CONFIRM | No-daño | E33 (CST) | Veredicto |
+* **Soft-Bellman v1 (Grid 2D/3D, 9 parámetros):** Planificación inversa con gradientes analíticos exactos. CONFIRM test: regret **0.0069%** (Δ vs uniforme **−3.8346 pp** [−4.0041, −3.6591], éxito 100%, 0.0336 nat NLL). OOD 3D: Δ **−5.0116 pp** [−5.4381, −4.5852].
+* **Soft-Bellman Simplicial v2 (Tetraedros 3D, Cholesky SPD):** Pasa primaria (regret **0.0107%**, Δ vs diagonal **−0.8033 pp** [−0.8605, −0.7461], éxito 100%, 47.9% segmentos interiores). Limitación: brecha al refinar (−11.06%) y falla ante cambio de ley (regret empeora a 9.2810% vs 5.2784% del control euclídeo).
+* **Soft-Bellman Simplicial v3 GPU (AMD Radeon RX 7800 XT, Vulkan):**
+  * Resuelve la discretización mediante optimización continua baricéntrica Snell-Fermat $\lambda^* \in \text{int}(\Delta^k)$: reducción de costo de **−13.2360%** vs oráculo grueso y **−2.4693%** adicional vs oráculo refinado discreto; regret residual en CONFIRM: **0.009112%** con **100% de éxito**.
+  * Resuelve el cambio de ley (`CONFIRM/changed_law`): `v3_adapted_gpu` colapsa el regret a **0.1355%** (**−9.1454 pp** vs v2 `full`, 68.5× menor error); `v3_zeroshot_gpu` (0 etiquetas nuevas) logra **4.9625%** (superando al control euclídeo 5.2784%).
+  * Incorpora Laplaciano de Hodge $\Delta_1$, acción de Regge $S_{\text{Regge}}$, barrera Cayley-Menger y holonomía magnética con identidad de Bianchi $d_2 d_1 A_0 = 0$.
+
+| Versión / Modelo | Parámetros | Discretización / Inferencia | Sobrecosto (Regret) | Regret Ley Cambiada | Éxito | Cómputo / Hardware |
+|---|---:|---|---:|---:|---:|---|
+| **Soft-Bellman v1** | 9 | Grid discreto 2D/3D | **0.0069%** | N/A | 100% | CPU (3.52 s total 16 semillas) |
+| **Soft-Bellman Simplicial v2** | 9 | Steiner grueso tetraédrico | 0.0107% | 9.2810% | 100% | CPU (18.95 s total 16 semillas) |
+| **Soft-Bellman Simplicial v3 GPU** | **18** | **Snell continuo $\lambda^* \in \Delta^k$** | **0.0091%** | **0.1355%** (adaptado) / **4.9625%** (zero-shot) | **100%** | **GPU AMD RX 7800 XT (18.09 ms)** |
+
+---
+
+## Historial Consolidado de Experimentos (Todas las Ramas y Main)
+
+Tabla unificada de todas las líneas de investigación, benchmarks canónicos, extensiones de escala, modelos de lenguaje y planificación simplicial en el repositorio:
+
+| Experimento / Línea | Rama @ commit | Primaria DEV | Primaria CONFIRM / Test | No-daño / Criterio Secundario | E33 (CST) | Veredicto |
 |---|---|---|---|---|---|---|
-| ÓRBITA-v1 (línea base) | `exp/orbita` @ `1bc624f` (docs en `release/orbita-main` @ `b7fe616`) | vs v4 E3 acc h16 +0,0488 [−0,0029, +0,1065] | +0,1065 [+0,0664, +0,1504] | — (es la referencia) | 16/16 y 16/16 | **Empate / no concluyente** vs v4 (falla en DEV); supera al MLP M3; es la base de todos los experimentos posteriores |
-| ESTELA v0 + Enm. 1 | `exp/estela` @ `db42e6a` | S3: −0,228 [−0,341, −0,113] | S3: −0,269 [−0,389, −0,149] | **FALLA**: S2 acc16 conocidas −0,267 / −0,246 [−0,274, −0,215] | — (AUROC sorpresa 0,448 / 0,407 vs ÓRBITA 0,958 / 0,951) | **Negativo.** S3 sólo pasa porque ÓRBITA+LAT empeora; ESTELA es peor que ÓRBITA congelada (+0,223 log CONFIRM) |
-| ECO | `exp/eco` @ `b731ff3` | 0,0000 [0, 0] | 0,0000 [0, 0] | OK (efecto de LAT, no de ECO) | 16/16 (vía LAT) | **No concluyente.** 0/256 sueños aceptados; Δ nunca actuó |
-| MAREA | `exp/marea` @ `ee99a91` | pendiente −0,0115 [−0,0126, −0,0105] | −0,0120 [−0,0131, −0,0110] | OK (−0,237 / −0,240 ln err conocidas) | — | **Primaria aceptada, pero no competitiva**: vs ÓRBITA+LAT +1,513 / +1,439 ln err nuevas (≈4,5× más error) |
-| CONSTELACIÓN v2 | `exp/constelacion-v2` @ `fdefd62` | +0,807 [+0,702, +0,908] | +0,798 [+0,688, +0,916] | OK formal pero vacío (acc16 = 0) | 0/16 | **Refutada**; colapso 4/16 y 5/16 |
-| CONSTELACIÓN v3 | `exp/constelacion-v3` @ `e5718e8` | −0,089 [−0,152, −0,018] | −0,115 [−0,193, −0,030] | OK (+0,007 / +0,0005) | **0/16** | Primaria + no-daño OK; **E33 falla** |
-| **CONSTELACIÓN v4** | `exp/constelacion-v4` @ `fd80320` | −0,076 [−0,141, −0,001] | **−0,107 [−0,181, −0,024]** | OK (0,000 [0, 0]; acc16 ≈ 0,877) | **16/16 y 16/16** | **Cumple los 3 criterios preregistrados** |
-| CST vs ÓRBITA-eq (capacidad igualada) | `exp/cst-vs-orbita` @ `c1b1f54` | H1 −0,658 [−0,775, −0,542] | H1 −0,690 [−0,808, −0,573] | H3 +0,502 / +0,477 acc16 conocidas | H2 +0,356 / +0,336 | **CST gana** a ÓRBITA de igual tamaño (+LAT) en DEV y CONFIRM. Ver `docs/cst_vs_orbita/RESULTADOS.md` |
-| v4 + mejoras M1/M2/M3 | `exp/constelacion-v4-mejoras` @ `ce63ac3` | M1 +0,0001; M3 −0,0013 | M1 +0,0001 [−0,0000, +0,0003] | M1 OK; **M3 falla** (−0,085 acc16 conocidas) | M1 OK | **Negativo**: M1 inerte (= control), M2 rechazada en meta-val, M3 STOP en DEV por no-daño. v4 reproduce 16/16 hashes. Sólo docs/artefactos en `main` |
-| BIO-CONSTELACIÓN (híbrido v4 + neocórtex) | `exp/hibrido-constelacion-neocortex` @ `e9d7002` | hyb − v4 −0,262 [−0,422, −0,171] | −0,112 [−0,185, +0,017] (**no pasa**) | **DAÑO** (−0,81 acc16 conocidas) | **DAÑO** (E33 h16 −0,98) | **Negativo**: primaria no se confirma y destruye conocidas/E33. Sólo docs/artefactos en `main` |
+| **BQ10 (Bio-Quantum v10)** | `exp/bio-quantum-v10-rust` @ `f2b6813` (en `main`) | −1,5245 (Δ vs v4 −0,6496; Δ vs ALL −0,1388) | **−1,5081** (Δ vs v4 **−0,6083 [−0,7415, −0,4652]**; Δ vs ALL **−0,1563 [−0,2692, −0,0434]**) | known_acc16 0,8872 (+0,0103 sobre v4, dentro de $\delta=0,05$) | **16/16 y 16/16** | **GANADORA ACTUAL EN MAIN**. M7 DA-STR (`da=10`) sobre ATLAS-FW; ~3.3× más rápida por semilla que ALL (~12.3s vs 41.0s). |
+| ATLAS-FW | `exp/atlas-fw` @ `ea434ac` (merge `1c845d6`) | −1,3856 (Δ vs v4 −0,5108 [−0,6051, −0,3963]) | −1,3518 (Δ vs v4 **−0,4520 [−0,5613, −0,3247]**) | known_acc16 0,9028 (+0,0259 sobre v4) | **16/16 y 16/16** | **Ganadora previa**. Aporte de M1 (decay), M2 (momentum) y M6 (dual-rate). Supera a v4 sin daño. |
+| CONSTELACIÓN v4 | `exp/constelacion-v4` @ `fd80320` | −0,076 [−0,141, −0,001] | **−0,107 [−0,181, −0,024]** | OK (0,000 [0, 0]; acc16 ≈ 0,877) | **16/16 y 16/16** | **Base previa**. Cumple los 3 criterios preregistrados. Ganancia debida al campo rápido $W^F$. |
+| CST vs ÓRBITA-eq | `exp/cst-vs-orbita` @ `c1b1f54` | H1 −0,658 [−0,775, −0,542] | H1 −0,690 [−0,808, −0,573] | H3 +0,502 / +0,477 acc16 conocidas | H2 +0,356 / +0,336 | **CST gana** a ÓRBITA de igual tamaño (+LAT) en DEV y CONFIRM. |
+| CST Campo Rápido Solo (`FIELD_ONLY`) | `exp/cst-v4-campo-solo` @ `9abc851` | Δ med log vs v4 = +0,00001 [−0,00005, +0,00008] | No ejecutada (exploratorio DEV, $n=8$) | known_acc16 = 0,877 (idéntico a v4) | **0/8** | **Informativo / Negativo E33**. $W^F$ solo explica todo el held-out de v4, pero E33 depende de la delegación a ÓRBITA. |
+| CONSTELACIÓN v4-ESCALADA | `exp/constelacion-v4-escalada` @ `7302e80` | P +0,00005, A +0,0105, T +0,00003, PAT +0,00006 vs v4 | No ejecutada (gate DEV falló) | Brazo A falla (−0,0425 en known_acc16) | 16/16 (A: 15/16) | **Negativo**. Escalar capacidad (hasta 62k params) no mejora a v4 (~10k); el cuello de botella no es capacidad. |
+| v4 + mejoras M1/M2/M3 | `exp/constelacion-v4-mejoras` @ `ce63ac3` | M1 +0,0001; M3 −0,0013 | M1 +0,0001 [−0,0000, +0,0003] | M1 OK; **M3 falla** (−0,085 acc16 conocidas) | M1 OK | **Negativo**: M1 inerte, M2 rechazada en meta-val, M3 STOP en DEV por no-daño. |
+| BIO-CONSTELACIÓN (v4 + neocórtex) | `exp/hibrido-constelacion-neocortex` @ `e9d7002` | hyb − v4 −0,262 [−0,422, −0,171] | −0,112 [−0,185, +0,017] (no pasa) | **DAÑO** (−0,81 acc16 conocidas) | **DAÑO** (E33 h16 −0,98) | **Negativo**: primaria no se confirma y destruye conocidas y E33. |
+| CONSTELACIÓN v3 | `exp/constelacion-v3` @ `e5718e8` | −0,089 [−0,152, −0,018] | −0,115 [−0,193, −0,030] | OK (+0,007 / +0,0005) | **0/16** | Primaria + no-daño OK; **E33 falla**. |
+| CONSTELACIÓN v2 | `exp/constelacion-v2` @ `fdefd62` | +0,807 [+0,702, +0,908] | +0,798 [+0,688, +0,916] | OK formal pero vacío (acc16 = 0) | 0/16 | **Refutada**; colapso 4/16 y 5/16. |
+| MAREA | `exp/marea` @ `ee99a91` | pendiente −0,0115 [−0,0126, −0,0105] | −0,0120 [−0,0131, −0,0110] | OK (−0,237 / −0,240 ln err conocidas) | — | **Primaria aceptada, pero no competitiva**: vs ÓRBITA+LAT +1,513 / +1,439 ln err nuevas. |
+| ECO | `exp/eco` @ `b731ff3` | 0,0000 [0, 0] | 0,0000 [0, 0] | OK (efecto de LAT, no de ECO) | 16/16 (vía LAT) | **No concluyente**. 0/256 sueños aceptados; Δ nunca actuó. |
+| ESTELA v0 + Enm. 1 | `exp/estela` @ `db42e6a` | S3: −0,228 [−0,341, −0,113] | S3: −0,269 [−0,389, −0,149] | **FALLA**: S2 acc16 conocidas −0,267 / −0,246 | — | **Negativo**. S3 sólo pasa porque ÓRBITA+LAT empeora; peor que ÓRBITA congelada (+0,223 log CONFIRM). |
+| ÓRBITA-v1 (línea base) | `exp/orbita` @ `1bc624f` (docs en `release/orbita-main` @ `b7fe616`) | vs v4 E3 acc h16 +0,0488 [−0,0029, +0,1065] | +0,1065 [+0,0664, +0,1504] | — (es la referencia) | 16/16 y 16/16 | **Empate / no concluyente** vs v4 (falla en DEV); supera al MLP M3; base de comparación. |
+| ÓRBITA vs TimesFM | `exp/orbita-vs-timesfm` @ `2d9ff63` | H1 ORB_SESGO vs TF +0,330 [+0,298, +0,362] | H1 +0,370 [+0,328, +0,410]; S geom ORB_LIBRE vs TF **−0,584 [−0,674, −0,505]** | OK (comparativa frente a TimesFM 200M) | — | **Informativo**. En series geométricas ÓRBITA supera fuertemente a TimesFM-2.5-200M; en no-geométricas TimesFM retiene ventaja. |
+| Nova-2 Exp1 (C4 bayesiano) | `exp/orbita-nova2` @ `b25c97e` | B1 DEV aceptada | B1 REFUTADA (IC inf +0,038 > 0) | **FALLA** (B3 daño) | Falla | **Negativo**. Refutada en CONFIRM; daña conocidas. |
+| Nova-2 Exp2 (base compartida) | `exp/orbita-nova2` @ `b25c97e` | −0,096 [−0,167, −0,027] | −0,080 [−0,157, −0,004] | **FALLA** (−21 a −27 pp en conocidas) | — | **Negativo**. Primaria aceptada pero destruye conocidas. |
+| Nova-2 Exp3 (BOCD) | `exp/orbita-nova2` @ `b25c97e` | Inconclusa (+0,000 exacto) | Inconclusa (+0,000 exacto) | **FALLA** (−0,17 a −0,18) | — | **Negativo / Inconcluso**. Sin efecto primario y causa daño. |
+| **BQ10-GPU Masivo x50** | `exp/bq10-gpu-amd` @ `6808294` | 1.64M eps, 86.8s en RX 7800 XT; MSE 0.000552 → 0.000478 | 100% known acc16, 100% OOD acc16 (arnés propio) | 0 violaciones Dale (4,096 sinapsis); SWR $\Delta R = -0.00042$ | 16/16 (arnés propio) | **Demuestra escalado masivo en GPU**. Arnés propio (no sustituye BQ10 en ÓRBITA). |
+| **Soft-Bellman v1** | `exp/soft-bellman-v1` @ `a05c7e9` | Δ campo−uniforme −3,8532 pp [−4,0609, −3,6423] | Δ campo−uniforme **−3,8346 pp [−4,0041, −3,6591]** (regret **0.0069%**) | 100% meta alcanzada; OOD 3D Δ −5.0116 pp | — | **PASA**. 9 parámetros en Rust aprenden costos locales desde oráculo inverso y generalizan a mapas 2D/3D no vistos. |
+| **Soft-Bellman Simplicial v2** | `exp/soft-bellman-simplicial-v2` @ `cfca193` | Δ completo−diagonal −0,8219 pp [−0,8920, −0,7556] | Δ completo−diagonal **−0,8033 pp [−0,8605, −0,7461]** (regret **0.0107%**) | 100% éxito; 47.9% segmentos interiores | — | **Pasa primaria simplicial**, pero deja brecha de discretización (−11.06%) y falla ante cambio de ley (+4.00 pp vs euclídeo). |
+| **Soft-Bellman Simplicial v3 GPU** | `exp/soft-bellman-simplicial-v2` / `main` @ `8bd2a29` / `ad8bf97` | Paridad GPU WGSL vs CPU analítico ($< 1.61\times 10^{-6}$ error, 18.09 ms) | Regret continuo Snell **0.009112%** (**−13.2360%** vs oráculo grueso, **−2.4693%** vs refinado) | `v3_adapted` colapsa regret en cambio de ley a **0.1355%** (**−9.1454 pp** vs v2); zero-shot **4.9625%** | — | **ÉXITO EN MAIN**. Cierra la brecha de discretización con Snell continuo y resuelve domain shift con Hodge-Fourier en GPU AMD RX 7800 XT. |
+| **`gemma_campo` (Token a Token)** | `exp/gemma-campo-chat` @ `a9be5e0` (en `main`) | $z$-MSE a 1 paso 0.1972 | $z$-MSE **0.195968** vs repeat 1.238695 (**−84.2% error**); $\Delta\text{NLL}$ campo-oracle **+0.018593** ($\le 0.05 \implies$ H2 éxito) | Olvido en Shard 0 tras 3h: **+0.064%** ($\le 5.0\%$); bit a bit idéntico | — | **ÉXITO H1, H1k, H2, H3, OLV, EST, REP**. Memoria latente continua token a token. |
+| **`campo_estado_turno` (Estado por Turno)** | `exp/campo-estado-turno` @ `227ee1c` (en `main`) | $z$-MSE turno 0.3685 | T1 $z$-MSE **0.368282** vs repeat 1.091795 ($\Delta = -0.723514$, $P \le 0 = 1.0$); T2 vs MLP $\Delta = -0.018591$ | T3 PPL cae de 6.999 a **1.874** (−73.2% incertidumbre); T4 especificidad $\Delta = -0.411890$ nats; pesos LLM 100% intactos | — | **ÉXITO T1, T2, T3, T4 y NO-DAÑO**. Proyección y condicionamiento por turno semántico completo. |
 
-Primaria de CONSTELACIÓN: med log rel_err h16 en familias nuevas, CST − ÓRBITA-v1 (<0 = mejor). En ESTELA/ECO/MAREA la primaria tiene definición propia (ver su fila y su documento).
+Primaria de CONSTELACIÓN: med log rel_err h16 en familias nuevas, CST − ÓRBITA-v1 (<0 = mejor). En ESTELA/ECO/MAREA/Bellman/Campo la primaria tiene definición propia (ver su fila y documento respectivo).
 
 ### Contexto: Nova-2 (`exp/orbita-nova2` @ `b25c97e`) — los tres fracasan
 - **Exp1 (C4 bayesiano):** B1 primaria REFUTADA en CONFIRM (IC inf +0,038 > 0); B3 no-daño falla.

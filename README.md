@@ -14,7 +14,19 @@
 >    - **Resultados Test (3h GPU AMD RX 7800 XT):** $z$-MSE = **0.368** (supera a MLP 0.387 y repeat 1.092, **Pasa T1 y T2**). NLL cae de 1.946 a **0.628** (PPL cae de 7.00 a **1.87**, **Pasa T3**), supera al control barajado por −0.412 nats (**Pasa T4**). Pesos del LLM 100% intactos.
 >    - **Reporte:** [`docs/campo_estado_turno/run_3h_bq10/RESULTADOS.md`](docs/campo_estado_turno/run_3h_bq10/RESULTADOS.md).
 >
-> Ver reporte consolidado global en [`docs/RESULTADOS_CONSOLIDADOS.md`](docs/RESULTADOS_CONSOLIDADOS.md).
+> 3. **Tercera Línea de Investigación: Soft-Bellman Simplicial 3D en GPU (`soft_bellman_simplicial_v3_gpu`)**
+>    - **Ramas:** `exp/soft-bellman-simplicial-v2`, `exp/soft-bellman-v1`
+>    - **Objetivo:** Planificación y geodésicas en complejos tetraédricos sobre GPU AMD RX 7800 XT (WGPU/Vulkan) con optimización baricéntrica continua Snell-Fermat, Hodge $\Delta_1$, energía Regge y barrera Cayley-Menger.
+>    - **Resultados CONFIRM:** Paridad GPU vs CPU analítico ($< 1.61\times 10^{-6}$ error, 18.09 ms). Reducción de costo continuo de **−13.24%** vs oráculo grueso y **−2.47%** vs refinado; regret **0.0091%** con 100% de éxito. En ley cambiada, `v3_adapted` reduce sobrecosto a **0.1355%** (**−9.15 pp**, 68.5× menor error que v2) y zero-shot logra **4.96%** (supera a euclídeo 5.28%).
+>    - **Reporte:** [`docs/soft_bellman_simplicial_v3_gpu/RESULTADOS_V3_GPU.md`](docs/soft_bellman_simplicial_v3_gpu/RESULTADOS_V3_GPU.md).
+>
+> 4. **Cuarta Línea de Investigación: Bio-Quantum Engine x50 Masivo en GPU (`bio_quantum_engine`)**
+>    - **Rama:** `exp/bq10-gpu-amd`
+>    - **Objetivo:** Escalado masivo de constelaciones cuántico-biológicas en AMD Radeon RX 7800 XT (WGPU/Vulkan).
+>    - **Resultados x50:** 1,638,400 episodios en 86.80 s (**18,874.7 eps/s**), 1,024 nodos, 4,096 sinapsis con 0 violaciones de Ley de Dale y consolidación circadiana SWR $\Delta R = -0.00042$.
+>    - **Reporte:** [`docs/RESULTADOS_GPU_RX7800XT.md`](docs/RESULTADOS_GPU_RX7800XT.md) y [`docs/bq10/README.md`](docs/bq10/README.md).
+>
+> Ver reporte consolidado global y tabla unificada en [`docs/RESULTADOS_CONSOLIDADOS.md`](docs/RESULTADOS_CONSOLIDADOS.md).
 >
 > CONFIRM BQ10: BQ10−v4 new_med_log **−0.608 [−0.742, −0.465]**, BQ10−ATLAS-FW −0.156 [−0.269, −0.043], known_acc16 +0.010 vs v4, E33 16/16. Detalles en [`docs/bio_quantum_v10/`](docs/bio_quantum_v10/).
 >
