@@ -1,0 +1,3757 @@
+{
+  "bootstrap": {
+    "resamples": 10000,
+    "seed": 12345,
+    "delta": 0.05,
+    "unit": "independent trained model seed; paired maps within seed"
+  },
+  "phases": {
+    "DEV": {
+      "train": {
+        "full": {
+          "nll": 0.13154388983125,
+          "accuracy": 0.9228413690875,
+          "success": 1.0,
+          "regret": 8.07472e-05,
+          "interior_fraction": 0.4876736111125,
+          "eval_ms": 26.53515625,
+          "maps_total": 192,
+          "states_total": 10150,
+          "starts_total": 2112
+        },
+        "diagonal": {
+          "nll": 0.45844911907499997,
+          "accuracy": 0.80625647695,
+          "success": 1.0,
+          "regret": 0.00695370055625,
+          "interior_fraction": 0.50568520021875,
+          "eval_ms": 26.57650625,
+          "maps_total": 192,
+          "states_total": 10150,
+          "starts_total": 2112
+        },
+        "edge_diagonal": {
+          "nll": 0.1655521194375,
+          "accuracy": 0.95738636361875,
+          "success": 1.0,
+          "regret": 0.08511386115,
+          "interior_fraction": 0.0,
+          "eval_ms": 1.055425,
+          "maps_total": 192,
+          "states_total": 2304,
+          "starts_total": 2112
+        },
+        "no_phi": {
+          "nll": 0.6877062604999999,
+          "accuracy": 0.7427752677125,
+          "success": 1.0,
+          "regret": 0.0237037865375,
+          "interior_fraction": 0.30718118686875,
+          "eval_ms": 27.20096875,
+          "maps_total": 192,
+          "states_total": 10150,
+          "starts_total": 2112
+        },
+        "untrained": {
+          "nll": 1.2409813254125,
+          "accuracy": 0.72752848116875,
+          "success": 1.0,
+          "regret": 0.02614296335625,
+          "interior_fraction": 0.307544191925,
+          "eval_ms": 26.24196875,
+          "maps_total": 192,
+          "states_total": 10150,
+          "starts_total": 2112
+        },
+        "euclidean": {
+          "nll": 1.08355373719375,
+          "accuracy": 0.7284637322,
+          "success": 1.0,
+          "regret": 0.02623412079375,
+          "interior_fraction": 0.31100063131875,
+          "eval_ms": 22.9790875,
+          "maps_total": 192,
+          "states_total": 10150,
+          "starts_total": 2112
+        },
+        "oracle": {
+          "nll": 0.0,
+          "accuracy": 1.0,
+          "success": 1.0,
+          "regret": 0.0,
+          "interior_fraction": 0.48053188130625,
+          "eval_ms": 0.104725,
+          "maps_total": 192,
+          "states_total": 10150,
+          "starts_total": 2112
+        },
+        "v3_full_gpu": {
+          "nll": 0.11988549094374999,
+          "accuracy": 0.93689035785625,
+          "success": 1.0,
+          "regret": 5.8958525e-05,
+          "interior_fraction": 0.482851957075,
+          "eval_ms": 24.64379375,
+          "maps_total": 192,
+          "states_total": 10150,
+          "starts_total": 2112
+        },
+        "v3_continuous_gpu": {
+          "nll": 0.30128485385625,
+          "accuracy": 0.87580938485,
+          "success": 1.0,
+          "regret": 0.0001024983875,
+          "interior_fraction": 0.8509751533125,
+          "eval_ms": 544.66031875,
+          "maps_total": 192,
+          "states_total": 33939,
+          "starts_total": 2112
+        },
+        "v3_zeroshot_gpu": {
+          "nll": 0.9219386997125,
+          "accuracy": 0.75248512773125,
+          "success": 1.0,
+          "regret": 0.0236801130875,
+          "interior_fraction": 0.30136521465,
+          "eval_ms": 26.31210625,
+          "maps_total": 192,
+          "states_total": 10150,
+          "starts_total": 2112
+        },
+        "v3_adapted_gpu": {
+          "nll": 3.7671655502625,
+          "accuracy": 0.65865504398125,
+          "success": 1.0,
+          "regret": 0.09731056504375,
+          "interior_fraction": 0.5779976100375,
+          "eval_ms": 26.29441875,
+          "maps_total": 192,
+          "states_total": 10150,
+          "starts_total": 2112
+        },
+        "paired_vs_v3_full": {
+          "full": {
+            "regret": {
+              "difference": -2.1788675e-05,
+              "ci95": [
+                -6.43416784375e-05,
+                2.2710975625000002e-05
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.011658398887500001,
+              "ci95": [
+                -0.012770075021562502,
+                -0.010566684853281256
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "diagonal": {
+            "regret": {
+              "difference": -0.00689474203125,
+              "ci95": [
+                -0.00767443911921875,
+                -0.00616029960671875
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.33856362813125,
+              "ci95": [
+                -0.359150931429375,
+                -0.31799890949656257
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "edge_diagonal": {
+            "regret": {
+              "difference": -0.085054902625,
+              "ci95": [
+                -0.0910405996153125,
+                -0.07917091098578126
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.04566662849375001,
+              "ci95": [
+                -0.07657352001765627,
+                -0.018044098126875012
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "no_phi": {
+            "regret": {
+              "difference": -0.0236448280125,
+              "ci95": [
+                -0.02657562733890625,
+                -0.02087773148890625
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.56782076955625,
+              "ci95": [
+                -0.6158663806060938,
+                -0.5230399692976563
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "untrained": {
+            "regret": {
+              "difference": -0.02608400483125,
+              "ci95": [
+                -0.028805116110468754,
+                -0.0235357525053125
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -1.12109583446875,
+              "ci95": [
+                -1.2305433927521874,
+                -1.0202855714034376
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "euclidean": {
+            "regret": {
+              "difference": -0.02617516226875,
+              "ci95": [
+                -0.028865720137343755,
+                -0.023710089695312502
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.96366824625,
+              "ci95": [
+                -1.0469611885860939,
+                -0.8834858784903126
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          }
+        },
+        "paired_vs_v3_adapted": {
+          "full": {
+            "regret": {
+              "difference": 0.09722981784375,
+              "ci95": [
+                0.08981073750031253,
+                0.10528937011859374
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": 3.63562166043125,
+              "ci95": [
+                3.3204080837525,
+                3.998525142305313
+              ],
+              "seeds": 16
+            }
+          },
+          "diagonal": {
+            "regret": {
+              "difference": 0.09035686448750001,
+              "ci95": [
+                0.08307557011062501,
+                0.0983542276996875
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": 3.3087164311875,
+              "ci95": [
+                2.9936376258796873,
+                3.6681724678468752
+              ],
+              "seeds": 16
+            }
+          },
+          "no_phi": {
+            "regret": {
+              "difference": 0.07360677850625,
+              "ci95": [
+                0.06747939689375,
+                0.08053322846562498
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": 3.0794592897625,
+              "ci95": [
+                2.7895861296464064,
+                3.410740069482812
+              ],
+              "seeds": 16
+            }
+          },
+          "euclidean": {
+            "regret": {
+              "difference": 0.07107644425,
+              "ci95": [
+                0.06436748880546873,
+                0.0786848509603125
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": 2.68361181306875,
+              "ci95": [
+                2.397357346670781,
+                3.0091682344015624
+              ],
+              "seeds": 16
+            }
+          },
+          "v3_zeroshot_gpu": {
+            "regret": {
+              "difference": 0.07363045195625001,
+              "ci95": [
+                0.06732853147734376,
+                0.08075674665656249
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": 2.84522685055,
+              "ci95": [
+                2.571325795780313,
+                3.1597866156960928
+              ],
+              "seeds": 16
+            }
+          }
+        }
+      },
+      "val": {
+        "full": {
+          "nll": 0.13750898565,
+          "accuracy": 0.91350189978125,
+          "success": 1.0,
+          "regret": 0.00018014438125,
+          "interior_fraction": 0.48990124458125,
+          "eval_ms": 9.05108125,
+          "maps_total": 64,
+          "states_total": 3374,
+          "starts_total": 704
+        },
+        "diagonal": {
+          "nll": 0.5065863541625,
+          "accuracy": 0.79346152758125,
+          "success": 1.0,
+          "regret": 0.00910545403125,
+          "interior_fraction": 0.49564393939375,
+          "eval_ms": 8.8977375,
+          "maps_total": 64,
+          "states_total": 3374,
+          "starts_total": 704
+        },
+        "edge_diagonal": {
+          "nll": 0.21093068071875,
+          "accuracy": 0.9488636363625,
+          "success": 1.0,
+          "regret": 0.09045572101875,
+          "interior_fraction": 0.0,
+          "eval_ms": 0.37788125,
+          "maps_total": 64,
+          "states_total": 768,
+          "starts_total": 704
+        },
+        "no_phi": {
+          "nll": 0.7779281668125,
+          "accuracy": 0.73269065273125,
+          "success": 1.0,
+          "regret": 0.02600869531875,
+          "interior_fraction": 0.31396780303125,
+          "eval_ms": 8.989525,
+          "maps_total": 64,
+          "states_total": 3374,
+          "starts_total": 704
+        },
+        "untrained": {
+          "nll": 1.33688620083125,
+          "accuracy": 0.72157108504375,
+          "success": 1.0,
+          "regret": 0.02704323945625,
+          "interior_fraction": 0.30714962121875,
+          "eval_ms": 8.91551875,
+          "maps_total": 64,
+          "states_total": 3374,
+          "starts_total": 704
+        },
+        "euclidean": {
+          "nll": 1.167671664025,
+          "accuracy": 0.7205538501125,
+          "success": 1.0,
+          "regret": 0.02753054461875,
+          "interior_fraction": 0.30980113636875,
+          "eval_ms": 7.7816,
+          "maps_total": 64,
+          "states_total": 3374,
+          "starts_total": 704
+        },
+        "oracle": {
+          "nll": 0.0,
+          "accuracy": 1.0,
+          "success": 1.0,
+          "regret": 0.0,
+          "interior_fraction": 0.4823626893875,
+          "eval_ms": 0.03460625,
+          "maps_total": 64,
+          "states_total": 3374,
+          "starts_total": 704
+        },
+        "v3_full_gpu": {
+          "nll": 0.13148759366875,
+          "accuracy": 0.92584596898125,
+          "success": 1.0,
+          "regret": 0.0002269797125,
+          "interior_fraction": 0.48816287879375,
+          "eval_ms": 8.449425,
+          "maps_total": 64,
+          "states_total": 3374,
+          "starts_total": 704
+        },
+        "v3_continuous_gpu": {
+          "nll": 0.300318386225,
+          "accuracy": 0.87189831098125,
+          "success": 1.0,
+          "regret": 0.00011036413125,
+          "interior_fraction": 0.84927117154375,
+          "eval_ms": 181.3869875,
+          "maps_total": 64,
+          "states_total": 11279,
+          "starts_total": 704
+        },
+        "v3_zeroshot_gpu": {
+          "nll": 1.0051407335125,
+          "accuracy": 0.7450999054625,
+          "success": 1.0,
+          "regret": 0.0259191931125,
+          "interior_fraction": 0.30906723484375,
+          "eval_ms": 8.58288125,
+          "maps_total": 64,
+          "states_total": 3374,
+          "starts_total": 704
+        },
+        "v3_adapted_gpu": {
+          "nll": 4.15327406519375,
+          "accuracy": 0.6483830726437501,
+          "success": 1.0,
+          "regret": 0.093659204525,
+          "interior_fraction": 0.5733191287875,
+          "eval_ms": 8.30798125,
+          "maps_total": 64,
+          "states_total": 3374,
+          "starts_total": 704
+        },
+        "paired_vs_v3_full": {
+          "full": {
+            "regret": {
+              "difference": 4.683533124999999e-05,
+              "ci95": [
+                -6.474109406250001e-05,
+                0.00019372844171874998
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.0060213919812500015,
+              "ci95": [
+                -0.009399096168906253,
+                -0.0021424007967187513
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "diagonal": {
+            "regret": {
+              "difference": -0.00887847431875,
+              "ci95": [
+                -0.010771916938125002,
+                -0.007039806393281251
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.37509876049375,
+              "ci95": [
+                -0.4137874354532813,
+                -0.3380220225395313
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "edge_diagonal": {
+            "regret": {
+              "difference": -0.09022874130625,
+              "ci95": [
+                -0.10123574500812502,
+                -0.07969135922546874
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.07944308705,
+              "ci95": [
+                -0.17209771063953125,
+                0.0011289100189062196
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "no_phi": {
+            "regret": {
+              "difference": -0.025781715606250002,
+              "ci95": [
+                -0.03042782741359376,
+                -0.021636057381406254
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.64644057314375,
+              "ci95": [
+                -0.7855412870632812,
+                -0.5349589051006249
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "untrained": {
+            "regret": {
+              "difference": -0.02681625974375,
+              "ci95": [
+                -0.03211269731109376,
+                -0.022150421178437504
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -1.2053986071625,
+              "ci95": [
+                -1.438833765756875,
+                -1.0008957293076561
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "euclidean": {
+            "regret": {
+              "difference": -0.02730356490625,
+              "ci95": [
+                -0.03271839890859375,
+                -0.022709124327343753
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -1.03618407035625,
+              "ci95": [
+                -1.21543172835875,
+                -0.8721219569535938
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          }
+        },
+        "paired_vs_v3_adapted": {
+          "full": {
+            "regret": {
+              "difference": 0.09347906014375,
+              "ci95": [
+                0.08064617093546876,
+                0.10787633789
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": 4.01576507954375,
+              "ci95": [
+                3.3891697373645315,
+                4.742671013568906
+              ],
+              "seeds": 16
+            }
+          },
+          "diagonal": {
+            "regret": {
+              "difference": 0.08455375049375,
+              "ci95": [
+                0.07127559969953126,
+                0.09934198632140624
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": 3.64668771103125,
+              "ci95": [
+                3.0325741218501556,
+                4.349689746551406
+              ],
+              "seeds": 16
+            }
+          },
+          "no_phi": {
+            "regret": {
+              "difference": 0.06765050920625,
+              "ci95": [
+                0.056194625188906264,
+                0.07980332214406251
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": 3.37534589838125,
+              "ci95": [
+                2.8352046784970315,
+                3.9811891702789057
+              ],
+              "seeds": 16
+            }
+          },
+          "euclidean": {
+            "regret": {
+              "difference": 0.06612865990625,
+              "ci95": [
+                0.055198339188750015,
+                0.077344732541875
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": 2.98560240116875,
+              "ci95": [
+                2.446668342930156,
+                3.5771702238656244
+              ],
+              "seeds": 16
+            }
+          },
+          "v3_zeroshot_gpu": {
+            "regret": {
+              "difference": 0.06774001141250001,
+              "ci95": [
+                0.0568182301396875,
+                0.07926852414828126
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": 3.14813333168125,
+              "ci95": [
+                2.638953631655313,
+                3.7080052846220317
+              ],
+              "seeds": 16
+            }
+          }
+        }
+      },
+      "test": {
+        "full": {
+          "nll": 0.14270986294375,
+          "accuracy": 0.9137017589124999,
+          "success": 1.0,
+          "regret": 9.5512125e-05,
+          "interior_fraction": 0.49702099115625,
+          "eval_ms": 52.77300625,
+          "maps_total": 384,
+          "states_total": 20357,
+          "starts_total": 4224
+        },
+        "diagonal": {
+          "nll": 0.5133416939875,
+          "accuracy": 0.795716703775,
+          "success": 1.0,
+          "regret": 0.00831690475,
+          "interior_fraction": 0.52146633748125,
+          "eval_ms": 54.709775,
+          "maps_total": 384,
+          "states_total": 20357,
+          "starts_total": 4224
+        },
+        "edge_diagonal": {
+          "nll": 0.2158189288625,
+          "accuracy": 0.946022727275,
+          "success": 1.0,
+          "regret": 0.09112749036250001,
+          "interior_fraction": 0.0,
+          "eval_ms": 2.17089375,
+          "maps_total": 384,
+          "states_total": 4608,
+          "starts_total": 4224
+        },
+        "no_phi": {
+          "nll": 0.73940103885,
+          "accuracy": 0.7388754414250001,
+          "success": 1.0,
+          "regret": 0.02403061755625,
+          "interior_fraction": 0.3248895202,
+          "eval_ms": 54.15920625,
+          "maps_total": 384,
+          "states_total": 20357,
+          "starts_total": 4224
+        },
+        "untrained": {
+          "nll": 1.2822785503375,
+          "accuracy": 0.72985327970625,
+          "success": 1.0,
+          "regret": 0.025944066418749998,
+          "interior_fraction": 0.32199337121875,
+          "eval_ms": 52.49764375,
+          "maps_total": 384,
+          "states_total": 20357,
+          "starts_total": 4224
+        },
+        "euclidean": {
+          "nll": 1.12501837971875,
+          "accuracy": 0.72903251450625,
+          "success": 1.0,
+          "regret": 0.02619572916875,
+          "interior_fraction": 0.32498421718125003,
+          "eval_ms": 48.9326375,
+          "maps_total": 384,
+          "states_total": 20357,
+          "starts_total": 4224
+        },
+        "oracle": {
+          "nll": 0.0,
+          "accuracy": 1.0,
+          "success": 1.0,
+          "regret": 0.0,
+          "interior_fraction": 0.49686710858125,
+          "eval_ms": 0.69680625,
+          "maps_total": 384,
+          "states_total": 20357,
+          "starts_total": 4224
+        },
+        "v3_full_gpu": {
+          "nll": 0.14024693058125,
+          "accuracy": 0.92428120694375,
+          "success": 1.0,
+          "regret": 0.0001802567,
+          "interior_fraction": 0.49313052398125,
+          "eval_ms": 52.7805375,
+          "maps_total": 384,
+          "states_total": 20357,
+          "starts_total": 4224
+        },
+        "v3_continuous_gpu": {
+          "nll": 0.3096198314125,
+          "accuracy": 0.86994991319375,
+          "success": 1.0,
+          "regret": 0.00013826605,
+          "interior_fraction": 0.85350998828125,
+          "eval_ms": 1157.6266625,
+          "maps_total": 384,
+          "states_total": 68036,
+          "starts_total": 4224
+        },
+        "v3_zeroshot_gpu": {
+          "nll": 0.93269765451875,
+          "accuracy": 0.75434086045,
+          "success": 1.0,
+          "regret": 0.023525666225,
+          "interior_fraction": 0.32110558711875,
+          "eval_ms": 52.99364375,
+          "maps_total": 384,
+          "states_total": 20357,
+          "starts_total": 4224
+        },
+        "v3_adapted_gpu": {
+          "nll": 3.69193975410625,
+          "accuracy": 0.65911159146875,
+          "success": 1.0,
+          "regret": 0.0959116543875,
+          "interior_fraction": 0.58973270653125,
+          "eval_ms": 52.35006875,
+          "maps_total": 384,
+          "states_total": 20357,
+          "starts_total": 4224
+        },
+        "paired_vs_v3_full": {
+          "full": {
+            "regret": {
+              "difference": 8.4744575e-05,
+              "ci95": [
+                3.3317963593750005e-05,
+                0.00015117560421874999
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.002462932362499997,
+              "ci95": [
+                -0.004983354330468746,
+                0.0002978063265625035
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "diagonal": {
+            "regret": {
+              "difference": -0.00813664805,
+              "ci95": [
+                -0.008860423033749999,
+                -0.007443530025625
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.37309476340625,
+              "ci95": [
+                -0.39225347471124994,
+                -0.35505042991
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "edge_diagonal": {
+            "regret": {
+              "difference": -0.0909472336625,
+              "ci95": [
+                -0.09593361027984375,
+                -0.08576351081515626
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.07557199828125,
+              "ci95": [
+                -0.10236699622140626,
+                -0.05187251965828125
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "no_phi": {
+            "regret": {
+              "difference": -0.02385036085625,
+              "ci95": [
+                -0.025430999280625005,
+                -0.022239280470000004
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.59915410826875,
+              "ci95": [
+                -0.6279224346062501,
+                -0.5716750142346876
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "untrained": {
+            "regret": {
+              "difference": -0.02576380971875,
+              "ci95": [
+                -0.027519946317343755,
+                -0.024066513351406246
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -1.14203161975625,
+              "ci95": [
+                -1.213530167739375,
+                -1.0720805626123437
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "euclidean": {
+            "regret": {
+              "difference": -0.026015472468750002,
+              "ci95": [
+                -0.0276908499434375,
+                -0.024319738866406253
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.9847714491375,
+              "ci95": [
+                -1.036377769392031,
+                -0.9323110334815625
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          }
+        },
+        "paired_vs_v3_adapted": {
+          "full": {
+            "regret": {
+              "difference": 0.0958161422625,
+              "ci95": [
+                0.09109755028421875,
+                0.1009071570025
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": 3.5492298911625,
+              "ci95": [
+                3.3734295658796873,
+                3.7470282203768748
+              ],
+              "seeds": 16
+            }
+          },
+          "diagonal": {
+            "regret": {
+              "difference": 0.0875947496375,
+              "ci95": [
+                0.08280408422828126,
+                0.09267027755953125
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": 3.17859806011875,
+              "ci95": [
+                3.006163029647343,
+                3.3682036380910936
+              ],
+              "seeds": 16
+            }
+          },
+          "no_phi": {
+            "regret": {
+              "difference": 0.07188103683125,
+              "ci95": [
+                0.0676021763265625,
+                0.07636811445906251
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": 2.95253871525625,
+              "ci95": [
+                2.7876581067740624,
+                3.1391292370979693
+              ],
+              "seeds": 16
+            }
+          },
+          "euclidean": {
+            "regret": {
+              "difference": 0.06971592521875,
+              "ci95": [
+                0.06543778268515625,
+                0.07419675038375
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": 2.5669213743875,
+              "ci95": [
+                2.410904476523437,
+                2.7438362959135936
+              ],
+              "seeds": 16
+            }
+          },
+          "v3_zeroshot_gpu": {
+            "regret": {
+              "difference": 0.0723859881625,
+              "ci95": [
+                0.06823683198171876,
+                0.07673506836921874
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": 2.7592420995875,
+              "ci95": [
+                2.6015851475471874,
+                2.9351078292498443
+              ],
+              "seeds": 16
+            }
+          }
+        }
+      },
+      "ood_geometry": {
+        "full": {
+          "nll": 0.1448880265875,
+          "accuracy": 0.90984818536875,
+          "success": 1.0,
+          "regret": 9.112643124999999e-05,
+          "interior_fraction": 0.5742668942625,
+          "eval_ms": 55.6193,
+          "maps_total": 128,
+          "states_total": 12335,
+          "starts_total": 2176
+        },
+        "diagonal": {
+          "nll": 0.5557951416875,
+          "accuracy": 0.78230378391875,
+          "success": 1.0,
+          "regret": 0.010262947706250001,
+          "interior_fraction": 0.5723728553875,
+          "eval_ms": 54.245456250000004,
+          "maps_total": 128,
+          "states_total": 12335,
+          "starts_total": 2176
+        },
+        "edge_diagonal": {
+          "nll": 0.30965645785,
+          "accuracy": 0.9140625000125,
+          "success": 1.0,
+          "regret": 0.11397126973125,
+          "interior_fraction": 0.0,
+          "eval_ms": 2.00296875,
+          "maps_total": 128,
+          "states_total": 2304,
+          "starts_total": 2176
+        },
+        "no_phi": {
+          "nll": 0.80396278604375,
+          "accuracy": 0.7218554234125,
+          "success": 1.0,
+          "regret": 0.0304090082125,
+          "interior_fraction": 0.40798428745625,
+          "eval_ms": 56.4294875,
+          "maps_total": 128,
+          "states_total": 12335,
+          "starts_total": 2176
+        },
+        "untrained": {
+          "nll": 1.417132611575,
+          "accuracy": 0.7111686087125,
+          "success": 1.0,
+          "regret": 0.030579630406250002,
+          "interior_fraction": 0.4041471536375,
+          "eval_ms": 56.33575625,
+          "maps_total": 128,
+          "states_total": 12335,
+          "starts_total": 2176
+        },
+        "euclidean": {
+          "nll": 1.24955504214375,
+          "accuracy": 0.70942688853125,
+          "success": 1.0,
+          "regret": 0.03209639705,
+          "interior_fraction": 0.40604939891874997,
+          "eval_ms": 52.74939375,
+          "maps_total": 128,
+          "states_total": 12335,
+          "starts_total": 2176
+        },
+        "oracle": {
+          "nll": 0.0,
+          "accuracy": 1.0,
+          "success": 1.0,
+          "regret": 0.0,
+          "interior_fraction": 0.56549479165625,
+          "eval_ms": 0.19285625,
+          "maps_total": 128,
+          "states_total": 12335,
+          "starts_total": 2176
+        },
+        "v3_full_gpu": {
+          "nll": 0.14107568888125,
+          "accuracy": 0.92314738981875,
+          "success": 1.0,
+          "regret": 0.0001491548125,
+          "interior_fraction": 0.5698058911125,
+          "eval_ms": 55.0628,
+          "maps_total": 128,
+          "states_total": 12335,
+          "starts_total": 2176
+        },
+        "v3_continuous_gpu": {
+          "nll": 0.2968737911625,
+          "accuracy": 0.8779377838,
+          "success": 1.0,
+          "regret": 9.379150625000001e-05,
+          "interior_fraction": 0.881816424475,
+          "eval_ms": 1689.54945625,
+          "maps_total": 128,
+          "states_total": 41738,
+          "starts_total": 2176
+        },
+        "v3_zeroshot_gpu": {
+          "nll": 1.03163577633125,
+          "accuracy": 0.7371803648625,
+          "success": 1.0,
+          "regret": 0.02952686426875,
+          "interior_fraction": 0.391609221825,
+          "eval_ms": 62.386337499999996,
+          "maps_total": 128,
+          "states_total": 12335,
+          "starts_total": 2176
+        },
+        "v3_adapted_gpu": {
+          "nll": 4.29245806718125,
+          "accuracy": 0.63173524500625,
+          "success": 1.0,
+          "regret": 0.10756561925625,
+          "interior_fraction": 0.66748511905,
+          "eval_ms": 65.52091874999999,
+          "maps_total": 128,
+          "states_total": 12335,
+          "starts_total": 2176
+        },
+        "paired_vs_v3_full": {
+          "full": {
+            "regret": {
+              "difference": 5.802838125e-05,
+              "ci95": [
+                -1.7916792187499972e-06,
+                0.00012805739499999996
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.0038123377062500028,
+              "ci95": [
+                -0.007412349333593754,
+                0.0002861880228124995
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "diagonal": {
+            "regret": {
+              "difference": -0.01011379289375,
+              "ci95": [
+                -0.0110520766121875,
+                -0.00929692008140625
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.41471945280625,
+              "ci95": [
+                -0.44849784748265625,
+                -0.38186859961015623
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "edge_diagonal": {
+            "regret": {
+              "difference": -0.11382211491875,
+              "ci95": [
+                -0.12495911720078125,
+                -0.1030442517373437
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.16858076896875,
+              "ci95": [
+                -0.21578772823953127,
+                -0.12336889970218753
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "no_phi": {
+            "regret": {
+              "difference": -0.0302598534,
+              "ci95": [
+                -0.0339597928071875,
+                -0.0270454313875
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.6628870971625,
+              "ci95": [
+                -0.7288089895310936,
+                -0.5998759353792188
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "untrained": {
+            "regret": {
+              "difference": -0.03043047559375,
+              "ci95": [
+                -0.03353848893546875,
+                -0.027575462821562497
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -1.27605692269375,
+              "ci95": [
+                -1.434809994854688,
+                -1.1373972341926564
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "euclidean": {
+            "regret": {
+              "difference": -0.0319472422375,
+              "ci95": [
+                -0.03568675936578125,
+                -0.028454807918281252
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -1.1084793532625001,
+              "ci95": [
+                -1.2340660804189063,
+                -0.995422394658594
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          }
+        },
+        "paired_vs_v3_adapted": {
+          "full": {
+            "regret": {
+              "difference": 0.107474492825,
+              "ci95": [
+                0.094494806828125,
+                0.120451732551875
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": 4.14757004059375,
+              "ci95": [
+                3.744031288887344,
+                4.558507993843437
+              ],
+              "seeds": 16
+            }
+          },
+          "diagonal": {
+            "regret": {
+              "difference": 0.09730267155,
+              "ci95": [
+                0.0844299600021875,
+                0.11034748113031251
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": 3.73666292549375,
+              "ci95": [
+                3.344462769706406,
+                4.135118859056405
+              ],
+              "seeds": 16
+            }
+          },
+          "no_phi": {
+            "regret": {
+              "difference": 0.07715661104375,
+              "ci95": [
+                0.06553713007390624,
+                0.08900327747593748
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": 3.4884952811375,
+              "ci95": [
+                3.1318319653004685,
+                3.8525883881032805
+              ],
+              "seeds": 16
+            }
+          },
+          "euclidean": {
+            "regret": {
+              "difference": 0.07546922220625,
+              "ci95": [
+                0.06445436051328124,
+                0.08666352756765625
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": 3.0429030250375,
+              "ci95": [
+                2.707243113496562,
+                3.381384349682656
+              ],
+              "seeds": 16
+            }
+          },
+          "v3_zeroshot_gpu": {
+            "regret": {
+              "difference": 0.0780387549875,
+              "ci95": [
+                0.06639136310515625,
+                0.08991775915265626
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": 3.2608222908499997,
+              "ci95": [
+                2.925932320446094,
+                3.6005006580307817
+              ],
+              "seeds": 16
+            }
+          }
+        }
+      },
+      "changed_law": {
+        "full": {
+          "nll": 4.62628996709375,
+          "accuracy": 0.657142222075,
+          "success": 1.0,
+          "regret": 0.092193858725,
+          "interior_fraction": 0.48691321698125,
+          "eval_ms": 27.733425,
+          "maps_total": 128,
+          "states_total": 6775,
+          "starts_total": 1408
+        },
+        "diagonal": {
+          "nll": 2.104973693275,
+          "accuracy": 0.64200133594375,
+          "success": 1.0,
+          "regret": 0.100142977025,
+          "interior_fraction": 0.500099770025,
+          "eval_ms": 28.00940625,
+          "maps_total": 128,
+          "states_total": 6775,
+          "starts_total": 1408
+        },
+        "edge_diagonal": {
+          "nll": 2.08835894985,
+          "accuracy": 0.73224431818125,
+          "success": 1.0,
+          "regret": 0.15357383478125,
+          "interior_fraction": 0.0,
+          "eval_ms": 0.83710625,
+          "maps_total": 128,
+          "states_total": 1536,
+          "starts_total": 1408
+        },
+        "no_phi": {
+          "nll": 1.1267855100625,
+          "accuracy": 0.6708680008375,
+          "success": 1.0,
+          "regret": 0.05350217138125,
+          "interior_fraction": 0.31981534091874997,
+          "eval_ms": 25.4624125,
+          "maps_total": 128,
+          "states_total": 6775,
+          "starts_total": 1408
+        },
+        "untrained": {
+          "nll": 2.03260354981875,
+          "accuracy": 0.66251242925625,
+          "success": 1.0,
+          "regret": 0.0563359721125,
+          "interior_fraction": 0.31633522726875,
+          "eval_ms": 25.23581875,
+          "maps_total": 128,
+          "states_total": 6775,
+          "starts_total": 1408
+        },
+        "euclidean": {
+          "nll": 1.7246339791875,
+          "accuracy": 0.66227426144375,
+          "success": 1.0,
+          "regret": 0.05748682238125,
+          "interior_fraction": 0.31865530304375,
+          "eval_ms": 26.5200125,
+          "maps_total": 128,
+          "states_total": 6775,
+          "starts_total": 1408
+        },
+        "oracle": {
+          "nll": 0.0,
+          "accuracy": 1.0,
+          "success": 1.0,
+          "regret": 0.0,
+          "interior_fraction": 0.5981939935125,
+          "eval_ms": 0.110925,
+          "maps_total": 128,
+          "states_total": 6775,
+          "starts_total": 1408
+        },
+        "v3_full_gpu": {
+          "nll": 5.55863950589375,
+          "accuracy": 0.66371042056875,
+          "success": 1.0,
+          "regret": 0.09573230258125,
+          "interior_fraction": 0.4845576298625,
+          "eval_ms": 24.4769875,
+          "maps_total": 128,
+          "states_total": 6775,
+          "starts_total": 1408
+        },
+        "v3_continuous_gpu": {
+          "nll": 5.871872300025,
+          "accuracy": 0.43677264503125,
+          "success": 1.0,
+          "regret": 0.14804757335,
+          "interior_fraction": 0.8463135822375,
+          "eval_ms": 437.27834375,
+          "maps_total": 128,
+          "states_total": 22647,
+          "starts_total": 1408
+        },
+        "v3_zeroshot_gpu": {
+          "nll": 1.58993423180625,
+          "accuracy": 0.68124649228125,
+          "success": 1.0,
+          "regret": 0.05295202966875,
+          "interior_fraction": 0.31395596590625,
+          "eval_ms": 32.98851875,
+          "maps_total": 128,
+          "states_total": 6775,
+          "starts_total": 1408
+        },
+        "v3_adapted_gpu": {
+          "nll": 0.22738253019375002,
+          "accuracy": 0.90305038770625,
+          "success": 1.0,
+          "regret": 0.0019735174875,
+          "interior_fraction": 0.591210092,
+          "eval_ms": 31.13661875,
+          "maps_total": 128,
+          "states_total": 6775,
+          "starts_total": 1408
+        },
+        "paired_vs_v3_full": {
+          "full": {
+            "regret": {
+              "difference": 0.0035384438562500015,
+              "ci95": [
+                0.0007891496756250032,
+                0.0063180973704687485
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": 0.9323495387999998,
+              "ci95": [
+                0.7754330379832811,
+                1.0875327954779686
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "diagonal": {
+            "regret": {
+              "difference": -0.004410674443750002,
+              "ci95": [
+                -0.010946790471093749,
+                0.0014151073848437438
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": 3.45366581261875,
+              "ci95": [
+                2.9272748993481246,
+                4.002736947297342
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "edge_diagonal": {
+            "regret": {
+              "difference": -0.0578415322,
+              "ci95": [
+                -0.0735615825371875,
+                -0.04252730055078126
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": 3.47028055604375,
+              "ci95": [
+                2.8117911362132806,
+                4.16705983395703
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "no_phi": {
+            "regret": {
+              "difference": 0.0422301312,
+              "ci95": [
+                0.0331255804709375,
+                0.05169708110890626
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": 4.43185399583125,
+              "ci95": [
+                3.7888529511142184,
+                5.101544022120311
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "untrained": {
+            "regret": {
+              "difference": 0.03939633046875,
+              "ci95": [
+                0.030155201671562503,
+                0.049038728808749994
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": 3.526035956075,
+              "ci95": [
+                2.919848788371875,
+                4.144601836708906
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "euclidean": {
+            "regret": {
+              "difference": 0.0382454802,
+              "ci95": [
+                0.02831624136234375,
+                0.04869758649578126
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": 3.83400552670625,
+              "ci95": [
+                3.2260030154604684,
+                4.460399335112343
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          }
+        },
+        "paired_vs_v3_adapted": {
+          "full": {
+            "regret": {
+              "difference": -0.0902203412375,
+              "ci95": [
+                -0.10126182786984374,
+                -0.07953486493265624
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -4.3989074369,
+              "ci95": [
+                -4.993886277651094,
+                -3.8225902353348435
+              ],
+              "seeds": 16
+            }
+          },
+          "diagonal": {
+            "regret": {
+              "difference": -0.0981694595375,
+              "ci95": [
+                -0.11067182970109375,
+                -0.08597957178859376
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -1.87759116308125,
+              "ci95": [
+                -2.098153550547031,
+                -1.6600622599968753
+              ],
+              "seeds": 16
+            }
+          },
+          "no_phi": {
+            "regret": {
+              "difference": -0.05152865389375,
+              "ci95": [
+                -0.0597741973246875,
+                -0.045112954040625014
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.89940297986875,
+              "ci95": [
+                -0.9870109860895313,
+                -0.8140247101629688
+              ],
+              "seeds": 16
+            }
+          },
+          "euclidean": {
+            "regret": {
+              "difference": -0.05551330489375,
+              "ci95": [
+                -0.0630810696446875,
+                -0.04861774203562501
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -1.49725144899375,
+              "ci95": [
+                -1.6473854028734374,
+                -1.3412719649917184
+              ],
+              "seeds": 16
+            }
+          },
+          "v3_zeroshot_gpu": {
+            "regret": {
+              "difference": -0.05097851218125,
+              "ci95": [
+                -0.058052091076249986,
+                -0.045096632815937496
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -1.3625517016125,
+              "ci95": [
+                -1.5263596842696876,
+                -1.2085417796614062
+              ],
+              "seeds": 16
+            }
+          }
+        }
+      }
+    },
+    "CONFIRM": {
+      "train": {
+        "full": {
+          "nll": 0.1299756527125,
+          "accuracy": 0.9200380889687501,
+          "success": 1.0,
+          "regret": 4.753643125e-05,
+          "interior_fraction": 0.4871437590125,
+          "eval_ms": 25.37230625,
+          "maps_total": 192,
+          "states_total": 10138,
+          "starts_total": 2112
+        },
+        "diagonal": {
+          "nll": 0.46026236448125,
+          "accuracy": 0.80500660659375,
+          "success": 1.0,
+          "regret": 0.00741545560625,
+          "interior_fraction": 0.501565882025,
+          "eval_ms": 24.68645,
+          "maps_total": 192,
+          "states_total": 10138,
+          "starts_total": 2112
+        },
+        "edge_diagonal": {
+          "nll": 0.16906376146875,
+          "accuracy": 0.9540719696875,
+          "success": 1.0,
+          "regret": 0.08825720826875,
+          "interior_fraction": 0.0,
+          "eval_ms": 1.0977625,
+          "maps_total": 192,
+          "states_total": 2304,
+          "starts_total": 2112
+        },
+        "no_phi": {
+          "nll": 0.67080098584375,
+          "accuracy": 0.7451845696875,
+          "success": 1.0,
+          "regret": 0.02182793529375,
+          "interior_fraction": 0.3192347582875,
+          "eval_ms": 27.192525,
+          "maps_total": 192,
+          "states_total": 10138,
+          "starts_total": 2112
+        },
+        "untrained": {
+          "nll": 1.2073825133625,
+          "accuracy": 0.73126297551875,
+          "success": 1.0,
+          "regret": 0.02373630106875,
+          "interior_fraction": 0.3237058080875,
+          "eval_ms": 24.76365625,
+          "maps_total": 192,
+          "states_total": 10138,
+          "starts_total": 2112
+        },
+        "euclidean": {
+          "nll": 1.071656376625,
+          "accuracy": 0.7313479679625,
+          "success": 1.0,
+          "regret": 0.0240548704625,
+          "interior_fraction": 0.3248263888875,
+          "eval_ms": 23.4772,
+          "maps_total": 192,
+          "states_total": 10138,
+          "starts_total": 2112
+        },
+        "oracle": {
+          "nll": 0.0,
+          "accuracy": 1.0,
+          "success": 1.0,
+          "regret": 0.0,
+          "interior_fraction": 0.48270202020624997,
+          "eval_ms": 0.1073375,
+          "maps_total": 192,
+          "states_total": 10138,
+          "starts_total": 2112
+        },
+        "v3_full_gpu": {
+          "nll": 0.119412000425,
+          "accuracy": 0.93683624853125,
+          "success": 1.0,
+          "regret": 6.456656250000001e-05,
+          "interior_fraction": 0.4821766774875,
+          "eval_ms": 24.28655,
+          "maps_total": 192,
+          "states_total": 10138,
+          "starts_total": 2112
+        },
+        "v3_continuous_gpu": {
+          "nll": 0.29657477196875,
+          "accuracy": 0.8745631230249999,
+          "success": 1.0,
+          "regret": 6.46372375e-05,
+          "interior_fraction": 0.8519176136375,
+          "eval_ms": 615.9017875,
+          "maps_total": 192,
+          "states_total": 33879,
+          "starts_total": 2112
+        },
+        "v3_zeroshot_gpu": {
+          "nll": 0.88878124336875,
+          "accuracy": 0.75893464475,
+          "success": 1.0,
+          "regret": 0.02168405864375,
+          "interior_fraction": 0.313857323225,
+          "eval_ms": 25.33469375,
+          "maps_total": 192,
+          "states_total": 10138,
+          "starts_total": 2112
+        },
+        "v3_adapted_gpu": {
+          "nll": 3.6706407391375,
+          "accuracy": 0.661441748475,
+          "success": 1.0,
+          "regret": 0.088237640875,
+          "interior_fraction": 0.58798926768125,
+          "eval_ms": 26.52306875,
+          "maps_total": 192,
+          "states_total": 10138,
+          "starts_total": 2112
+        },
+        "paired_vs_v3_full": {
+          "full": {
+            "regret": {
+              "difference": 1.703013125e-05,
+              "ci95": [
+                1.053401562500004e-07,
+                3.7492209999999994e-05
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.0105636522875,
+              "ci95": [
+                -0.011805897901249997,
+                -0.009243007731718747
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "diagonal": {
+            "regret": {
+              "difference": -0.00735088904375,
+              "ci95": [
+                -0.00831101063953125,
+                -0.006391099375312501
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.34085036405625,
+              "ci95": [
+                -0.3642559005623438,
+                -0.31770982342562504
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "edge_diagonal": {
+            "regret": {
+              "difference": -0.08819264170625,
+              "ci95": [
+                -0.09562443636015626,
+                -0.080691173560625
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.04965176104375,
+              "ci95": [
+                -0.08083395017124999,
+                -0.02064735215312504
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "no_phi": {
+            "regret": {
+              "difference": -0.02176336873125,
+              "ci95": [
+                -0.025203317659375002,
+                -0.018936490329062503
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.55138898541875,
+              "ci95": [
+                -0.6063492474728124,
+                -0.49803788928187503
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "untrained": {
+            "regret": {
+              "difference": -0.02367173450625,
+              "ci95": [
+                -0.02746846627984375,
+                -0.020401786567656247
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -1.0879705129375,
+              "ci95": [
+                -1.2281432917303128,
+                -0.9545688276532814
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "euclidean": {
+            "regret": {
+              "difference": -0.0239903039,
+              "ci95": [
+                -0.0276335161496875,
+                -0.020931303573593747
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.9522443762,
+              "ci95": [
+                -1.068423778,
+                -0.8441360647543751
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          }
+        },
+        "paired_vs_v3_adapted": {
+          "full": {
+            "regret": {
+              "difference": 0.08819010444375,
+              "ci95": [
+                0.07996724588156251,
+                0.0964996929440625
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": 3.5406650864249998,
+              "ci95": [
+                3.202686877324844,
+                3.8939498927659373
+              ],
+              "seeds": 16
+            }
+          },
+          "diagonal": {
+            "regret": {
+              "difference": 0.08082218526875,
+              "ci95": [
+                0.07275917340781249,
+                0.08876644399468749
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": 3.21037837465625,
+              "ci95": [
+                2.8906671279468754,
+                3.547025598954375
+              ],
+              "seeds": 16
+            }
+          },
+          "no_phi": {
+            "regret": {
+              "difference": 0.06640970558125,
+              "ci95": [
+                0.05915669954015625,
+                0.07358988877171875
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": 2.9998397532937497,
+              "ci95": [
+                2.7091315282298436,
+                3.308680820190937
+              ],
+              "seeds": 16
+            }
+          },
+          "euclidean": {
+            "regret": {
+              "difference": 0.06418277041249999,
+              "ci95": [
+                0.05666497809640624,
+                0.0715247586603125
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": 2.5989843625125,
+              "ci95": [
+                2.346855191215313,
+                2.8656611092240625
+              ],
+              "seeds": 16
+            }
+          },
+          "v3_zeroshot_gpu": {
+            "regret": {
+              "difference": 0.06655358223125,
+              "ci95": [
+                0.05929710909859376,
+                0.07367700590562501
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": 2.78185949576875,
+              "ci95": [
+                2.507569884414219,
+                3.077896332577344
+              ],
+              "seeds": 16
+            }
+          }
+        }
+      },
+      "val": {
+        "full": {
+          "nll": 0.1371973825875,
+          "accuracy": 0.91524745684375,
+          "success": 1.0,
+          "regret": 6.799310625e-05,
+          "interior_fraction": 0.47418154761875,
+          "eval_ms": 8.3246875,
+          "maps_total": 64,
+          "states_total": 3316,
+          "starts_total": 704
+        },
+        "diagonal": {
+          "nll": 0.51412805560625,
+          "accuracy": 0.79943649480625,
+          "success": 1.0,
+          "regret": 0.0078380377375,
+          "interior_fraction": 0.47668087121249997,
+          "eval_ms": 8.071087499999999,
+          "maps_total": 64,
+          "states_total": 3316,
+          "starts_total": 704
+        },
+        "edge_diagonal": {
+          "nll": 0.32359579396875,
+          "accuracy": 0.93892045454375,
+          "success": 1.0,
+          "regret": 0.08055135268125,
+          "interior_fraction": 0.0,
+          "eval_ms": 0.3625125,
+          "maps_total": 64,
+          "states_total": 768,
+          "starts_total": 704
+        },
+        "no_phi": {
+          "nll": 0.72755499098125,
+          "accuracy": 0.73461801883125,
+          "success": 1.0,
+          "regret": 0.02240687681875,
+          "interior_fraction": 0.3121685606,
+          "eval_ms": 7.98379375,
+          "maps_total": 64,
+          "states_total": 3316,
+          "starts_total": 704
+        },
+        "untrained": {
+          "nll": 1.24739625655625,
+          "accuracy": 0.72639519043125,
+          "success": 1.0,
+          "regret": 0.023439415287499998,
+          "interior_fraction": 0.3086174242375,
+          "eval_ms": 7.9047125000000005,
+          "maps_total": 64,
+          "states_total": 3316,
+          "starts_total": 704
+        },
+        "euclidean": {
+          "nll": 1.0886445904375,
+          "accuracy": 0.72734328476875,
+          "success": 1.0,
+          "regret": 0.0229905392,
+          "interior_fraction": 0.31122159090625,
+          "eval_ms": 7.685475,
+          "maps_total": 64,
+          "states_total": 3316,
+          "starts_total": 704
+        },
+        "oracle": {
+          "nll": 0.0,
+          "accuracy": 1.0,
+          "success": 1.0,
+          "regret": 0.0,
+          "interior_fraction": 0.470099431825,
+          "eval_ms": 0.0360625,
+          "maps_total": 64,
+          "states_total": 3316,
+          "starts_total": 704
+        },
+        "v3_full_gpu": {
+          "nll": 0.13435869479375,
+          "accuracy": 0.92688691786875,
+          "success": 1.0,
+          "regret": 0.00020148995,
+          "interior_fraction": 0.4734374999875,
+          "eval_ms": 8.0431875,
+          "maps_total": 64,
+          "states_total": 3316,
+          "starts_total": 704
+        },
+        "v3_continuous_gpu": {
+          "nll": 0.30551681164375,
+          "accuracy": 0.86795188988125,
+          "success": 1.0,
+          "regret": 0.00012278343125,
+          "interior_fraction": 0.8199528769875,
+          "eval_ms": 202.9273375,
+          "maps_total": 64,
+          "states_total": 11099,
+          "starts_total": 704
+        },
+        "v3_zeroshot_gpu": {
+          "nll": 0.91593238019375,
+          "accuracy": 0.75321996854375,
+          "success": 1.0,
+          "regret": 0.022651879275,
+          "interior_fraction": 0.30958806818125,
+          "eval_ms": 8.50463125,
+          "maps_total": 64,
+          "states_total": 3316,
+          "starts_total": 704
+        },
+        "v3_adapted_gpu": {
+          "nll": 3.39561394205625,
+          "accuracy": 0.68187905420625,
+          "success": 1.0,
+          "regret": 0.07860688515,
+          "interior_fraction": 0.55786999459375,
+          "eval_ms": 8.06235,
+          "maps_total": 64,
+          "states_total": 3316,
+          "starts_total": 704
+        },
+        "paired_vs_v3_full": {
+          "full": {
+            "regret": {
+              "difference": 0.00013349684375,
+              "ci95": [
+                -2.407959953125e-05,
+                0.00037837922390624996
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.0028386877937500044,
+              "ci95": [
+                -0.010654407252187501,
+                0.007098299364531241
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "diagonal": {
+            "regret": {
+              "difference": -0.0076365477875,
+              "ci95": [
+                -0.009191853661718749,
+                -0.00621088343234375
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.3797693608125,
+              "ci95": [
+                -0.4395840189575,
+                -0.3302389616940626
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "edge_diagonal": {
+            "regret": {
+              "difference": -0.08034986273125,
+              "ci95": [
+                -0.09293718436906251,
+                -0.06781012258875001
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.189237099175,
+              "ci95": [
+                -0.4146170435532812,
+                -0.03674452614937502
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "no_phi": {
+            "regret": {
+              "difference": -0.02220538686875,
+              "ci95": [
+                -0.025051757151406246,
+                -0.01948468125484375
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.5931962961875,
+              "ci95": [
+                -0.6620163485174999,
+                -0.5292025227470313
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "untrained": {
+            "regret": {
+              "difference": -0.0232379253375,
+              "ci95": [
+                -0.026448498800468748,
+                -0.020248311135000002
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -1.1130375617625,
+              "ci95": [
+                -1.2309872232317192,
+                -0.9979022296801562
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "euclidean": {
+            "regret": {
+              "difference": -0.02278904925,
+              "ci95": [
+                -0.025449390151874994,
+                -0.020150764827343754
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.95428589564375,
+              "ci95": [
+                -1.058844142524375,
+                -0.8538830048251563
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          }
+        },
+        "paired_vs_v3_adapted": {
+          "full": {
+            "regret": {
+              "difference": 0.07853889204375,
+              "ci95": [
+                0.06609238159109375,
+                0.09309760225812501
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": 3.25841655946875,
+              "ci95": [
+                2.813916930819375,
+                3.7854231961184373
+              ],
+              "seeds": 16
+            }
+          },
+          "diagonal": {
+            "regret": {
+              "difference": 0.0707688474125,
+              "ci95": [
+                0.05744344939734375,
+                0.08630318685859373
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": 2.88148588645,
+              "ci95": [
+                2.4332952024125,
+                3.411326568475312
+              ],
+              "seeds": 16
+            }
+          },
+          "no_phi": {
+            "regret": {
+              "difference": 0.05620000833125,
+              "ci95": [
+                0.04475654800734375,
+                0.06953195086531251
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": 2.668058951075,
+              "ci95": [
+                2.269513899198907,
+                3.1415647204373434
+              ],
+              "seeds": 16
+            }
+          },
+          "euclidean": {
+            "regret": {
+              "difference": 0.05561634595,
+              "ci95": [
+                0.0441286782128125,
+                0.06905450893984375
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": 2.30696935161875,
+              "ci95": [
+                1.9112069062082808,
+                2.7659151789009377
+              ],
+              "seeds": 16
+            }
+          },
+          "v3_zeroshot_gpu": {
+            "regret": {
+              "difference": 0.055955005875000005,
+              "ci95": [
+                0.04451423062296876,
+                0.06937981859437499
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": 2.4796815618625,
+              "ci95": [
+                2.106296426523438,
+                2.9125336169503124
+              ],
+              "seeds": 16
+            }
+          }
+        }
+      },
+      "test": {
+        "full": {
+          "nll": 0.13700995625,
+          "accuracy": 0.91480431879375,
+          "success": 1.0,
+          "regret": 0.0001073328625,
+          "interior_fraction": 0.47903420365,
+          "eval_ms": 51.10945,
+          "maps_total": 384,
+          "states_total": 20232,
+          "starts_total": 4224
+        },
+        "diagonal": {
+          "nll": 0.48542905146875,
+          "accuracy": 0.80351307335,
+          "success": 1.0,
+          "regret": 0.00811050696875,
+          "interior_fraction": 0.49447375540625,
+          "eval_ms": 53.03061875,
+          "maps_total": 384,
+          "states_total": 20232,
+          "starts_total": 4224
+        },
+        "edge_diagonal": {
+          "nll": 0.2153899275,
+          "accuracy": 0.9446022727375,
+          "success": 1.0,
+          "regret": 0.08375407076875,
+          "interior_fraction": 0.0,
+          "eval_ms": 2.11055,
+          "maps_total": 384,
+          "states_total": 4608,
+          "starts_total": 4224
+        },
+        "no_phi": {
+          "nll": 0.73000699955,
+          "accuracy": 0.74136222500625,
+          "success": 1.0,
+          "regret": 0.02260043959375,
+          "interior_fraction": 0.31204229798125,
+          "eval_ms": 50.9739875,
+          "maps_total": 384,
+          "states_total": 20232,
+          "starts_total": 4224
+        },
+        "untrained": {
+          "nll": 1.258209176425,
+          "accuracy": 0.72972128273125,
+          "success": 1.0,
+          "regret": 0.0242071439375,
+          "interior_fraction": 0.31140309344375,
+          "eval_ms": 51.835581250000004,
+          "maps_total": 384,
+          "states_total": 20232,
+          "starts_total": 4224
+        },
+        "euclidean": {
+          "nll": 1.09677298435625,
+          "accuracy": 0.7316557651375,
+          "success": 1.0,
+          "regret": 0.02484226680625,
+          "interior_fraction": 0.3141414141375,
+          "eval_ms": 46.06085,
+          "maps_total": 384,
+          "states_total": 20232,
+          "starts_total": 4224
+        },
+        "oracle": {
+          "nll": 0.0,
+          "accuracy": 1.0,
+          "success": 1.0,
+          "regret": 0.0,
+          "interior_fraction": 0.4722892992375,
+          "eval_ms": 0.22146875,
+          "maps_total": 384,
+          "states_total": 20232,
+          "starts_total": 4224
+        },
+        "v3_full_gpu": {
+          "nll": 0.13243886199375,
+          "accuracy": 0.9281584237625,
+          "success": 1.0,
+          "regret": 0.00017042696875,
+          "interior_fraction": 0.4747688943,
+          "eval_ms": 51.4601375,
+          "maps_total": 384,
+          "states_total": 20232,
+          "starts_total": 4224
+        },
+        "v3_continuous_gpu": {
+          "nll": 0.30195371185625,
+          "accuracy": 0.87340922983125,
+          "success": 1.0,
+          "regret": 9.11159625e-05,
+          "interior_fraction": 0.85380732548125,
+          "eval_ms": 1322.96491875,
+          "maps_total": 384,
+          "states_total": 67648,
+          "starts_total": 4224
+        },
+        "v3_zeroshot_gpu": {
+          "nll": 0.9213964562875,
+          "accuracy": 0.7568674438875,
+          "success": 1.0,
+          "regret": 0.022414945025,
+          "interior_fraction": 0.30681029039375,
+          "eval_ms": 54.13785,
+          "maps_total": 384,
+          "states_total": 20232,
+          "starts_total": 4224
+        },
+        "v3_adapted_gpu": {
+          "nll": 3.826061320975,
+          "accuracy": 0.6603266561,
+          "success": 1.0,
+          "regret": 0.08819225328125,
+          "interior_fraction": 0.57465841449375,
+          "eval_ms": 55.019975,
+          "maps_total": 384,
+          "states_total": 20232,
+          "starts_total": 4224
+        },
+        "paired_vs_v3_full": {
+          "full": {
+            "regret": {
+              "difference": 6.309410625e-05,
+              "ci95": [
+                2.7729727500000002e-05,
+                0.00010403486515625001
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.004571094256250001,
+              "ci95": [
+                -0.008528436947968749,
+                0.0003447558946874941
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "diagonal": {
+            "regret": {
+              "difference": -0.00794008,
+              "ci95": [
+                -0.00851442905921875,
+                -0.007366455775937501
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.352990189475,
+              "ci95": [
+                -0.37471294475390626,
+                -0.33124486193546876
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "edge_diagonal": {
+            "regret": {
+              "difference": -0.0835836438,
+              "ci95": [
+                -0.0876138151690625,
+                -0.07985842581
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.08295106550624999,
+              "ci95": [
+                -0.11711033920546876,
+                -0.054879016401718744
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "no_phi": {
+            "regret": {
+              "difference": -0.022430012625,
+              "ci95": [
+                -0.024333177382656248,
+                -0.02063536899140625
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.59756813755625,
+              "ci95": [
+                -0.6477359758826563,
+                -0.550618476619375
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "untrained": {
+            "regret": {
+              "difference": -0.02403671696875,
+              "ci95": [
+                -0.026005007109531256,
+                -0.022091970316875
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -1.12577031443125,
+              "ci95": [
+                -1.2303199019817188,
+                -1.0182947253423438
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "euclidean": {
+            "regret": {
+              "difference": -0.0246718398375,
+              "ci95": [
+                -0.026884150854531247,
+                -0.022808370167031248
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.9643341223625,
+              "ci95": [
+                -1.044307100652656,
+                -0.8867143763987502
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          }
+        },
+        "paired_vs_v3_adapted": {
+          "full": {
+            "regret": {
+              "difference": 0.08808492041875,
+              "ci95": [
+                0.08330210633234375,
+                0.093411330215625
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": 3.689051364725,
+              "ci95": [
+                3.4503900622082813,
+                3.9314742762926564
+              ],
+              "seeds": 16
+            }
+          },
+          "diagonal": {
+            "regret": {
+              "difference": 0.0800817463125,
+              "ci95": [
+                0.07516163305984376,
+                0.08562461585234375
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": 3.34063226950625,
+              "ci95": [
+                3.1159740079273432,
+                3.5730891558951567
+              ],
+              "seeds": 16
+            }
+          },
+          "no_phi": {
+            "regret": {
+              "difference": 0.0655918136875,
+              "ci95": [
+                0.060242490417812496,
+                0.07177476466921877
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": 3.096054321425,
+              "ci95": [
+                2.8850162481601567,
+                3.318780266662501
+              ],
+              "seeds": 16
+            }
+          },
+          "euclidean": {
+            "regret": {
+              "difference": 0.063349986475,
+              "ci95": [
+                0.058122496145468744,
+                0.0693032220046875
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": 2.72928833661875,
+              "ci95": [
+                2.5271256148870314,
+                2.947645137816719
+              ],
+              "seeds": 16
+            }
+          },
+          "v3_zeroshot_gpu": {
+            "regret": {
+              "difference": 0.06577730825625,
+              "ci95": [
+                0.06040265447390625,
+                0.07186461415359376
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": 2.9046648646875,
+              "ci95": [
+                2.708327798574219,
+                3.1129592093987504
+              ],
+              "seeds": 16
+            }
+          }
+        }
+      },
+      "ood_geometry": {
+        "full": {
+          "nll": 0.1421037900125,
+          "accuracy": 0.9151544872375,
+          "success": 1.0,
+          "regret": 0.00011303195625,
+          "interior_fraction": 0.56359637605625,
+          "eval_ms": 57.95130625,
+          "maps_total": 128,
+          "states_total": 12267,
+          "starts_total": 2176
+        },
+        "diagonal": {
+          "nll": 0.61770875175,
+          "accuracy": 0.7732051211312501,
+          "success": 1.0,
+          "regret": 0.0100319541375,
+          "interior_fraction": 0.574041309225,
+          "eval_ms": 56.464574999999996,
+          "maps_total": 128,
+          "states_total": 12267,
+          "starts_total": 2176
+        },
+        "edge_diagonal": {
+          "nll": 0.3856900157125,
+          "accuracy": 0.91084558823125,
+          "success": 1.0,
+          "regret": 0.10355132658125,
+          "interior_fraction": 0.0,
+          "eval_ms": 2.0417312499999998,
+          "maps_total": 128,
+          "states_total": 2304,
+          "starts_total": 2176
+        },
+        "no_phi": {
+          "nll": 0.88707660991875,
+          "accuracy": 0.70796136214375,
+          "success": 1.0,
+          "regret": 0.03339460250625,
+          "interior_fraction": 0.3876914828375,
+          "eval_ms": 54.6514625,
+          "maps_total": 128,
+          "states_total": 12267,
+          "starts_total": 2176
+        },
+        "untrained": {
+          "nll": 1.65349505688125,
+          "accuracy": 0.68876733131875,
+          "success": 1.0,
+          "regret": 0.0339052743,
+          "interior_fraction": 0.3854126546375,
+          "eval_ms": 57.54514375,
+          "maps_total": 128,
+          "states_total": 12267,
+          "starts_total": 2176
+        },
+        "euclidean": {
+          "nll": 1.42910617955625,
+          "accuracy": 0.6888237609125,
+          "success": 1.0,
+          "regret": 0.0348831559625,
+          "interior_fraction": 0.390479290675,
+          "eval_ms": 51.3056125,
+          "maps_total": 128,
+          "states_total": 12267,
+          "starts_total": 2176
+        },
+        "oracle": {
+          "nll": 0.0,
+          "accuracy": 1.0,
+          "success": 1.0,
+          "regret": 0.0,
+          "interior_fraction": 0.55554041928125,
+          "eval_ms": 0.28188125,
+          "maps_total": 128,
+          "states_total": 12267,
+          "starts_total": 2176
+        },
+        "v3_full_gpu": {
+          "nll": 0.137205057325,
+          "accuracy": 0.9290779652,
+          "success": 1.0,
+          "regret": 0.00017151765,
+          "interior_fraction": 0.55585499825,
+          "eval_ms": 56.1345375,
+          "maps_total": 128,
+          "states_total": 12267,
+          "starts_total": 2176
+        },
+        "v3_continuous_gpu": {
+          "nll": 0.2886214423,
+          "accuracy": 0.88145156124375,
+          "success": 1.0,
+          "regret": 7.33726125e-05,
+          "interior_fraction": 0.883198565875,
+          "eval_ms": 1669.2552875000001,
+          "maps_total": 128,
+          "states_total": 41539,
+          "starts_total": 2176
+        },
+        "v3_zeroshot_gpu": {
+          "nll": 1.18107032183125,
+          "accuracy": 0.72030913415625,
+          "success": 1.0,
+          "regret": 0.03321631865,
+          "interior_fraction": 0.37485337884375,
+          "eval_ms": 67.84046875,
+          "maps_total": 128,
+          "states_total": 12267,
+          "starts_total": 2176
+        },
+        "v3_adapted_gpu": {
+          "nll": 4.8070741528375,
+          "accuracy": 0.61454810868125,
+          "success": 1.0,
+          "regret": 0.1131400317625,
+          "interior_fraction": 0.64105939251875,
+          "eval_ms": 69.224125,
+          "maps_total": 128,
+          "states_total": 12267,
+          "starts_total": 2176
+        },
+        "paired_vs_v3_full": {
+          "full": {
+            "regret": {
+              "difference": 5.848569375e-05,
+              "ci95": [
+                9.170008281249998e-06,
+                0.00011201331156249996
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.004898732687499997,
+              "ci95": [
+                -0.008448383586406248,
+                -0.0006483107624999993
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "diagonal": {
+            "regret": {
+              "difference": -0.0098604364875,
+              "ci95": [
+                -0.01129566603796875,
+                -0.008577925016718752
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.48050369442499996,
+              "ci95": [
+                -0.5142864249901562,
+                -0.44707634272
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "edge_diagonal": {
+            "regret": {
+              "difference": -0.10337980893125,
+              "ci95": [
+                -0.107755922785,
+                -0.09878171358718747
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.2484849583875,
+              "ci95": [
+                -0.37663491583453124,
+                -0.1358239343989063
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "no_phi": {
+            "regret": {
+              "difference": -0.03322308485625,
+              "ci95": [
+                -0.038777087876562505,
+                -0.028323909602187506
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.74987155259375,
+              "ci95": [
+                -0.8449234691134374,
+                -0.6651297898714063
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "untrained": {
+            "regret": {
+              "difference": -0.03373375665,
+              "ci95": [
+                -0.039096255094843754,
+                -0.02877887543390625
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -1.51628999955625,
+              "ci95": [
+                -1.6904049900879687,
+                -1.346461877063125
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "euclidean": {
+            "regret": {
+              "difference": -0.0347116383125,
+              "ci95": [
+                -0.04011563509203125,
+                -0.029712974135312497
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -1.29190112223125,
+              "ci95": [
+                -1.4181014923776563,
+                -1.1712740514618754
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          }
+        },
+        "paired_vs_v3_adapted": {
+          "full": {
+            "regret": {
+              "difference": 0.11302699980625,
+              "ci95": [
+                0.1040211383021875,
+                0.12200542380328125
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": 4.664970362825,
+              "ci95": [
+                4.1883395448289065,
+                5.188898606409685
+              ],
+              "seeds": 16
+            }
+          },
+          "diagonal": {
+            "regret": {
+              "difference": 0.103108077625,
+              "ci95": [
+                0.093409811525625,
+                0.11263056352359373
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": 4.1893654010875006,
+              "ci95": [
+                3.720815215218593,
+                4.704405579147655
+              ],
+              "seeds": 16
+            }
+          },
+          "no_phi": {
+            "regret": {
+              "difference": 0.07974542925625,
+              "ci95": [
+                0.07096753240390626,
+                0.08873754360031252
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": 3.9199975429187504,
+              "ci95": [
+                3.481276544998594,
+                4.412351326596094
+              ],
+              "seeds": 16
+            }
+          },
+          "euclidean": {
+            "regret": {
+              "difference": 0.0782568758,
+              "ci95": [
+                0.06962693528968751,
+                0.08716097463718753
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": 3.37796797328125,
+              "ci95": [
+                2.9490076220824997,
+                3.858466342922344
+              ],
+              "seeds": 16
+            }
+          },
+          "v3_zeroshot_gpu": {
+            "regret": {
+              "difference": 0.0799237131125,
+              "ci95": [
+                0.070987609603125,
+                0.08906878688187501
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": 3.62600383100625,
+              "ci95": [
+                3.201249302767657,
+                4.1114140771964065
+              ],
+              "seeds": 16
+            }
+          }
+        }
+      },
+      "changed_law": {
+        "full": {
+          "nll": 4.87465676969375,
+          "accuracy": 0.658093202925,
+          "success": 1.0,
+          "regret": 0.0928099484625,
+          "interior_fraction": 0.47926643669375,
+          "eval_ms": 40.72706875,
+          "maps_total": 128,
+          "states_total": 6762,
+          "starts_total": 1408
+        },
+        "diagonal": {
+          "nll": 2.06406880376875,
+          "accuracy": 0.6407189831125,
+          "success": 1.0,
+          "regret": 0.0998871995875,
+          "interior_fraction": 0.51416227001875,
+          "eval_ms": 37.3092375,
+          "maps_total": 128,
+          "states_total": 6762,
+          "starts_total": 1408
+        },
+        "edge_diagonal": {
+          "nll": 1.7722232342875,
+          "accuracy": 0.74360795453125,
+          "success": 1.0,
+          "regret": 0.1462318956875,
+          "interior_fraction": 0.0,
+          "eval_ms": 0.82164375,
+          "maps_total": 128,
+          "states_total": 1536,
+          "starts_total": 1408
+        },
+        "no_phi": {
+          "nll": 1.079156004925,
+          "accuracy": 0.6855604734125,
+          "success": 1.0,
+          "regret": 0.0501550814375,
+          "interior_fraction": 0.33686079545625003,
+          "eval_ms": 40.0575625,
+          "maps_total": 128,
+          "states_total": 6762,
+          "starts_total": 1408
+        },
+        "untrained": {
+          "nll": 1.8874045105875,
+          "accuracy": 0.6739560319,
+          "success": 1.0,
+          "regret": 0.054059814649999996,
+          "interior_fraction": 0.3307528409125,
+          "eval_ms": 43.32664375,
+          "maps_total": 128,
+          "states_total": 6762,
+          "starts_total": 1408
+        },
+        "euclidean": {
+          "nll": 1.6164991048,
+          "accuracy": 0.67761586446875,
+          "success": 1.0,
+          "regret": 0.0527838919875,
+          "interior_fraction": 0.33357007575,
+          "eval_ms": 37.8880375,
+          "maps_total": 128,
+          "states_total": 6762,
+          "starts_total": 1408
+        },
+        "oracle": {
+          "nll": 0.0,
+          "accuracy": 1.0,
+          "success": 1.0,
+          "regret": 0.0,
+          "interior_fraction": 0.5843986742375,
+          "eval_ms": 0.86065,
+          "maps_total": 128,
+          "states_total": 6762,
+          "starts_total": 1408
+        },
+        "v3_full_gpu": {
+          "nll": 5.8194958800375,
+          "accuracy": 0.6611317334875,
+          "success": 1.0,
+          "regret": 0.09407495341875,
+          "interior_fraction": 0.4754548836625,
+          "eval_ms": 33.08153125,
+          "maps_total": 128,
+          "states_total": 6762,
+          "starts_total": 1408
+        },
+        "v3_continuous_gpu": {
+          "nll": 6.28095619225625,
+          "accuracy": 0.4289660160125,
+          "success": 1.0,
+          "regret": 0.14423996414375,
+          "interior_fraction": 0.8472611156312501,
+          "eval_ms": 426.36396874999997,
+          "maps_total": 128,
+          "states_total": 22616,
+          "starts_total": 1408
+        },
+        "v3_zeroshot_gpu": {
+          "nll": 1.52986708903125,
+          "accuracy": 0.69551638575625,
+          "success": 1.0,
+          "regret": 0.04962492138125,
+          "interior_fraction": 0.32953361743125,
+          "eval_ms": 39.13395,
+          "maps_total": 128,
+          "states_total": 6762,
+          "starts_total": 1408
+        },
+        "v3_adapted_gpu": {
+          "nll": 0.20253959753125,
+          "accuracy": 0.91324855981875,
+          "success": 1.0,
+          "regret": 0.0013554983875,
+          "interior_fraction": 0.58153239989375,
+          "eval_ms": 41.79468125,
+          "maps_total": 128,
+          "states_total": 6762,
+          "starts_total": 1408
+        },
+        "paired_vs_v3_full": {
+          "full": {
+            "regret": {
+              "difference": 0.0012650049562500003,
+              "ci95": [
+                -0.0003340901217187511,
+                0.0029728030037499994
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": 0.94483911034375,
+              "ci95": [
+                0.8287867938289063,
+                1.0592557849225
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "diagonal": {
+            "regret": {
+              "difference": -0.005812246168750002,
+              "ci95": [
+                -0.012479463411875004,
+                0.0005262446395312463
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": 3.75542707626875,
+              "ci95": [
+                3.2786225049095306,
+                4.272563556586405
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "edge_diagonal": {
+            "regret": {
+              "difference": -0.05215694226875,
+              "ci95": [
+                -0.06808120262421875,
+                -0.03778181225203124
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": 4.04727264575,
+              "ci95": [
+                3.3937664455740624,
+                4.680280161139688
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "no_phi": {
+            "regret": {
+              "difference": 0.04391987198125,
+              "ci95": [
+                0.03606484014859375,
+                0.052639877655156236
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": 4.7403398751125,
+              "ci95": [
+                4.170343796622031,
+                5.3104876656748425
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "untrained": {
+            "regret": {
+              "difference": 0.04001513876875,
+              "ci95": [
+                0.03271445632203125,
+                0.048234456895
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": 3.93209136945,
+              "ci95": [
+                3.3919485478912508,
+                4.479728716730313
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          },
+          "euclidean": {
+            "regret": {
+              "difference": 0.04129106143125,
+              "ci95": [
+                0.03380859603374999,
+                0.04937690567578125
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": 4.2029967752375,
+              "ci95": [
+                3.6631640832567185,
+                4.7460173773420316
+              ],
+              "seeds": 16
+            },
+            "success": {
+              "difference": 0.0,
+              "ci95": [
+                0.0,
+                0.0
+              ],
+              "seeds": 16
+            }
+          }
+        },
+        "paired_vs_v3_adapted": {
+          "full": {
+            "regret": {
+              "difference": -0.091454450075,
+              "ci95": [
+                -0.10190543906609371,
+                -0.08139336265140626
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -4.6721171721625,
+              "ci95": [
+                -5.2008718547075,
+                -4.125133375836562
+              ],
+              "seeds": 16
+            }
+          },
+          "diagonal": {
+            "regret": {
+              "difference": -0.0985317012,
+              "ci95": [
+                -0.11388392404562497,
+                -0.08416865180984374
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -1.8615292062375,
+              "ci95": [
+                -2.0733269521851563,
+                -1.6395809255153129
+              ],
+              "seeds": 16
+            }
+          },
+          "no_phi": {
+            "regret": {
+              "difference": -0.04879958305,
+              "ci95": [
+                -0.05368544677062502,
+                -0.0435831684771875
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -0.87661640739375,
+              "ci95": [
+                -0.9647087637150001,
+                -0.781568509921875
+              ],
+              "seeds": 16
+            }
+          },
+          "euclidean": {
+            "regret": {
+              "difference": -0.0514283936,
+              "ci95": [
+                -0.056530318365468735,
+                -0.04563313577421874
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -1.4139595072687499,
+              "ci95": [
+                -1.5492014370604688,
+                -1.2778916999304688
+              ],
+              "seeds": 16
+            }
+          },
+          "v3_zeroshot_gpu": {
+            "regret": {
+              "difference": -0.04826942299375,
+              "ci95": [
+                -0.053110681665624986,
+                -0.042991882039531255
+              ],
+              "seeds": 16
+            },
+            "nll": {
+              "difference": -1.3273274915,
+              "ci95": [
+                -1.4657941094926565,
+                -1.179434719054375
+              ],
+              "seeds": 16
+            }
+          }
+        }
+      }
+    }
+  },
+  "geometry_confirm_48": {
+    "coarse_reduction_vs_edge_pct": 7.420153247218754,
+    "refined_reduction_vs_coarse_pct": 11.060481902378672,
+    "ultrafine_reduction_vs_coarse_pct": 12.420347966977257,
+    "ultrafine_reduction_vs_refined_pct": 1.546538672945462,
+    "continuous_snell_reduction_vs_coarse_pct": 13.23602126824269,
+    "continuous_snell_reduction_vs_refined_pct": 2.469295208279647,
+    "residual_gap_continuous_vs_ultrafine_pct": 1.143861594676647,
+    "v3_mean_intrinsic_regge_action": 4.316519795833334e-05,
+    "v3_mean_cm_log_barrier": 2.6103778508232085,
+    "v3_mean_hodge_dirichlet_energy": 5.046051625e-06,
+    "min_cm_volume2": 0.025933155422
+  }
+}
