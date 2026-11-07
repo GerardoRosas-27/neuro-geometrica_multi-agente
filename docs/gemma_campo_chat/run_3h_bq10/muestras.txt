@@ -1,0 +1,2 @@
+[aviso] HF_TOKEN no definido: gemma-2-2b está bajo licencia y probablemente fallará la descarga
+[campo] Assistant: Hi there! 🌞 I'm doing great—thanks for asking! I love chatting, learning, and helping out. How’s your day going? I’m all ears (and ready to assist

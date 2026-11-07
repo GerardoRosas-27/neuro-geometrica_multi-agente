@@ -1,0 +1,7 @@
+train 6101 ej., val 300 ej.; val NLL sin cond=1.8797; adaptador init (z_true)=1.6594; sha LLM=78685cdf6081c3802b007200ddbba61ae24eb29c7ca25416baeacdefef7484ee
+epoch 1: train NLL=0.7245 val NLL(z_true)=0.6408 (2824s)
+epoch 2: train NLL=0.6728 val NLL(z_true)=0.6202 (2840s)
+epoch 3: train NLL=0.6166 val NLL(z_true)=0.5873 (2837s)
+epoch 4: train NLL=0.5890 val NLL(z_true)=0.5770 (2855s)
+epoch 5: train NLL=0.5687 val NLL(z_true)=0.5727 (2864s)
+mejor época=5 val NLL=0.5727; LLM intacto=True

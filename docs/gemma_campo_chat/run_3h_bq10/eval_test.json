@@ -1,0 +1,268 @@
+{
+  "AVISO": "test split, resultados reales",
+  "gemma": "D:\\agentesIA\\qwen3_vl_4b_hf",
+  "layer": 13,
+  "n_conv_test": 60,
+  "k_skip": 16,
+  "bootstrap": {
+    "B": 10000,
+    "seed": 12345
+  },
+  "sanity_identity_maxdiff": 0.0,
+  "nll_por_token_medio": {
+    "gemma": 1.7145561496416728,
+    "oracle": 1.7150371114412943,
+    "repeat": 3.0494823336601256,
+    "campo": 1.7336305518945059
+  },
+  "ppl": {
+    "gemma": 5.5542097272044435,
+    "oracle": 5.556881732425026,
+    "repeat": 21.104416548218595,
+    "campo": 5.6611698146580824
+  },
+  "delta_nll": {
+    "campo-gemma": {
+      "media": 0.019074402252833047,
+      "ic95": [
+        0.010680836836496989,
+        0.027744775265455244
+      ],
+      "p_le0": 0.0,
+      "n": 60
+    },
+    "campo-repeat": {
+      "media": -1.31585178176562,
+      "ic95": [
+        -1.389505274494489,
+        -1.2421318353215853
+      ],
+      "p_le0": 1.0,
+      "n": 60
+    },
+    "campo-oracle": {
+      "media": 0.018593440453211468,
+      "ic95": [
+        0.010153686652580898,
+        0.02728223646680514
+      ],
+      "p_le0": 0.0,
+      "n": 60
+    },
+    "oracle-gemma": {
+      "media": 0.000480961799621582,
+      "ic95": [
+        0.0003006237745285034,
+        0.0006771935522556304
+      ],
+      "p_le0": 0.0,
+      "n": 60
+    },
+    "repeat-gemma": {
+      "media": 1.334926184018453,
+      "ic95": [
+        1.2628046474854153,
+        1.4075265415012834
+      ],
+      "p_le0": 0.0,
+      "n": 60
+    }
+  },
+  "zmse_1paso": {
+    "campo": {
+      "media": 0.1959684950610002,
+      "ic95": [
+        0.19037251555671295,
+        0.20146468727538985
+      ],
+      "p_le0": 0.0,
+      "n": 60
+    },
+    "campo_sin_tok": {
+      "media": 0.41427763366683573,
+      "ic95": [
+        0.4049432339358269,
+        0.42262681746921055
+      ],
+      "p_le0": 0.0,
+      "n": 60
+    },
+    "lenta": {
+      "media": 0.41583076232347327,
+      "ic95": [
+        0.40671912034616725,
+        0.4239917268090747
+      ],
+      "p_le0": 0.0,
+      "n": 60
+    },
+    "repeat": {
+      "media": 1.2386945215791394,
+      "ic95": [
+        1.2141695681083213,
+        1.260485918516854
+      ],
+      "p_le0": 0.0,
+      "n": 60
+    },
+    "campo-repeat": {
+      "media": -1.042726026518139,
+      "ic95": [
+        -1.0653916984415168,
+        -1.0179295312154233
+      ],
+      "p_le0": 1.0,
+      "n": 60
+    },
+    "campo_sin_tok-repeat": {
+      "media": -0.8244168879123035,
+      "ic95": [
+        -0.8442109492558746,
+        -0.8041105507723003
+      ],
+      "p_le0": 1.0,
+      "n": 60
+    },
+    "campo-lenta": {
+      "media": -0.21986226726247307,
+      "ic95": [
+        -0.22581371411586568,
+        -0.21313410706772912
+      ],
+      "p_le0": 1.0,
+      "n": 60
+    }
+  },
+  "zmse_k": {
+    "1": {
+      "campo": 0.1959684950610002,
+      "repeat": 1.2896515077765065,
+      "campo-repeat": {
+        "media": -1.0936830127155062,
+        "ic95": [
+          -1.121294596257339,
+          -1.0642367659171639
+        ],
+        "p_le0": 1.0,
+        "n": 60
+      }
+    },
+    "2": {
+      "campo": 0.5660413862992159,
+      "repeat": 1.4864953812234387,
+      "campo-repeat": {
+        "media": -0.9204539949242231,
+        "ic95": [
+          -0.9446233320108971,
+          -0.8968604294406887
+        ],
+        "p_le0": 1.0,
+        "n": 60
+      }
+    },
+    "3": {
+      "campo": 0.6558807693769104,
+      "repeat": 1.5905891373906438,
+      "campo-repeat": {
+        "media": -0.9347083680137335,
+        "ic95": [
+          -0.9550706715175301,
+          -0.9147052836571731
+        ],
+        "p_le0": 1.0,
+        "n": 60
+      }
+    },
+    "4": {
+      "campo": 0.6904880677122329,
+      "repeat": 1.6155373358857192,
+      "campo-repeat": {
+        "media": -0.925049268173486,
+        "ic95": [
+          -0.9470132756406134,
+          -0.9025191876582493
+        ],
+        "p_le0": 1.0,
+        "n": 60
+      }
+    },
+    "5": {
+      "campo": 0.7267378555553308,
+      "repeat": 1.6601457056599778,
+      "campo-repeat": {
+        "media": -0.9334078501046471,
+        "ic95": [
+          -0.9550724938901419,
+          -0.9112879079593453
+        ],
+        "p_le0": 1.0,
+        "n": 60
+      }
+    },
+    "6": {
+      "campo": 0.7506550326124037,
+      "repeat": 1.6541740150926618,
+      "campo-repeat": {
+        "media": -0.9035189824802583,
+        "ic95": [
+          -0.9245403960022526,
+          -0.8833986825688421
+        ],
+        "p_le0": 1.0,
+        "n": 60
+      }
+    },
+    "7": {
+      "campo": 0.7850286017709472,
+      "repeat": 1.6963564355811358,
+      "campo-repeat": {
+        "media": -0.9113278338101883,
+        "ic95": [
+          -0.9317398353566584,
+          -0.8909923045350824
+        ],
+        "p_le0": 1.0,
+        "n": 60
+      }
+    },
+    "8": {
+      "campo": 0.7959847030682591,
+      "repeat": 1.686997561432286,
+      "campo-repeat": {
+        "media": -0.891012858364027,
+        "ic95": [
+          -0.9114988088453457,
+          -0.8688531744346969
+        ],
+        "p_le0": 1.0,
+        "n": 60
+      }
+    }
+  },
+  "muestras": [
+    {
+      "conv": 1684,
+      "texto_real": ": Hey!\nAssistant: Hello! How can I help you today?\nUser: It's going to be cold tomorrow, what should I wear?\nAssistant: I'd recommend wearing layers, starting with a warm base layer like a thermal top",
+      "argmax_gemma": "book I,: Hi! \ufffd can I assist you today?User: I\u2019s me to be a tomorrow so should I wear?: That\u2019d be dressing layers to as with a warm base layer like a thermal shirt",
+      "argmax_oracle": "book I,: Hi! \ufffd can I assist you today?User: I\u2019s me to be a tomorrow so should I wear?: That\u2019d be dressing layers to as with a warm base layer like a thermal shirt",
+      "argmax_repeat": "book What,: Hi!! How can I you today today: not's a be a in should I wear?: Great\u2019d be dressing layers for as with a a base layer like a thermal or",
+      "argmax_campo": "book I,: Hi! \ufffd can I assist you today?User: I\u2019s me to be a tomorrow so should I wear?: Great\u2019m be dressing layers \u2014 as with a base base layer like a thermal or"
+    },
+    {
+      "conv": 677,
+      "texto_real": ": Hello\nAssistant: Hello! How can I help you today?\nUser: I like music and art, can you tell me about famous artists?\nAssistant: There are many famous artists, but some well-known ones include Leonardo da Vinci",
+      "argmax_gemma": "book I: Hi! How can I assist you today?User: I want to I, and you recommend me about some artists and: Absolutely are so amazing artists across and I of-known ones include:\n\n da Vinci",
+      "argmax_oracle": "book I: Hi! How can I assist you today?User: I want to I, and you recommend me about some artists and: Absolutely are so amazing artists across and I of-known ones include:\n\n da Vinci",
+      "argmax_repeat": "book What: Hi Hi! How can I you today today to I. you help me about some artists and: Absolutely are so amazing artists across from here of of ones include:\n\n da Vinci",
+      "argmax_campo": "book I,: Hi! How can I assist you today?User: I want to I\n\n and you recommend me about some artists and: That are so amazing artists across and I of-known names across:\n\n da Vinci"
+    },
+    {
+      "conv": 860,
+      "texto_real": ": Hi\nAssistant: Hello! How can I help you today?\nUser: I have a dog and I'm worried about his safety at home. Do you have any tips?\nAssistant: Yes, I do. Make sure to keep",
+      "argmax_gemma": "book I: Hello! How can I assist you today?: want a question and I want looking about my health while home you have any tips?\n\nAssistant: That, absolutely can! Dogs sure your keep",
+      "argmax_oracle": "book I: Hello! How can I assist you today?: want a question and I want looking about my health while home you have any tips?\n\nAssistant: That, absolutely can! Dogs sure your keep",
+      "argmax_repeat": "book What: Hello!! How can I you today today a a I want looking about about health while home. you have any any?: That,,\u2019m!! sure your keep",
+      "argmax_campo": "book I: Hello! How can I assist you today?: want a question and I want looking about my health while home you have any tips?\n\n: That, absolutely\u2019ve! Keeping sure your keep"
+    }
+  ]
+}

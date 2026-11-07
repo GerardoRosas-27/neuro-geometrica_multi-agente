@@ -1,0 +1,17 @@
+{
+  "cfg": {
+    "d": 64,
+    "ctx": 4,
+    "quad": true,
+    "bq10": true
+  },
+  "lam_deg": [
+    0.0,
+    0.001,
+    0.01
+  ],
+  "fast_eta": 0.0,
+  "fast_gamma": 1.0,
+  "bq10_lam": 0.0,
+  "note": "best val dz-mse SGD=0.571166; fast elegido eta=0 gamma=1 bq10_lam=0 val z-mse=0.571166; device=gpu"
+}
