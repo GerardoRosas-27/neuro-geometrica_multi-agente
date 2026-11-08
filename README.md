@@ -24,7 +24,11 @@
 >    - **Rama:** `exp/bq10-gpu-amd`
 >    - **Objetivo:** Escalado masivo de constelaciones cuántico-biológicas en AMD Radeon RX 7800 XT (WGPU/Vulkan).
 >    - **Resultados x50:** 1,638,400 episodios en 86.80 s (**18,874.7 eps/s**), 1,024 nodos, 4,096 sinapsis con 0 violaciones de Ley de Dale y consolidación circadiana SWR $\Delta R = -0.00042$.
->    - **Reporte:** [`docs/RESULTADOS_GPU_RX7800XT.md`](docs/RESULTADOS_GPU_RX7800XT.md) y [`docs/bq10/README.md`](docs/bq10/README.md).
+> 5. **Quinta Línea de Investigación: Arquitectura Neuro-Simbólica MARCUS-I (`marcus_neurosymbolic`)**
+>    - **Rama:** `exp/marcus-neurosymbolic-architecture`
+>    - **Objetivo:** Sustrato cognitivo dual 100% fundamentado en las teorías de Gary Marcus (*The Algebraic Mind*, *Rebooting AI*, *Taming Silicon Valley*). Implementa ligamiento algebraico de variables libre de diafonía (VSA/HRR), física núcleo y permanencia de objetos (Spelke), inferencia causal intervencionista $do(x)$ (Pearl), acoplamiento Sistema 1 (proponente) + Sistema 2 (deliberador) y centinela de vigilancia epistémica anti-alucinaciones.
+>    - **Resultados CONFIRM:** Pasa 100% de los criterios preregistrados (H1 a H5): Exactitud OOD en variables = **100.0%** (vs 1.9% del baseline asociativo), Asimetría y recombinación composicional = **100.0%**, Recall de violaciones físicas = **100.0%** (FPR = 0.0%), Error causal intervencionista = **0.0000** (vs 10.00 de correlación espuria), Tasa de alucinación admitida = **0.0%** con 100.0% de árboles de procedencia epistémica.
+>    - **Reportes:** [`docs/marcus_neurosymbolic/INVESTIGACION_GARY_MARCUS.md`](docs/marcus_neurosymbolic/INVESTIGACION_GARY_MARCUS.md), [`docs/marcus_neurosymbolic/ARQUITECTURA_MARCUS.md`](docs/marcus_neurosymbolic/ARQUITECTURA_MARCUS.md), [`docs/marcus_neurosymbolic/PREREGISTRO_EXPERIMENTOS.md`](docs/marcus_neurosymbolic/PREREGISTRO_EXPERIMENTOS.md) y [`docs/marcus_neurosymbolic/RESULTADOS_BENCHMARK.md`](docs/marcus_neurosymbolic/RESULTADOS_BENCHMARK.md).
 >
 > Ver reporte consolidado global y tabla unificada en [`docs/RESULTADOS_CONSOLIDADOS.md`](docs/RESULTADOS_CONSOLIDADOS.md).
 >

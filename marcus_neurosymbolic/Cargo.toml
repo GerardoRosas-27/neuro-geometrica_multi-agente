@@ -1,0 +1,29 @@
+[package]
+name = "marcus_neurosymbolic"
+version = "0.1.0"
+edition = "2021"
+description = "MARCUS-I: Cognitive Neuro-Symbolic Architecture based on Gary Marcus's theories (The Algebraic Mind, Rebooting AI, Taming Silicon Valley)"
+license = "MIT"
+
+[workspace]
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+opt-level = 3
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+rand = "0.8"
+rand_xoshiro = "0.6"
+rayon = "1.12.0"
+uuid = { version = "1", features = ["v4", "serde"] }
+
+[[bin]]
+name = "marcus_cli"
+path = "src/main.rs"
+
+[[bin]]
+name = "marcus_benchmark"
+path = "src/bin/benchmark.rs"
