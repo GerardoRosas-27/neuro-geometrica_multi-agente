@@ -18,12 +18,14 @@ pub mod core_knowledge;
 pub mod dual_process;
 pub mod epistemic_vigilance;
 pub mod benchmarks;
+pub mod connectors;
 
 pub use algebraic_mind::*;
 pub use core_knowledge::*;
 pub use dual_process::*;
 pub use epistemic_vigilance::*;
 pub use benchmarks::*;
+pub use connectors::*;
 
 /// Motor Cognitivo Unificado MARCUS-I (Facade de Alto Nivel).
 pub struct MarcusEngine {

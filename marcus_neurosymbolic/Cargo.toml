@@ -27,3 +27,7 @@ path = "src/main.rs"
 [[bin]]
 name = "marcus_benchmark"
 path = "src/bin/benchmark.rs"
+
+[[bin]]
+name = "marcus_unified_benchmark"
+path = "src/bin/unified_benchmark.rs"
