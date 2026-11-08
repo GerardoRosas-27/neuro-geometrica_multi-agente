@@ -1,0 +1,13 @@
+{
+  "step": 64,
+  "sleep_cycles": 4,
+  "total_episodes": 64,
+  "cdt_basin_radius": 1.06136,
+  "provenance_records": 42,
+  "vetoed_claims": 6,
+  "dale_compliance": "100%",
+  "dale_violations": 0,
+  "avg_loss": 0.00516,
+  "uptime_seconds": 0.11,
+  "timestamp": "2026-11-08T20:14:11.264357"
+}

@@ -34,6 +34,8 @@ __pycache__/
 /data/native_gemma2_circadian/
 
 # Checkpoints de train en vivo (runtime)
+data/*.log
+data/checkpoints/*.bin
 data/checkpoints/*.json
 data/checkpoints/datasets/
 !data/checkpoints/.gitkeep
