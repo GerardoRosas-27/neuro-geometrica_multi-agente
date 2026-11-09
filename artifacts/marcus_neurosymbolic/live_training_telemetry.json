@@ -1,13 +1,13 @@
 {
-  "step": 64,
-  "sleep_cycles": 4,
-  "total_episodes": 64,
-  "cdt_basin_radius": 1.06136,
-  "provenance_records": 42,
-  "vetoed_claims": 6,
+  "step": 1524608,
+  "sleep_cycles": 23825,
+  "total_episodes": 708032,
+  "cdt_basin_radius": 3.0,
+  "provenance_records": 990996,
+  "vetoed_claims": 152460,
   "dale_compliance": "100%",
   "dale_violations": 0,
-  "avg_loss": 0.00516,
-  "uptime_seconds": 0.11,
-  "timestamp": "2026-11-08T20:14:11.264357"
+  "avg_loss": 0.00525,
+  "uptime_seconds": 1127.58,
+  "timestamp": "2026-11-08T21:20:45.673157"
 }
