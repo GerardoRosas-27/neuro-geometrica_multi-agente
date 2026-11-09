@@ -1,0 +1,18 @@
+{
+  "scale": "7B_EQUIVALENT",
+  "hidden_dimension": 4096,
+  "heads": 32,
+  "d_head": 128,
+  "total_synapses": 1048576,
+  "step": 4736,
+  "sleep_cycles": 74,
+  "total_episodes": 4608,
+  "cdt_basin_radius": 3.0,
+  "provenance_records": 3079,
+  "vetoed_claims": 473,
+  "dale_compliance": "100%",
+  "dale_violations": 0,
+  "avg_loss": 0.00525,
+  "uptime_seconds": 18.14,
+  "timestamp": "2026-11-09T02:29:52.908657"
+}
