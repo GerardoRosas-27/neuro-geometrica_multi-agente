@@ -4,15 +4,15 @@
   "heads": 32,
   "d_head": 128,
   "total_synapses": 1048576,
-  "step": 1188416,
-  "sleep_cycles": 18569,
-  "total_episodes": 6336,
+  "step": 1371904,
+  "sleep_cycles": 21436,
+  "total_episodes": 5696,
   "cdt_basin_radius": 3.0,
-  "provenance_records": 772471,
-  "vetoed_claims": 118841,
+  "provenance_records": 891738,
+  "vetoed_claims": 137190,
   "dale_compliance": "100%",
   "dale_violations": 0,
   "avg_loss": 0.00525,
-  "uptime_seconds": 25.88,
-  "timestamp": "2026-11-11T03:47:17.053343"
+  "uptime_seconds": 24.23,
+  "timestamp": "2026-11-11T17:07:41.922969"
 }
