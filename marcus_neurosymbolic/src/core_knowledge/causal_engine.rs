@@ -93,6 +93,16 @@ impl CausalEngine {
         self.active_interventions.clear();
     }
 
+    /// Comprueba si la variable está registrada en el grafo causal.
+    pub fn contains_var(&self, var: &CausalVar) -> bool {
+        self.equations.contains_key(var)
+    }
+
+    /// Retorna el número de padres causales directos de la variable.
+    pub fn parent_count(&self, var: &CausalVar) -> usize {
+        self.equations.get(var).map_or(0, |eq| eq.parent_weights.len())
+    }
+
     /// Simula un forward pass del modelo causal (con o sin intervenciones activas).
     /// Si `noise_samples` es provisto, usa esos valores; de lo contrario, asume ruido esperado = 0.
     pub fn simulate(&self, noise_samples: Option<&HashMap<CausalVar, f64>>) -> HashMap<CausalVar, f64> {

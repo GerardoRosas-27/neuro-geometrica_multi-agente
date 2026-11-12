@@ -35,3 +35,7 @@ path = "src/bin/unified_benchmark.rs"
 [[bin]]
 name = "marcus_aa_eval"
 path = "src/bin/aa_eval.rs"
+
+[[bin]]
+name = "marcus_fep_benchmark"
+path = "src/bin/fep_benchmark.rs"

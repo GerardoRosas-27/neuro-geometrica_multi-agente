@@ -1,0 +1,41 @@
+{
+  "bm6": {
+    "name": "BM6: Variational Free Energy Minimization & ELBO Maximization",
+    "total_trials": 100,
+    "avg_initial_free_energy": 33.02556687492885,
+    "avg_optimized_free_energy": 20.583017144610448,
+    "avg_initial_elbo": -33.02556687492885,
+    "avg_optimized_elbo": -20.583017144610448,
+    "free_energy_reduction_pct": 37.67550691087178,
+    "monotonic_convergence_rate": 1.0,
+    "passed_h_fep1": true
+  },
+  "bm7": {
+    "name": "BM7: Multi-Modal Structured Surprise Reduction",
+    "total_episodes": 50,
+    "baseline_avg_unresolved_surprise": 510.2700000000004,
+    "marcus_fep_final_surprise": 0.0,
+    "surprise_reduction_pct": 100.0,
+    "physical_anomaly_isolation_rate": 1.0,
+    "passed_h_fep2": true
+  },
+  "bm8": {
+    "name": "BM8: Active Inference & Expected Free Energy Exploration",
+    "total_scenarios": 40,
+    "passive_agent_causal_accuracy": 0.5,
+    "active_inference_causal_accuracy": 1.0,
+    "epistemic_action_preference_rate": 1.0,
+    "passed_h_fep3": true
+  },
+  "bm9": {
+    "name": "BM9: OOD Generalization & Bounded Free Energy",
+    "ood_trials": 20,
+    "statistical_baseline_ood_accuracy": 0.0,
+    "statistical_baseline_avg_surprise": 45.0,
+    "marcus_fep_ood_accuracy": 1.0,
+    "marcus_fep_avg_free_energy": 10.066425481589167,
+    "marcus_fep_avg_elbo": -10.066425481589167,
+    "passed_h_fep4": true
+  },
+  "all_fep_passed": true
+}

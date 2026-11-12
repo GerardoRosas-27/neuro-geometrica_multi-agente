@@ -45,6 +45,21 @@ pub struct SpatiotemporalObject {
     pub contained_in: Option<String>,
 }
 
+impl SpatiotemporalObject {
+    pub fn new(id: impl Into<String>, pos: (f64, f64, f64), radius: f64) -> Self {
+        Self {
+            id: id.into(),
+            position: Vec3D::new(pos.0, pos.1, pos.2),
+            velocity: Vec3D::zero(),
+            radius,
+            is_solid: true,
+            is_occluded: false,
+            is_supported: true,
+            contained_in: None,
+        }
+    }
+}
+
 /// Violaciones físicas detectadas por el motor de conocimiento núcleo.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum PhysicalViolation {
