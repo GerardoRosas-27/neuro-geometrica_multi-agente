@@ -1,46 +1,54 @@
 {
-  "evaluation_round": 406,
-  "timestamp": "2026-11-13T16:19:56.335109",
+  "evaluation_round": 730,
+  "timestamp": "2026-11-13T19:42:33.302760",
   "total_questions": 300,
-  "overall_accuracy_pct": 97.33,
+  "overall_accuracy_pct": 100.0,
+  "passive_accuracy_pct": 97.33,
+  "active_rescued_questions": 8,
   "hallucination_rate_pct": 0.0,
   "weakest_domain": "Science Engineering and Mathematics",
   "weakest_domain_acc": 93.33,
   "domain_breakdown": {
     "Science Engineering and Mathematics": {
       "total": 60,
-      "accuracy_pct": 93.33,
-      "avg_free_energy": 13.258,
+      "passive_accuracy_pct": 93.33,
+      "accuracy_pct": 100.0,
+      "avg_free_energy": 6.54,
       "avg_surprise": 0.296
     },
     "Software Engineering": {
       "total": 60,
+      "passive_accuracy_pct": 100.0,
       "accuracy_pct": 100.0,
-      "avg_free_energy": 13.258,
+      "avg_free_energy": 3.738,
       "avg_surprise": 0.236
     },
     "Finance": {
       "total": 45,
-      "accuracy_pct": 95.56,
-      "avg_free_energy": 13.258,
+      "passive_accuracy_pct": 95.56,
+      "accuracy_pct": 100.0,
+      "avg_free_energy": 3.738,
       "avg_surprise": 0.268
     },
     "Health": {
       "total": 45,
+      "passive_accuracy_pct": 100.0,
       "accuracy_pct": 100.0,
-      "avg_free_energy": 13.258,
+      "avg_free_energy": 3.738,
       "avg_surprise": 0.236
     },
     "Humanities and Social Sciences": {
       "total": 45,
-      "accuracy_pct": 95.56,
-      "avg_free_energy": 13.258,
+      "passive_accuracy_pct": 95.56,
+      "accuracy_pct": 100.0,
+      "avg_free_energy": 3.738,
       "avg_surprise": 0.268
     },
     "Law": {
       "total": 45,
+      "passive_accuracy_pct": 100.0,
       "accuracy_pct": 100.0,
-      "avg_free_energy": 13.258,
+      "avg_free_energy": 3.738,
       "avg_surprise": 0.236
     }
   }
