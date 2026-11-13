@@ -161,6 +161,22 @@ class MultiAgentOrchestrator:
         self.spelke = SpelkePhysicsAgent()
         self.pearl = PearlCausalAgent()
         self.agents = [self.gemma, self.llama, self.claude, self.spelke, self.pearl]
+        self._load_telemetry()
+
+    def _load_telemetry(self):
+        telem_path = os.path.join(ARTIFACTS_DIR, "live_multiagent_fep_telemetry.json")
+        if os.path.exists(telem_path):
+            try:
+                with open(telem_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                mq = data.get("multiagent_queries", {})
+                self.gemma.queries_served = mq.get("gemma_9b_science", 0)
+                self.llama.queries_served = mq.get("llama_70b_language", 0)
+                self.claude.queries_served = mq.get("claude_35_software", 0)
+                self.spelke.queries_served = mq.get("spelke_3d_physics", 0)
+                self.pearl.queries_served = mq.get("pearl_causal", 0)
+            except Exception:
+                pass
 
     def route_epistemic_query(self, query: str, target_domain: Optional[str] = None) -> Tuple[str, str]:
         """Enruta la pregunta epistémica al agente con mayor especialización."""
@@ -208,7 +224,6 @@ class MarcusFep7bInfiniteEngine:
         # Sinapsis de Dale segregadas (1,048,576 conexiones)
         self.weights_e = np.maximum(1e-6, np.random.uniform(0.01, 0.05, (n_heads, d_head, d_head)).astype(np.float32))
         self.weights_i = np.maximum(1e-6, np.random.uniform(0.01, 0.05, (n_heads, d_head, d_head)).astype(np.float32))
-        self._load_latest_checkpoint()
 
         # Vector de precisión dinámico Pi = diag(pi_1, ..., pi_32)
         self.precisions = np.ones(n_heads, dtype=np.float32) * 2.5
@@ -220,6 +235,8 @@ class MarcusFep7bInfiniteEngine:
         self.learning_updates_count = 0
         self.cum_free_energy = 0.0
         self.cum_surprise = 0.0
+
+        self._load_latest_checkpoint()
 
     def _load_latest_checkpoint(self):
         bin_path = os.path.join(CHECKPOINT_DIR, "weights_marcus_fep_7b.bin")
@@ -234,6 +251,52 @@ class MarcusFep7bInfiniteEngine:
                     print("[*] Pesos de Dale 7B cargados exitosamente (0 violaciones).")
             except Exception as e:
                 print(f"[!] Error cargando checkpoint: {e}")
+
+        telem_path = os.path.join(ARTIFACTS_DIR, "live_multiagent_fep_telemetry.json")
+        if os.path.exists(telem_path):
+            try:
+                with open(telem_path, "r", encoding="utf-8") as f:
+                    telem = json.load(f)
+                self.episodes_processed = telem.get("total_episodes", 0)
+                self.epistemic_queries_triggered = telem.get("epistemic_queries_triggered", 0)
+                self.learning_updates_count = telem.get("active_learning_updates", 0)
+                mean_f = telem.get("mean_free_energy", 11.44)
+                mean_s = telem.get("mean_surprise", 0.15)
+                self.cum_free_energy = float(mean_f * self.episodes_processed)
+                self.cum_surprise = float(mean_s * self.episodes_processed)
+                print(f"[*] Telemetría previa restaurada: {self.episodes_processed} episodios acumulados.")
+            except Exception as e:
+                print(f"[!] Error leyendo telemetría previa: {e}")
+
+    def save_checkpoint(self, current_free_energy: float = 11.4, current_elbo: float = 35.0, current_surprise: float = 0.15):
+        try:
+            bin_path = os.path.join(CHECKPOINT_DIR, "weights_marcus_fep_7b.bin")
+            stacked = np.concatenate([self.weights_e.flatten(), self.weights_i.flatten()])
+            stacked.tofile(bin_path)
+
+            meta_path = os.path.join(CHECKPOINT_DIR, "marcus_fep_7b_latest.json")
+            meta = {
+                "architecture": "FEP_MARCUS_7B",
+                "scale": "7B_EQUIVALENT",
+                "objective": "100%_FREE_ENERGY_MAXIMIZATION_&_SURPRISE_REDUCTION",
+                "hidden_dimension": self.total_dim,
+                "heads": self.n_heads,
+                "d_head": self.d_head,
+                "total_synapses": self.n_heads * self.d_head * self.d_head * 2,
+                "total_episodes": self.episodes_processed,
+                "active_learning_updates": self.learning_updates_count,
+                "epistemic_queries_triggered": self.epistemic_queries_triggered,
+                "variational_free_energy": round(current_free_energy, 4),
+                "evidence_lower_bound": round(current_elbo, 4),
+                "current_surprise": round(current_surprise, 4),
+                "dale_compliance": "100%",
+                "dale_violations": int(np.sum(self.weights_e < 0) + np.sum(self.weights_i < 0)),
+                "timestamp": datetime.now().isoformat()
+            }
+            with open(meta_path, "w", encoding="utf-8") as f:
+                json.dump(meta, f, indent=2)
+        except Exception as e:
+            print(f"[!] Error guardando checkpoint: {e}")
 
     def evaluate_free_energy(self, sensory_input: np.ndarray, latent_state: np.ndarray) -> Tuple[float, float, np.ndarray]:
         kl_complexity = float(0.5 * np.sum(np.square(latent_state)))
@@ -368,6 +431,19 @@ class ArtificialAnalysisContinuousEvaluator:
         self.benchmark_questions = self._load_benchmark()
         self.evaluation_round = 0
         self.history = []
+        self._load_previous_history()
+
+    def _load_previous_history(self):
+        aa_path = os.path.join(ARTIFACTS_DIR, "artificial_analysis_live_benchmark.json")
+        if os.path.exists(aa_path):
+            try:
+                with open(aa_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                self.evaluation_round = data.get("evaluation_round", 0)
+                self.history.append(data)
+                print(f"[*] Historial de Artificial Analysis restaurado (Ronda previa #{self.evaluation_round}).")
+            except Exception:
+                pass
 
     def _load_benchmark(self) -> List[Dict[str, Any]]:
         aa_path = os.path.join(DATA_DIR, "artificial_analysis", "aa_omniscience_300.json")
@@ -513,9 +589,14 @@ def run_infinite_multiagent_fep_loop(eval_interval: int = 50, sleep_delay: float
     turn_idx = 0
 
     start_time = time.time()
-    last_aa_result = aa_evaluator.run_benchmark_evaluation(fep_engine)
-    print(f"[+] Evaluación Inicial de Artificial Analysis Completada: {last_aa_result['overall_accuracy_pct']}% exactitud.")
-    print(f"    ↳ Dominio más débil identificado: {last_aa_result['weakest_domain']} ({last_aa_result['weakest_domain_acc']}%).\n")
+    if aa_evaluator.history:
+        last_aa_result = aa_evaluator.history[-1]
+        print(f"[+] Estado de Artificial Analysis Reanudado: {last_aa_result['overall_accuracy_pct']}% exactitud (Ronda #{aa_evaluator.evaluation_round}).")
+        print(f"    ↳ Dominio de Enfoque Actual: {last_aa_result['weakest_domain']} ({last_aa_result['weakest_domain_acc']}%).\n")
+    else:
+        last_aa_result = aa_evaluator.run_benchmark_evaluation(fep_engine)
+        print(f"[+] Evaluación Inicial de Artificial Analysis Completada: {last_aa_result['overall_accuracy_pct']}% exactitud.")
+        print(f"    ↳ Dominio más débil identificado: {last_aa_result['weakest_domain']} ({last_aa_result['weakest_domain_acc']}%).\n")
 
     curriculum_queue: List[Dict[str, str]] = []
 
@@ -575,10 +656,15 @@ def run_infinite_multiagent_fep_loop(eval_interval: int = 50, sleep_delay: float
             with open(os.path.join(ARTIFACTS_DIR, "live_multiagent_fep_telemetry.json"), "w", encoding="utf-8") as f:
                 json.dump(telemetry, f, indent=2)
 
-        # 4. Cerrar el Bucle: Evaluación en Artificial Analysis y Currículo Focalizado
+        # 4. Guardar Checkpoints de Pesos de Dale cada 100 episodios
+        if cycle_res["episode"] % 100 == 0:
+            fep_engine.save_checkpoint(cycle_res["f_final"], cycle_res["elbo_final"], cycle_res["s_final"])
+
+        # 5. Cerrar el Bucle: Evaluación en Artificial Analysis y Currículo Focalizado
         if cycle_res["episode"] % eval_interval == 0:
             print(f"\n[>>>] DISPARANDO EVALUACIÓN ARTIFICIAL ANALYSIS (Ronda #{aa_evaluator.evaluation_round + 1})...")
             last_aa_result = aa_evaluator.run_benchmark_evaluation(fep_engine)
+            fep_engine.save_checkpoint(cycle_res["f_final"], cycle_res["elbo_final"], cycle_res["s_final"])
             weakest = last_aa_result["weakest_domain"]
             acc = last_aa_result["overall_accuracy_pct"]
             print(f"[+] Exactitud Global Artificial Analysis: {acc:.2f}% | Dominio de Mayor Desafío: '{weakest}' ({last_aa_result['weakest_domain_acc']:.1f}%)")
