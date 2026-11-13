@@ -1,0 +1,47 @@
+{
+  "evaluation_round": 6,
+  "timestamp": "2026-11-13T00:30:48.686703",
+  "total_questions": 300,
+  "overall_accuracy_pct": 97.33,
+  "hallucination_rate_pct": 0.0,
+  "weakest_domain": "Science Engineering and Mathematics",
+  "weakest_domain_acc": 93.33,
+  "domain_breakdown": {
+    "Science Engineering and Mathematics": {
+      "total": 60,
+      "accuracy_pct": 93.33,
+      "avg_free_energy": 11.53,
+      "avg_surprise": 0.296
+    },
+    "Software Engineering": {
+      "total": 60,
+      "accuracy_pct": 100.0,
+      "avg_free_energy": 11.53,
+      "avg_surprise": 0.236
+    },
+    "Finance": {
+      "total": 45,
+      "accuracy_pct": 95.56,
+      "avg_free_energy": 11.53,
+      "avg_surprise": 0.268
+    },
+    "Health": {
+      "total": 45,
+      "accuracy_pct": 100.0,
+      "avg_free_energy": 11.53,
+      "avg_surprise": 0.236
+    },
+    "Humanities and Social Sciences": {
+      "total": 45,
+      "accuracy_pct": 95.56,
+      "avg_free_energy": 11.53,
+      "avg_surprise": 0.268
+    },
+    "Law": {
+      "total": 45,
+      "accuracy_pct": 100.0,
+      "avg_free_energy": 11.53,
+      "avg_surprise": 0.236
+    }
+  }
+}
