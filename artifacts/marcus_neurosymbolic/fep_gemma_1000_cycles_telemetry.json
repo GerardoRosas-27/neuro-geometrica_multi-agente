@@ -1,0 +1,179 @@
+{
+  "total_cycles": 1000,
+  "execution_time_seconds": 15.58,
+  "cycles_per_second": 64.2,
+  "free_energy": {
+    "initial_mean_ci": [
+      11.2450211,
+      11.083271585,
+      11.405509135
+    ],
+    "optimized_mean_ci": [
+      11.2392363,
+      11.076098242499999,
+      11.40037543
+    ],
+    "paired_delta_f_ci": [
+      -0.0057859,
+      -0.0582970875,
+      0.0432561825
+    ],
+    "early_100_mean_ci": [
+      12.922177999999999,
+      12.339555450000002,
+      13.489252725000004
+    ],
+    "late_100_mean_ci": [
+      11.416955,
+      10.838574700000002,
+      11.975837600000002
+    ],
+    "long_term_f_reduction": -1.5052,
+    "improved": true
+  },
+  "structured_surprise": {
+    "initial_mean_ci": [
+      0.3244182,
+      0.305169975,
+      0.34479972750000004
+    ],
+    "final_mean_ci": [
+      0.16777839999999997,
+      0.16550389750000002,
+      0.17007989999999998
+    ],
+    "overall_reduction_pct": 48.28,
+    "improved": true
+  },
+  "epistemic_active_inference": {
+    "total_epistemic_questions_to_gemma": 58,
+    "trigger_rate_pct": 5.8,
+    "surprise_collapse_rate_on_active": 100.0
+  },
+  "dale_compliance": {
+    "total_violations": 0,
+    "status": "100%_PASS"
+  },
+  "buckets_100": [
+    {
+      "bucket": 1,
+      "cycles_range": "1-100",
+      "mean_f_init": 12.9861,
+      "mean_f_final": 12.9222,
+      "delta_f_mean": -0.064,
+      "mean_elbo_final": -12.9222,
+      "mean_s_init": 0.3181,
+      "mean_s_final": 0.1676,
+      "surprise_reduction_pct": 47.31,
+      "active_inference_triggers": 5
+    },
+    {
+      "bucket": 2,
+      "cycles_range": "101-200",
+      "mean_f_init": 11.3245,
+      "mean_f_final": 11.3326,
+      "delta_f_mean": 0.0081,
+      "mean_elbo_final": -11.3326,
+      "mean_s_init": 0.2892,
+      "mean_s_final": 0.1589,
+      "surprise_reduction_pct": 45.08,
+      "active_inference_triggers": 5
+    },
+    {
+      "bucket": 3,
+      "cycles_range": "201-300",
+      "mean_f_init": 11.1075,
+      "mean_f_final": 11.1259,
+      "delta_f_mean": 0.0184,
+      "mean_elbo_final": -11.1259,
+      "mean_s_init": 0.3426,
+      "mean_s_final": 0.1678,
+      "surprise_reduction_pct": 51.01,
+      "active_inference_triggers": 7
+    },
+    {
+      "bucket": 4,
+      "cycles_range": "301-400",
+      "mean_f_init": 9.6241,
+      "mean_f_final": 9.6128,
+      "delta_f_mean": -0.0113,
+      "mean_elbo_final": -9.6128,
+      "mean_s_init": 0.3589,
+      "mean_s_final": 0.1706,
+      "surprise_reduction_pct": 52.46,
+      "active_inference_triggers": 8
+    },
+    {
+      "bucket": 5,
+      "cycles_range": "401-500",
+      "mean_f_init": 11.5514,
+      "mean_f_final": 11.5514,
+      "delta_f_mean": -0.0,
+      "mean_elbo_final": -11.5514,
+      "mean_s_init": 0.3176,
+      "mean_s_final": 0.1706,
+      "surprise_reduction_pct": 46.28,
+      "active_inference_triggers": 5
+    },
+    {
+      "bucket": 6,
+      "cycles_range": "501-600",
+      "mean_f_init": 10.9331,
+      "mean_f_final": 10.8965,
+      "delta_f_mean": -0.0366,
+      "mean_elbo_final": -10.8965,
+      "mean_s_init": 0.3345,
+      "mean_s_final": 0.1693,
+      "surprise_reduction_pct": 49.39,
+      "active_inference_triggers": 7
+    },
+    {
+      "bucket": 7,
+      "cycles_range": "601-700",
+      "mean_f_init": 11.7314,
+      "mean_f_final": 11.8094,
+      "delta_f_mean": 0.078,
+      "mean_elbo_final": -11.8094,
+      "mean_s_init": 0.2868,
+      "mean_s_final": 0.1629,
+      "surprise_reduction_pct": 43.19,
+      "active_inference_triggers": 3
+    },
+    {
+      "bucket": 8,
+      "cycles_range": "701-800",
+      "mean_f_init": 12.2162,
+      "mean_f_final": 12.1284,
+      "delta_f_mean": -0.0878,
+      "mean_elbo_final": -12.1284,
+      "mean_s_init": 0.3514,
+      "mean_s_final": 0.1736,
+      "surprise_reduction_pct": 50.6,
+      "active_inference_triggers": 7
+    },
+    {
+      "bucket": 9,
+      "cycles_range": "801-900",
+      "mean_f_init": 9.5997,
+      "mean_f_final": 9.5962,
+      "delta_f_mean": -0.0034,
+      "mean_elbo_final": -9.5962,
+      "mean_s_init": 0.3412,
+      "mean_s_final": 0.1703,
+      "surprise_reduction_pct": 50.09,
+      "active_inference_triggers": 7
+    },
+    {
+      "bucket": 10,
+      "cycles_range": "901-1000",
+      "mean_f_init": 11.3761,
+      "mean_f_final": 11.417,
+      "delta_f_mean": 0.0408,
+      "mean_elbo_final": -11.417,
+      "mean_s_init": 0.3038,
+      "mean_s_final": 0.1661,
+      "surprise_reduction_pct": 45.31,
+      "active_inference_triggers": 4
+    }
+  ]
+}
