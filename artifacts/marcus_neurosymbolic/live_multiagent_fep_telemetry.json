@@ -1,74 +1,255 @@
 {
-  "status": "RUNNING_INFINITE",
-  "uptime_seconds": 11.46,
-  "total_episodes": 18700,
-  "active_learning_updates": 18700,
-  "epistemic_queries_triggered": 792,
-  "current_free_energy": 10.2863,
-  "mean_free_energy": 11.4038,
-  "mean_surprise": 0.159,
+  "architecture": "FEP_MARCUS_7B_V2",
+  "status": "COMPLETED_BOUNDED",
+  "timestamp": "2026-11-14T03:05:33.136766+00:00",
+  "uptime_seconds": 3.51,
+  "episodes_this_run": 100,
+  "episodes_per_sec": 28.47,
+  "total_episodes": 600,
+  "active_learning_updates": 600,
+  "epistemic_queries_triggered": 138,
+  "active_inference_rate_pct": 23.0,
+  "sleep_cycles": 9,
+  "cdt_basin_radius": 1.14339,
+  "current_free_energy": 38.4107,
+  "current_elbo": -38.4107,
+  "current_surprise": 0.3613,
+  "mean_free_energy": 39.1468,
+  "mean_surprise": 0.4005,
+  "head_fro_norm": 11.1845,
+  "mean_precision": 2.5303,
+  "consolidated_prototypes": 276,
+  "world_state_facts": 323,
+  "monotone_violations": 0,
   "dale_compliance": "100%_PASS",
   "dale_violations": 0,
+  "tester": {
+    "episodes_audited": 600,
+    "monotonic_convergence_pct": 100.0,
+    "rolling_monotonic_pct": 100.0,
+    "elbo_symmetry_pass_pct": 100.0,
+    "dale_compliance_pct": 100.0,
+    "spectral_health_pct": 100.0,
+    "active_surprise_collapse_pct": 100.0,
+    "cdt_invariant_pass_pct": 100.0,
+    "early_window_f_init": 67.0256,
+    "recent_window_f_init": 66.4017,
+    "f_init_drift": -0.6239,
+    "early_window_f_opt": 40.1461,
+    "recent_window_f_opt": 38.0833,
+    "f_opt_drift": -2.0628,
+    "s_init_drift": -0.6394
+  },
   "last_aa_evaluation": {
-    "evaluation_round": 729,
-    "timestamp": "2026-11-13T19:42:31.222247",
+    "evaluation_round": 7,
+    "episode": 600,
+    "timestamp": "2026-11-14T03:05:33.027463+00:00",
+    "eval_duration_seconds": 1.411,
     "total_questions": 300,
+    "passive_correct": 300,
+    "active_correct": 300,
     "overall_accuracy_pct": 100.0,
-    "passive_accuracy_pct": 97.33,
-    "active_rescued_questions": 8,
+    "passive_accuracy_pct": 100.0,
+    "passive_delta_pct": 0.0,
+    "prior_conf_coverage_pct": 100.0,
+    "active_rescued_questions": 0,
+    "unresolved_passive": 0,
     "hallucination_rate_pct": 0.0,
-    "weakest_domain": "Science Engineering and Mathematics",
-    "weakest_domain_acc": 93.33,
+    "mean_passive_free_energy": 42.853,
+    "mean_passive_surprise": 0.459,
+    "weakest_domain": "Law",
+    "weakest_domain_acc": 100.0,
+    "weakest_domains_order": [
+      "Law",
+      "Humanities and Social Sciences",
+      "Science Engineering and Mathematics",
+      "Software Engineering",
+      "Finance",
+      "Health"
+    ],
+    "failed_subtopics_by_domain": {
+      "Science Engineering and Mathematics": [],
+      "Software Engineering": [],
+      "Finance": [],
+      "Health": [],
+      "Humanities and Social Sciences": [],
+      "Law": []
+    },
     "domain_breakdown": {
       "Science Engineering and Mathematics": {
         "total": 60,
-        "passive_accuracy_pct": 93.33,
+        "passive_correct": 60,
+        "active_correct": 60,
+        "passive_accuracy_pct": 100.0,
         "accuracy_pct": 100.0,
-        "avg_free_energy": 4.349,
-        "avg_surprise": 0.296
+        "prior_conf_coverage_pct": 100.0,
+        "avg_free_energy": 42.873,
+        "avg_surprise": 0.473,
+        "avg_hrr_sim": 0.6829,
+        "failed_subtopics_count": 0
       },
       "Software Engineering": {
         "total": 60,
+        "passive_correct": 60,
+        "active_correct": 60,
         "passive_accuracy_pct": 100.0,
         "accuracy_pct": 100.0,
-        "avg_free_energy": 3.738,
-        "avg_surprise": 0.236
+        "prior_conf_coverage_pct": 100.0,
+        "avg_free_energy": 42.813,
+        "avg_surprise": 0.464,
+        "avg_hrr_sim": 0.6953,
+        "failed_subtopics_count": 0
       },
       "Finance": {
         "total": 45,
-        "passive_accuracy_pct": 95.56,
+        "passive_correct": 45,
+        "active_correct": 45,
+        "passive_accuracy_pct": 100.0,
         "accuracy_pct": 100.0,
-        "avg_free_energy": 3.738,
-        "avg_surprise": 0.268
+        "prior_conf_coverage_pct": 100.0,
+        "avg_free_energy": 42.791,
+        "avg_surprise": 0.417,
+        "avg_hrr_sim": 0.738,
+        "failed_subtopics_count": 0
       },
       "Health": {
         "total": 45,
+        "passive_correct": 45,
+        "active_correct": 45,
         "passive_accuracy_pct": 100.0,
         "accuracy_pct": 100.0,
-        "avg_free_energy": 3.738,
-        "avg_surprise": 0.236
+        "prior_conf_coverage_pct": 100.0,
+        "avg_free_energy": 42.78,
+        "avg_surprise": 0.496,
+        "avg_hrr_sim": 0.6458,
+        "failed_subtopics_count": 0
       },
       "Humanities and Social Sciences": {
         "total": 45,
-        "passive_accuracy_pct": 95.56,
+        "passive_correct": 45,
+        "active_correct": 45,
+        "passive_accuracy_pct": 100.0,
         "accuracy_pct": 100.0,
-        "avg_free_energy": 3.738,
-        "avg_surprise": 0.268
+        "prior_conf_coverage_pct": 100.0,
+        "avg_free_energy": 42.911,
+        "avg_surprise": 0.463,
+        "avg_hrr_sim": 0.6988,
+        "failed_subtopics_count": 0
       },
       "Law": {
         "total": 45,
+        "passive_correct": 45,
+        "active_correct": 45,
         "passive_accuracy_pct": 100.0,
         "accuracy_pct": 100.0,
-        "avg_free_energy": 3.738,
-        "avg_surprise": 0.236
+        "prior_conf_coverage_pct": 100.0,
+        "avg_free_energy": 42.957,
+        "avg_surprise": 0.432,
+        "avg_hrr_sim": 0.7496,
+        "failed_subtopics_count": 0
       }
-    }
+    },
+    "recent_trend": [
+      {
+        "evaluation_round": 1,
+        "episode": 0,
+        "passive_accuracy_pct": 0.0,
+        "overall_accuracy_pct": 100.0,
+        "mean_passive_free_energy": 49.623,
+        "mean_passive_surprise": 1.401
+      },
+      {
+        "evaluation_round": 2,
+        "episode": 100,
+        "passive_accuracy_pct": 57.0,
+        "overall_accuracy_pct": 100.0,
+        "mean_passive_free_energy": 45.952,
+        "mean_passive_surprise": 0.916
+      },
+      {
+        "evaluation_round": 3,
+        "episode": 200,
+        "passive_accuracy_pct": 100.0,
+        "overall_accuracy_pct": 100.0,
+        "mean_passive_free_energy": 44.335,
+        "mean_passive_surprise": 0.543
+      },
+      {
+        "evaluation_round": 4,
+        "episode": 300,
+        "passive_accuracy_pct": 100.0,
+        "overall_accuracy_pct": 100.0,
+        "mean_passive_free_energy": 43.454,
+        "mean_passive_surprise": 0.508
+      },
+      {
+        "evaluation_round": 5,
+        "episode": 400,
+        "passive_accuracy_pct": 100.0,
+        "overall_accuracy_pct": 100.0,
+        "mean_passive_free_energy": 43.22,
+        "mean_passive_surprise": 0.478
+      },
+      {
+        "evaluation_round": 6,
+        "episode": 500,
+        "passive_accuracy_pct": 100.0,
+        "overall_accuracy_pct": 100.0,
+        "mean_passive_free_energy": 42.821,
+        "mean_passive_surprise": 0.471
+      },
+      {
+        "evaluation_round": 7,
+        "episode": 600,
+        "passive_accuracy_pct": 100.0,
+        "overall_accuracy_pct": 100.0,
+        "mean_passive_free_energy": 42.853,
+        "mean_passive_surprise": 0.459
+      }
+    ]
   },
   "multiagent_queries": {
-    "gemma_9b_science": 184,
-    "llama_70b_language": 0,
-    "claude_35_software": 0,
-    "spelke_3d_physics": 0,
-    "pearl_causal": 1325
+    "gemma_9b_science": 33,
+    "llama_70b_language": 15,
+    "claude_35_software": 24,
+    "spelke_3d_physics": 25,
+    "pearl_causal": 41
+  },
+  "multiagent_stats": {
+    "gemma_9b_science": {
+      "name": "Gemma-9B-Scientific-Oracle",
+      "queries": 33,
+      "query_share_pct": 23.91,
+      "mean_surprise_reduction_pct": 63.47,
+      "mean_delta_f": -25.3512
+    },
+    "llama_70b_language": {
+      "name": "Llama-3.1-70B-Relational-Oracle",
+      "queries": 15,
+      "query_share_pct": 10.87,
+      "mean_surprise_reduction_pct": 64.04,
+      "mean_delta_f": -26.4779
+    },
+    "claude_35_software": {
+      "name": "Claude-3.5-Logic-Software-Oracle",
+      "queries": 24,
+      "query_share_pct": 17.39,
+      "mean_surprise_reduction_pct": 62.55,
+      "mean_delta_f": -25.4985
+    },
+    "spelke_3d_physics": {
+      "name": "Spelke-Physics-Continuous-Agent",
+      "queries": 25,
+      "query_share_pct": 18.12,
+      "mean_surprise_reduction_pct": 71.41,
+      "mean_delta_f": -26.9524
+    },
+    "pearl_causal": {
+      "name": "Pearl-Causal-Intervention-Agent",
+      "queries": 41,
+      "query_share_pct": 29.71,
+      "mean_surprise_reduction_pct": 78.56,
+      "mean_delta_f": -21.2707
+    }
   }
 }

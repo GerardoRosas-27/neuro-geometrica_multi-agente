@@ -240,36 +240,59 @@ impl FreeEnergyOptimizer {
             let res = self.evaluate(observation, &current_q, prior, precisions);
             free_energy_history.push(res.variational_free_energy);
 
-            // Gradiente respecto a mu_i:
-            // dF/dmu_i = dComplexity/dmu_i - dAccuracy/dmu_i
-            // dComplexity/dmu_i = (mu_i - p_mean_i) / p_var_i
-            // dAccuracy/dmu_i = pi_i * (observation_i - mu_i)
-            // Por tanto: grad_mu = (mu_i - p_mean_i) / p_var_i - pi_i * (observation_i - mu_i)
+            // Amortiguamiento de gradiente natural por curvatura diagonal (Levenberg-Marquardt):
+            // Garantiza convergencia monótona incluso en canales de alta precisión (e.g. Spelke pi=50).
             let mut max_grad_norm = 0.0f64;
+            let mut grad_mu_vec = Vec::with_capacity(dim);
+            let mut grad_s_vec = Vec::with_capacity(dim);
+            let mut step_mu_vec = Vec::with_capacity(dim);
+            let mut step_s_vec = Vec::with_capacity(dim);
 
             for i in 0..dim {
-                let p_var = prior.prior_log_var[i].exp();
+                let p_var = prior.prior_log_var[i].exp().max(1e-8);
                 let pi_i = precisions[i].max(1e-6);
+                let h_mu = (1.0 / p_var) + pi_i;
 
                 let d_comp_dmu = (current_q.mean_latent[i] - prior.prior_mean[i]) / p_var;
                 let d_acc_dmu = pi_i * (observation[i] - current_q.mean_latent[i]);
                 let grad_mu = d_comp_dmu - d_acc_dmu;
 
-                // Gradiente respecto a log_variance_i:
-                // Sea s_i = log_var_i, var_q = exp(s_i)
-                // dComplexity/ds_i = 0.5 * (var_q / p_var - 1)
-                // dAccuracy/ds_i = -0.5 * pi_i * var_q
-                // grad_s = 0.5 * (var_q / p_var - 1 + pi_i * var_q)
                 let var_q = current_q.log_variance[i].exp();
                 let grad_s = 0.5 * (var_q / p_var - 1.0 + pi_i * var_q);
+                let h_s = 0.5 * var_q * h_mu;
 
-                current_q.mean_latent[i] -= self.learning_rate * grad_mu;
-                current_q.log_variance[i] -= self.learning_rate * grad_s;
+                let base_lr = self.learning_rate.max(1e-5);
+                let eff_lr_mu = base_lr / (1.0 + base_lr * h_mu);
+                let eff_lr_s = base_lr / (1.0 + base_lr * h_s);
+
+                grad_mu_vec.push(grad_mu);
+                grad_s_vec.push(grad_s);
+                step_mu_vec.push(eff_lr_mu * grad_mu);
+                step_s_vec.push(eff_lr_s * grad_s);
 
                 max_grad_norm = max_grad_norm.max(grad_mu.abs()).max(grad_s.abs());
             }
 
-            if max_grad_norm < self.convergence_epsilon {
+            // Búsqueda lineal con garantía estricta de no-incremento de Energía Libre
+            let mut alpha = 1.0;
+            let mut accepted = false;
+            for _ in 0..5 {
+                let mut candidate = current_q.clone();
+                for i in 0..dim {
+                    candidate.mean_latent[i] -= alpha * step_mu_vec[i];
+                    candidate.log_variance[i] =
+                        (candidate.log_variance[i] - alpha * step_s_vec[i]).clamp(-12.0, 6.0);
+                }
+                let cand_fe = self.evaluate(observation, &candidate, prior, precisions).variational_free_energy;
+                if cand_fe <= res.variational_free_energy + 1e-12 {
+                    current_q = candidate;
+                    accepted = true;
+                    break;
+                }
+                alpha *= 0.5;
+            }
+
+            if !accepted || max_grad_norm < self.convergence_epsilon {
                 break;
             }
         }
@@ -315,5 +338,24 @@ mod tests {
         assert!(final_fe < initial_fe, "Final FE ({}) no es menor que inicial ({})", final_fe, initial_fe);
         assert!(!history.is_empty());
         assert!(history.last().unwrap() <= history.first().unwrap());
+    }
+
+    #[test]
+    fn test_high_precision_spelke_stability() {
+        let dim = 8;
+        let opt = FreeEnergyOptimizer::new(0.08, 40, 1e-5);
+        let obs = vec![1.0, -0.8, 0.5, -0.3, 1.2, -1.1, 0.2, 0.9];
+        let precisions = vec![50.0; dim];
+        let q_init = VariationalBelief::new(dim, "q_spelke");
+        let prior = PriorBelief::standard_normal(dim);
+
+        let initial_fe = opt.evaluate(&obs, &q_init, &prior, &precisions).variational_free_energy;
+        let (q_opt, history) = opt.optimize_posterior(&obs, &q_init, &prior, &precisions);
+        let final_res = opt.evaluate(&obs, &q_opt, &prior, &precisions);
+
+        assert!(final_res.variational_free_energy.is_finite());
+        assert!(final_res.variational_free_energy < initial_fe);
+        assert!(history.windows(2).all(|w| w[1] <= w[0] + 1e-9));
+        assert!((final_res.evidence_lower_bound + final_res.variational_free_energy).abs() < 1e-9);
     }
 }
