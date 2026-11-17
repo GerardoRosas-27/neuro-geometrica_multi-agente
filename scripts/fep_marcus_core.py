@@ -569,10 +569,21 @@ class BaseSpecialistAgent:
         self.cum_surprise_reduction_pct = 0.0
         self.cum_delta_f = 0.0
         self.alpha_precision_bonus = 1.25
+        # Posteriors Beta metacognitivos de competencia empírica por agente
+        self.beta_alpha = 2.0
+        self.beta_beta = 1.0
 
     def record_outcome(self, surprise_red_pct: float, delta_f: float) -> None:
         self.cum_surprise_reduction_pct += float(surprise_red_pct)
         self.cum_delta_f += float(delta_f)
+        # Actualización Bayesiana suave de competencia esperada
+        gain = max(0.0, min(1.0, float(surprise_red_pct) / 70.0))
+        self.beta_alpha = min(200.0, self.beta_alpha * 0.985 + gain)
+        self.beta_beta = min(200.0, self.beta_beta * 0.985 + (1.0 - gain))
+
+    @property
+    def competence_mean(self) -> float:
+        return self.beta_alpha / max(1e-6, self.beta_alpha + self.beta_beta)
 
     @property
     def mean_surprise_reduction_pct(self) -> float:
@@ -587,12 +598,16 @@ class BaseSpecialistAgent:
             "queries_served": int(self.queries_served),
             "cum_surprise_reduction_pct": float(self.cum_surprise_reduction_pct),
             "cum_delta_f": float(self.cum_delta_f),
+            "beta_alpha": float(self.beta_alpha),
+            "beta_beta": float(self.beta_beta),
         }
 
     def load_dict(self, data: Dict[str, Any]) -> None:
         self.queries_served = int(data.get("queries_served", 0))
         self.cum_surprise_reduction_pct = float(data.get("cum_surprise_reduction_pct", 0.0))
         self.cum_delta_f = float(data.get("cum_delta_f", 0.0))
+        self.beta_alpha = float(data.get("beta_alpha", 2.0))
+        self.beta_beta = float(data.get("beta_beta", 1.0))
 
 
 class GemmaScientificAgent(BaseSpecialistAgent):
@@ -912,6 +927,16 @@ class MultiAgentOrchestrator:
             if isinstance(state.get(key), dict):
                 agent.load_dict(state[key])
 
+    def apply_metacognitive_control(
+        self,
+        gamma_policy: float,
+        epistemic_weight: float,
+        pragmatic_weight: float,
+    ) -> None:
+        self.gamma_policy = float(max(0.4, min(6.0, gamma_policy)))
+        self.epistemic_weight = float(max(0.2, min(3.0, epistemic_weight)))
+        self.pragmatic_weight = float(max(0.2, min(3.0, pragmatic_weight)))
+
     def evaluate_efe_policies(
         self,
         query: str,
@@ -930,12 +955,18 @@ class MultiAgentOrchestrator:
         for agent in self.agents:
             channel_gain = float(np.dot(s_vec, agent.channel_affinities))
             dom_fit = self._domain_bonus(agent, query, target_domain)
-            # Exploración UCB controlada para calibrar todos los especialistas sin romper especialización
-            ucb_bonus = 0.45 * math.sqrt(math.log(total_q + 2) / (1.0 + agent.queries_served))
+            # Exploración UCB controlada + precisión metacognitiva de política gamma_policy
+            ucb_scale = 0.45 * (2.0 / max(0.8, self.gamma_policy))
+            ucb_bonus = ucb_scale * math.sqrt(math.log(total_q + 2) / (1.0 + agent.queries_served))
             epistemic_val = channel_gain + dom_fit + ucb_bonus
 
             emp_red = (agent.mean_surprise_reduction_pct / 100.0) if agent.queries_served > 0 else 0.75
-            pragmatic_val = 0.6 * emp_red + 0.4 * (1.0 if dom_fit > 0 else 0.2)
+            # Pragmatic value integra posterior Beta empírica de competencia metacognitiva
+            pragmatic_val = (
+                0.45 * emp_red
+                + 0.30 * agent.competence_mean
+                + 0.25 * (1.0 if dom_fit > 0 else 0.2)
+            )
 
             efe = -(self.epistemic_weight * epistemic_val + self.pragmatic_weight * pragmatic_val)
             scored.append((agent, efe, epistemic_val))
@@ -1275,13 +1306,389 @@ class FepEnergyTester:
         self.recent_monotone = deque((float(x) for x in data.get("recent_monotone", [])), maxlen=self.window_size)
 
 
+class MetacognitiveSystem:
+    """
+    Arquitectura Metacognitiva de Segundo Orden FEP-MARCUS v3 (Nelson & Narens 1990):
+      1. Monitoreo meta-representacional:
+         - Entropía normalizada del posterior q(s) y compresión de varianza.
+         - Índice de conflicto inter-modal (Spelke + Pearl + HRR + Epistémico).
+         - Calibrador logístico online (7 rasgos) que estima P(éxito | estado interno).
+      2. Detector anti-sobreconfianza (`self_doubt_veto`):
+         - Bloquea la ilusión de conocimiento cuando Sistema-1 o residuo sensorial
+           parecen bajos pero existen anomalías físicas/causales/algebraicas o baja
+           calibración epistémica.
+      3. Control adaptativo de cómputo y políticas:
+         - Nivel de esfuerzo cognitivo: `System1Fast` (4 pasos), `System2Deliberative` (9 pasos),
+           `ActiveMetaInquiry` (9+4/6 pasos) con contabilidad real de FLOPs ahorrados.
+         - Modula dinámicamente `gamma_policy`, `epistemic_weight`, `pragmatic_weight`,
+           `meta_lr_mult` y `dynamic_surprise_threshold`.
+      4. Auditoría honesta de calibración: Brier Score (Meta vs Línea Base), ECE de 10 bins
+         y mejora en ventana móvil.
+    """
+
+    def __init__(self, window_size: int = 100):
+        self.window_size = window_size
+        # Pesos del calibrador logístico sobre 7 características metacognitivas:
+        # [bias, posterior_compression, low_surprise_score, hrr_sim, prior_conf, low_conflict, epistemic_anchor]
+        self.calibrator_weights = np.array(
+            [-0.45, 0.55, 0.85, 0.70, 0.80, 0.90, 0.65], dtype=np.float64
+        )
+        self.total_assessed = 0
+        self.system1_fast_count = 0
+        self.system2_deliberative_count = 0
+        self.active_meta_inquiry_count = 0
+        self.self_doubt_veto_count = 0
+
+        self.actual_e_steps_total = 0
+        self.baseline_e_steps_total = 0
+
+        self.meta_brier_sum = 0.0
+        self.baseline_brier_sum = 0.0
+        self.recent_ece_ema = 0.08
+
+        # Histograma de 10 bins para Expected Calibration Error (ECE) exacto
+        self.bin_counts = [0] * 10
+        self.bin_conf_sums = [0.0] * 10
+        self.bin_acc_sums = [0.0] * 10
+
+        self.early_meta_brier: List[float] = []
+        self.recent_meta_brier: deque = deque(maxlen=window_size)
+        self.early_baseline_brier: List[float] = []
+        self.recent_baseline_brier: deque = deque(maxlen=window_size)
+        self.recent_vetos: deque = deque(maxlen=window_size)
+
+    @staticmethod
+    def _sigmoid(z: float) -> float:
+        z_clamped = max(-20.0, min(20.0, float(z)))
+        return 1.0 / (1.0 + math.exp(-z_clamped))
+
+    def predict_pre_step_effort(
+        self,
+        prior_conf: float,
+        fact_known: bool,
+    ) -> Tuple[str, int]:
+        """
+        Predicción previa al E-step para ahorrar cómputo real cuando el esquema ya está
+        consolidado y la calibración reciente es saludable.
+        """
+        if prior_conf >= 0.60 and fact_known and self.recent_ece_ema < 0.25:
+            return "System1Fast", 4
+        if prior_conf < 0.20 and not fact_known:
+            return "ActiveMetaInquiry", 9
+        return "System2Deliberative", 9
+
+    def assess_and_control(
+        self,
+        pre_tier: str,
+        v_rel_heads: np.ndarray,
+        s_init: float,
+        surprise_breakdown: Dict[str, Any],
+        prior_conf: float,
+        fact_known: bool,
+        base_surprise_threshold: float,
+    ) -> Dict[str, Any]:
+        # 1. Entropía normalizada y compresión del posterior variacional q(s)
+        mean_v_rel = float(np.mean(v_rel_heads))
+        entropy_proxy = max(0.01, min(0.99, 0.50 + 0.08 * mean_v_rel))
+        compression_ratio = float(np.mean(1.0 / (1.0 + np.exp(np.clip(v_rel_heads, -12.0, 6.0)))))
+
+        # 2. Índice de conflicto inter-modal
+        s_perc = float(surprise_breakdown.get("perceptual", 0.0))
+        s_alg = float(surprise_breakdown.get("algebraic", 0.0))
+        s_phys = float(surprise_breakdown.get("physical", 0.0))
+        s_causal = float(surprise_breakdown.get("causal", 0.0))
+        s_epist = float(surprise_breakdown.get("epistemic", 0.0))
+        hrr_sim = float(surprise_breakdown.get("hrr_cosine_sim", 0.0))
+        phys_viol = bool(surprise_breakdown.get("physical_violation", False))
+
+        perc_score = max(0.0, min(1.0, 1.0 - (s_perc / 1.0)))
+        cross_modal_gap = abs(perc_score - max(0.0, min(1.0, hrr_sim)))
+        conflict_index = max(
+            0.0,
+            min(
+                1.0,
+                0.28 * cross_modal_gap
+                + 0.35 * min(1.0, s_phys + s_causal)
+                + 0.22 * min(1.0, s_alg)
+                + 0.15 * min(1.0, s_epist)
+                + (0.35 if phys_viol else 0.0),
+            ),
+        )
+
+        # 3. Confianza calibrada vs confianza ingenua de línea base
+        s_norm = max(0.0, min(1.0, float(s_init) / 2.2))
+        epistemic_anchor = 1.0 if (fact_known or prior_conf >= 0.35) else 0.0
+        features = np.array(
+            [
+                1.0,
+                compression_ratio,
+                1.0 - s_norm,
+                max(0.0, min(1.0, hrr_sim)),
+                max(0.0, min(1.0, prior_conf)),
+                1.0 - conflict_index,
+                epistemic_anchor,
+            ],
+            dtype=np.float64,
+        )
+        meta_confidence = max(0.01, min(0.99, self._sigmoid(float(np.dot(self.calibrator_weights, features)))))
+        baseline_confidence = max(
+            0.01, min(0.99, 0.55 * perc_score + 0.45 * max(0.0, min(1.0, prior_conf)))
+        )
+
+        # 4. Veto anti-sobreconfianza (detector de ilusión epistémica)
+        structural_anomaly = (
+            phys_viol
+            or s_phys > 0.12
+            or s_causal > 0.12
+            or s_alg > 0.25
+            or hrr_sim < 0.45
+        )
+        naive_overconfident = (pre_tier == "System1Fast") or (baseline_confidence >= 0.62)
+        self_doubt_veto = bool(
+            (naive_overconfident and (structural_anomaly or (s_init > 0.72 and meta_confidence < 0.58)))
+            or (pre_tier == "System1Fast" and (s_init >= base_surprise_threshold or not fact_known))
+        )
+
+        # 5. Enrutamiento final de esfuerzo cognitivo (Nelson-Narens Control)
+        if self_doubt_veto or structural_anomaly or s_init >= base_surprise_threshold or meta_confidence < 0.52:
+            effort_tier = "ActiveMetaInquiry" if (self_doubt_veto or conflict_index >= 0.35 or s_init >= 1.15) else "System2Deliberative"
+        elif pre_tier == "System1Fast" and meta_confidence >= 0.68 and conflict_index < 0.22:
+            effort_tier = "System1Fast"
+        else:
+            effort_tier = "System2Deliberative"
+
+        force_active_inference = bool(self_doubt_veto or (effort_tier == "ActiveMetaInquiry"))
+        skip_active_inference = bool(
+            (effort_tier == "System1Fast")
+            and (not self_doubt_veto)
+            and (not structural_anomaly)
+            and (s_init <= base_surprise_threshold * 0.90)
+            and (meta_confidence >= 0.70)
+        )
+
+        # 6. Modulación dinámica de política EFE G(pi), tasa de aprendizaje M-step y umbral
+        if effort_tier == "ActiveMetaInquiry":
+            gamma_policy = 1.45  # Mayor exploración epistémica ante anomalías / OOD
+            epistemic_weight = 1.55
+            pragmatic_weight = 0.75
+            meta_lr_mult = 1.25
+            dynamic_surprise_thresh = max(0.65, base_surprise_threshold - 0.12)
+        elif effort_tier == "System2Deliberative":
+            gamma_policy = 2.05
+            epistemic_weight = 1.18
+            pragmatic_weight = 0.88
+            meta_lr_mult = 1.05
+            dynamic_surprise_thresh = base_surprise_threshold
+        else:  # System1Fast
+            gamma_policy = 3.10  # Explotación conservadora de bajo costo
+            epistemic_weight = 0.85
+            pragmatic_weight = 1.15
+            meta_lr_mult = 0.75
+            dynamic_surprise_thresh = min(0.95, base_surprise_threshold + 0.05)
+
+        return {
+            "effort_tier": effort_tier,
+            "meta_confidence": meta_confidence,
+            "baseline_confidence": baseline_confidence,
+            "entropy_proxy": entropy_proxy,
+            "compression_ratio": compression_ratio,
+            "conflict_index": conflict_index,
+            "self_doubt_veto": self_doubt_veto,
+            "force_active_inference": force_active_inference,
+            "skip_active_inference": skip_active_inference,
+            "gamma_policy": gamma_policy,
+            "epistemic_weight": epistemic_weight,
+            "pragmatic_weight": pragmatic_weight,
+            "meta_lr_mult": meta_lr_mult,
+            "dynamic_surprise_threshold": dynamic_surprise_thresh,
+            "features": features,
+        }
+
+    def record_outcome(
+        self,
+        assessment: Dict[str, Any],
+        s_final: float,
+        f_init: float,
+        f_opt: float,
+        actual_e_steps: int,
+        baseline_e_steps: int,
+        unresolved_violation: bool = False,
+        mutate_memory: bool = True,
+    ) -> Dict[str, Any]:
+        meta_conf = float(assessment["meta_confidence"])
+        base_conf = float(assessment["baseline_confidence"])
+        y = 1.0 if (s_final < 0.72 and not unresolved_violation and f_opt <= f_init + 1e-5) else 0.0
+
+        meta_sq = (meta_conf - y) ** 2
+        base_sq = (base_conf - y) ** 2
+
+        if mutate_memory:
+            self.total_assessed += 1
+            tier = assessment["effort_tier"]
+            if tier == "System1Fast":
+                self.system1_fast_count += 1
+            elif tier == "System2Deliberative":
+                self.system2_deliberative_count += 1
+            else:
+                self.active_meta_inquiry_count += 1
+
+            if assessment["self_doubt_veto"]:
+                self.self_doubt_veto_count += 1
+            self.recent_vetos.append(1.0 if assessment["self_doubt_veto"] else 0.0)
+
+            self.actual_e_steps_total += int(actual_e_steps)
+            self.baseline_e_steps_total += int(max(1, baseline_e_steps))
+
+            self.meta_brier_sum += meta_sq
+            self.baseline_brier_sum += base_sq
+
+            if len(self.early_meta_brier) < self.window_size:
+                self.early_meta_brier.append(meta_sq)
+                self.early_baseline_brier.append(base_sq)
+            self.recent_meta_brier.append(meta_sq)
+            self.recent_baseline_brier.append(base_sq)
+
+            # Histograma ECE de 10 bins
+            b_idx = min(9, max(0, int(meta_conf * 10.0)))
+            self.bin_counts[b_idx] += 1
+            self.bin_conf_sums[b_idx] += meta_conf
+            self.bin_acc_sums[b_idx] += y
+            self.recent_ece_ema = 0.96 * self.recent_ece_ema + 0.04 * abs(meta_conf - y)
+
+            # Actualización SGD logística regularizada sobre los 7 rasgos metacognitivos
+            err = y - meta_conf
+            feats = assessment["features"]
+            self.calibrator_weights = np.clip(
+                self.calibrator_weights * (1.0 - 1e-3) + 0.08 * err * feats,
+                -4.0,
+                4.0,
+            )
+
+        return {
+            "effort_tier": assessment["effort_tier"],
+            "meta_confidence": round(meta_conf, 4),
+            "baseline_confidence": round(base_conf, 4),
+            "outcome_success": y,
+            "brier_meta": round(meta_sq, 4),
+            "brier_baseline": round(base_sq, 4),
+            "self_doubt_veto": bool(assessment["self_doubt_veto"]),
+            "conflict_index": round(float(assessment["conflict_index"]), 4),
+            "entropy_proxy": round(float(assessment["entropy_proxy"]), 4),
+            "actual_e_steps": int(actual_e_steps),
+            "baseline_e_steps": int(baseline_e_steps),
+        }
+
+    def compute_ece(self) -> float:
+        total = sum(self.bin_counts)
+        if total == 0:
+            return 0.0
+        ece = 0.0
+        for c, conf_s, acc_s in zip(self.bin_counts, self.bin_conf_sums, self.bin_acc_sums):
+            if c > 0:
+                ece += (c / total) * abs((acc_s / c) - (conf_s / c))
+        return float(ece)
+
+    def summary(self) -> Dict[str, Any]:
+        n = max(1, self.total_assessed)
+        meta_brier = self.meta_brier_sum / n
+        base_brier = self.baseline_brier_sum / n
+        brier_imp_pct = ((base_brier - meta_brier) / max(1e-6, base_brier)) * 100.0 if base_brier > 0 else 0.0
+
+        recent_meta_b = (sum(self.recent_meta_brier) / len(self.recent_meta_brier)) if self.recent_meta_brier else meta_brier
+        recent_base_b = (sum(self.recent_baseline_brier) / len(self.recent_baseline_brier)) if self.recent_baseline_brier else base_brier
+        early_meta_b = (sum(self.early_meta_brier) / len(self.early_meta_brier)) if self.early_meta_brier else meta_brier
+
+        base_steps = max(1, self.baseline_e_steps_total)
+        compute_savings_pct = ((self.baseline_e_steps_total - self.actual_e_steps_total) / base_steps) * 100.0
+
+        return {
+            "total_assessed": self.total_assessed,
+            "meta_brier_score": round(meta_brier, 4),
+            "baseline_brier_score": round(base_brier, 4),
+            "brier_improvement_pct": round(brier_imp_pct, 2),
+            "early_meta_brier": round(early_meta_b, 4),
+            "recent_meta_brier": round(recent_meta_b, 4),
+            "recent_baseline_brier": round(recent_base_b, 4),
+            "ece_10bin": round(self.compute_ece(), 4),
+            "recent_ece_ema": round(self.recent_ece_ema, 4),
+            "self_doubt_vetos": self.self_doubt_veto_count,
+            "self_doubt_veto_rate_pct": round((self.self_doubt_veto_count / n) * 100.0, 2),
+            "compute_savings_pct": round(compute_savings_pct, 2),
+            "actual_e_steps_total": self.actual_e_steps_total,
+            "baseline_e_steps_total": self.baseline_e_steps_total,
+            "tier_distribution": {
+                "System1Fast": self.system1_fast_count,
+                "System2Deliberative": self.system2_deliberative_count,
+                "ActiveMetaInquiry": self.active_meta_inquiry_count,
+            },
+            "tier_pct": {
+                "System1Fast": round((self.system1_fast_count / n) * 100.0, 2),
+                "System2Deliberative": round((self.system2_deliberative_count / n) * 100.0, 2),
+                "ActiveMetaInquiry": round((self.active_meta_inquiry_count / n) * 100.0, 2),
+            },
+        }
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "calibrator_weights": [round(float(x), 6) for x in self.calibrator_weights],
+            "total_assessed": self.total_assessed,
+            "system1_fast_count": self.system1_fast_count,
+            "system2_deliberative_count": self.system2_deliberative_count,
+            "active_meta_inquiry_count": self.active_meta_inquiry_count,
+            "self_doubt_veto_count": self.self_doubt_veto_count,
+            "actual_e_steps_total": self.actual_e_steps_total,
+            "baseline_e_steps_total": self.baseline_e_steps_total,
+            "meta_brier_sum": self.meta_brier_sum,
+            "baseline_brier_sum": self.baseline_brier_sum,
+            "recent_ece_ema": self.recent_ece_ema,
+            "bin_counts": list(self.bin_counts),
+            "bin_conf_sums": [round(float(x), 6) for x in self.bin_conf_sums],
+            "bin_acc_sums": [round(float(x), 6) for x in self.bin_acc_sums],
+            "early_meta_brier": list(self.early_meta_brier),
+            "recent_meta_brier": list(self.recent_meta_brier),
+            "early_baseline_brier": list(self.early_baseline_brier),
+            "recent_baseline_brier": list(self.recent_baseline_brier),
+            "recent_vetos": list(self.recent_vetos),
+        }
+
+    def load_dict(self, data: Dict[str, Any]) -> None:
+        cw = data.get("calibrator_weights")
+        if isinstance(cw, list) and len(cw) == 7:
+            self.calibrator_weights = np.array([float(x) for x in cw], dtype=np.float64)
+        self.total_assessed = int(data.get("total_assessed", 0))
+        self.system1_fast_count = int(data.get("system1_fast_count", 0))
+        self.system2_deliberative_count = int(data.get("system2_deliberative_count", 0))
+        self.active_meta_inquiry_count = int(data.get("active_meta_inquiry_count", 0))
+        self.self_doubt_veto_count = int(data.get("self_doubt_veto_count", 0))
+        self.actual_e_steps_total = int(data.get("actual_e_steps_total", 0))
+        self.baseline_e_steps_total = int(data.get("baseline_e_steps_total", 0))
+        self.meta_brier_sum = float(data.get("meta_brier_sum", 0.0))
+        self.baseline_brier_sum = float(data.get("baseline_brier_sum", 0.0))
+        self.recent_ece_ema = float(data.get("recent_ece_ema", 0.08))
+        bc = data.get("bin_counts")
+        bcs = data.get("bin_conf_sums")
+        bas = data.get("bin_acc_sums")
+        if isinstance(bc, list) and len(bc) == 10:
+            self.bin_counts = [int(x) for x in bc]
+        if isinstance(bcs, list) and len(bcs) == 10:
+            self.bin_conf_sums = [float(x) for x in bcs]
+        if isinstance(bas, list) and len(bas) == 10:
+            self.bin_acc_sums = [float(x) for x in bas]
+        self.early_meta_brier = [float(x) for x in data.get("early_meta_brier", [])]
+        self.recent_meta_brier = deque((float(x) for x in data.get("recent_meta_brier", [])), maxlen=self.window_size)
+        self.early_baseline_brier = [float(x) for x in data.get("early_baseline_brier", [])]
+        self.recent_baseline_brier = deque((float(x) for x in data.get("recent_baseline_brier", [])), maxlen=self.window_size)
+        self.recent_vetos = deque((float(x) for x in data.get("recent_vetos", [])), maxlen=self.window_size)
+
+
 class MarcusFep7bInfiniteEngine:
     """
-    Motor Cognitivo MARCUS-FEP 7B v2:
+    Motor Cognitivo MARCUS-FEP 7B v3 (Metacognitivo):
     - 32 cabezas x 128D = 4,096D; 1,048,576 sinapsis de Dale (W^E, W^I >= 0).
     - Optimización variacional conjunta de mu y log_var con gradiente natural amortiguado.
     - Aprendizaje por Codificación Predictiva con normalización homeostática por cabeza.
     - Consolidación circadiana SWR bajo teorema de cuenca CDT y Hopfield continuo.
+    - Capa Metacognitiva de 2º orden (calibración Brier/ECE, veto anti-sobreconfianza y esfuerzo adaptativo).
     """
     def __init__(
         self,
@@ -1312,6 +1719,7 @@ class MarcusFep7bInfiniteEngine:
         self.epistemic_verifier = EpistemicDomainVerifier()
         self.memory = ConsolidatedMemoryBank(total_dim=self.total_dim, max_prototypes=1024)
         self.tester = FepEnergyTester(window_size=100)
+        self.metacognition = MetacognitiveSystem(window_size=100)
 
         # Sinapsis de Dale segregadas (32, 128, 128)
         self.weights_e = np.zeros((n_heads, d_head, d_head), dtype=np.float32)
@@ -1457,6 +1865,8 @@ class MarcusFep7bInfiniteEngine:
                 self.monotone_violations = int(mdata.get("monotone_violations", self.monotone_violations))
                 if isinstance(mdata.get("tester_state"), dict):
                     self.tester.load_dict(mdata["tester_state"])
+                if isinstance(mdata.get("metacognition_state"), dict):
+                    self.metacognition.load_dict(mdata["metacognition_state"])
                 if isinstance(mdata.get("orchestrator_state"), dict):
                     self.loaded_orchestrator_state = mdata["orchestrator_state"]
 
@@ -1480,9 +1890,9 @@ class MarcusFep7bInfiniteEngine:
                             list(proto_hits[:k_proto]) if len(proto_hits) >= k_proto else [1] * k_proto
                         )
                         self.memory._dirty = True
-                        print(f"[*] Banco Hopfield & WorldState restaurados ({k_proto} prototipos, {len(self.memory.world_state_facts)} hechos, {self.episodes_processed} eps).")
+                        print(f"[*] Banco Hopfield, WorldState & Metacognición restaurados ({k_proto} prototipos, {len(self.memory.world_state_facts)} hechos, {self.episodes_processed} eps).")
             except Exception as e:
-                print(f"[!] Error restaurando memoria v2: {e}")
+                print(f"[!] Error restaurando memoria v3: {e}")
 
     def save_checkpoint(
         self,
@@ -1504,10 +1914,11 @@ class MarcusFep7bInfiniteEngine:
         meta_path = os.path.join(self.checkpoint_dir, "marcus_fep_7b_latest.json")
         v_e = int(np.sum(self.weights_e < 0))
         v_i = int(np.sum(self.weights_i < 0))
+        meta_summary = self.metacognition.summary()
         meta = {
-            "architecture": "FEP_MARCUS_7B_V2",
+            "architecture": "FEP_MARCUS_7B_V3_METACOGNITIVE",
             "scale": "7B_EQUIVALENT",
-            "objective": "100%_VARIATIONAL_FREE_ENERGY_MINIMIZATION_&_SURPRISE_REDUCTION",
+            "objective": "100%_VARIATIONAL_FREE_ENERGY_MINIMIZATION_&_2ND_ORDER_METACOGNITION",
             "hidden_dimension": self.total_dim,
             "heads": self.n_heads,
             "d_head": self.d_head,
@@ -1524,6 +1935,7 @@ class MarcusFep7bInfiniteEngine:
             "variational_free_energy": round(f_val, 4),
             "evidence_lower_bound": round(elbo_val, 4),
             "current_surprise": round(s_val, 4),
+            "metacognition": meta_summary,
             "dale_compliance": "100%" if (v_e + v_i == 0) else "VIOLATED",
             "dale_violations": v_e + v_i,
             "timestamp": datetime.now().isoformat(),
@@ -1545,6 +1957,7 @@ class MarcusFep7bInfiniteEngine:
             "proto_hits": self.memory.proto_hits,
             "world_state_facts": self.memory.world_state_facts,
             "tester_state": self.tester.to_dict(),
+            "metacognition_state": self.metacognition.to_dict(),
         }
         if orchestrator_state is not None:
             mem_payload["orchestrator_state"] = orchestrator_state
@@ -1923,11 +2336,13 @@ class MarcusFep7bInfiniteEngine:
         mu_heads: np.ndarray,
         v_rel_heads: np.ndarray,
         epistemic_boost: bool = False,
+        meta_lr_mult: float = 1.0,
     ) -> None:
         """
         M-Step de Energía Libre vectorizado sin asignaciones intermedias:
           1. Precisión Bayesiana inversa a E[sq_res + var_trace] (óptimo VB exacto dF/dpi=0).
-          2. Gradiente de Codificación Predictiva normalizado (NLMS) bajo Ley de Dale estricta.
+          2. Gradiente de Codificación Predictiva normalizado (NLMS) bajo Ley de Dale estricta,
+             modulado por tasa de aprendizaje metacognitiva `meta_lr_mult`.
           3. Contracción espectral O(H D^2) del modo dominante + homeostasis Frobenius anti-anisotropía.
         """
         pred = np.einsum("hij,hj->hi", self._w_eff, mu_heads)
@@ -1950,7 +2365,8 @@ class MarcusFep7bInfiniteEngine:
         # 2. Gradiente predictivo normalizado (NLMS) zero-alloc sobre buffers preasignados
         mean_pi = float(np.mean(self.precisions)) + 1e-6
         mu_sq = np.sum(mu_heads * mu_heads, axis=-1)
-        alpha_w = np.float32(0.11 if epistemic_boost else 0.055)
+        base_alpha = 0.11 if epistemic_boost else 0.055
+        alpha_w = np.float32(base_alpha * max(0.5, min(1.5, float(meta_lr_mult))))
         lr_heads = ((alpha_w * self.precisions / mean_pi) / (mu_sq + np.float32(0.35))).astype(np.float32)[:, None, None]
 
         np.einsum("hi,hj->hij", err, mu_heads, out=self._buf_outer)
@@ -2113,11 +2529,20 @@ class MarcusFep7bInfiniteEngine:
         prior_mu_heads, prior_conf = self.memory.retrieve_prior(
             sensory_heads, sim_threshold=self.hopfield_sim_threshold
         )
+        ch = canonical_concept_hash(question)
+        fact_known = f"concept:{ch}" in self.memory.world_state_facts
+
+        # 1b. Asignación metacognitiva previa al E-Step (ahorro real de cómputo en Sistema-1 consolidado)
+        pre_tier, e_steps_init = self.metacognition.predict_pre_step_effort(
+            prior_conf=prior_conf,
+            fact_known=fact_known,
+        )
 
         # 2. E-step inicial con W y Pi fijos (garantiza F_opt <= F_init)
         mu_1, v_1, f_e_init, f_e_opt, elbo_1, comp_1, res_1, pred_1 = self.optimize_posterior(
-            sensory_heads, prior_mu_heads, n_steps=9
+            sensory_heads, prior_mu_heads, n_steps=e_steps_init
         )
+        actual_e_steps = e_steps_init
 
         # Sorpresa genuina tras inferencia pasiva
         s_init, surprise_breakdown = self.compute_surprise(
@@ -2131,13 +2556,59 @@ class MarcusFep7bInfiniteEngine:
             domain=domain,
         )
 
+        # 2b. Monitoreo Metacognitivo de 2º Orden + Veto Anti-Sobreconfianza + Control G(pi)
+        meta_ctrl = self.metacognition.assess_and_control(
+            pre_tier=pre_tier,
+            v_rel_heads=v_1,
+            s_init=s_init,
+            surprise_breakdown=surprise_breakdown,
+            prior_conf=prior_conf,
+            fact_known=fact_known,
+            base_surprise_threshold=self.surprise_threshold,
+        )
+        orchestrator.apply_metacognitive_control(
+            gamma_policy=meta_ctrl["gamma_policy"],
+            epistemic_weight=meta_ctrl["epistemic_weight"],
+            pragmatic_weight=meta_ctrl["pragmatic_weight"],
+        )
+
+        # Si System1Fast fue vetado por duda metacognitiva, escalar E-step inicial a deliberación completa
+        if meta_ctrl["self_doubt_veto"] and e_steps_init < 9:
+            extra = 9 - e_steps_init
+            mu_1, v_1, _, f_e_opt_ext, elbo_1, comp_1, res_1, pred_1 = self.optimize_posterior(
+                sensory_heads, prior_mu_heads=prior_mu_heads, init_mu_heads=mu_1, n_steps=extra
+            )
+            actual_e_steps += extra
+            if f_e_opt_ext <= f_e_opt:
+                f_e_opt = f_e_opt_ext
+            s_init, surprise_breakdown = self.compute_surprise(
+                question,
+                res_1,
+                pred_1,
+                hrr_role,
+                hrr_filler,
+                episode_meta=episode_meta,
+                prior_conf=prior_conf,
+                domain=domain,
+            )
+
         triggered = False
         consulted_agent_obj: Optional[BaseSpecialistAgent] = None
         agent_clarification: Optional[str] = None
         selected_efe = 0.0
 
-        # 3. Inferencia Activa G(pi) si la sorpresa o incertidumbre epistémica supera el umbral
-        if s_init > self.surprise_threshold or (prior_conf < 0.25 and s_init > 0.45):
+        # 3. Inferencia Activa G(pi) modulada por Control Metacognitivo
+        need_active = (
+            meta_ctrl["force_active_inference"]
+            or (
+                (not meta_ctrl["skip_active_inference"])
+                and (
+                    s_init > meta_ctrl["dynamic_surprise_threshold"]
+                    or (prior_conf < 0.25 and s_init > 0.45)
+                )
+            )
+        )
+        if need_active:
             triggered = True
             if mutate_memory:
                 self.epistemic_queries_triggered += 1
@@ -2146,7 +2617,6 @@ class MarcusFep7bInfiniteEngine:
             )
             agent_clarification = resp_dict["clarification"]
 
-            ch = canonical_concept_hash(question)
             if mutate_memory:
                 self.memory.register_fact(f"concept:{ch}", domain, agent_clarification, consulted_agent_obj.name)
                 if surprise_breakdown.get("physical_violation"):
@@ -2175,18 +2645,26 @@ class MarcusFep7bInfiniteEngine:
                     resolved_meta = {"type": "spelke_physics_vetoed_corrected", "subtype": "valid_continuous"}
 
             if mutate_memory:
-                self.learn_predictive_coding_mstep(grounded_target, mu_1, v_1, epistemic_boost=True)
+                self.learn_predictive_coding_mstep(
+                    grounded_target,
+                    mu_1,
+                    v_1,
+                    epistemic_boost=True,
+                    meta_lr_mult=meta_ctrl["meta_lr_mult"],
+                )
 
-            # E-step posterior anclado en el conocimiento recién adquirido (prior Bayesiano empírico = mu_1)
+            # E-step posterior anclado en el conocimiento recién adquirido (4 pasos en deliberativo, 6 en ActiveMetaInquiry)
+            post_steps = 6 if meta_ctrl["effort_tier"] == "ActiveMetaInquiry" else 4
             mu_f, v_f, _, f_final, elbo_final, comp_final, res_final, pred_final = self.optimize_posterior(
-                sensory_heads, prior_mu_heads=mu_1, init_mu_heads=mu_1, n_steps=6
+                sensory_heads, prior_mu_heads=mu_1, init_mu_heads=mu_1, n_steps=post_steps
             )
+            actual_e_steps += post_steps
             if mutate_memory:
                 self.memory.store_or_update_prototype(sensory_heads, mu_f)
 
             # Evaluar sorpresa genuina sobre el estímulo canónico tras consolidar evidencia
             if mutate_memory:
-                s_final, _ = self.compute_surprise(
+                s_final, final_brk = self.compute_surprise(
                     question,
                     res_final,
                     pred_final,
@@ -2209,7 +2687,7 @@ class MarcusFep7bInfiniteEngine:
                 old_facts = self.memory.world_state_facts
                 self.memory.world_state_facts = temp_facts
                 try:
-                    s_final, _ = self.compute_surprise(
+                    s_final, final_brk = self.compute_surprise(
                         question,
                         res_final,
                         pred_final,
@@ -2223,11 +2701,17 @@ class MarcusFep7bInfiniteEngine:
                     self.memory.world_state_facts = old_facts
         else:
             if mutate_memory:
-                self.learn_predictive_coding_mstep(sensory_heads, mu_1, v_1, epistemic_boost=False)
+                self.learn_predictive_coding_mstep(
+                    sensory_heads,
+                    mu_1,
+                    v_1,
+                    epistemic_boost=False,
+                    meta_lr_mult=meta_ctrl["meta_lr_mult"],
+                )
                 self.memory.store_or_update_prototype(sensory_heads, mu_1)
             mu_f, v_f = mu_1, v_1
             f_final, elbo_final, comp_final, res_final, pred_final = f_e_opt, elbo_1, comp_1, res_1, pred_1
-            s_final, _ = self.compute_surprise(
+            s_final, final_brk = self.compute_surprise(
                 question,
                 res_final,
                 pred_final,
@@ -2237,6 +2721,19 @@ class MarcusFep7bInfiniteEngine:
                 prior_conf=prior_conf,
                 domain=domain,
             )
+
+        baseline_e_steps = 9 + (6 if triggered else 0)
+        unresolved_viol = bool(final_brk.get("physical", 0.0) > 0.25 or final_brk.get("causal", 0.0) > 0.25)
+        meta_outcome = self.metacognition.record_outcome(
+            assessment=meta_ctrl,
+            s_final=s_final,
+            f_init=f_e_init,
+            f_opt=f_e_opt,
+            actual_e_steps=actual_e_steps,
+            baseline_e_steps=baseline_e_steps,
+            unresolved_violation=unresolved_viol,
+            mutate_memory=mutate_memory,
+        )
 
         surprise_red_pct = max(0.0, (s_init - s_final) / max(s_init, 1e-6) * 100.0)
         delta_f_estep = f_e_opt - f_e_init
@@ -2302,5 +2799,6 @@ class MarcusFep7bInfiniteEngine:
             "mean_precision": round(float(np.mean(self.precisions)), 4),
             "mean_residual": round(float(np.mean(res_final)), 4),
             "dale_violations": dale_violations,
+            "metacognition": meta_outcome,
             "audit": audit,
         }

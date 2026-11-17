@@ -2,11 +2,11 @@
   "bm6": {
     "name": "BM6: Variational Free Energy Minimization & ELBO Maximization",
     "total_trials": 100,
-    "avg_initial_free_energy": 33.12244117524635,
-    "avg_optimized_free_energy": 20.6199210433807,
-    "avg_initial_elbo": -33.12244117524635,
-    "avg_optimized_elbo": -20.6199210433807,
-    "free_energy_reduction_pct": 37.746372816292464,
+    "avg_initial_free_energy": 33.19496685692425,
+    "avg_optimized_free_energy": 20.644096270606973,
+    "avg_initial_elbo": -33.19496685692425,
+    "avg_optimized_elbo": -20.644096270606973,
+    "free_energy_reduction_pct": 37.809559022648195,
     "monotonic_convergence_rate": 1.0,
     "passed_h_fep1": true
   },
@@ -36,6 +36,16 @@
     "marcus_fep_avg_free_energy": 10.075023128850946,
     "marcus_fep_avg_elbo": -10.075023128850946,
     "passed_h_fep4": true
+  },
+  "bm10": {
+    "name": "BM10: Metacognitive Calibration & Rational Effort Control",
+    "total_trials": 60,
+    "baseline_uncalibrated_brier": 0.27652499999999997,
+    "metacognitive_brier_score": 0.10120663768150191,
+    "brier_improvement_pct": 63.40054690118365,
+    "illusion_veto_recall": 1.0,
+    "compute_savings_pct": 36.666666666666664,
+    "passed_h_fep5": true
   },
   "all_fep_passed": true
 }

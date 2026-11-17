@@ -17,10 +17,11 @@ fn main() {
     println!(" Síntesis con los Principios Neuro-Simbólicos de Gary Marcus ");
     println!("============================================================\n");
 
-    println!("[1/4] Ejecutando BM-6: Minimización de Energía Libre Variacional y Maximización de ELBO...");
-    println!("[2/4] Ejecutando BM-7: Reducción Multimodal de Sorpresa Estructurada (Spelke + Causal)...");
-    println!("[3/4] Ejecutando BM-8: Inferencia Activa y Selección Causal por G(pi)...");
-    println!("[4/4] Ejecutando BM-9: Generalización OOD con Cota Estricta de Energía Libre...\n");
+    println!("[1/5] Ejecutando BM-6: Minimización de Energía Libre Variacional y Maximización de ELBO...");
+    println!("[2/5] Ejecutando BM-7: Reducción Multimodal de Sorpresa Estructurada (Spelke + Causal)...");
+    println!("[3/5] Ejecutando BM-8: Inferencia Activa y Selección Causal por G(pi)...");
+    println!("[4/5] Ejecutando BM-9: Generalización OOD con Cota Estricta de Energía Libre...");
+    println!("[5/5] Ejecutando BM-10: Calibración Metacognitiva, Veto OOD y Esfuerzo Racional...\n");
 
     let report = run_all_fep_benchmarks();
     let table = report.render_markdown_table();
@@ -49,7 +50,7 @@ fn main() {
     }
 
     if report.all_fep_passed {
-        println!("\n>>> VEREDICTO FINAL: TODAS LAS HIPÓTESIS H-FEP1 A H-FEP4 CONFIRMADAS AL 100% <<<");
+        println!("\n>>> VEREDICTO FINAL: TODAS LAS HIPÓTESIS H-FEP1 A H-FEP5 CONFIRMADAS AL 100% <<<");
     } else {
         eprintln!("\n>>> ERROR: UNA O MÁS HIPÓTESIS FEP FALLARON <<<");
         std::process::exit(1);

@@ -21,6 +21,7 @@ pub mod bm6_free_energy_minimization;
 pub mod bm7_surprise_reduction;
 pub mod bm8_active_inference_exploration;
 pub mod bm9_ood_free_energy_generalization;
+pub mod bm10_metacognition;
 
 pub use bm1_variable_binding::{run_bm1_variable_binding, Bm1Results};
 pub use bm2_compositionality::{run_bm2_compositionality, Bm2Results};
@@ -31,6 +32,7 @@ pub use bm6_free_energy_minimization::{run_bm6_free_energy_minimization, Bm6Resu
 pub use bm7_surprise_reduction::{run_bm7_surprise_reduction, Bm7Results};
 pub use bm8_active_inference_exploration::{run_bm8_active_inference_exploration, Bm8Results};
 pub use bm9_ood_free_energy_generalization::{run_bm9_ood_free_energy_generalization, Bm9Results};
+pub use bm10_metacognition::{run_bm10_metacognition, Bm10Results};
 
 use serde::{Deserialize, Serialize};
 
@@ -125,6 +127,7 @@ pub struct FepBenchmarkReport {
     pub bm7: Bm7Results,
     pub bm8: Bm8Results,
     pub bm9: Bm9Results,
+    pub bm10: Bm10Results,
     pub all_fep_passed: bool,
 }
 
@@ -133,14 +136,20 @@ pub fn run_all_fep_benchmarks() -> FepBenchmarkReport {
     let bm7 = run_bm7_surprise_reduction();
     let bm8 = run_bm8_active_inference_exploration();
     let bm9 = run_bm9_ood_free_energy_generalization();
+    let bm10 = run_bm10_metacognition();
 
-    let all_fep_passed = bm6.passed_h_fep1 && bm7.passed_h_fep2 && bm8.passed_h_fep3 && bm9.passed_h_fep4;
+    let all_fep_passed = bm6.passed_h_fep1
+        && bm7.passed_h_fep2
+        && bm8.passed_h_fep3
+        && bm9.passed_h_fep4
+        && bm10.passed_h_fep5;
 
     FepBenchmarkReport {
         bm6,
         bm7,
         bm8,
         bm9,
+        bm10,
         all_fep_passed,
     }
 }
@@ -149,7 +158,7 @@ impl FepBenchmarkReport {
     pub fn render_markdown_table(&self) -> String {
         let mut md = String::new();
         md.push_str("# Tabla de Resultados Consolidados: Benchmarks FEP-MARCUS\n");
-        md.push_str("## Maximización de Energía Libre (ELBO) y Reducción de Sorpresa en Arquitectura Neuro-Simbólica\n\n");
+        md.push_str("## Maximización de Energía Libre (ELBO), Reducción de Sorpresa y Metacognición\n\n");
         md.push_str("| Benchmark | Hipótesis FEP Evaluada | Métrica Línea Base No-FEP | Métrica FEP-MARCUS | Estado Preregistro |\n");
         md.push_str("|---|---|---|---|---|\n");
 
@@ -185,9 +194,19 @@ impl FepBenchmarkReport {
             if self.bm9.passed_h_fep4 { "✅ **PASA H-FEP4 (CONFIRM)**" } else { "❌ FALLA" }
         ));
 
+        md.push_str(&format!(
+            "| **BM-10: Metacognición 2º Orden** | H-FEP5: Calibración Brier y Veto OOD | Brier = {:.3} (Sin calibración) | **Brier = {:.4} (-{:.1}%), Veto = {:.1}%, Ahorro = {:.1}%** | {} |\n",
+            self.bm10.baseline_uncalibrated_brier,
+            self.bm10.metacognitive_brier_score,
+            self.bm10.brier_improvement_pct,
+            self.bm10.illusion_veto_recall * 100.0,
+            self.bm10.compute_savings_pct,
+            if self.bm10.passed_h_fep5 { "✅ **PASA H-FEP5 (CONFIRM)**" } else { "❌ FALLA" }
+        ));
+
         md.push_str("\n> **Conclusión:** ");
         if self.all_fep_passed {
-            md.push_str("Todas las hipótesis de la arquitectura basada 100% en maximizar la energía libre y reducir la sorpresa (H-FEP1, H-FEP2, H-FEP3, H-FEP4) quedan confirmadas empíricamente sin fallos. El sustrato cognitivo neuro-simbólico de Gary Marcus actúa como el andamiaje composicional idóneo para el Principio de Energía Libre de Karl Friston.\n");
+            md.push_str("Todas las hipótesis de la arquitectura basada 100% en maximizar la energía libre, reducir la sorpresa y operar bajo control metacognitivo de segundo orden (H-FEP1 a H-FEP5) quedan confirmadas empíricamente sin fallos. El sustrato cognitivo neuro-simbólico de Gary Marcus actúa como el andamiaje composicional idóneo para el Principio de Energía Libre de Karl Friston.\n");
         } else {
             md.push_str("Una o más hipótesis FEP no alcanzaron el umbral preregistrado.\n");
         }

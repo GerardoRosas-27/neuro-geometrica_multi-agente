@@ -1,23 +1,19 @@
 #!/usr/bin/env python3
 """
-Arnés de Ejecución Infinita FEP-MARCUS 7B v2 (Multi-Agente + Artificial Analysis).
+Arnés de Ejecución Infinita FEP-MARCUS 7B v3 Metacognitivo (Multi-Agente + Artificial Analysis).
 
-Integra el motor `fep_marcus_core.py` v2:
+Integra el motor `fep_marcus_core.py` v3:
   1. Codificación composicional determinista + HRR (32 cabezas x 128D = 4,096D).
   2. Descenso variacional exacto monótono sobre (mu, log_var) con amortiguamiento
      espectral + aprendizaje predictivo NLMS bajo Ley de Dale estricta (W^E, W^I >= 0)
      y homeostasis Frobenius por cabeza anti-colapso.
-  3. Pool de 5 especialistas multi-agente orquestado por Energía Libre Esperada G(pi):
-       - Gemma-9B Scientific & Health Oracle
-       - Llama-3.1-70B Relational & Humanities Oracle
-       - Claude-3.5 Logic, Software & Law Oracle
-       - Spelke-Physics 3D & Lie Dynamical Simulator
-       - Pearl-Causal Discovery & Econometric Intervention Engine
-  4. Consolidación hipocampal Hopfield + sueño circadiano SWR (teorema CDT).
-  5. Auditoría matemática continua `FepEnergyTester`.
-  6. Bucle cerrado en Artificial Analysis (AA-Omniscience 300) sin fuga de respuestas:
-     diagnostica dominios y subtemas débiles pasivamente (Sistema-1) e inyecta
-     currículo epistémico focalizado, intercalado con los 4 flujos multi-modales.
+  3. Pool de 5 especialistas multi-agente orquestado por Energía Libre Esperada G(pi)
+     con posteriores Bayesianas Beta de competencia por agente.
+  4. Capa Metacognitiva de 2º Orden (Nelson-Narens): calibración Brier/ECE online,
+     detector anti-sobreconfianza (`self_doubt_veto`), esfuerzo adaptativo S1/S2/MetaInquiry
+     y modulación dinámica de precisión de política y tasa de aprendizaje.
+  5. Consolidación hipocampal Hopfield + sueño circadiano SWR (teorema CDT).
+  6. Auditoría matemática continua `FepEnergyTester` + cierre de bucle Artificial Analysis.
 """
 
 import os
@@ -572,11 +568,12 @@ def _build_telemetry_payload(
             "query_share_pct": round((agent.queries_served / total_q) * 100.0, 2),
             "mean_surprise_reduction_pct": round(agent.mean_surprise_reduction_pct, 2),
             "mean_delta_f": round(agent.mean_delta_f, 4),
+            "competence_mean": round(agent.competence_mean, 4),
         }
 
     dale_v = int(last_cycle.get("dale_violations", 0))
     return {
-        "architecture": "FEP_MARCUS_7B_V2",
+        "architecture": "FEP_MARCUS_7B_V3_METACOGNITIVE",
         "status": status,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "uptime_seconds": round(elapsed, 2),
@@ -601,6 +598,7 @@ def _build_telemetry_payload(
         "dale_compliance": "100%_PASS" if dale_v == 0 else "VIOLATED",
         "dale_violations": dale_v,
         "tester": fep_engine.tester.summary(),
+        "metacognition": fep_engine.metacognition.summary(),
         "last_aa_evaluation": last_aa_result,
         "multiagent_queries": {
             "gemma_9b_science": orchestrator.gemma.queries_served,
@@ -620,6 +618,7 @@ def _update_markdown_report(
     last_eval: Dict[str, Any],
 ) -> None:
     tester = fep_engine.tester.summary()
+    meta_s = fep_engine.metacognition.summary()
     total_q = int(last_eval.get("total_questions", 300))
     pass_cnt = int(last_eval.get("passive_correct", 0))
     act_cnt = int(last_eval.get("active_correct", 0))
@@ -639,7 +638,7 @@ def _update_markdown_report(
     }
 
     lines: List[str] = [
-        "# Bucle Infinito FEP-MARCUS 7B v2 Multi-Agente y Evaluación Artificial Analysis",
+        "# Bucle Infinito FEP-MARCUS 7B v3 Metacognitivo + Multi-Agente + Artificial Analysis",
         "",
         f"> **Estado:** {status_label}",
         f"> **Última Actualización:** {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} UTC",
@@ -647,6 +646,7 @@ def _update_markdown_report(
         f"> **Geometría Sináptica:** $\\|W_h\\|_F={fep_engine.mean_head_frobenius_norm():.3f}$ | **Precisión Media $\\bar{{\\pi}}$:** {float(fep_engine.precisions.mean()):.3f} | **Prototipos Hopfield:** {len(fep_engine.memory.proto_obs)} | **Hechos WorldState:** {len(fep_engine.memory.world_state_facts)}",
         f"> **Exactitud Pasiva AA (Prior Sistema-1):** **{pass_acc:.2f}%** ({pass_cnt}/{total_q}, $\\Delta={delta_pass:+.2f}\\%$) | **Cobertura Prior:** {last_eval.get('prior_conf_coverage_pct', 0.0):.2f}%",
         f"> **Exactitud Activa AA (Comité Sistema-2):** **{act_acc:.2f}%** ({act_cnt}/{total_q}, rescatadas {rescued}/{unres}) | **Tasa de Alucinación:** **0.00%**",
+        f"> **Metacognición 2º Orden:** Brier Meta={meta_s['meta_brier_score']:.4f} vs Base={meta_s['baseline_brier_score']:.4f} (**{meta_s['brier_improvement_pct']:+.1f}%**) | ECE(10-bin)={meta_s['ece_10bin']:.4f} | Ahorro Cómputo E-Step=**{meta_s['compute_savings_pct']:.1f}%** | Vetos Anti-Sobreconfianza={meta_s['self_doubt_vetos']}",
         "",
         "### 1. Desglose Dominio por Dominio en Artificial Analysis (Ronda #"
         + str(last_eval.get("evaluation_round", 0))
@@ -665,10 +665,10 @@ def _update_markdown_report(
 
     lines.extend([
         "",
-        "### 2. Contribución Empírica de los 5 Modelos Multi-Agente (Inferencia Activa G(pi))",
+        "### 2. Contribución Empírica y Competencia Bayesiana de los 5 Modelos Multi-Agente",
         "",
-        "| Modelo Multi-Agente | Especialización Epistémica | Consultas Atendidas | Cuota (%) | Reducción Media Sorpresa | $\\Delta\\mathcal{F}$ Medio (E-Step) |",
-        "|---|---|:---:|:---:|:---:|:---:|",
+        "| Modelo Multi-Agente | Especialización Epistémica | Consultas | Cuota (%) | Reducción Sorpresa | Competencia $\\mathbb{E}[\\mathrm{Beta}]$ | $\\Delta\\mathcal{F}$ Medio |",
+        "|---|---|:---:|:---:|:---:|:---:|:---:|",
     ])
 
     total_agent_q = max(1, sum(a.queries_served for a in orchestrator.agents))
@@ -680,12 +680,14 @@ def _update_markdown_report(
         (orchestrator.pearl, "Grafos DAG, Intervenciones $do(X)$ y Finanzas"),
     ]:
         share = (agent.queries_served / total_agent_q) * 100.0
-        red_str = f"-{agent.mean_surprise_reduction_pct:.2f}%" if agent.queries_served > 0 else "N/A (0 consultas)"
+        red_str = f"-{agent.mean_surprise_reduction_pct:.2f}%" if agent.queries_served > 0 else "N/A (0)"
         df_str = f"{agent.mean_delta_f:+.3f} nats" if agent.queries_served > 0 else "N/A"
         lines.append(
-            f"| **{agent.name}** | {spec} | {agent.queries_served} | {share:.1f}% | **{red_str}** | {df_str} |"
+            f"| **{agent.name}** | {spec} | {agent.queries_served} | {share:.1f}% | **{red_str}** | {agent.competence_mean:.3f} | {df_str} |"
         )
 
+    tiers = meta_s["tier_distribution"]
+    tier_pct = meta_s["tier_pct"]
     lines.extend([
         "",
         "### 3. Auditoría Matemática Continua (`FepEnergyTester`)",
@@ -701,11 +703,22 @@ def _update_markdown_report(
         f"| Deriva de Energía Libre Inicial (Ventana Temprana vs Reciente) | {tester['early_window_f_init']:.3f} $\\rightarrow$ {tester['recent_window_f_init']:.3f} nats (**{tester['f_init_drift']:+.4f} nats**) | 📉 OPTIMIZANDO |",
         f"| Deriva de Energía Libre Final (Ventana Temprana vs Reciente) | {tester['early_window_f_opt']:.3f} $\\rightarrow$ {tester['recent_window_f_opt']:.3f} nats (**{tester['f_opt_drift']:+.4f} nats**) | 📉 OPTIMIZANDO |",
         "",
-        "### 4. Mecanismo de Cierre de Ciclo FEP-MARCUS v2",
+        "### 4. Capa Metacognitiva de Segundo Orden (Nelson-Narens & Control Racional)",
         "",
-        "1. **E-Step Variacional Amortiguado:** Actualiza posterior gaussiano $(\\mu, \\log\\sigma^2)$ usando cota espectral $\\sigma_{\\max}^2(W_h)$ con búsqueda lineal monótona garantizando $0$ divergencias incluso ante precisiones elevadas.",
-        "2. **M-Step de Codificación Predictiva y Sueño SWR:** Actualiza $W^E, W^I \\ge 0$ por gradiente NLMS normalizado por cabeza + homeostasis Frobenius + consolidación Hipocampal Hopfield (transferencia selectiva por esquema estructural).",
-        "3. **Evaluación Artificial Analysis sin Fuga:** Identifica exclusivamente etiquetas `(dominio, subtema)` no consolidadas en Sistema-1 y sintetiza currículo epistémico diverso que evita sobreajuste léxico y colapsa la sorpresa residual ciclo a ciclo.",
+        "| Métrica Metacognitiva | Resultado Empírico | Interpretación |",
+        "|---|:---:|---|",
+        f"| Calibración Brier (Meta vs Línea Base No Calibrada) | **{meta_s['meta_brier_score']:.4f}** vs {meta_s['baseline_brier_score']:.4f} (**{meta_s['brier_improvement_pct']:+.1f}%**) | Mejor calibración probabilística en ventana reciente ({meta_s['recent_meta_brier']:.4f}) |",
+        f"| Error Esperado de Calibración (ECE 10-bins) | **{meta_s['ece_10bin']:.4f}** (EMA={meta_s['recent_ece_ema']:.4f}) | Coincidencia entre confianza predicha y éxito real |",
+        f"| Ahorro Real de Cómputo (Pasos E-Step Ejecutados vs Base) | **{meta_s['compute_savings_pct']:.2f}%** ({meta_s['actual_e_steps_total']}/{meta_s['baseline_e_steps_total']} pasos) | Poda racional en episodios Sistema-1 consolidados |",
+        f"| Vetos Anti-Sobreconfianza (`self_doubt_veto`) | **{meta_s['self_doubt_vetos']}** ({meta_s['self_doubt_veto_rate_pct']:.2f}%) | Bloqueo de ilusión epistémica ante anomalías Spelke/Pearl/HRR |",
+        f"| Distribución de Esfuerzo Cognitivo | S1={tiers['System1Fast']} ({tier_pct['System1Fast']:.1f}%) / S2={tiers['System2Deliberative']} ({tier_pct['System2Deliberative']:.1f}%) / Meta={tiers['ActiveMetaInquiry']} ({tier_pct['ActiveMetaInquiry']:.1f}%) | Asignación adaptativa de precisión y pasos variacionales |",
+        "",
+        "### 5. Mecanismo de Cierre de Ciclo FEP-MARCUS v3 Metacognitivo",
+        "",
+        "1. **E-Step Variacional Amortiguado y Adaptativo:** Asigna presupuesto `System1Fast` (4 pasos), `System2Deliberative` (9+4 pasos) o `ActiveMetaInquiry` (9+6 pasos) usando cota espectral $\\sigma_{\\max}^2(W_h)$ con descenso estrictamente monótono.",
+        "2. **Monitoreo 2º Orden y Veto Epistémico:** Evalúa entropía del posterior, compresión de varianza y conflicto inter-modal; activa `self_doubt_veto` y modula $(\\gamma, w_e, w_p, \\eta_{meta})$ si detecta ilusión de conocimiento.",
+        "3. **M-Step de Codificación Predictiva y Sueño SWR:** Actualiza $W^E, W^I \\ge 0$ con tasa modulada metacognitivamente + homeostasis Frobenius + SVD en sueño SWR + posteriores Beta de los 5 especialistas.",
+        "4. **Evaluación Artificial Analysis sin Fuga:** Identifica exclusivamente etiquetas `(dominio, subtema)` no consolidadas en Sistema-1 y sintetiza currículo epistémico diverso que colapsa la sorpresa ciclo a ciclo.",
         "",
     ])
     atomic_write_text(REPORT_MD_PATH, "\n".join(lines))
@@ -727,7 +740,7 @@ def run_infinite_multiagent_fep_loop(
         reset_runtime_state()
 
     print("\n" + "=" * 84)
-    print("  INICIANDO BUCLE FEP-MARCUS 7B v2 MULTI-AGENTE + ARTIFICIAL ANALYSIS")
+    print("  INICIANDO BUCLE FEP-MARCUS 7B v3 METACOGNITIVO + MULTI-AGENTE + AA")
     print("=" * 84)
     print(f"[*] Intervalo AA: cada {eval_interval} eps | Currículo: {curriculum_size} | MaxEps: {max_episodes or 'INFINITO'}")
     print(f"[*] Logs acotados en: {LOG_FILE}\n")
@@ -741,7 +754,7 @@ def run_infinite_multiagent_fep_loop(
     )
     if (not reset_state) and fep_engine.loaded_orchestrator_state:
         orchestrator.restore_state(fep_engine.loaded_orchestrator_state)
-        print("[*] Contadores de 5 agentes especialistas restaurados desde checkpoint v2.")
+        print("[*] Contadores y posteriores Beta de 5 agentes restaurados desde checkpoint v3.")
 
     aa_evaluator = ArtificialAnalysisContinuousEvaluator()
 
@@ -876,11 +889,14 @@ def run_infinite_multiagent_fep_loop(
         if ep_num % 10 == 0:
             avg_f = fep_engine.cum_free_energy / ep_num
             act_rate = (fep_engine.epistemic_queries_triggered / ep_num) * 100.0
+            meta_ep = last_cycle.get("metacognition", {})
+            meta_sum = fep_engine.metacognition.summary()
             log_line = (
                 f"[{datetime.now(timezone.utc).strftime('%H:%M:%S')}] Ep #{ep_num:6d} | "
                 f"F_init->F_opt: {last_cycle['f_init']:.2f}->{last_cycle['f_final']:.2f} (avg {avg_f:.2f}) | "
                 f"S: {last_cycle['s_init']:.2f}->{last_cycle['s_final']:.2f} (-{last_cycle['surprise_reduction_pct']:.1f}%) | "
                 f"ActInf: {act_rate:.1f}% ({last_cycle['consulted_agent'] or 'System-1'}) | "
+                f"Meta[{meta_ep.get('effort_tier', 'S2')} conf={meta_ep.get('meta_confidence', 0.0):.2f} Brier={meta_sum['meta_brier_score']:.3f} Sav={meta_sum['compute_savings_pct']:.1f}%] | "
                 f"||W||_F: {last_cycle['head_fro_norm']:.2f} | Pi: {last_cycle['mean_precision']:.2f} | "
                 f"DaleViol: {last_cycle['dale_violations']}"
             )
@@ -911,14 +927,16 @@ def run_infinite_multiagent_fep_loop(
             weakest = last_aa_result["weakest_domain"]
             w_acc = last_aa_result["weakest_domain_acc"]
             tester_sum = fep_engine.tester.summary()
+            meta_sum = fep_engine.metacognition.summary()
 
             eval_log = (
                 f"[AA Ronda #{last_aa_result['evaluation_round']} @ Ep {ep_num}] "
                 f"Pasiva: {pass_acc:.2f}% ({last_aa_result['passive_correct']}/300, {last_aa_result['passive_delta_pct']:+.2f}%) | "
                 f"Activa: {act_acc:.2f}% (Rescatadas: {rescued}) | "
                 f"Débil: '{weakest}' ({w_acc:.1f}%) | "
-                f"Monot: {tester_sum['monotonic_convergence_pct']:.1f}% | "
-                f"F_init_drift: {tester_sum['f_init_drift']:+.3f} nats"
+                f"Brier={meta_sum['meta_brier_score']:.4f}/{meta_sum['baseline_brier_score']:.4f} ({meta_sum['brier_improvement_pct']:+.1f}%) | "
+                f"ECE={meta_sum['ece_10bin']:.4f} | Ahorro={meta_sum['compute_savings_pct']:.1f}% | Vetos={meta_sum['self_doubt_vetos']} | "
+                f"Monot: {tester_sum['monotonic_convergence_pct']:.1f}%"
             )
             print(eval_log, flush=True)
             append_bounded_log(LOG_FILE, eval_log)
@@ -930,9 +948,9 @@ def run_infinite_multiagent_fep_loop(
             )
 
             status_md = (
-                "🟢 Ejecutándose Continuamente en Segundo Plano (Daemon v2)"
+                "🟢 Ejecutándose Continuamente en Segundo Plano (Daemon v3 Metacognitivo)"
                 if max_episodes <= 0
-                else "🟢 Validación / Precalentamiento Verificado (v2)"
+                else "🟢 Validación / Precalentamiento Verificado (v3 Metacognitivo)"
             )
             _update_markdown_report(status_md, fep_engine, orchestrator, last_aa_result)
 
@@ -968,7 +986,7 @@ def run_infinite_multiagent_fep_loop(
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Arnés Infinito Multi-Agente FEP-MARCUS 7B v2")
+    parser = argparse.ArgumentParser(description="Arnés Infinito Multi-Agente FEP-MARCUS 7B v3 Metacognitivo")
     parser.add_argument("--eval-interval", type=int, default=100, help="Intervalo de episodios para reevaluar Artificial Analysis")
     parser.add_argument("--sleep-delay", type=float, default=0.02, help="Pausa entre episodios en segundos")
     parser.add_argument("--max-episodes", type=int, default=0, help="Límite máximo de episodios en esta corrida (0 = infinito)")

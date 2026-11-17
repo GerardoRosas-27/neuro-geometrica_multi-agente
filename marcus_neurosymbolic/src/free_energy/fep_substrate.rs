@@ -42,6 +42,10 @@ pub struct FepSubstrateTelemetry {
     pub surprise_breakdown: StructuredSurprise,
     /// Acción seleccionada por inferencia activa para minimizar G(pi)
     pub active_inference_action: Option<String>,
+    /// Confianza epistémica calibrada de segundo orden c_meta in [0, 1]
+    pub metacognitive_confidence: f64,
+    /// Nivel de esfuerzo computacional asignado por metacognición
+    pub metacognitive_effort: String,
     /// Auditoría de la Ley de Dale en BQ10
     pub dales_law_audit_clean: bool,
     pub dales_law_synapses_count: usize,
@@ -200,6 +204,12 @@ impl MarcusFepSubstrate {
             }
         });
 
+        let (meta_conf, meta_effort) = cycle_result
+            .metacognition
+            .as_ref()
+            .map(|m| (m.calibrated_confidence, format!("{:?}", m.recommended_effort)))
+            .unwrap_or((0.5, "System2Deliberative".to_string()));
+
         let telemetry = FepSubstrateTelemetry {
             step: self.step_counter,
             variational_free_energy: cycle_result.optimized_free_energy,
@@ -208,6 +218,8 @@ impl MarcusFepSubstrate {
             surprise_reduction_ratio: cycle_result.surprise_reduction_ratio,
             surprise_breakdown: cycle_result.final_surprise.clone(),
             active_inference_action: action_name,
+            metacognitive_confidence: meta_conf,
+            metacognitive_effort: meta_effort,
             dales_law_audit_clean: dale_violations == 0,
             dales_law_synapses_count: total_synapses,
             cayley_menger_barrier_active: true,

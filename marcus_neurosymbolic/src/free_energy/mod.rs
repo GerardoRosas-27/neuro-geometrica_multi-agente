@@ -10,6 +10,7 @@ pub mod variational_free_energy;
 pub mod surprise_engine;
 pub mod precision_dynamics;
 pub mod active_inference;
+pub mod metacognition;
 pub mod fep_coordinator;
 pub mod fep_substrate;
 
@@ -17,5 +18,6 @@ pub use variational_free_energy::*;
 pub use surprise_engine::*;
 pub use precision_dynamics::*;
 pub use active_inference::*;
+pub use metacognition::*;
 pub use fep_coordinator::*;
 pub use fep_substrate::*;

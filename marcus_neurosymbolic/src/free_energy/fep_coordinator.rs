@@ -12,12 +12,13 @@ use crate::core_knowledge::spatiotemporal_physics::SpelkePhysicsEngine;
 use crate::dual_process::system1_proposer::{CandidateHypothesis, System1Proposer};
 use crate::dual_process::system2_deliberator::{DeliberationVerdict, System2Deliberator};
 use crate::free_energy::active_inference::{ActiveAction, ActiveInferenceEngine, Policy};
+use crate::free_energy::metacognition::{MetacognitiveAssessment, MetacognitiveController};
 use crate::free_energy::precision_dynamics::{CognitiveChannel, PrecisionManager};
 use crate::free_energy::surprise_engine::{StructuredSurprise, SurpriseEngine};
 use crate::free_energy::variational_free_energy::{FreeEnergyOptimizer, PriorBelief, VariationalBelief};
 use serde::{Deserialize, Serialize};
 
-/// Resultado del ciclo cognitivo unificado FEP + Inferencia Activa.
+/// Resultado del ciclo cognitivo unificado FEP + Inferencia Activa + Metacognición.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FepCognitiveCycleResult {
     pub query: String,
@@ -35,6 +36,7 @@ pub struct FepCognitiveCycleResult {
     pub selected_action: Option<ActiveAction>,
     pub verdict: Option<DeliberationVerdict>,
     pub rejected_hypotheses: Vec<(CandidateHypothesis, String)>,
+    pub metacognition: Option<MetacognitiveAssessment>,
     pub cycles_elapsed: usize,
 }
 
@@ -44,6 +46,7 @@ pub struct FepDualProcessCoordinator {
     pub surprise_engine: SurpriseEngine,
     pub active_inference_engine: ActiveInferenceEngine,
     pub precision_manager: PrecisionManager,
+    pub metacognition: MetacognitiveController,
     /// Umbral máximo tolerado de energía libre antes de veto epistémico
     pub free_energy_veto_threshold: f64,
     pub max_candidate_evaluations: usize,
@@ -56,6 +59,7 @@ impl Default for FepDualProcessCoordinator {
             surprise_engine: SurpriseEngine::default(),
             active_inference_engine: ActiveInferenceEngine::default(),
             precision_manager: PrecisionManager::default(),
+            metacognition: MetacognitiveController::default(),
             free_energy_veto_threshold: 45.0,
             max_candidate_evaluations: 5,
         }
@@ -70,7 +74,7 @@ impl FepDualProcessCoordinator {
         }
     }
 
-    /// Ejecuta el ciclo cognitivo completo orientado a maximizar ELBO y reducir sorpresa.
+    /// Ejecuta el ciclo cognitivo completo orientado a maximizar ELBO, reducir sorpresa y calibrar metacognitivamente.
     pub fn execute_fep_cycle(
         &mut self,
         query: &str,
@@ -109,6 +113,7 @@ impl FepDualProcessCoordinator {
         let mut best_candidate = None;
         let mut best_verdict = None;
         let mut best_fe_result = None;
+        let mut best_belief = None;
         let mut min_fe = f64::INFINITY;
         let mut initial_fe = 0.0;
 
@@ -163,6 +168,7 @@ impl FepDualProcessCoordinator {
                             best_candidate = Some(candidate);
                             best_verdict = Some(verdict);
                             best_fe_result = Some(fe_opt_res);
+                            best_belief = Some(q_opt);
                         }
                     } else {
                         rejected.push((
@@ -177,7 +183,30 @@ impl FepDualProcessCoordinator {
             }
         }
 
-        // 4. Inferencia Activa: Selección de Acción Óptima para minimizar G(pi)
+        // 4. Control Metacognitivo (Nivel 2): Evalúa entropía posterior, calibración y conflicto
+        let fallback_belief = VariationalBelief::new(dim, "fallback_uncertain");
+        let eval_belief = best_belief.as_ref().unwrap_or(&fallback_belief);
+        let fallback_fe = self.free_energy_optimizer.evaluate(
+            sensory_observation,
+            eval_belief,
+            &prior,
+            &precisions,
+        );
+        let eval_fe = best_fe_result.as_ref().unwrap_or(&fallback_fe);
+        let meta_assessment = self.metacognition.assess_and_control(
+            eval_belief,
+            initial_fe,
+            eval_fe,
+            &initial_surprise,
+            &self.precision_manager.current_profile,
+        );
+
+        // Modular pesos de Inferencia Activa dinámicamente según control metacognitivo
+        self.active_inference_engine.policy_precision_gamma = meta_assessment.modulated_policy_gamma;
+        self.active_inference_engine.epistemic_weight = meta_assessment.modulated_epistemic_weight;
+        self.active_inference_engine.pragmatic_weight = meta_assessment.modulated_pragmatic_weight;
+
+        // 5. Inferencia Activa: Selección de Acción Óptima para minimizar G(pi)
         let policies = vec![
             Policy::single_action(
                 "explore_causal",
@@ -200,16 +229,21 @@ impl FepDualProcessCoordinator {
             ),
         ];
 
+        let unbound_est = if best_candidate.is_some() && !meta_assessment.escalate_to_active_inquiry {
+            0
+        } else {
+            2
+        };
         let (chosen_policy, _evals) = self.active_inference_engine.evaluate_and_select_policy(
             &policies,
             causal_engine,
-            if best_candidate.is_some() { 0 } else { 2 },
+            unbound_est,
             None,
         );
 
         let chosen_action = chosen_policy.actions.first().cloned();
 
-        // 5. Cómputo de Sorpresa Final y Métricas de Rendimiento
+        // 6. Cómputo de Sorpresa Final y Métricas de Rendimiento
         let opt_fe = best_fe_result.as_ref().map_or(initial_fe, |r| r.variational_free_energy);
         let elbo = best_fe_result.as_ref().map_or(-initial_fe, |r| r.evidence_lower_bound);
 
@@ -243,6 +277,15 @@ impl FepDualProcessCoordinator {
             1.0
         };
 
+        // Retroalimentar resultado al calibrador metacognitivo
+        let cycle_success = best_candidate.is_some() && !meta_assessment.self_doubt_veto;
+        self.metacognition.record_outcome(
+            &meta_assessment,
+            eval_belief,
+            &final_surprise,
+            cycle_success,
+        );
+
         // Adaptar precisión sensorial según el residuo observado
         let avg_residual = (initial_surprise.perceptual_surprise - final_surprise.perceptual_surprise).abs();
         self.precision_manager.update_sensory_precision(avg_residual);
@@ -261,6 +304,7 @@ impl FepDualProcessCoordinator {
             selected_action: chosen_action,
             verdict: best_verdict,
             rejected_hypotheses: rejected,
+            metacognition: Some(meta_assessment),
             cycles_elapsed: cycles,
         }
     }
