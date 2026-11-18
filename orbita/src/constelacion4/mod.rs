@@ -5,6 +5,7 @@
 //!   orbita cst-run --phase dev|confirm|smoke --seed S --weights W --out DIR
 #![allow(clippy::too_many_arguments, clippy::needless_range_loop, clippy::type_complexity)]
 pub mod atlas;
+pub mod metafe;
 use crate::fam::reid;
 use crate::model::Orbita;
 use cdt_rqm_epr::field_autonomy_v4::{target_h, ITERABLE_FAMS, K_POINTS};

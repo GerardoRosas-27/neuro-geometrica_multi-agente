@@ -1,0 +1,89 @@
+{
+  "family": "METAFE",
+  "version": "v2",
+  "branch": "exp/metafe-free-energy",
+  "primary_arm": "METAFE",
+  "secondary_arms": [
+    "FE-ARD",
+    "GP-Cart-FE",
+    "GP-Polar-FE",
+    "GP-Symp-FE"
+  ],
+  "ablation_arms": [
+    "METAFE-NoFE",
+    "METAFE-NoRoll"
+  ],
+  "hypotheses": [
+    "LieAffine",
+    "FeArd",
+    "GpCartM52",
+    "GpCartRbf",
+    "GpCoMoving",
+    "GpSympFwd",
+    "GpSympRev",
+    "GpCoSympFwd",
+    "GpCoSympRev",
+    "GpPolar",
+    "GpEquivCart"
+  ],
+  "frozen_hparams": {
+    "k_obs": 4,
+    "horizon": 16,
+    "n_train": 128,
+    "n_val": 96,
+    "syn_ood_eval_n": 48,
+    "taus": [2.0, 4.0, 8.0, 12.0],
+    "gammas": [0.0, 0.15, 0.5],
+    "prior_scales": [0.0, 0.25, 0.6],
+    "cal_l2": 1.0,
+    "err_ridge_l2": 0.05,
+    "log_err_clamp": [-7.5, 2.3],
+    "cold_start": "per_family_vfe_rbf_gp_on_ds_train_only",
+    "bootstrap_reps": 10000,
+    "bootstrap_seed": 12345,
+    "delta": 0.05
+  },
+  "paso0_0xC4B0": {
+    "paso0_ok": true,
+    "deterministic_mismatch": 0,
+    "deterministic_values": 8448,
+    "heldout_leak": false,
+    "test_queries": 0,
+    "max_affine_rel_err": 1.2871558878614608e-12,
+    "fe_reduced_all": true
+  },
+  "tune_summary_4seeds": {
+    "seeds": ["0xC4B0", "0xC4B1", "0xC4B2", "0xC4B3"],
+    "baselines_bq_tune": {
+      "v4":   {"new_med_log": -0.8197, "new_acc16": 0.0573, "known_acc16": 0.8770, "e33_pass": 4},
+      "CORE": {"new_med_log": -1.2077, "new_acc16": 0.1458, "known_acc16": 0.9004, "e33_pass": 4},
+      "BQ10": {"new_med_log": -1.4161, "new_acc16": 0.1458, "known_acc16": 0.8848, "e33_pass": 4}
+    },
+    "metafe_arms": {
+      "FE-ARD":        {"new_med_log": -1.5193, "new_acc16": 0.2135, "known_acc16": 0.9180, "syn_ood_med_log": -2.65, "e33_pass": 4, "e33_auto_pass": 4},
+      "GP-Cart-FE":    {"new_med_log": -2.8939, "new_acc16": 0.4896, "known_acc16": 0.9121, "syn_ood_med_log": -2.48, "e33_pass": 4, "e33_auto_pass": 4},
+      "GP-Symp-FE":    {"new_med_log": -2.9067, "new_acc16": 0.4635, "known_acc16": 0.9102, "syn_ood_med_log": -2.38, "e33_pass": 4, "e33_auto_pass": 4},
+      "GP-Polar-FE":   {"new_med_log": -3.2980, "new_acc16": 0.5417, "known_acc16": 0.9375, "syn_ood_med_log": -8.42, "e33_pass": 4, "e33_auto_pass": 4},
+      "METAFE-NoFE":   {"new_med_log": -2.6976, "new_acc16": 0.4427, "known_acc16": 0.9082, "syn_ood_med_log": -5.45, "e33_pass": 4, "e33_auto_pass": 4},
+      "METAFE-NoRoll": {"new_med_log": -4.9494, "new_acc16": 0.8385, "known_acc16": 0.9297, "syn_ood_med_log": -8.55, "e33_pass": 4, "e33_auto_pass": 4},
+      "METAFE":        {"new_med_log": -4.9922, "new_acc16": 0.8594, "known_acc16": 0.9375, "syn_ood_med_log": -9.48, "e33_pass": 4, "e33_auto_pass": 4}
+    },
+    "primary_metacog": {
+      "overall_auroc": 0.9748,
+      "overall_brier": 0.0449,
+      "overall_ece": 0.0566,
+      "overall_aurc": 0.0060,
+      "overall_fe_reduction_mean": 31.4496,
+      "overall_fe_reduced_frac": 1.0,
+      "new_auroc": 0.8426,
+      "new_brier": 0.1552,
+      "new_ece": 0.1978,
+      "new_err_pred_corr": 0.8300,
+      "new_err_pred_spearman": 0.8502,
+      "syn_ood_auroc": 0.9819,
+      "syn_ood_brier": 0.0537,
+      "syn_ood_ece": 0.0839,
+      "syn_ood_err_pred_corr": 0.9573
+    }
+  }
+}
