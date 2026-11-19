@@ -43,9 +43,9 @@ use super::*;
 use std::f64::consts::{PI, TAU};
 
 const LN_2PI: f64 = 1.8378770664093453;
-const XOR_METAFE_TRAIN: u64 = 0xFE7A_0101;
-const XOR_METAFE_VAL: u64 = 0xFE7A_0202;
-const XOR_METAFE_OOD: u64 = 0xFE7A_0303;
+pub(super) const XOR_METAFE_TRAIN: u64 = 0xFE7A_0101;
+pub(super) const XOR_METAFE_VAL: u64 = 0xFE7A_0202;
+pub(super) const XOR_METAFE_OOD: u64 = 0xFE7A_0303;
 
 // ─── álgebra lineal SPD (Cholesky + LOO analítico) ───────────────────────────
 
@@ -139,7 +139,7 @@ fn chol_inv_diag(l: &[f64], n: usize) -> Vec<f64> {
 }
 
 /// Resuelve sistema simétrico pequeño (p×p) con Cholesky + fallback ridge.
-fn solve_spd(a: &[f64], b: &[f64], p: usize) -> Vec<f64> {
+pub(super) fn solve_spd(a: &[f64], b: &[f64], p: usize) -> Vec<f64> {
     if let Some((l, _)) = cholesky_jitter(a, p) {
         let z = solve_lower(&l, p, b);
         solve_upper_t(&l, p, &z)
@@ -1017,27 +1017,27 @@ pub const HYP_NAMES: [&str; N_HYP] = [
 
 /// Parámetros de mapa afín 2D: u = A q + b (6 parámetros).
 #[derive(Clone, Copy, Debug)]
-struct Affine2D {
-    a: [[f64; 2]; 2],
-    b: [f64; 2],
+pub(super) struct Affine2D {
+    pub(super) a: [[f64; 2]; 2],
+    pub(super) b: [f64; 2],
 }
 
 impl Affine2D {
-    fn identity() -> Self {
+    pub(super) fn identity() -> Self {
         Self {
             a: [[1.0, 0.0], [0.0, 1.0]],
             b: [0.0, 0.0],
         }
     }
     #[inline]
-    fn apply(&self, q: [f64; 2]) -> [f64; 2] {
+    pub(super) fn apply(&self, q: [f64; 2]) -> [f64; 2] {
         [
             self.a[0][0] * q[0] + self.a[0][1] * q[1] + self.b[0],
             self.a[1][0] * q[0] + self.a[1][1] * q[1] + self.b[1],
         ]
     }
     /// Ajuste afín exacto por mínimos cuadrados regularizados q → y.
-    fn fit(qs: &[[f64; 2]], ys: &[[f64; 2]], lam: f64) -> Self {
+    pub(super) fn fit(qs: &[[f64; 2]], ys: &[[f64; 2]], lam: f64) -> Self {
         let mut xtx = [0.0; 9];
         let mut xty = [[0.0; 3]; 2];
         for (q, y) in qs.iter().zip(ys) {
@@ -1062,7 +1062,7 @@ impl Affine2D {
         }
     }
     /// Radio espectral exacto ρ(A) para matriz 2×2.
-    fn spectral_radius(&self) -> f64 {
+    pub(super) fn spectral_radius(&self) -> f64 {
         let tr = self.a[0][0] + self.a[1][1];
         let det = self.a[0][0] * self.a[1][1] - self.a[0][1] * self.a[1][0];
         let disc = tr * tr - 4.0 * det;
@@ -1111,17 +1111,17 @@ enum HypModel {
 }
 
 #[derive(Clone, Debug)]
-struct FittedHyp {
-    kind: HypKind,
+pub(super) struct FittedHyp {
+    pub(super) kind: HypKind,
     model: HypModel,
-    vfe: f64,
-    loo_fe: f64,
-    s2_scale: f64,
-    valid: bool,
+    pub(super) vfe: f64,
+    pub(super) loo_fe: f64,
+    pub(super) s2_scale: f64,
+    pub(super) valid: bool,
 }
 
 #[inline]
-fn wrap_angle(a: f64) -> f64 {
+pub(super) fn wrap_angle(a: f64) -> f64 {
     let mut x = (a + PI) % TAU;
     if x < 0.0 {
         x += TAU;
@@ -1131,7 +1131,7 @@ fn wrap_angle(a: f64) -> f64 {
 
 impl FittedHyp {
     /// Predice (q_{t+1}, varianza epistémica σ²_epi) para un punto q_t.
-    fn step_point(&self, q: [f64; 2]) -> ([f64; 2], f64) {
+    pub(super) fn step_point(&self, q: [f64; 2]) -> ([f64; 2], f64) {
         if !self.valid || !q[0].is_finite() || !q[1].is_finite() {
             return ([f64::NAN, f64::NAN], 1e6);
         }
@@ -1207,7 +1207,7 @@ impl FittedHyp {
         }
     }
 
-    fn step_frame(&self, frame: &[f64]) -> (Vec<f64>, f64) {
+    pub(super) fn step_frame(&self, frame: &[f64]) -> (Vec<f64>, f64) {
         let np = frame.len() / 2;
         let mut out = vec![0.0; frame.len()];
         let mut epi_sum = 0.0;
@@ -1221,7 +1221,7 @@ impl FittedHyp {
     }
 }
 
-fn extract_pairs(frames: &[&[f64]]) -> (Vec<[f64; 2]>, Vec<[f64; 2]>) {
+pub(super) fn extract_pairs(frames: &[&[f64]]) -> (Vec<[f64; 2]>, Vec<[f64; 2]>) {
     let np = frames[0].len() / 2;
     let n = (frames.len() - 1) * np;
     let mut qs = Vec::with_capacity(n);
@@ -1235,11 +1235,11 @@ fn extract_pairs(frames: &[&[f64]]) -> (Vec<[f64; 2]>, Vec<[f64; 2]>) {
     (qs, qns)
 }
 
-fn fit_hypothesis(kind: HypKind, frames: &[&[f64]]) -> FittedHyp {
+pub(super) fn fit_hypothesis(kind: HypKind, frames: &[&[f64]]) -> FittedHyp {
     fit_hypothesis_ex(kind, frames, 4)
 }
 
-fn fit_hypothesis_ex(kind: HypKind, frames: &[&[f64]], max_em: usize) -> FittedHyp {
+pub(super) fn fit_hypothesis_ex(kind: HypKind, frames: &[&[f64]], max_em: usize) -> FittedHyp {
     let invalid = FittedHyp {
         kind,
         model: HypModel::DirectGp {
@@ -1745,27 +1745,27 @@ fn maybe_refine_multistep(h: &FittedHyp, frames: &[&[f64]]) -> FittedHyp {
 // ─── Diagnósticos de hipótesis (Nivel 1: VFE, LOO, OOT-1, OOT-2, Replay, Estabilidad) ─
 
 #[derive(Clone, Debug)]
-struct HypDiag {
-    hyp: FittedHyp,
-    vfe_per_pt: f64,
-    loo_per_pt: f64,
-    oot1_log: f64,
-    oot2_log: f64,
-    replay_log: f64,
-    roll_preds: Vec<Vec<f64>>,
-    roll_epi: Vec<f64>,
-    stab_pen: f64,
-    score: f64,
+pub(super) struct HypDiag {
+    pub(super) hyp: FittedHyp,
+    pub(super) vfe_per_pt: f64,
+    pub(super) loo_per_pt: f64,
+    pub(super) oot1_log: f64,
+    pub(super) oot2_log: f64,
+    pub(super) replay_log: f64,
+    pub(super) roll_preds: Vec<Vec<f64>>,
+    pub(super) roll_epi: Vec<f64>,
+    pub(super) stab_pen: f64,
+    pub(super) score: f64,
 }
 
-fn rmax_frame(f: &[f64]) -> f64 {
+pub(super) fn rmax_frame(f: &[f64]) -> f64 {
     (0..f.len() / 2)
         .map(|p| (f[2 * p].powi(2) + f[2 * p + 1].powi(2)).sqrt())
         .fold(0.0, f64::max)
 }
 
 /// Evalúa una hipótesis completa en el contexto 0..=K (sin fuga) y su rollout h=(K+1)..=16.
-fn evaluate_hypothesis(
+pub(super) fn evaluate_hypothesis(
     kind: HypKind,
     frames: &[&[f64]],
     use_multistep_refine: bool,
@@ -1872,12 +1872,12 @@ fn evaluate_hypothesis(
 
 // ─── Nivel 2: Estado Metacognitivo ("Yo-FE"), Prior Amortizado y Controlador ──
 
-const N_INV: usize = 8;
-const N_SELF_FEAT: usize = 10;
-const N_CAL_FEAT: usize = 7;
+pub(super) const N_INV: usize = 8;
+pub(super) const N_SELF_FEAT: usize = 10;
+pub(super) const N_CAL_FEAT: usize = 7;
 
 /// Extrae 8 invariantes geométricos del contexto (sin fuga) para el hiper-prior metacognitivo p_ψ(M | c_e).
-fn episode_invariants(frames: &[&[f64]]) -> [f64; N_INV] {
+pub(super) fn episode_invariants(frames: &[&[f64]]) -> [f64; N_INV] {
     let (qs, qns) = extract_pairs(frames);
     let aff = Affine2D::fit(&qs, &qns, 1e-6);
     let mut aff_err = 0.0;
@@ -2104,7 +2104,7 @@ pub struct EpisodeMetaReport {
     pub nan: bool,
 }
 
-fn softmax_scores(scores: &[f64], tau: f64) -> Vec<f64> {
+pub(super) fn softmax_scores(scores: &[f64], tau: f64) -> Vec<f64> {
     let mn = scores.iter().cloned().fold(f64::INFINITY, f64::min);
     let ex: Vec<f64> = scores
         .iter()
@@ -2118,7 +2118,7 @@ fn softmax_scores(scores: &[f64], tau: f64) -> Vec<f64> {
 }
 
 /// Energía Libre nula (modelo de persistencia x̂_{t+1} = x_t, sin aprendizaje): línea base para medir ΔF.
-fn null_free_energy(frames: &[&[f64]]) -> f64 {
+pub(super) fn null_free_energy(frames: &[&[f64]]) -> f64 {
     let (qs, qns) = extract_pairs(frames);
     let n = qs.len() as f64;
     let s2x = (qs.iter().zip(&qns).map(|(a, b)| (b[0] - a[0]).powi(2)).sum::<f64>() / n).max(1e-24);
@@ -2393,7 +2393,7 @@ fn infer_from_diags(
 
 /// Genera episodios de entrenamiento metacognitivo: 50% familias conocidas 0..7 + 50% sintéticas
 /// procedurales auditadas contra {8,10,11} (idéntico al protocolo de auditoría de `atlas.rs`).
-fn gen_meta_training_eps(seed: u64, n: usize, xor: u64) -> (Vec<Ep>, usize) {
+pub(super) fn gen_meta_training_eps(seed: u64, n: usize, xor: u64) -> (Vec<Ep>, usize) {
     let mut rng = Xoshiro256StarStar::seed_from_u64(seed ^ xor);
     let mut prng = Xoshiro256StarStar::seed_from_u64(seed ^ xor ^ 0x5A11);
     let probe = make_object(&mut prng, K_POINTS, ObjectClass::Blob);
@@ -2415,7 +2415,7 @@ fn gen_meta_training_eps(seed: u64, n: usize, xor: u64) -> (Vec<Ep>, usize) {
 
 /// Genera un banco OOD sintético procedural completamente nuevo (independiente del entrenamiento
 /// y auditado fuera de {8,10,11}) para evaluar generalización OOD universal adicional.
-fn gen_ood_synthetic_eps(seed: u64, n: usize) -> Vec<Ep> {
+pub(super) fn gen_ood_synthetic_eps(seed: u64, n: usize) -> Vec<Ep> {
     let mut rng = Xoshiro256StarStar::seed_from_u64(seed ^ XOR_METAFE_OOD);
     let mut prng = Xoshiro256StarStar::seed_from_u64(seed ^ XOR_METAFE_OOD ^ 0x5A11);
     let probe = make_object(&mut prng, K_POINTS, ObjectClass::Blob);
@@ -2442,7 +2442,7 @@ fn parse_context_fam_params(c: &[f64]) -> (usize, [f64; 2]) {
 /// Entrena el Prior Autónomo de Arranque en Frío 1-Paso (contexto c∈R^10 -> Affine2D)
 /// exclusivamente sobre `ds.train` (0 consultas TEST, 0 fórmulas de familia) mediante
 /// Procesos Gaussianos RBF optimizados por Energía Libre por familia: (p0, p1) -> Affine2D.
-fn train_cold_start_prior(ctrl: &mut MetaController, seed: u64) {
+pub(super) fn train_cold_start_prior(ctrl: &mut MetaController, seed: u64) {
     let s = generate_and_seal(seed, &DatasetConfig::standard(K_POINTS));
     let mut per_fam_ps: Vec<Vec<[f64; 2]>> = vec![vec![]; N_FAM];
     let mut per_fam_ys: Vec<[Vec<f64>; 6]> = (0..N_FAM)
@@ -2482,7 +2482,7 @@ fn train_cold_start_prior(ctrl: &mut MetaController, seed: u64) {
     ctrl.cold_trained = true;
 }
 
-fn cold_start_step(ctrl: &MetaController, x: &[f64], c: &[f64]) -> Vec<f64> {
+pub(super) fn cold_start_step(ctrl: &MetaController, x: &[f64], c: &[f64]) -> Vec<f64> {
     let (fam, params) = parse_context_fam_params(c);
     if fam >= ctrl.cold_gps.len() {
         return x.to_vec();
@@ -2807,7 +2807,7 @@ pub fn train_metafe_controller(
 
 // ─── Métricas Metacognitivas (AUROC, Brier, ECE, AURC, Reducción Energía Libre) ─
 
-fn compute_auroc(scores: &[f64], labels: &[bool]) -> f64 {
+pub(super) fn compute_auroc(scores: &[f64], labels: &[bool]) -> f64 {
     let mut pos = 0.0;
     let mut neg = 0.0;
     for &l in labels {
@@ -2839,7 +2839,7 @@ fn compute_auroc(scores: &[f64], labels: &[bool]) -> f64 {
     conc / (pos * neg)
 }
 
-fn compute_brier(probs: &[f64], labels: &[bool]) -> f64 {
+pub(super) fn compute_brier(probs: &[f64], labels: &[bool]) -> f64 {
     mean(
         &probs
             .iter()
@@ -2849,7 +2849,7 @@ fn compute_brier(probs: &[f64], labels: &[bool]) -> f64 {
     )
 }
 
-fn compute_ece(probs: &[f64], labels: &[bool], n_bins: usize) -> f64 {
+pub(super) fn compute_ece(probs: &[f64], labels: &[bool], n_bins: usize) -> f64 {
     let n = probs.len().max(1) as f64;
     let mut ece = 0.0;
     for b in 0..n_bins {
@@ -2869,7 +2869,7 @@ fn compute_ece(probs: &[f64], labels: &[bool], n_bins: usize) -> f64 {
 }
 
 /// AURC (Area Under Risk-Coverage Curve): ordena de mayor a menor confianza p̂_ok y acumula tasa de error.
-fn compute_aurc(probs: &[f64], labels: &[bool]) -> f64 {
+pub(super) fn compute_aurc(probs: &[f64], labels: &[bool]) -> f64 {
     let n = probs.len();
     if n == 0 {
         return f64::NAN;
@@ -2887,7 +2887,7 @@ fn compute_aurc(probs: &[f64], labels: &[bool]) -> f64 {
     sum_risk / n as f64
 }
 
-fn pearson_corr(a: &[f64], b: &[f64]) -> f64 {
+pub(super) fn pearson_corr(a: &[f64], b: &[f64]) -> f64 {
     if a.len() < 2 || a.len() != b.len() {
         return 0.0;
     }
@@ -2923,14 +2923,14 @@ fn ranks_avg(v: &[f64]) -> Vec<f64> {
     r
 }
 
-fn spearman_corr(a: &[f64], b: &[f64]) -> f64 {
+pub(super) fn spearman_corr(a: &[f64], b: &[f64]) -> f64 {
     if a.len() < 2 || a.len() != b.len() {
         return 0.0;
     }
     pearson_corr(&ranks_avg(a), &ranks_avg(b))
 }
 
-fn eval_metafe_set(
+pub(super) fn eval_metafe_set(
     cfg: &MetaFeCfg,
     ctrl: &MetaController,
     eps: &[Ep],
@@ -3073,7 +3073,7 @@ fn eval_metafe_set(
 
 /// Evaluación E33 canónica (con prior ÓRBITA h1, igual que v4/ATLAS-FW/BQ10)
 /// Y E33 autónoma (SIN ÓRBITA, usando el prior GP RBF entrenado de arranque en frío de METAFE).
-fn e33_metafe(
+pub(super) fn e33_metafe(
     cfg: &MetaFeCfg,
     ctrl: &MetaController,
     d: &Orbita,

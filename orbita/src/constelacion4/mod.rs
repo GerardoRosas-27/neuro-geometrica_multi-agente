@@ -6,6 +6,7 @@
 #![allow(clippy::too_many_arguments, clippy::needless_range_loop, clippy::type_complexity)]
 pub mod atlas;
 pub mod metafe;
+pub mod metafe3s;
 use crate::fam::reid;
 use crate::model::Orbita;
 use cdt_rqm_epr::field_autonomy_v4::{target_h, ITERABLE_FAMS, K_POINTS};
