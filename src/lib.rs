@@ -33,5 +33,8 @@ pub mod prompt_spider;
 pub mod spider_field;
 pub mod spider_field_experiment;
 
+// Arquitectura conversacional neuro-geométrica metacognitiva de 3 escalas (METAFE-3S-Dial)
+pub mod neuro_dialogo;
+
 #[cfg(feature = "web")]
 pub mod web;
