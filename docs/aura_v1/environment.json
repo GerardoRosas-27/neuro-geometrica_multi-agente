@@ -1,0 +1,10 @@
+{
+  "os": "Linux-6.12.105+-x86_64-with-glibc2.36",
+  "machine": "x86_64",
+  "cpu_count": 2,
+  "rustc": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
+  "cargo": "cargo 1.100.0 (3acc79c0c 2026-11-05)",
+  "python": "3.11.2",
+  "gpu_available": false,
+  "note": "CPU-only VM; Stage 3 WGSL GPU shaders documented as architectural extension on trait boundaries."
+}

@@ -1,0 +1,10 @@
+[package]
+name = "aura-metacog"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+aura-math = { path = "../aura-math" }
+aura-world = { path = "../aura-world" }
+aura-hippocampus = { path = "../aura-hippocampus" }

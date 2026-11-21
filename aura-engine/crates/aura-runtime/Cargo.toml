@@ -1,0 +1,17 @@
+[package]
+name = "aura-runtime"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "aura-exp"
+path = "src/main.rs"
+
+[dependencies]
+aura-math = { path = "../aura-math" }
+aura-perception = { path = "../aura-perception" }
+aura-cortex = { path = "../aura-cortex" }
+aura-world = { path = "../aura-world" }
+aura-hippocampus = { path = "../aura-hippocampus" }
+aura-metacog = { path = "../aura-metacog" }

@@ -1,0 +1,12 @@
+{
+  "seed": 41985,
+  "phase": "DEV",
+  "max_abs_diff_zero_mul": 0,
+  "memory_ratio_f32_over_packed": 16,
+  "dim256_zero_mul_us": 11.7511,
+  "dim256_f32_dense_us": 33.9906,
+  "dim1024_zero_mul_us": 518.8034,
+  "dim1024_f32_dense_us": 670.4046,
+  "dim1024_packed_bytes": 262144,
+  "dim1024_f32_bytes": 4194304
+}
