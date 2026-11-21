@@ -1,0 +1,35 @@
+{
+  "phase": "CONFIRM",
+  "workers": 2,
+  "seed_start": "0xB400",
+  "seed_end": "0xB40F",
+  "sources_sha256": "1e9b7f0f2eafe4b5d7e8281f88867aaa3d0f14c7a7e62ac14da5e869bb97ad64",
+  "per_file_sha256": {
+    "aura-engine/crates/aura-cortex/src/lib.rs": "6a1daf8a66af4714f866a52faf382506ee695b32844d548a10bb8ea81b34ca95",
+    "aura-engine/crates/aura-hippocampus/src/lib.rs": "4b6e84a8ebdf10932046fa0967fbfb3dfe3c963c3c6d779f367536844ea26d74",
+    "aura-engine/crates/aura-math/src/lib.rs": "260a006548a424ff7753ed4926f9504cced374975ebf97a01cb96689e5d991e1",
+    "aura-engine/crates/aura-metacog/src/lib.rs": "f9c34ecebc748330e2e5e6ed516dc51a97f94830c1bc576e24bf445b560fe8e5",
+    "aura-engine/crates/aura-perception/src/lib.rs": "e473ad5a8c4c123723f2310c26c8ecb6921666eda4fa2450a2692d16e8338fa4",
+    "aura-engine/crates/aura-runtime/src/agent.rs": "bfac7c23fbedf28539571c03e2266e383517bb5169a2e90894299c490d208475",
+    "aura-engine/crates/aura-runtime/src/exp_e1.rs": "eb6816f604326a7ead897c738e2a66a56ebee0fff9a0b81900cb8a4cb22e68b7",
+    "aura-engine/crates/aura-runtime/src/exp_e2.rs": "2eb177f34c6d0d6998ab6e083fb1a1ff5da9891debbc276a92f641f4994c8d6e",
+    "aura-engine/crates/aura-runtime/src/exp_e3.rs": "67731f0f0b18f6b4704df7a0c8c923abc6a894be1a1cace3e7d752ad0cdd458d",
+    "aura-engine/crates/aura-runtime/src/exp_e4.rs": "8f24aeae977dbdbe4858d4c9a72fbd6fb2f426a9cabfbfedd217e152a64a84c1",
+    "aura-engine/crates/aura-runtime/src/exp_e5.rs": "1be1ab405a134fc4be2b7023fed1070498eb9d368acec3edb9ab0a21f20b8198",
+    "aura-engine/crates/aura-runtime/src/lib.rs": "3aabba6495af7688d48f37fab1d6207bf60537d2c2b2f51ac6783d01186e6601",
+    "aura-engine/crates/aura-runtime/src/main.rs": "b693d0b5f1030e6aeef40d70dcf7476f586f2e78e70f6c5d5060a3710b6f6b8a",
+    "aura-engine/crates/aura-world/src/lib.rs": "21f65d02b9a65ed91e5edec2b9e3a927b21f200c85bd6335848c1b4f11106eb7"
+  },
+  "start_epoch": 1795228678.1627536,
+  "command": [
+    "aura-engine/run.py",
+    "CONFIRM",
+    "--workers",
+    "2"
+  ],
+  "rustc": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
+  "system": "Linux x86_64",
+  "nice": 10,
+  "elapsed_seconds": 40.4169,
+  "completed": 16
+}

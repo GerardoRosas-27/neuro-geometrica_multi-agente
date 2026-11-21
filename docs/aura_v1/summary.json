@@ -1,0 +1,1077 @@
+{
+  "bootstrap": {
+    "resamples": 10000,
+    "seed": 12345,
+    "delta": 0.05,
+    "unit": "16 independent seeds per phase; paired environments within each seed",
+    "method": "percentile with linearly interpolated quantiles"
+  },
+  "phases": {
+    "DEV": {
+      "e1": {
+        "arms": {
+          "aura_full": {
+            "total_patches": 944.875,
+            "pred_bytes_per_patch": 4.1603593125,
+            "high_ent_bytes_per_patch": 1.01,
+            "compression_ratio": 4.1191676875,
+            "phase1_norm_err": 0.5251658125,
+            "phase2_shift_norm_err": 0.900780375,
+            "phase2_recovery_steps": 4.375,
+            "phase3_static_norm_err": 1.0812175625,
+            "phase3_static_coherence": 39.93916675,
+            "phase2_shift_coherence": 41.435,
+            "phase4_recall_norm_err": 0.5337605625,
+            "familiar_epistemic": 1700.8362330625,
+            "static_epistemic": 2971.5086805,
+            "ood_epistemic": 2458.2673520625,
+            "effective_rank": 27.818421875,
+            "mean_latent_norm": 21.1380645,
+            "eval_ms": 364.4517625
+          },
+          "no_fast_weights": {
+            "total_patches": 944.875,
+            "pred_bytes_per_patch": 4.1603593125,
+            "high_ent_bytes_per_patch": 1.01,
+            "compression_ratio": 4.1191676875,
+            "phase1_norm_err": 0.5251658125,
+            "phase2_shift_norm_err": 1.0930264375,
+            "phase2_recovery_steps": 2.8125,
+            "phase3_static_norm_err": 1.17852725,
+            "phase3_static_coherence": 41.134583375,
+            "phase2_shift_coherence": 42.64,
+            "phase4_recall_norm_err": 0.568071875,
+            "familiar_epistemic": 1700.8362330625,
+            "static_epistemic": 4914.4027778125,
+            "ood_epistemic": 4890.7568586875,
+            "effective_rank": 28.6978895625,
+            "mean_latent_norm": 20.7893540625,
+            "eval_ms": 226.28070625
+          },
+          "no_hippocampus": {
+            "total_patches": 944.875,
+            "pred_bytes_per_patch": 4.1603593125,
+            "high_ent_bytes_per_patch": 1.01,
+            "compression_ratio": 4.1191676875,
+            "phase1_norm_err": 0.5251658125,
+            "phase2_shift_norm_err": 0.900780375,
+            "phase2_recovery_steps": 4.375,
+            "phase3_static_norm_err": 1.0812175625,
+            "phase3_static_coherence": 39.93916675,
+            "phase2_shift_coherence": 41.435,
+            "phase4_recall_norm_err": 0.7185615,
+            "familiar_epistemic": 1700.8362330625,
+            "static_epistemic": 2971.5086805,
+            "ood_epistemic": 2363.860237,
+            "effective_rank": 28.0854943125,
+            "mean_latent_norm": 21.0729013125,
+            "eval_ms": 323.390925
+          },
+          "fixed_patcher": {
+            "total_patches": 600,
+            "pred_bytes_per_patch": 4.0,
+            "high_ent_bytes_per_patch": 4.0,
+            "compression_ratio": 1.0,
+            "phase1_norm_err": 0.384970875,
+            "phase2_shift_norm_err": 0.6912014375,
+            "phase2_recovery_steps": 2.0,
+            "phase3_static_norm_err": 1.094855,
+            "phase3_static_coherence": 38.529166625,
+            "phase2_shift_coherence": 45.1925,
+            "phase4_recall_norm_err": 0.4785681875,
+            "familiar_epistemic": 1326.3875,
+            "static_epistemic": 4417.92777775,
+            "ood_epistemic": 1712.6883333125,
+            "effective_rank": 16.0916255625,
+            "mean_latent_norm": 23.848235625,
+            "eval_ms": 217.127125
+          },
+          "no_vicreg": {
+            "total_patches": 944.875,
+            "pred_bytes_per_patch": 4.1603593125,
+            "high_ent_bytes_per_patch": 1.01,
+            "compression_ratio": 4.1191676875,
+            "phase1_norm_err": 0.5200546875000001,
+            "phase2_shift_norm_err": 0.8976465625,
+            "phase2_recovery_steps": 2.6875,
+            "phase3_static_norm_err": 1.0824653125,
+            "phase3_static_coherence": 40.1097916875,
+            "phase2_shift_coherence": 41.7125,
+            "phase4_recall_norm_err": 0.5308078125,
+            "familiar_epistemic": 1301.628208625,
+            "static_epistemic": 1920.321527625,
+            "ood_epistemic": 2178.3992611875,
+            "effective_rank": 24.6291631875,
+            "mean_latent_norm": 16.6483013125,
+            "eval_ms": 290.05399375
+          },
+          "persistence": {
+            "total_patches": 944.875,
+            "pred_bytes_per_patch": 4.1603593125,
+            "high_ent_bytes_per_patch": 1.01,
+            "compression_ratio": 4.1191676875,
+            "phase1_norm_err": 1.6000188124999999,
+            "phase2_shift_norm_err": 1.3770768125,
+            "phase2_recovery_steps": 23.75,
+            "phase3_static_norm_err": 1.29897275,
+            "phase3_static_coherence": 19.862291625,
+            "phase2_shift_coherence": 18.7375,
+            "phase4_recall_norm_err": 1.503391,
+            "familiar_epistemic": 0.0,
+            "static_epistemic": 0.0,
+            "ood_epistemic": 0.0,
+            "effective_rank": 32.1318550625,
+            "mean_latent_norm": 19.532197125,
+            "eval_ms": 15.69005
+          }
+        },
+        "paired": {
+          "H1a_shift_err_full_minus_no_fast": {
+            "mean": -0.1922460625,
+            "ci95": [
+              -0.2198640640625,
+              -0.16675145000000005
+            ],
+            "seeds": 16
+          },
+          "H1a_shift_err_full_minus_persistence": {
+            "mean": -0.47629643749999995,
+            "ci95": [
+              -0.51624018125,
+              -0.4439667687500001
+            ],
+            "seeds": 16
+          },
+          "H1b_recall_err_full_minus_no_hip": {
+            "mean": -0.18480093749999998,
+            "ci95": [
+              -0.21060574531249998,
+              -0.15477272500000003
+            ],
+            "seeds": 16
+          },
+          "H1c_erank_full_minus_no_vicreg": {
+            "mean": 3.1892586874999997,
+            "ci95": [
+              2.9776832499999992,
+              3.4151618359375
+            ],
+            "seeds": 16
+          },
+          "H1c_norm_full_minus_no_vicreg": {
+            "mean": 4.4897631875,
+            "ci95": [
+              4.346232510937502,
+              4.647927540625001
+            ],
+            "seeds": 16
+          },
+          "H1d_compression_full_minus_fixed": {
+            "mean": 3.1191676875,
+            "ci95": [
+              3.0173765453125,
+              3.2547085
+            ],
+            "seeds": 16
+          },
+          "H1e_ood_minus_familiar_epi": {
+            "mean": 757.431119,
+            "ci95": [
+              670.740031109375,
+              839.7044853359374
+            ],
+            "seeds": 16
+          },
+          "H1e_shift_minus_static_coherence": {
+            "mean": 1.49583325,
+            "ci95": [
+              0.3045572078125003,
+              2.5908749765625
+            ],
+            "seeds": 16
+          }
+        }
+      },
+      "e2": {
+        "arms": {
+          "aura_full": {
+            "phase1_return": 11.7265625,
+            "phase1_success": 0.9453125,
+            "phase2_shift_return": 5.3177083125,
+            "phase2_shift_success": 0.8124999375,
+            "phase3_ood_return": 1.8125,
+            "combined_p2_p3_return": 7.1302083125,
+            "abstain_rate_trap": 1.0,
+            "abstain_rate_familiar": 0.0078125,
+            "system1_frac_familiar": 0.2309193125,
+            "mean_rollouts_per_step": 18.964714375,
+            "eval_ms": 1093.64509375
+          },
+          "system1_only": {
+            "phase1_return": 12.421875,
+            "phase1_success": 0.9609375,
+            "phase2_shift_return": -30.6171875,
+            "phase2_shift_success": 0.0,
+            "phase3_ood_return": -3.359375,
+            "combined_p2_p3_return": -33.9765625,
+            "abstain_rate_trap": 0.0,
+            "abstain_rate_familiar": 0.0,
+            "system1_frac_familiar": 1.0,
+            "mean_rollouts_per_step": 1.0,
+            "eval_ms": 341.61805
+          },
+          "no_fast_weights": {
+            "phase1_return": 11.7265625,
+            "phase1_success": 0.9453125,
+            "phase2_shift_return": -17.8203125,
+            "phase2_shift_success": 0.0,
+            "phase3_ood_return": -1.0,
+            "combined_p2_p3_return": -18.8203125,
+            "abstain_rate_trap": 1.0,
+            "abstain_rate_familiar": 0.890625,
+            "system1_frac_familiar": 0.2309193125,
+            "mean_rollouts_per_step": 19.4694915,
+            "eval_ms": 1385.00113125
+          },
+          "random_control": {
+            "phase1_return": -18.96875,
+            "phase1_success": 0.0442709375,
+            "phase2_shift_return": -19.83854175,
+            "phase2_shift_success": 0.01041675,
+            "phase3_ood_return": -2.53515625,
+            "combined_p2_p3_return": -22.373698,
+            "abstain_rate_trap": 0.0,
+            "abstain_rate_familiar": 0.0,
+            "system1_frac_familiar": 1.0,
+            "mean_rollouts_per_step": 1.0,
+            "eval_ms": 327.19614375
+          }
+        },
+        "paired": {
+          "H2a_combined_full_minus_sys1": {
+            "mean": 41.1067708125,
+            "ci95": [
+              38.4192707484375,
+              43.8489583140625
+            ],
+            "seeds": 16
+          },
+          "H2a_combined_full_minus_no_fast": {
+            "mean": 25.9505208125,
+            "ci95": [
+              22.6990559890625,
+              29.039062437499993
+            ],
+            "seeds": 16
+          },
+          "H2a_combined_full_minus_random": {
+            "mean": 29.5039063125,
+            "ci95": [
+              26.610612143750007,
+              32.266927065625
+            ],
+            "seeds": 16
+          },
+          "H2a_p2_succ_full_minus_sys1": {
+            "mean": 0.8124999375,
+            "ci95": [
+              0.7265625,
+              0.893229125
+            ],
+            "seeds": 16
+          },
+          "H2a_p2_succ_full_minus_no_fast": {
+            "mean": 0.8124999375,
+            "ci95": [
+              0.7265625,
+              0.893229125
+            ],
+            "seeds": 16
+          },
+          "H2b_abstain_trap_minus_familiar": {
+            "mean": 0.9921875,
+            "ci95": [
+              0.9765625,
+              1.0
+            ],
+            "seeds": 16
+          }
+        }
+      },
+      "e3": {
+        "arms": {
+          "aura_sleep_full": {
+            "acc_a_pre": 0.6625670625,
+            "acc_a_post": 0.6144104375,
+            "forgetting_a": 0.04815675,
+            "acc_b_post": 0.63320925,
+            "combined_ab": 0.6238098125,
+            "weight_flips": 27670.625,
+            "nonzero_frac": 0.2443543125,
+            "eval_ms": 50.49729375
+          },
+          "ablation_no_replay": {
+            "acc_a_pre": 0.6625670625,
+            "acc_a_post": 0.5501708125,
+            "forgetting_a": 0.11239625,
+            "acc_b_post": 0.6618651875,
+            "combined_ab": 0.6060180625,
+            "weight_flips": 26283.3125,
+            "nonzero_frac": 0.253128,
+            "eval_ms": 43.9325625
+          },
+          "ablation_no_hysteresis": {
+            "acc_a_pre": 0.6625670625,
+            "acc_a_post": 0.531829875,
+            "forgetting_a": 0.1307371875,
+            "acc_b_post": 0.5239256875,
+            "combined_ab": 0.52787775,
+            "weight_flips": 425837.6875,
+            "nonzero_frac": 0.5,
+            "eval_ms": 57.05904375
+          },
+          "ablation_naive": {
+            "acc_a_pre": 0.6625670625,
+            "acc_a_post": 0.538909875,
+            "forgetting_a": 0.1236573125,
+            "acc_b_post": 0.538696375,
+            "combined_ab": 0.538803,
+            "weight_flips": 417354.8125,
+            "nonzero_frac": 0.4383696875,
+            "eval_ms": 55.6032875
+          }
+        },
+        "paired": {
+          "H3a_combined_full_minus_no_replay": {
+            "mean": 0.017791749999999995,
+            "ci95": [
+              0.013717748437499988,
+              0.0219420640625
+            ],
+            "seeds": 16
+          },
+          "H3a_forgetting_full_minus_no_replay": {
+            "mean": -0.0642395,
+            "ci95": [
+              -0.0720825625,
+              -0.05694587500000001
+            ],
+            "seeds": 16
+          },
+          "H3b_combined_full_minus_no_hysteresis": {
+            "mean": 0.0959320625,
+            "ci95": [
+              0.09123187812500001,
+              0.10020456406250002
+            ],
+            "seeds": 16
+          },
+          "H3b_forgetting_full_minus_no_hysteresis": {
+            "mean": -0.0825804375,
+            "ci95": [
+              -0.09085144687500002,
+              -0.0735168109375
+            ],
+            "seeds": 16
+          },
+          "H3_combined_full_minus_naive": {
+            "mean": 0.0850068125,
+            "ci95": [
+              0.07984924843749998,
+              0.0895544390625
+            ],
+            "seeds": 16
+          }
+        }
+      },
+      "e4": {
+        "arms": {
+          "cortical_full": {
+            "fe_regime1_early": 9163.8421875,
+            "fe_regime1_late": 8895.5790625,
+            "fe_regime2_early": 9267.790625,
+            "fe_regime2_late": 8836.9,
+            "fe_late_mean": 8866.23953125,
+            "sensory_fe_late": 2992.1809375,
+            "mean_spike_rate_pct": 5.755147125,
+            "ne_pre_shift": 3.075,
+            "ne_post_shift": 10.3604166875,
+            "ne_shift_delta": 7.2854166875,
+            "ticks_per_sec": 104394.96875,
+            "eval_ms": 11.55808125
+          },
+          "cortical_frozen": {
+            "fe_regime1_early": 11279.526953125,
+            "fe_regime1_late": 11312.696875,
+            "fe_regime2_early": 11490.360546875,
+            "fe_regime2_late": 11160.4925,
+            "fe_late_mean": 11236.5946875,
+            "sensory_fe_late": 4177.8989062499995,
+            "mean_spike_rate_pct": 6.4308878125,
+            "ne_pre_shift": 3.6979166875,
+            "ne_post_shift": 7.05,
+            "ne_shift_delta": 3.352083375,
+            "ticks_per_sec": 126818.33125,
+            "eval_ms": 9.5185
+          },
+          "cortical_no_phase_gate": {
+            "fe_regime1_early": 11288.878125,
+            "fe_regime1_late": 9980.20125,
+            "fe_regime2_early": 10552.13515625,
+            "fe_regime2_late": 10225.15,
+            "fe_late_mean": 10102.675625,
+            "sensory_fe_late": 2919.4825,
+            "mean_spike_rate_pct": 6.418457125,
+            "ne_pre_shift": 4.2604166875,
+            "ne_post_shift": 10.2958333125,
+            "ne_shift_delta": 6.0354166875,
+            "ticks_per_sec": 122890.92125,
+            "eval_ms": 9.78585
+          },
+          "cortical_no_neuromod": {
+            "fe_regime1_early": 8501.229296875,
+            "fe_regime1_late": 7148.2759375000005,
+            "fe_regime2_early": 7900.732421875,
+            "fe_regime2_late": 6905.074375,
+            "fe_late_mean": 7026.67515625,
+            "sensory_fe_late": 1925.6559375,
+            "mean_spike_rate_pct": 4.11602775,
+            "ne_pre_shift": 2.375,
+            "ne_post_shift": 9.622916625,
+            "ne_shift_delta": 7.24791675,
+            "ticks_per_sec": 136857.1,
+            "eval_ms": 8.86848125
+          }
+        },
+        "paired": {
+          "H4a_fe_late_full_minus_frozen": {
+            "mean": -2370.3551562499997,
+            "ci95": [
+              -2701.4466601562503,
+              -2023.745914062501
+            ],
+            "seeds": 16
+          },
+          "H4a_sens_fe_full_minus_frozen": {
+            "mean": -1185.71796875,
+            "ci95": [
+              -1339.8902851562502,
+              -1018.396765625
+            ],
+            "seeds": 16
+          },
+          "H4b_ne_shift_delta_full": {
+            "mean": 7.2854166875,
+            "ci95": [
+              3.925,
+              10.0167187703125
+            ],
+            "seeds": 16
+          },
+          "H4c_fe_late_full_minus_no_phase": {
+            "mean": -1236.4360937499998,
+            "ci95": [
+              -1493.36778125,
+              -986.9468359374999
+            ],
+            "seeds": 16
+          },
+          "H4c_fe_late_full_minus_no_neuromod": {
+            "mean": 1839.5643750000002,
+            "ci95": [
+              1568.9236210937506,
+              2119.65625390625
+            ],
+            "seeds": 16
+          }
+        }
+      },
+      "e5": {
+        "max_abs_diff_zero_mul": 0,
+        "memory_ratio_min": 16,
+        "dim256_zero_mul_us_mean": 11.97345,
+        "dim256_f32_dense_us_mean": 35.37493125,
+        "dim1024_zero_mul_us_mean": 538.860275,
+        "dim1024_f32_dense_us_mean": 705.3846125,
+        "dim1024_packed_bytes": 262144,
+        "dim1024_f32_bytes": 4194304
+      },
+      "runtime": {
+        "phase": "DEV",
+        "workers": 2,
+        "seed_start": "0xA400",
+        "seed_end": "0xA40F",
+        "sources_sha256": "1e9b7f0f2eafe4b5d7e8281f88867aaa3d0f14c7a7e62ac14da5e869bb97ad64",
+        "per_file_sha256": {
+          "aura-engine/crates/aura-cortex/src/lib.rs": "6a1daf8a66af4714f866a52faf382506ee695b32844d548a10bb8ea81b34ca95",
+          "aura-engine/crates/aura-hippocampus/src/lib.rs": "4b6e84a8ebdf10932046fa0967fbfb3dfe3c963c3c6d779f367536844ea26d74",
+          "aura-engine/crates/aura-math/src/lib.rs": "260a006548a424ff7753ed4926f9504cced374975ebf97a01cb96689e5d991e1",
+          "aura-engine/crates/aura-metacog/src/lib.rs": "f9c34ecebc748330e2e5e6ed516dc51a97f94830c1bc576e24bf445b560fe8e5",
+          "aura-engine/crates/aura-perception/src/lib.rs": "e473ad5a8c4c123723f2310c26c8ecb6921666eda4fa2450a2692d16e8338fa4",
+          "aura-engine/crates/aura-runtime/src/agent.rs": "bfac7c23fbedf28539571c03e2266e383517bb5169a2e90894299c490d208475",
+          "aura-engine/crates/aura-runtime/src/exp_e1.rs": "eb6816f604326a7ead897c738e2a66a56ebee0fff9a0b81900cb8a4cb22e68b7",
+          "aura-engine/crates/aura-runtime/src/exp_e2.rs": "2eb177f34c6d0d6998ab6e083fb1a1ff5da9891debbc276a92f641f4994c8d6e",
+          "aura-engine/crates/aura-runtime/src/exp_e3.rs": "67731f0f0b18f6b4704df7a0c8c923abc6a894be1a1cace3e7d752ad0cdd458d",
+          "aura-engine/crates/aura-runtime/src/exp_e4.rs": "8f24aeae977dbdbe4858d4c9a72fbd6fb2f426a9cabfbfedd217e152a64a84c1",
+          "aura-engine/crates/aura-runtime/src/exp_e5.rs": "1be1ab405a134fc4be2b7023fed1070498eb9d368acec3edb9ab0a21f20b8198",
+          "aura-engine/crates/aura-runtime/src/lib.rs": "3aabba6495af7688d48f37fab1d6207bf60537d2c2b2f51ac6783d01186e6601",
+          "aura-engine/crates/aura-runtime/src/main.rs": "b693d0b5f1030e6aeef40d70dcf7476f586f2e78e70f6c5d5060a3710b6f6b8a",
+          "aura-engine/crates/aura-world/src/lib.rs": "21f65d02b9a65ed91e5edec2b9e3a927b21f200c85bd6335848c1b4f11106eb7"
+        },
+        "start_epoch": 1795228605.9616435,
+        "command": [
+          "aura-engine/run.py",
+          "DEV",
+          "--workers",
+          "2",
+          "--force"
+        ],
+        "rustc": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
+        "system": "Linux x86_64",
+        "nice": 10,
+        "elapsed_seconds": 40.38,
+        "completed": 16
+      }
+    },
+    "CONFIRM": {
+      "e1": {
+        "arms": {
+          "aura_full": {
+            "total_patches": 945.4375,
+            "pred_bytes_per_patch": 4.1148441875,
+            "high_ent_bytes_per_patch": 1.01,
+            "compression_ratio": 4.074103125,
+            "phase1_norm_err": 0.518538625,
+            "phase2_shift_norm_err": 0.9353005625,
+            "phase2_recovery_steps": 3.8125,
+            "phase3_static_norm_err": 1.079609125,
+            "phase3_static_coherence": 40.0937499375,
+            "phase2_shift_coherence": 41.21,
+            "phase4_recall_norm_err": 0.5343935625,
+            "familiar_epistemic": 1666.3668654375,
+            "static_epistemic": 2956.405555625,
+            "ood_epistemic": 2452.8775938125,
+            "effective_rank": 27.385969375,
+            "mean_latent_norm": 21.14417575,
+            "eval_ms": 354.144725
+          },
+          "no_fast_weights": {
+            "total_patches": 945.4375,
+            "pred_bytes_per_patch": 4.1148441875,
+            "high_ent_bytes_per_patch": 1.01,
+            "compression_ratio": 4.074103125,
+            "phase1_norm_err": 0.518538625,
+            "phase2_shift_norm_err": 1.1248899375,
+            "phase2_recovery_steps": 4.375,
+            "phase3_static_norm_err": 1.1799216875,
+            "phase3_static_coherence": 41.5695833125,
+            "phase2_shift_coherence": 42.5475,
+            "phase4_recall_norm_err": 0.59641525,
+            "familiar_epistemic": 1666.3668654375,
+            "static_epistemic": 4944.284027875,
+            "ood_epistemic": 4969.0785734375,
+            "effective_rank": 28.2633569375,
+            "mean_latent_norm": 20.7641978125,
+            "eval_ms": 231.250275
+          },
+          "no_hippocampus": {
+            "total_patches": 945.4375,
+            "pred_bytes_per_patch": 4.1148441875,
+            "high_ent_bytes_per_patch": 1.01,
+            "compression_ratio": 4.074103125,
+            "phase1_norm_err": 0.518538625,
+            "phase2_shift_norm_err": 0.9353005625,
+            "phase2_recovery_steps": 3.8125,
+            "phase3_static_norm_err": 1.079609125,
+            "phase3_static_coherence": 40.0937499375,
+            "phase2_shift_coherence": 41.21,
+            "phase4_recall_norm_err": 0.7157273749999999,
+            "familiar_epistemic": 1666.3668654375,
+            "static_epistemic": 2956.405555625,
+            "ood_epistemic": 2346.671965375,
+            "effective_rank": 27.6313461875,
+            "mean_latent_norm": 21.086602875,
+            "eval_ms": 323.02790625
+          },
+          "fixed_patcher": {
+            "total_patches": 600,
+            "pred_bytes_per_patch": 4.0,
+            "high_ent_bytes_per_patch": 4.0,
+            "compression_ratio": 1.0,
+            "phase1_norm_err": 0.3907843125,
+            "phase2_shift_norm_err": 0.7203796875,
+            "phase2_recovery_steps": 2.375,
+            "phase3_static_norm_err": 1.09434225,
+            "phase3_static_coherence": 38.2441666875,
+            "phase2_shift_coherence": 44.1625,
+            "phase4_recall_norm_err": 0.46626375,
+            "familiar_epistemic": 1320.9687499375,
+            "static_epistemic": 4411.5555556875,
+            "ood_epistemic": 1723.51083325,
+            "effective_rank": 15.88982775,
+            "mean_latent_norm": 23.7665085,
+            "eval_ms": 217.32689375
+          },
+          "no_vicreg": {
+            "total_patches": 945.4375,
+            "pred_bytes_per_patch": 4.1148441875,
+            "high_ent_bytes_per_patch": 1.01,
+            "compression_ratio": 4.074103125,
+            "phase1_norm_err": 0.507600375,
+            "phase2_shift_norm_err": 0.9300191875,
+            "phase2_recovery_steps": 4.4375,
+            "phase3_static_norm_err": 1.079896375,
+            "phase3_static_coherence": 40.275208375,
+            "phase2_shift_coherence": 41.12,
+            "phase4_recall_norm_err": 0.5403195625,
+            "familiar_epistemic": 1249.47101775,
+            "static_epistemic": 1893.8829861250001,
+            "ood_epistemic": 2163.6392925625,
+            "effective_rank": 24.1378753125,
+            "mean_latent_norm": 16.526608875,
+            "eval_ms": 298.4034875
+          },
+          "persistence": {
+            "total_patches": 945.4375,
+            "pred_bytes_per_patch": 4.1148441875,
+            "high_ent_bytes_per_patch": 1.01,
+            "compression_ratio": 4.074103125,
+            "phase1_norm_err": 1.5976716875,
+            "phase2_shift_norm_err": 1.3650231875,
+            "phase2_recovery_steps": 13.5625,
+            "phase3_static_norm_err": 1.2945108125,
+            "phase3_static_coherence": 19.905,
+            "phase2_shift_coherence": 18.7825,
+            "phase4_recall_norm_err": 1.5091963750000001,
+            "familiar_epistemic": 0.0,
+            "static_epistemic": 0.0,
+            "ood_epistemic": 0.0,
+            "effective_rank": 31.745399,
+            "mean_latent_norm": 19.5555335,
+            "eval_ms": 15.88011875
+          }
+        },
+        "paired": {
+          "H1a_shift_err_full_minus_no_fast": {
+            "mean": -0.189589375,
+            "ci95": [
+              -0.21011201093749995,
+              -0.16840310937500003
+            ],
+            "seeds": 16
+          },
+          "H1a_shift_err_full_minus_persistence": {
+            "mean": -0.429722625,
+            "ci95": [
+              -0.4516785828125,
+              -0.4095063421875
+            ],
+            "seeds": 16
+          },
+          "H1b_recall_err_full_minus_no_hip": {
+            "mean": -0.1813338125,
+            "ci95": [
+              -0.20695362343749998,
+              -0.1552351046875
+            ],
+            "seeds": 16
+          },
+          "H1c_erank_full_minus_no_vicreg": {
+            "mean": 3.2480940625,
+            "ci95": [
+              3.0253708343749994,
+              3.4745456140625
+            ],
+            "seeds": 16
+          },
+          "H1c_norm_full_minus_no_vicreg": {
+            "mean": 4.617566875,
+            "ci95": [
+              4.4323719078125,
+              4.840171275
+            ],
+            "seeds": 16
+          },
+          "H1d_compression_full_minus_fixed": {
+            "mean": 3.0741031249999997,
+            "ci95": [
+              2.9918283750000008,
+              3.1812197109375004
+            ],
+            "seeds": 16
+          },
+          "H1e_ood_minus_familiar_epi": {
+            "mean": 786.510728375,
+            "ci95": [
+              710.53797358125,
+              862.885534540625
+            ],
+            "seeds": 16
+          },
+          "H1e_shift_minus_static_coherence": {
+            "mean": 1.1162500624999998,
+            "ci95": [
+              0.19080206406250017,
+              2.0281667906249985
+            ],
+            "seeds": 16
+          }
+        }
+      },
+      "e2": {
+        "arms": {
+          "aura_full": {
+            "phase1_return": 10.4322916875,
+            "phase1_success": 0.90625,
+            "phase2_shift_return": 5.3177083125,
+            "phase2_shift_success": 0.828125,
+            "phase3_ood_return": 1.89453125,
+            "combined_p2_p3_return": 7.2122395625,
+            "abstain_rate_trap": 1.0,
+            "abstain_rate_familiar": 0.0078125,
+            "system1_frac_familiar": 0.2773533125,
+            "mean_rollouts_per_step": 18.4647490625,
+            "eval_ms": 1144.40778125
+          },
+          "system1_only": {
+            "phase1_return": 10.609375,
+            "phase1_success": 0.8984375,
+            "phase2_shift_return": -29.0859375,
+            "phase2_shift_success": 0.0,
+            "phase3_ood_return": -2.55859375,
+            "combined_p2_p3_return": -31.64453125,
+            "abstain_rate_trap": 0.0,
+            "abstain_rate_familiar": 0.0,
+            "system1_frac_familiar": 1.0,
+            "mean_rollouts_per_step": 1.0,
+            "eval_ms": 347.00079375
+          },
+          "no_fast_weights": {
+            "phase1_return": 10.4322916875,
+            "phase1_success": 0.90625,
+            "phase2_shift_return": -18.0859375,
+            "phase2_shift_success": 0.0,
+            "phase3_ood_return": -0.88671875,
+            "combined_p2_p3_return": -18.97265625,
+            "abstain_rate_trap": 1.0,
+            "abstain_rate_familiar": 0.84375,
+            "system1_frac_familiar": 0.2773533125,
+            "mean_rollouts_per_step": 19.0882865625,
+            "eval_ms": 1364.30215625
+          },
+          "random_control": {
+            "phase1_return": -19.466145875,
+            "phase1_success": 0.023437687500000002,
+            "phase2_shift_return": -19.872395875,
+            "phase2_shift_success": 0.01041675,
+            "phase3_ood_return": -2.45703125,
+            "combined_p2_p3_return": -22.329427125,
+            "abstain_rate_trap": 0.0,
+            "abstain_rate_familiar": 0.0,
+            "system1_frac_familiar": 1.0,
+            "mean_rollouts_per_step": 1.0,
+            "eval_ms": 315.7183125
+          }
+        },
+        "paired": {
+          "H2a_combined_full_minus_sys1": {
+            "mean": 38.8567708125,
+            "ci95": [
+              36.32415352187499,
+              40.889355490625
+            ],
+            "seeds": 16
+          },
+          "H2a_combined_full_minus_no_fast": {
+            "mean": 26.1848958125,
+            "ci95": [
+              24.009049334374996,
+              27.972721412500007
+            ],
+            "seeds": 16
+          },
+          "H2a_combined_full_minus_random": {
+            "mean": 29.5416666875,
+            "ci95": [
+              27.0819659,
+              31.578125065624995
+            ],
+            "seeds": 16
+          },
+          "H2a_p2_succ_full_minus_sys1": {
+            "mean": 0.828125,
+            "ci95": [
+              0.7630208125,
+              0.8828125
+            ],
+            "seeds": 16
+          },
+          "H2a_p2_succ_full_minus_no_fast": {
+            "mean": 0.828125,
+            "ci95": [
+              0.7630208125,
+              0.8828125
+            ],
+            "seeds": 16
+          },
+          "H2b_abstain_trap_minus_familiar": {
+            "mean": 0.9921875,
+            "ci95": [
+              0.9765625,
+              1.0
+            ],
+            "seeds": 16
+          }
+        }
+      },
+      "e3": {
+        "arms": {
+          "aura_sleep_full": {
+            "acc_a_pre": 0.6615295,
+            "acc_a_post": 0.616516125,
+            "forgetting_a": 0.045013375,
+            "acc_b_post": 0.6346740625,
+            "combined_ab": 0.625595125,
+            "weight_flips": 27786.75,
+            "nonzero_frac": 0.245254375,
+            "eval_ms": 46.95701875
+          },
+          "ablation_no_replay": {
+            "acc_a_pre": 0.6615295,
+            "acc_a_post": 0.5504759375,
+            "forgetting_a": 0.1110535,
+            "acc_b_post": 0.6645508125,
+            "combined_ab": 0.6075135625,
+            "weight_flips": 26474.1875,
+            "nonzero_frac": 0.2515868125,
+            "eval_ms": 43.079556249999996
+          },
+          "ablation_no_hysteresis": {
+            "acc_a_pre": 0.6615295,
+            "acc_a_post": 0.5312195625,
+            "forgetting_a": 0.13031,
+            "acc_b_post": 0.525451625,
+            "combined_ab": 0.5283355,
+            "weight_flips": 426043,
+            "nonzero_frac": 0.5,
+            "eval_ms": 57.334
+          },
+          "ablation_naive": {
+            "acc_a_pre": 0.6615295,
+            "acc_a_post": 0.54223625,
+            "forgetting_a": 0.11929325,
+            "acc_b_post": 0.5396118125,
+            "combined_ab": 0.5409240625,
+            "weight_flips": 418590.6875,
+            "nonzero_frac": 0.438522375,
+            "eval_ms": 57.476293749999996
+          }
+        },
+        "paired": {
+          "H3a_combined_full_minus_no_replay": {
+            "mean": 0.018081562499999995,
+            "ci95": [
+              0.012054057812499994,
+              0.023711939062500003
+            ],
+            "seeds": 16
+          },
+          "H3a_forgetting_full_minus_no_replay": {
+            "mean": -0.066040125,
+            "ci95": [
+              -0.07464581562499999,
+              -0.057769937500000014
+            ],
+            "seeds": 16
+          },
+          "H3b_combined_full_minus_no_hysteresis": {
+            "mean": 0.097259625,
+            "ci95": [
+              0.0921477484375,
+              0.1027680640625
+            ],
+            "seeds": 16
+          },
+          "H3b_forgetting_full_minus_no_hysteresis": {
+            "mean": -0.085296625,
+            "ci95": [
+              -0.093933125,
+              -0.0762634359375
+            ],
+            "seeds": 16
+          },
+          "H3_combined_full_minus_naive": {
+            "mean": 0.08467106249999999,
+            "ci95": [
+              0.07734687343749998,
+              0.09164424999999998
+            ],
+            "seeds": 16
+          }
+        }
+      },
+      "e4": {
+        "arms": {
+          "cortical_full": {
+            "fe_regime1_early": 9821.032421875,
+            "fe_regime1_late": 9315.1834375,
+            "fe_regime2_early": 9467.271484375,
+            "fe_regime2_late": 9336.73,
+            "fe_late_mean": 9325.95671875,
+            "sensory_fe_late": 3197.95890625,
+            "mean_spike_rate_pct": 6.0068563125,
+            "ne_pre_shift": 3.0562500625,
+            "ne_post_shift": 9.460416625,
+            "ne_shift_delta": 6.404166625,
+            "ticks_per_sec": 101083.39937500001,
+            "eval_ms": 11.9290125
+          },
+          "cortical_frozen": {
+            "fe_regime1_early": 11446.944140625,
+            "fe_regime1_late": 11162.0065625,
+            "fe_regime2_early": 11185.102734375,
+            "fe_regime2_late": 11026.4615625,
+            "fe_late_mean": 11094.2340625,
+            "sensory_fe_late": 4159.98625,
+            "mean_spike_rate_pct": 6.5616863125,
+            "ne_pre_shift": 6.2333333125,
+            "ne_post_shift": 7.3729166875,
+            "ne_shift_delta": 1.139583375,
+            "ticks_per_sec": 125680.10062499999,
+            "eval_ms": 9.619518750000001
+          },
+          "cortical_no_phase_gate": {
+            "fe_regime1_early": 11641.676953125,
+            "fe_regime1_late": 10011.3071875,
+            "fe_regime2_early": 10749.08125,
+            "fe_regime2_late": 10589.79125,
+            "fe_late_mean": 10300.54921875,
+            "sensory_fe_late": 2982.0299999999997,
+            "mean_spike_rate_pct": 6.4543660625,
+            "ne_pre_shift": 2.39375,
+            "ne_post_shift": 8.975,
+            "ne_shift_delta": 6.58125,
+            "ticks_per_sec": 122597.78125,
+            "eval_ms": 9.83248125
+          },
+          "cortical_no_neuromod": {
+            "fe_regime1_early": 9087.09921875,
+            "fe_regime1_late": 7319.4331250000005,
+            "fe_regime2_early": 8012.6015625,
+            "fe_regime2_late": 7002.9015625,
+            "fe_late_mean": 7161.16734375,
+            "sensory_fe_late": 2000.18828125,
+            "mean_spike_rate_pct": 4.2743124375,
+            "ne_pre_shift": 3.4791666875,
+            "ne_post_shift": 11.1895833125,
+            "ne_shift_delta": 7.7104166875,
+            "ticks_per_sec": 137202.721875,
+            "eval_ms": 8.86610625
+          }
+        },
+        "paired": {
+          "H4a_fe_late_full_minus_frozen": {
+            "mean": -1768.27734375,
+            "ci95": [
+              -2184.8128359374996,
+              -1353.65786328125
+            ],
+            "seeds": 16
+          },
+          "H4a_sens_fe_full_minus_frozen": {
+            "mean": -962.02734375,
+            "ci95": [
+              -1117.86982421875,
+              -798.9781289062503
+            ],
+            "seeds": 16
+          },
+          "H4b_ne_shift_delta_full": {
+            "mean": 6.404166625,
+            "ci95": [
+              3.4436979156249996,
+              9.104218709374999
+            ],
+            "seeds": 16
+          },
+          "H4c_fe_late_full_minus_no_phase": {
+            "mean": -974.5925,
+            "ci95": [
+              -1185.67766796875,
+              -747.9106249999999
+            ],
+            "seeds": 16
+          },
+          "H4c_fe_late_full_minus_no_neuromod": {
+            "mean": 2164.789375,
+            "ci95": [
+              1875.2887265625,
+              2454.6301328124996
+            ],
+            "seeds": 16
+          }
+        }
+      },
+      "e5": {
+        "max_abs_diff_zero_mul": 0,
+        "memory_ratio_min": 16,
+        "dim256_zero_mul_us_mean": 12.3265125,
+        "dim256_f32_dense_us_mean": 35.42569375,
+        "dim1024_zero_mul_us_mean": 513.89070625,
+        "dim1024_f32_dense_us_mean": 686.1395625,
+        "dim1024_packed_bytes": 262144,
+        "dim1024_f32_bytes": 4194304
+      },
+      "runtime": {
+        "phase": "CONFIRM",
+        "workers": 2,
+        "seed_start": "0xB400",
+        "seed_end": "0xB40F",
+        "sources_sha256": "1e9b7f0f2eafe4b5d7e8281f88867aaa3d0f14c7a7e62ac14da5e869bb97ad64",
+        "per_file_sha256": {
+          "aura-engine/crates/aura-cortex/src/lib.rs": "6a1daf8a66af4714f866a52faf382506ee695b32844d548a10bb8ea81b34ca95",
+          "aura-engine/crates/aura-hippocampus/src/lib.rs": "4b6e84a8ebdf10932046fa0967fbfb3dfe3c963c3c6d779f367536844ea26d74",
+          "aura-engine/crates/aura-math/src/lib.rs": "260a006548a424ff7753ed4926f9504cced374975ebf97a01cb96689e5d991e1",
+          "aura-engine/crates/aura-metacog/src/lib.rs": "f9c34ecebc748330e2e5e6ed516dc51a97f94830c1bc576e24bf445b560fe8e5",
+          "aura-engine/crates/aura-perception/src/lib.rs": "e473ad5a8c4c123723f2310c26c8ecb6921666eda4fa2450a2692d16e8338fa4",
+          "aura-engine/crates/aura-runtime/src/agent.rs": "bfac7c23fbedf28539571c03e2266e383517bb5169a2e90894299c490d208475",
+          "aura-engine/crates/aura-runtime/src/exp_e1.rs": "eb6816f604326a7ead897c738e2a66a56ebee0fff9a0b81900cb8a4cb22e68b7",
+          "aura-engine/crates/aura-runtime/src/exp_e2.rs": "2eb177f34c6d0d6998ab6e083fb1a1ff5da9891debbc276a92f641f4994c8d6e",
+          "aura-engine/crates/aura-runtime/src/exp_e3.rs": "67731f0f0b18f6b4704df7a0c8c923abc6a894be1a1cace3e7d752ad0cdd458d",
+          "aura-engine/crates/aura-runtime/src/exp_e4.rs": "8f24aeae977dbdbe4858d4c9a72fbd6fb2f426a9cabfbfedd217e152a64a84c1",
+          "aura-engine/crates/aura-runtime/src/exp_e5.rs": "1be1ab405a134fc4be2b7023fed1070498eb9d368acec3edb9ab0a21f20b8198",
+          "aura-engine/crates/aura-runtime/src/lib.rs": "3aabba6495af7688d48f37fab1d6207bf60537d2c2b2f51ac6783d01186e6601",
+          "aura-engine/crates/aura-runtime/src/main.rs": "b693d0b5f1030e6aeef40d70dcf7476f586f2e78e70f6c5d5060a3710b6f6b8a",
+          "aura-engine/crates/aura-world/src/lib.rs": "21f65d02b9a65ed91e5edec2b9e3a927b21f200c85bd6335848c1b4f11106eb7"
+        },
+        "start_epoch": 1795228678.1627536,
+        "command": [
+          "aura-engine/run.py",
+          "CONFIRM",
+          "--workers",
+          "2"
+        ],
+        "rustc": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
+        "system": "Linux x86_64",
+        "nice": 10,
+        "elapsed_seconds": 40.4169,
+        "completed": 16
+      }
+    }
+  },
+  "confirm_verdicts": {
+    "H1a_shift_recovery": true,
+    "H1b_hippocampal_recall": true,
+    "H1c_anti_collapse_norm": true,
+    "H1d_entropy_compression": true,
+    "H2a_active_world_vs_sys1": true,
+    "H2a_active_world_vs_no_fast": true,
+    "H2b_abstain_calibration": true,
+    "H3a_sleep_combined_vs_no_replay": true,
+    "H3a_sleep_forgetting_vs_no_replay": true,
+    "H3b_hysteresis_combined": true,
+    "H4a_cortical_fe_vs_frozen": true,
+    "H4b_cortical_ne_spike": true,
+    "E5_zero_mul_exact_16x": true
+  }
+}

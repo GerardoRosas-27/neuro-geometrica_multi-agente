@@ -1,0 +1,30 @@
+{
+  "seed": "0xB400",
+  "phase": "CONFIRM",
+  "all_identical_excluding_timing": true,
+  "excluded_timing_columns": [
+    "eval_ms",
+    "ticks_per_sec"
+  ],
+  "checks": {
+    "metrics_e1.csv": {
+      "identical_excluding_timing": true,
+      "rows": 6
+    },
+    "metrics_e2.csv": {
+      "identical_excluding_timing": true,
+      "rows": 4
+    },
+    "metrics_e3.csv": {
+      "identical_excluding_timing": true,
+      "rows": 4
+    },
+    "metrics_e4.csv": {
+      "identical_excluding_timing": true,
+      "rows": 4
+    },
+    "bench_e5.json": {
+      "identical_deterministic_fields": true
+    }
+  }
+}

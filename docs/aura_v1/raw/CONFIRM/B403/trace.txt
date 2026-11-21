@@ -1,0 +1,6 @@
+AURA + CorticalFabric v1 | seed=0xB403 (46083) | phase=CONFIRM
+[E1] aura_full shift_err=0.9554 vs no_fast=1.1668 | recall=0.5703 vs no_hip=0.7222 | erank=29.07 vs no_vicreg=26.15
+[E2] aura_full p2+p3=5.354 (p2_succ=0.79, trap_abs=1.00, fam_abs=0.00) vs sys1=-31.625 vs no_fast=-20.500
+[E3] sleep_full A_pre=0.655 A_post=0.638 (forg=0.017) B=0.623 mean=0.630 | no_replay A_post=0.530 B=0.664 | no_hyst A_post=0.532 B=0.555
+[E4] cortical_full FE_late=9638.6 (spikes=5.94%, NE_delta=-8.13) vs frozen=10476.1 vs no_phase=10405.3 vs no_nm=6243.8
+[E5] zero_mul_max_diff=0 mem_ratio=16x 256=11.66us(zm)/35.88us(f32) 1024=522.54us(zm)/883.47us(f32)

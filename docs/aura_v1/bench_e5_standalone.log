@@ -1,0 +1,5 @@
+=== AURA E5 Zero-Mul Engineering Verification ===
+max_abs_diff_zero_mul        : 0
+memory_ratio (f32 / packed)  : 16x (262144 B vs 4194304 B for 1024x1024)
+256x256  zero-mul vs f32     : 12.56 us vs 36.01 us
+1024x1024 zero-mul vs f32    : 516.42 us vs 668.83 us
