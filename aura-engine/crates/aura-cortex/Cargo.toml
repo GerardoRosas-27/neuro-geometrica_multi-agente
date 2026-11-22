@@ -1,0 +1,8 @@
+[package]
+name = "aura-cortex"
+version = "0.2.0"
+edition = "2021"
+
+[dependencies]
+aura-math = { path = "../aura-math" }
+aura-perception = { path = "../aura-perception" }

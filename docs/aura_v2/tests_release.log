@@ -1,0 +1,120 @@
+   Compiling aura-runtime v0.2.0 (/home/antigravity/GerardoRosas-27/neuro-geometrica_multi-agente/aura-engine/crates/aura-runtime)
+   Compiling aura-decoder v0.2.0 (/home/antigravity/GerardoRosas-27/neuro-geometrica_multi-agente/aura-engine/crates/aura-decoder)
+   Compiling aura-metacog v0.2.0 (/home/antigravity/GerardoRosas-27/neuro-geometrica_multi-agente/aura-engine/crates/aura-metacog)
+   Compiling aura-cortex v0.2.0 (/home/antigravity/GerardoRosas-27/neuro-geometrica_multi-agente/aura-engine/crates/aura-cortex)
+   Compiling aura-perception v0.2.0 (/home/antigravity/GerardoRosas-27/neuro-geometrica_multi-agente/aura-engine/crates/aura-perception)
+   Compiling aura-world v0.2.0 (/home/antigravity/GerardoRosas-27/neuro-geometrica_multi-agente/aura-engine/crates/aura-world)
+    Finished `release` profile [optimized] target(s) in 29.94s
+     Running unittests src/lib.rs (aura-engine/target/release/deps/aura_cortex-1cf333c8320e0079)
+
+running 2 tests
+test tests::parallel_associative_scan_matches_sequential_forward_and_backward ... ok
+test tests::cortical_fabric_amortized_settling_saves_ticks_and_stays_sparse ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running unittests src/lib.rs (aura-engine/target/release/deps/aura_decoder-0765cb8b284c6144)
+
+running 1 test
+test tests::aura_byte_model_trains_and_beats_uniform_and_unscaled ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.61s
+
+     Running unittests src/lib.rs (aura-engine/target/release/deps/aura_hippocampus-9ec9c13806d4a84d)
+
+running 1 test
+test tests::hippocampus_hnsw_high_recall_and_binary_roundtrip ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src/lib.rs (aura-engine/target/release/deps/aura_math-5944b3b1846cc0b9)
+
+running 4 tests
+test tests::fast_weight_nlms_contracts_across_extreme_key_scales ... ok
+test tests::effective_rank_distinguishes_collapsed_from_isotropic ... ok
+test tests::scaled_ternary_ste_breaks_linear_separability_cleanly ... ok
+test tests::ternary_lut4_avx2_exact_parity_all_shapes_and_extremes ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+     Running unittests src/lib.rs (aura-engine/target/release/deps/aura_metacog-3716c24410b7f648)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (aura-engine/target/release/deps/aura_perception-0ec83375d32f3be2)
+
+running 1 test
+test tests::entropy_patcher_compresses_predictable_vs_random_bytes ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (aura-engine/target/release/deps/aura_runtime-fa6c8cbc89c18519)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (aura-engine/target/release/deps/aura_v2-31d4c5d824add54d)
+
+running 1 test
+test tests::end_to_end_smoke_all_six_benchmarks_are_finite_and_exact ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.90s
+
+     Running unittests src/lib.rs (aura-engine/target/release/deps/aura_world-31d7b055e05b44ff)
+
+running 1 test
+test tests::world_model_reducible_epistemic_suppresses_tv_static_vs_structured_ood ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+   Doc-tests aura_cortex
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests aura_decoder
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests aura_hippocampus
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests aura_math
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests aura_metacog
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests aura_perception
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests aura_runtime
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests aura_world
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

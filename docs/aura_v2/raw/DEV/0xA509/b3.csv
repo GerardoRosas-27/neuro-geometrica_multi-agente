@@ -1,0 +1,5 @@
+seed,arm,acc_a_pre,acc_a_post,forgetting_a,acc_b_post,combined_ab,weight_flips,nonzero_frac
+42249,v1_naive_ternary,66.1865,61.9385,4.2480,62.3291,62.1338,4568,0.803711
+42249,v2_bitnet_ste_no_replay,84.4238,55.8838,28.5400,82.0801,68.9819,60523,0.539258
+42249,v2_bitnet_ste_no_hysteresis,84.4238,70.4590,13.9648,76.6846,73.5718,102767,0.530469
+42249,v2_aura_sleep_full,84.4238,73.3643,11.0596,72.0703,72.7173,31914,0.522754

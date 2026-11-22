@@ -1,0 +1,7 @@
+train_md_bytes=24576
+eval_md_bytes=6144
+shift_rust_bytes=6144
+PROMPT_MD: ## Resultados de 
+GEN_MD:     emifitod) Dφ.\n ycrestererico s ra tamiontrororedcasra  virintricido `) | `antettasorrirs_ W---
+PROMPT_RS: pub fn 
+GEN_RS:    erobrotaulerriattottrritrr`](_to0.\n  etentrarción da Lo GPU (M3.\n5 ****************************

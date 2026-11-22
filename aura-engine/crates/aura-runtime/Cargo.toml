@@ -1,0 +1,17 @@
+[package]
+name = "aura-runtime"
+version = "0.2.0"
+edition = "2021"
+
+[[bin]]
+name = "aura-v2"
+path = "src/main.rs"
+
+[dependencies]
+aura-math = { path = "../aura-math" }
+aura-perception = { path = "../aura-perception" }
+aura-cortex = { path = "../aura-cortex" }
+aura-world = { path = "../aura-world" }
+aura-hippocampus = { path = "../aura-hippocampus" }
+aura-metacog = { path = "../aura-metacog" }
+aura-decoder = { path = "../aura-decoder" }
