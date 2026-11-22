@@ -1,0 +1,19 @@
+[package]
+name = "top5-arena"
+version = "0.3.0"
+edition = "2021"
+description = "Head-to-head equal-training-conditions benchmark of the 5 best architectures in the repository (CONSTELACION v4, ATLAS-FW, BQ10, AURA v2, AURA v3 Genesis + ORBITA-v1 & AURA v1 baselines)"
+
+[dependencies]
+aura-math = { path = "../crates/aura-math" }
+aura-perception = { path = "../crates/aura-perception" }
+aura-cortex = { path = "../crates/aura-cortex" }
+aura-hippocampus = { path = "../crates/aura-hippocampus" }
+aura-world = { path = "../crates/aura-world" }
+aura-metacog = { path = "../crates/aura-metacog" }
+aura-decoder = { path = "../crates/aura-decoder" }
+aura-genesis = { path = "../crates/aura-genesis" }
+aura-runtime = { path = "../crates/aura-runtime" }
+
+[workspace]
+
