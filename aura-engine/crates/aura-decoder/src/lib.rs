@@ -11,6 +11,7 @@
 //!   (leaves slow 2-bit weights 100% intact during unseen domain shift!).
 
 use aura_cortex::{ssm_backward_parallel_scan, ssm_forward_parallel_scan};
+use aura_genesis::PrenatalCurriculum;
 use aura_hippocampus::{Episode, EpisodicHippocampus, HippocampusGraph};
 use aura_math::{
     effective_rank_subspace, LatentVec, ScaledTernaryLayer, TernaryTrainConfig, Xorshift64,
@@ -36,6 +37,16 @@ pub struct TrainStats {
     pub packed_ternary_bytes: usize,
     pub dense_f32_bytes: usize,
     pub total_flips: u64,
+}
+
+/// Extended AURA v3 Genesis training telemetry (adds early epoch-1 eval BPB & structural sparsity).
+#[derive(Clone, Debug)]
+pub struct GenesisByteStats {
+    pub base: TrainStats,
+    pub early_eval_bpb: f64,
+    pub nonzero_peak_frac: f64,
+    pub nonzero_final_frac: f64,
+    pub pruned_synapses: usize,
 }
 
 /// Classical statistical baseline: smoothed Order-1 Bigram Byte Model (256 x 256).
@@ -467,6 +478,649 @@ impl AuraByteModel {
             packed_ternary_bytes: self.packed_ternary_bytes(),
             dense_f32_bytes: self.dense_f32_bytes(),
             total_flips: self.total_flips(),
+        }
+    }
+
+    /// Overall fraction of active non-zero 2-bit ternary weights across `l1` and `l2`.
+    pub fn nonzero_fraction(&self) -> f64 {
+        let n1 = (self.l1.rows * self.l1.cols) as f64;
+        let n2 = (self.l2.rows * self.l2.cols) as f64;
+        (self.l1.nonzero_fraction() * n1 + self.l2.nonzero_fraction() * n2) / (n1 + n2).max(1.0)
+    }
+
+    /// AURA v3 Genesis constructor applying:
+    /// - Subroutine 1: Smooth 3D morphogenetic chemical gradient initialization for byte embeddings
+    ///   (Wnt = byte order, BMP = universal ASCII class, Shh = harmonic phase — ZERO repo knowledge!)
+    /// - Subroutine 2: Canonical 4-column laminar template instantiation across the 128 hidden units
+    ///   (one 32-unit canonical template replicated 4x with topographic receptive-field alignment).
+    pub fn new_genesis(seed: u64) -> Self {
+        let mut model = Self::new(seed);
+        let mut rng = Xorshift64::new(seed ^ 0x6E4E_5150_0003);
+
+        // Subroutine 1: Smooth AND mutually separated morphogenetic byte coordinates
+        // (Eph/ephrin orthogonal harmonics preserve ASCII neighborhood without colliding letters!)
+        for b in 0..BYTE_VOCAB {
+            let bu = b as u8;
+            let wnt = (b as f32) / 255.0;
+            let bmp = if bu == b' ' || bu == b'\n' || bu == b'\t' || bu == b'\r' {
+                0.08
+            } else if bu.is_ascii_digit() {
+                0.24
+            } else if bu.is_ascii_uppercase() {
+                0.44
+            } else if bu.is_ascii_lowercase() {
+                0.64
+            } else if matches!(bu, b'(' | b')' | b'[' | b']' | b'{' | b'}' | b'<' | b'>' | b'`' | b'|') {
+                0.80
+            } else if bu.is_ascii_punctuation() {
+                0.90
+            } else {
+                0.98
+            };
+            let local_phase = ((b as f32) * 0.618_034) * std::f32::consts::TAU;
+            let off = b * BYTE_EMB_DIM;
+            // Half bandwidth: morphogenetic chemical class; half bandwidth: orthogonal identity harmonics
+            let coords: [f32; 12] = [
+                (wnt - 0.5) * 0.28,
+                (bmp - 0.5) * 0.34,
+                (bmp * std::f32::consts::TAU).cos() * 0.18,
+                (bmp * std::f32::consts::TAU).sin() * 0.18,
+                local_phase.cos() * 0.24,
+                local_phase.sin() * 0.24,
+                (local_phase * 2.0).cos() * 0.22,
+                (local_phase * 2.0).sin() * 0.22,
+                (local_phase * 3.0).cos() * 0.20,
+                (local_phase * 3.0).sin() * 0.20,
+                if bu.is_ascii_whitespace() { 0.22 } else if bu.is_ascii_digit() { -0.22 } else { 0.0 },
+                if bu.is_ascii_punctuation() { 0.22 } else if bu.is_ascii_uppercase() { -0.22 } else { 0.0 },
+            ];
+            for j in 0..BYTE_EMB_DIM {
+                model.byte_emb[off + j] = coords[j] + rng.next_normal_f32() * 0.14;
+            }
+        }
+
+        // Subroutine 2: Instantiate 4 Mountcastle canonical 32-unit minicolumns specialized ONLY
+        // by topographic sensory cable wiring (exact variance-preserving gain: mean(g^2) = 1.0!)
+        let col_rows = MOTOR_HID_DIM / 4; // 32 rows per canonical minicolumn
+        let scale = (2.0 / (MOTOR_IN_DIM as f32)).sqrt() * 0.50;
+        for col_id in 0..4 {
+            let (band_lo, band_hi) = match col_id {
+                0 => (0usize, 24usize),   // recent bytes t-1, t-2
+                1 => (24usize, 48usize),  // medium bytes t-3, t-4
+                2 => (48usize, 72usize),  // far bytes t-5, t-6
+                _ => (72usize, 128usize), // EntropyPatcher compressed latent
+            };
+            let n_in = (band_hi - band_lo) as f32;
+            let n_out = (MOTOR_IN_DIM as f32) - n_in;
+            let g_in = 1.40f32;
+            let g_out = (((MOTOR_IN_DIM as f32) - n_in * g_in * g_in) / n_out.max(1.0))
+                .max(0.25)
+                .sqrt();
+            for r in 0..col_rows {
+                let dst_r = col_id * col_rows + r;
+                let dst_off = dst_r * MOTOR_IN_DIM;
+                for c in 0..MOTOR_IN_DIM {
+                    let gain = if c >= band_lo && c < band_hi { g_in } else { g_out };
+                    model.l1.shadow_w[dst_off + c] = rng.next_normal_f32() * scale * gain;
+                }
+            }
+        }
+        // Start overproduced (Conel ChildhoodPeak: absmean_beta = 0.42 -> ~68% active density!)
+        model.l1.quantize_from_shadow(0.42, 0.0, 0.0, false);
+        model.l2.quantize_from_shadow(0.42, 0.0, 0.0, false);
+        model
+    }
+
+    /// Execute one training epoch over chunked bytes using Blelloch Parallel Prefix Scan + BitNet STE.
+    fn run_epoch_chunks(
+        &mut self,
+        data: &[u8],
+        patch_ctxs: &[[f32; PATCH_CTX_DIM]],
+        chunk: usize,
+        ep_cfg: &TernaryTrainConfig,
+        rng: &mut Xorshift64,
+        mut collect_erank: Option<&mut Vec<Vec<f32>>>,
+    ) -> f64 {
+        let n_chunks = data.len() / chunk;
+        let mut chunk_order: Vec<usize> = (0..n_chunks).collect();
+        for i in (1..n_chunks).rev() {
+            let j = rng.next_usize(i + 1);
+            chunk_order.swap(i, j);
+        }
+        let mut alphas_flat = vec![0.0f32; chunk * MOTOR_HID_DIM];
+        for t in 0..chunk {
+            alphas_flat[t * MOTOR_HID_DIM..(t + 1) * MOTOR_HID_DIM]
+                .copy_from_slice(&self.ssm_alpha);
+        }
+
+        let mut epoch_nats = 0.0f64;
+        let mut epoch_count = 0usize;
+
+        for &cid in &chunk_order {
+            let start = cid * chunk;
+            let mut xs = vec![[0.0f32; MOTOR_IN_DIM]; chunk];
+            let mut ctxs = vec![[0u8; CTX_BYTES]; chunk];
+            let mut u_pre = vec![[0.0f32; MOTOR_HID_DIM]; chunk];
+            let mut u_act = vec![0.0f32; chunk * MOTOR_HID_DIM];
+
+            for t in 0..chunk {
+                let pos = start + t;
+                let mut c6 = [0u8; CTX_BYTES];
+                for k in 0..CTX_BYTES {
+                    c6[k] = if pos >= k + 1 { data[pos - k - 1] } else { 0 };
+                }
+                ctxs[t] = c6;
+                self.build_input(&c6, &patch_ctxs[pos], &mut xs[t]);
+                self.l1.forward(&xs[t], &mut u_pre[t]);
+                for d in 0..MOTOR_HID_DIM {
+                    let v = u_pre[t][d];
+                    u_act[t * MOTOR_HID_DIM + d] = if v > 0.0 { v } else { 0.1 * v };
+                }
+            }
+
+            let h0 = [0.0f32; MOTOR_HID_DIM];
+            let h_ssm = ssm_forward_parallel_scan(&h0, &alphas_flat, &u_act, chunk, MOTOR_HID_DIM);
+
+            let mut dh_ssm_out = vec![0.0f32; chunk * MOTOR_HID_DIM];
+            let mut du_skip = vec![[0.0f32; MOTOR_HID_DIM]; chunk];
+            let mut logits = [0.0f32; BYTE_VOCAB];
+            let mut probs = [0.0f32; BYTE_VOCAB];
+            let mut combined = [0.0f32; MOTOR_HID_DIM];
+
+            for t in 0..chunk {
+                let u_sl = &u_act[t * MOTOR_HID_DIM..(t + 1) * MOTOR_HID_DIM];
+                let h_sl = &h_ssm[t * MOTOR_HID_DIM..(t + 1) * MOTOR_HID_DIM];
+                for d in 0..MOTOR_HID_DIM {
+                    combined[d] = 0.65 * u_sl[d] + 0.35 * h_sl[d];
+                }
+                if let Some(ref mut buf) = collect_erank {
+                    if t == chunk - 1 && buf.len() < 128 {
+                        buf.push(combined.to_vec());
+                    }
+                }
+
+                self.l2.forward(&combined, &mut logits);
+                let target = data[start + t];
+                let loss_nats = softmax_ce_probs(&logits, target, &mut probs);
+                epoch_nats += loss_nats as f64;
+                epoch_count += 1;
+
+                let eps_ls = 0.01f32;
+                let u_ls = eps_ls / (BYTE_VOCAB as f32);
+                let mut dy2 = probs;
+                for g in dy2.iter_mut() {
+                    *g -= u_ls;
+                }
+                dy2[target as usize] -= 1.0 - eps_ls;
+
+                let mut dcomb = [0.0f32; MOTOR_HID_DIM];
+                self.l2.backward_accumulate(&combined, &dy2, Some(&mut dcomb));
+                for d in 0..MOTOR_HID_DIM {
+                    du_skip[t][d] = 0.65 * dcomb[d];
+                    dh_ssm_out[t * MOTOR_HID_DIM + d] = 0.35 * dcomb[d];
+                }
+            }
+
+            let dh_ssm = ssm_backward_parallel_scan(&dh_ssm_out, &alphas_flat, chunk, MOTOR_HID_DIM);
+
+            for t in 0..chunk {
+                let mut du = [0.0f32; MOTOR_HID_DIM];
+                for d in 0..MOTOR_HID_DIM {
+                    let g_act = du_skip[t][d]
+                        + dh_ssm[t * MOTOR_HID_DIM + d] * (1.0 - self.ssm_alpha[d]);
+                    du[d] = if u_pre[t][d] > 0.0 { g_act } else { 0.1 * g_act };
+                }
+                let mut dx = [0.0f32; MOTOR_IN_DIM];
+                self.l1.backward_accumulate(&xs[t], &du, Some(&mut dx));
+                for slot in 0..CTX_BYTES {
+                    let b = ctxs[t][slot] as usize;
+                    let dst = &mut self.emb_grad[b * BYTE_EMB_DIM..(b + 1) * BYTE_EMB_DIM];
+                    let src = &dx[slot * BYTE_EMB_DIM..(slot + 1) * BYTE_EMB_DIM];
+                    for j in 0..BYTE_EMB_DIM {
+                        dst[j] += src[j];
+                    }
+                }
+            }
+
+            self.l1.step_adamw_ste(chunk, ep_cfg);
+            self.l2.step_adamw_ste(chunk, ep_cfg);
+            self.step_embeddings(chunk, ep_cfg.lr, true);
+        }
+
+        (epoch_nats / (epoch_count.max(1) as f64)) / std::f64::consts::LN_2
+    }
+
+    /// Standard AURA v2 training with identical early epoch-1 held-out checkpoint & sparsity tracking
+    /// for strictly apples-to-apples comparison against `train_corpus_genesis`.
+    pub fn train_corpus_v2_tracked(
+        &mut self,
+        train_bytes: &[u8],
+        eval_bytes: &[u8],
+        epochs: usize,
+        chunk_len: usize,
+        rng: &mut Xorshift64,
+    ) -> GenesisByteStats {
+        let t_start = std::time::Instant::now();
+        let (patch_ctxs, bpp_text) = self.extract_causal_patch_contexts(train_bytes);
+        self.patcher.reset();
+        let mut r_patches = 0usize;
+        let mut r_rng = Xorshift64::new(rng.next_u64() ^ 0x5241_4E44);
+        for _ in 0..512 {
+            if self.patcher.push_byte((r_rng.next_u32() & 0xFF) as u8).is_some() {
+                r_patches += 1;
+            }
+        }
+        let compression_ratio = bpp_text / (512.0 / (r_patches.max(1) as f64)).max(0.1);
+
+        let cfg = TernaryTrainConfig {
+            lr: 0.015,
+            weight_decay: 8e-4,
+            absmean_beta: 0.55,
+            hysteresis_band: 0.12,
+            grad_clip: 2.0,
+            ..Default::default()
+        };
+        let chunk = chunk_len.max(8);
+        let mut initial_bpb = 8.0f64;
+        let mut final_bpb = 8.0f64;
+        let mut early_eval_bpb = 8.0f64;
+        let mut h_samples = Vec::with_capacity(128);
+        let nonzero_peak = self.nonzero_fraction();
+
+        for epoch in 0..epochs {
+            let mut ep_cfg = cfg;
+            let progress = (epoch as f32) / (epochs.max(1) as f32);
+            ep_cfg.lr =
+                cfg.lr * (0.20 + 0.80 * (0.5 * (1.0 + (progress * std::f32::consts::PI).cos())));
+            let ep_bpb = self.run_epoch_chunks(
+                train_bytes,
+                &patch_ctxs,
+                chunk,
+                &ep_cfg,
+                rng,
+                if epoch + 1 == epochs { Some(&mut h_samples) } else { None },
+            );
+            if epoch == 0 {
+                initial_bpb = ep_bpb;
+                early_eval_bpb = self.eval_stream_bpb(eval_bytes, false);
+            }
+            final_bpb = ep_bpb;
+        }
+
+        let elapsed = t_start.elapsed().as_secs_f64().max(1e-6);
+        let eval_bpb = self.eval_stream_bpb(eval_bytes, false);
+        let erank = if h_samples.len() >= 8 {
+            let refs: Vec<&[f32]> = h_samples.iter().map(|v| v.as_slice()).collect();
+            effective_rank_subspace(&refs, 64)
+        } else {
+            0.0
+        };
+        GenesisByteStats {
+            base: TrainStats {
+                initial_train_bpb: initial_bpb,
+                final_train_bpb: final_bpb,
+                eval_bpb,
+                compression_ratio,
+                effective_rank: erank,
+                train_bytes_per_sec: ((train_bytes.len() * epochs) as f64) / elapsed,
+                packed_ternary_bytes: self.packed_ternary_bytes(),
+                dense_f32_bytes: self.dense_f32_bytes(),
+                total_flips: self.total_flips(),
+            },
+            early_eval_bpb,
+            nonzero_peak_frac: nonzero_peak,
+            nonzero_final_frac: self.nonzero_fraction(),
+            pruned_synapses: 0,
+        }
+    }
+
+    /// Universal structural ASCII byte class (8 language-agnostic syntactic categories:
+    /// space, newline/tab, digit, uppercase, lowercase, bracket/delim, punctuation, other).
+    /// Used exclusively for prenatal rhythm calibration (ZERO repository vocabulary!).
+    #[inline]
+    fn universal_byte_class(b: u8) -> usize {
+        if b == b' ' {
+            0
+        } else if b == b'\n' || b == b'\t' || b == b'\r' {
+            1
+        } else if b.is_ascii_digit() {
+            2
+        } else if b.is_ascii_uppercase() {
+            3
+        } else if b.is_ascii_lowercase() {
+            4
+        } else if matches!(b, b'(' | b')' | b'[' | b']' | b'{' | b'}' | b'<' | b'>' | b'`' | b'|') {
+            5
+        } else if b.is_ascii_punctuation() {
+            6
+        } else {
+            7
+        }
+    }
+
+    /// Run self-supervised prenatal rhythm passes predicting ONLY the 8 universal ASCII
+    /// structural categories (space, newline/tab, digit, uppercase, lowercase, bracket,
+    /// punctuation, other) on pure synthetic byte waves — calibrates `byte_emb`, `l1`,
+    /// `EntropyPatcher` VICReg, and projects the language-agnostic 8-class motor rhythm
+    /// uniformly per ASCII class onto `l2` (identical prior for all 26 letters / 10 digits,
+    /// ZERO repository vocabulary or gibberish spelling bias!).
+    fn run_prenatal_structural_epoch(
+        &mut self,
+        data: &[u8],
+        chunk: usize,
+        passes: usize,
+        lr: f32,
+        rng: &mut Xorshift64,
+    ) {
+        let (patch_ctxs, _) = self.extract_causal_patch_contexts(data);
+        let n_chunks = data.len() / chunk;
+        let mut head_w = vec![0.0f32; 8 * MOTOR_HID_DIM];
+        let mut head_b = [0.0f32; 8];
+        for v in &mut head_w {
+            *v = rng.next_normal_f32() * 0.08;
+        }
+        let mut alphas_flat = vec![0.0f32; chunk * MOTOR_HID_DIM];
+        for t in 0..chunk {
+            alphas_flat[t * MOTOR_HID_DIM..(t + 1) * MOTOR_HID_DIM]
+                .copy_from_slice(&self.ssm_alpha);
+        }
+        let pre_cfg = TernaryTrainConfig {
+            lr,
+            weight_decay: 4e-4,
+            absmean_beta: 0.42, // Conel overproduction peak!
+            hysteresis_band: 0.04,
+            grad_clip: 2.0,
+            ..Default::default()
+        };
+
+        for _pass in 0..passes.max(1) {
+            for cid in 0..n_chunks {
+                let start = cid * chunk;
+                let mut xs = vec![[0.0f32; MOTOR_IN_DIM]; chunk];
+                let mut ctxs = vec![[0u8; CTX_BYTES]; chunk];
+                let mut u_pre = vec![[0.0f32; MOTOR_HID_DIM]; chunk];
+                let mut u_act = vec![0.0f32; chunk * MOTOR_HID_DIM];
+
+                for t in 0..chunk {
+                    let pos = start + t;
+                    let mut c6 = [0u8; CTX_BYTES];
+                    for k in 0..CTX_BYTES {
+                        c6[k] = if pos >= k + 1 { data[pos - k - 1] } else { 0 };
+                    }
+                    ctxs[t] = c6;
+                    self.build_input(&c6, &patch_ctxs[pos], &mut xs[t]);
+                    self.l1.forward(&xs[t], &mut u_pre[t]);
+                    for d in 0..MOTOR_HID_DIM {
+                        let v = u_pre[t][d];
+                        u_act[t * MOTOR_HID_DIM + d] = if v > 0.0 { v } else { 0.1 * v };
+                    }
+                }
+
+                let h0 = [0.0f32; MOTOR_HID_DIM];
+                let h_ssm =
+                    ssm_forward_parallel_scan(&h0, &alphas_flat, &u_act, chunk, MOTOR_HID_DIM);
+                let mut dh_ssm_out = vec![0.0f32; chunk * MOTOR_HID_DIM];
+                let mut du_skip = vec![[0.0f32; MOTOR_HID_DIM]; chunk];
+                let mut combined = [0.0f32; MOTOR_HID_DIM];
+                let mut head_grad = vec![0.0f32; 8 * MOTOR_HID_DIM];
+                let mut hb_grad = [0.0f32; 8];
+
+                for t in 0..chunk {
+                    let u_sl = &u_act[t * MOTOR_HID_DIM..(t + 1) * MOTOR_HID_DIM];
+                    let h_sl = &h_ssm[t * MOTOR_HID_DIM..(t + 1) * MOTOR_HID_DIM];
+                    for d in 0..MOTOR_HID_DIM {
+                        combined[d] = 0.65 * u_sl[d] + 0.35 * h_sl[d];
+                    }
+                    let mut logits = [0.0f32; 8];
+                    let mut max_l = f32::NEG_INFINITY;
+                    for c in 0..8 {
+                        let mut acc = head_b[c];
+                        let off = c * MOTOR_HID_DIM;
+                        for d in 0..MOTOR_HID_DIM {
+                            acc += head_w[off + d] * combined[d];
+                        }
+                        logits[c] = acc;
+                        if acc > max_l {
+                            max_l = acc;
+                        }
+                    }
+                    let mut probs = [0.0f32; 8];
+                    let mut sum_e = 0.0f32;
+                    for c in 0..8 {
+                        let e = (logits[c] - max_l).exp();
+                        probs[c] = e;
+                        sum_e += e;
+                    }
+                    let inv_e = 1.0 / sum_e.max(1e-12);
+                    let target_cls = Self::universal_byte_class(data[start + t]);
+                    let mut dcomb = [0.0f32; MOTOR_HID_DIM];
+                    for c in 0..8 {
+                        let p = probs[c] * inv_e;
+                        let dy = p - if c == target_cls { 1.0 } else { 0.0 };
+                        hb_grad[c] += dy;
+                        let off = c * MOTOR_HID_DIM;
+                        for d in 0..MOTOR_HID_DIM {
+                            head_grad[off + d] += dy * combined[d];
+                            dcomb[d] += dy * head_w[off + d];
+                        }
+                    }
+                    for d in 0..MOTOR_HID_DIM {
+                        du_skip[t][d] = 0.65 * dcomb[d];
+                        dh_ssm_out[t * MOTOR_HID_DIM + d] = 0.35 * dcomb[d];
+                    }
+                }
+
+                let inv_c = 1.0 / (chunk as f32);
+                for i in 0..head_w.len() {
+                    head_w[i] -= lr * 2.0 * (head_grad[i] * inv_c).clamp(-2.0, 2.0);
+                }
+                for c in 0..8 {
+                    head_b[c] -= lr * 2.0 * (hb_grad[c] * inv_c).clamp(-2.0, 2.0);
+                }
+
+                let dh_ssm =
+                    ssm_backward_parallel_scan(&dh_ssm_out, &alphas_flat, chunk, MOTOR_HID_DIM);
+                for t in 0..chunk {
+                    let mut du = [0.0f32; MOTOR_HID_DIM];
+                    for d in 0..MOTOR_HID_DIM {
+                        let g_act = du_skip[t][d]
+                            + dh_ssm[t * MOTOR_HID_DIM + d] * (1.0 - self.ssm_alpha[d]);
+                        du[d] = if u_pre[t][d] > 0.0 { g_act } else { 0.1 * g_act };
+                    }
+                    let mut dx = [0.0f32; MOTOR_IN_DIM];
+                    self.l1.backward_accumulate(&xs[t], &du, Some(&mut dx));
+                    for slot in 0..CTX_BYTES {
+                        let b = ctxs[t][slot] as usize;
+                        let dst = &mut self.emb_grad[b * BYTE_EMB_DIM..(b + 1) * BYTE_EMB_DIM];
+                        let src = &dx[slot * BYTE_EMB_DIM..(slot + 1) * BYTE_EMB_DIM];
+                        for j in 0..BYTE_EMB_DIM {
+                            dst[j] += src[j];
+                        }
+                    }
+                }
+                self.l1.step_adamw_ste(chunk, &pre_cfg);
+                self.step_embeddings(chunk, lr, true);
+            }
+        }
+
+        // Exact maximum-entropy uniform-within-class per-byte log-prior derived 100% from the
+        // synthetic prenatal byte wave `data`: `log((P_prenatal(cls) + eps) / N_cls)` centered.
+        // Every byte inside a universal ASCII class (all 26 lowercase letters, all 26 uppercase
+        // letters, all 10 digits, etc.) receives the EXACT SAME scalar prior (ZERO vocabulary,
+        // ZERO spelling bias, and 100% preserves full-rank symmetry breaking of `l2.shadow_w`!).
+        let mut cls_counts = [0usize; 8];
+        for &b in data {
+            cls_counts[Self::universal_byte_class(b)] += 1;
+        }
+        let mut cls_sizes = [0usize; 8];
+        for b in 0..BYTE_VOCAB {
+            cls_sizes[Self::universal_byte_class(b as u8)] += 1;
+        }
+        let total = data.len().max(1) as f32;
+        let mut byte_prior = [0.0f32; BYTE_VOCAB];
+        let mut prior_mean = 0.0f32;
+        for b in 0..BYTE_VOCAB {
+            let cls = Self::universal_byte_class(b as u8);
+            let p_cls = ((cls_counts[cls] as f32) / total) + 0.002;
+            let p_byte = p_cls / (cls_sizes[cls].max(1) as f32);
+            let lp = p_byte.ln();
+            byte_prior[b] = lp;
+            prior_mean += lp;
+        }
+        prior_mean /= BYTE_VOCAB as f32;
+        for b in 0..BYTE_VOCAB {
+            self.l2.bias[b] += (0.65 * (byte_prior[b] - prior_mean)).clamp(-2.5, 2.5);
+        }
+    }
+
+    /// Precompute causal patch latent stream while preserving prenatally calibrated VICReg statistics.
+    fn extract_causal_patch_contexts_warm(
+        &mut self,
+        data: &[u8],
+    ) -> (Vec<[f32; PATCH_CTX_DIM]>, f64) {
+        self.patcher.reset_stream_keep_vicreg();
+        let mut patch_ctxs = Vec::with_capacity(data.len());
+        let mut cur_patch = [0.0f32; PATCH_CTX_DIM];
+        let mut n_patches = 0usize;
+
+        for (i, &b) in data.iter().enumerate() {
+            patch_ctxs.push(cur_patch);
+            if let Some(em) = self.patcher.push_byte(b) {
+                Self::compress_patch_latent(&em.latent, &mut cur_patch);
+                if i >= 64 {
+                    n_patches += 1;
+                }
+            }
+        }
+        let bpp = if n_patches > 0 {
+            ((data.len().saturating_sub(64)) as f64) / (n_patches as f64)
+        } else {
+            1.0
+        };
+        (patch_ctxs, bpp)
+    }
+
+    /// AURA v3 Genesis developmental training integrating ALL 4 DNA Subroutines:
+    /// 1. Morphogenetic byte coordinates + 2. Canonical 4-column topographic wiring (`new_genesis`),
+    /// 3. Prenatal synthetic structural-rhythm curriculum (8 universal ASCII classes, ZERO repo bytes!),
+    /// 4. Overproduction -> Microglia structural pruning (permanent exact `0` bit-planes) +
+    ///    SSM channel myelination!
+    pub fn train_corpus_genesis(
+        &mut self,
+        train_bytes: &[u8],
+        eval_bytes: &[u8],
+        epochs: usize,
+        chunk_len: usize,
+        prenatal_seed: u64,
+        rng: &mut Xorshift64,
+    ) -> GenesisByteStats {
+        let t_start = std::time::Instant::now();
+        let chunk = chunk_len.max(8);
+
+        // --- SUBROUTINE 4: Prenatal synthetic structural-rhythm curriculum (ZERO repo bytes!) ---
+        // Pre-calibrates sensory byte embeddings, canonical `l1` filters, `EntropyPatcher`
+        // VICReg, and exact uniform-within-class 8-category motor bias on pure synthetic waves.
+        // Uses its own `prenatal_rng` so postnatal chunk shuffling stays paired with AURA v2!
+        let mut prenatal_rng = Xorshift64::new(prenatal_seed ^ 0x9E37_79B9);
+        let prenatal_bytes = PrenatalCurriculum::generate_prenatal_byte_waves(3072, prenatal_seed);
+        self.run_prenatal_structural_epoch(&prenatal_bytes, chunk, 2, 0.008, &mut prenatal_rng);
+        let nonzero_peak_frac = self.nonzero_fraction();
+
+        // Birth transition: reset Adam moments cleanly while preserving calibrated `byte_emb`,
+        // `l1`, `l2` 8-class uniform-within-class prior, and warm `EntropyPatcher` VICReg!
+        self.l1.reset_optimizer();
+        self.l2.reset_optimizer();
+        self.emb_m.fill(0.0);
+        self.emb_v.fill(0.0);
+        self.emb_t = 0;
+
+        // --- POSTNATAL REAL DATA TRAINING + CONEL OVERPRODUCTION -> MICROGLIA PRUNE + MYELIN ---
+        let (patch_ctxs, bpp_text) = self.extract_causal_patch_contexts_warm(train_bytes);
+        self.patcher.reset_stream_keep_vicreg();
+        let mut r_patches = 0usize;
+        let mut r_rng = Xorshift64::new(rng.next_u64() ^ 0x5241_4E44);
+        for _ in 0..512 {
+            if self.patcher.push_byte((r_rng.next_u32() & 0xFF) as u8).is_some() {
+                r_patches += 1;
+            }
+        }
+        let compression_ratio = bpp_text / (512.0 / (r_patches.max(1) as f64)).max(0.1);
+
+        let base_lr = 0.0155f32;
+        let mut initial_bpb = 8.0f64;
+        let mut final_bpb = 8.0f64;
+        let mut early_eval_bpb = 8.0f64;
+        let mut pruned_synapses = 0usize;
+        let mut h_samples = Vec::with_capacity(128);
+
+        for epoch in 0..epochs {
+            let progress = (epoch as f32) / (epochs.max(1) as f32);
+            let lr =
+                base_lr * (0.20 + 0.80 * (0.5 * (1.0 + (progress * std::f32::consts::PI).cos())));
+            let ep_cfg = TernaryTrainConfig {
+                lr,
+                weight_decay: 8e-4,
+                absmean_beta: if epoch < 2 { 0.50 } else { 0.56 },
+                hysteresis_band: 0.12,
+                grad_clip: 2.0,
+                ..Default::default()
+            };
+
+            let ep_bpb = self.run_epoch_chunks(
+                train_bytes,
+                &patch_ctxs,
+                chunk,
+                &ep_cfg,
+                rng,
+                if epoch + 1 == epochs { Some(&mut h_samples) } else { None },
+            );
+
+            if epoch == 0 {
+                initial_bpb = ep_bpb;
+                early_eval_bpb = self.eval_stream_bpb(eval_bytes, false);
+            }
+
+            // SUBROUTINE 3: Microglia Structural Pruning + SSM Myelination after Childhood Peak!
+            // Pruning after epoch 1 gives 2 full consolidation epochs (2 & 3) for surviving
+            // myelinated pathways to recover and sharpen held-out generalization!
+            if epoch == 1 {
+                pruned_synapses += self.l1.microglia_prune_ternary(0.24);
+                pruned_synapses += self.l2.microglia_prune_ternary(0.14);
+                for d in 0..MOTOR_HID_DIM {
+                    if self.l1.row_scale[d] > 0.12 {
+                        self.ssm_alpha[d] = (self.ssm_alpha[d] * 0.90).max(0.18);
+                    }
+                }
+            }
+
+            final_bpb = ep_bpb;
+        }
+
+        let elapsed = t_start.elapsed().as_secs_f64().max(1e-6);
+        let eval_bpb = self.eval_stream_bpb(eval_bytes, false);
+        let erank = if h_samples.len() >= 8 {
+            let refs: Vec<&[f32]> = h_samples.iter().map(|v| v.as_slice()).collect();
+            effective_rank_subspace(&refs, 64)
+        } else {
+            0.0
+        };
+
+        GenesisByteStats {
+            base: TrainStats {
+                initial_train_bpb: initial_bpb,
+                final_train_bpb: final_bpb,
+                eval_bpb,
+                compression_ratio,
+                effective_rank: erank,
+                train_bytes_per_sec: ((train_bytes.len() * epochs) as f64) / elapsed,
+                packed_ternary_bytes: self.packed_ternary_bytes(),
+                dense_f32_bytes: self.dense_f32_bytes(),
+                total_flips: self.total_flips(),
+            },
+            early_eval_bpb,
+            nonzero_peak_frac,
+            nonzero_final_frac: self.nonzero_fraction(),
+            pruned_synapses,
         }
     }
 

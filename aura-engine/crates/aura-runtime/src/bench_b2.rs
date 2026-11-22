@@ -95,6 +95,7 @@ pub fn run_b2(seed: u64) -> Vec<B2ArmRow> {
                 surprise_gated_neuromod: false,
                 cache_tiled_csr: false,
                 amortized_warm_start: false,
+                myelin_delay_enabled: false,
             },
             0, // cold k=16
         ),
@@ -107,6 +108,7 @@ pub fn run_b2(seed: u64) -> Vec<B2ArmRow> {
                 surprise_gated_neuromod: false,
                 cache_tiled_csr: false,
                 amortized_warm_start: false,
+                myelin_delay_enabled: false,
             },
             1, // cold k=4
         ),
@@ -119,6 +121,7 @@ pub fn run_b2(seed: u64) -> Vec<B2ArmRow> {
                 surprise_gated_neuromod: true,
                 cache_tiled_csr: true,
                 amortized_warm_start: true,
+                myelin_delay_enabled: false,
             },
             2, // amortized early-exit
         ),
@@ -131,6 +134,7 @@ pub fn run_b2(seed: u64) -> Vec<B2ArmRow> {
                 surprise_gated_neuromod: true,
                 cache_tiled_csr: true,
                 amortized_warm_start: true,
+                myelin_delay_enabled: false,
             },
             2,
         ),
@@ -143,6 +147,7 @@ pub fn run_b2(seed: u64) -> Vec<B2ArmRow> {
                 surprise_gated_neuromod: true,
                 cache_tiled_csr: true,
                 amortized_warm_start: true,
+                myelin_delay_enabled: false,
             },
             2,
         ),

@@ -1,6 +1,9 @@
 //! CLI runner `aura-v2` for all 6 AURA v2 Training-Bottleneck Benchmarks (B1–B6).
 
-use aura_runtime::{bench_b1, bench_b2, bench_b3, bench_b4, bench_b5, bench_b6};
+use aura_runtime::{
+    bench_b1, bench_b2, bench_b3, bench_b4, bench_b5, bench_b6,
+    bench_g1, bench_g2, bench_g3, bench_g4, bench_g5,
+};
 use std::env;
 use std::fs::{self, File};
 use std::io::Write;
@@ -215,11 +218,144 @@ fn write_b6(dir: &Path, res: &bench_b6::B6Result) {
     }
 }
 
+fn write_g1(dir: &Path, rows: &[bench_g1::G1ArmRow]) {
+    let mut f = File::create(dir.join("g1.csv")).unwrap();
+    writeln!(
+        f,
+        "seed,arm,genome_bytes,csr_bytes_2048,compression_ratio_2048,topo_corr_2048,\
+         spatial_late_fe,spatial_sensory_fe,avg_ticks"
+    )
+    .unwrap();
+    for r in rows {
+        writeln!(
+            f,
+            "{},{},{},{},{:.4},{:.6},{:.4},{:.4},{:.4}",
+            r.seed,
+            r.arm,
+            r.genome_bytes,
+            r.csr_bytes_2048,
+            r.compression_ratio_2048,
+            r.topo_corr_2048,
+            r.spatial_late_fe,
+            r.spatial_sensory_fe,
+            r.avg_ticks
+        )
+        .unwrap();
+    }
+}
+
+fn write_g2(dir: &Path, rows: &[bench_g2::G2ArmRow]) {
+    let mut f = File::create(dir.join("g2.csv")).unwrap();
+    writeln!(f, "seed,arm,modality,template_bytes,test_acc_pct,osi_score").unwrap();
+    for r in rows {
+        writeln!(
+            f,
+            "{},{},{},{},{:.4},{:.6}",
+            r.seed, r.arm, r.modality, r.template_bytes, r.test_acc_pct, r.osi_score
+        )
+        .unwrap();
+    }
+}
+
+fn write_g3(dir: &Path, rows: &[bench_g3::G3ArmRow]) {
+    let mut f = File::create(dir.join("g3.csv")).unwrap();
+    writeln!(
+        f,
+        "seed,arm,synapses_newborn,synapses_peak,synapses_final,csr_bytes_final,\
+         prune_frac,mean_axon_delay,eval_fe,eval_sensory_fe,avg_ticks,throughput_tps_2048"
+    )
+    .unwrap();
+    for r in rows {
+        writeln!(
+            f,
+            "{},{},{},{},{},{},{:.6},{:.4},{:.4},{:.4},{:.4},{:.2}",
+            r.seed,
+            r.arm,
+            r.synapses_newborn,
+            r.synapses_peak,
+            r.synapses_final,
+            r.csr_bytes_final,
+            r.prune_frac,
+            r.mean_axon_delay,
+            r.eval_fe,
+            r.eval_sensory_fe,
+            r.avg_ticks,
+            r.throughput_tps_2048
+        )
+        .unwrap();
+    }
+}
+
+fn write_g4(dir: &Path, rows: &[bench_g4::G4ArmRow]) {
+    let mut f = File::create(dir.join("g4.csv")).unwrap();
+    writeln!(f, "seed,arm,osi_at_birth,early_visual_fe,early_sm_err").unwrap();
+    for r in rows {
+        writeln!(
+            f,
+            "{},{},{:.6},{:.4},{:.6}",
+            r.seed, r.arm, r.osi_at_birth, r.early_visual_fe, r.early_sm_err
+        )
+        .unwrap();
+    }
+}
+
+fn write_g5(dir: &Path, res: &bench_g5::G5Result) {
+    let mut ff = File::create(dir.join("g5_fabric.csv")).unwrap();
+    writeln!(
+        ff,
+        "seed,arm,genome_comp_2048,synapses_final,early_fe,late_fe,avg_ticks"
+    )
+    .unwrap();
+    for r in &res.fabric_rows {
+        writeln!(
+            ff,
+            "{},{},{:.4},{},{:.4},{:.4},{:.4}",
+            r.seed, r.arm, r.genome_comp_2048, r.synapses_final, r.early_fe, r.late_fe, r.avg_ticks
+        )
+        .unwrap();
+    }
+
+    let mut fb = File::create(dir.join("g5_bytes.csv")).unwrap();
+    writeln!(
+        fb,
+        "seed,arm,early_md_bpb,eval_md_bpb,shift_rust_bpb,nonzero_peak_frac,nonzero_final_frac,\
+         pruned_synapses,compression_ratio,effective_rank,train_bytes_per_sec"
+    )
+    .unwrap();
+    for r in &res.byte_rows {
+        writeln!(
+            fb,
+            "{},{},{:.6},{:.6},{:.6},{:.6},{:.6},{},{:.4},{:.4},{:.2}",
+            r.seed,
+            r.arm,
+            r.early_md_bpb,
+            r.eval_md_bpb,
+            r.shift_rust_bpb,
+            r.nonzero_peak_frac,
+            r.nonzero_final_frac,
+            r.pruned_synapses,
+            r.compression_ratio,
+            r.effective_rank,
+            r.train_bytes_per_sec
+        )
+        .unwrap();
+    }
+
+    if !res.sample_md_gen.is_empty() {
+        let mut sf = File::create(dir.join("g5_samples.txt")).unwrap();
+        writeln!(sf, "PROMPT_MD: ## Resultados de ").unwrap();
+        writeln!(sf, "GEN_MD:    {}", res.sample_md_gen).unwrap();
+        writeln!(sf, "PROMPT_RS: pub fn ").unwrap();
+        writeln!(sf, "GEN_RS:    {}", res.sample_rust_gen).unwrap();
+    }
+}
+
 fn main() {
     let args: Vec<String> = env::args().collect();
     if args.len() < 3 {
         eprintln!(
             "Usage:\n  aura-v2 all <seed> <out_dir> [--repo <repo_root>] [--samples]\n  \
+             aura-v2 genesis <seed> <out_dir> [--repo <repo_root>] [--samples]\n  \
              aura-v2 b1 <seed>"
         );
         std::process::exit(1);
@@ -271,7 +407,7 @@ fn main() {
         return;
     }
 
-    if cmd == "all" {
+    if cmd == "all" || cmd == "genesis" {
         if args.len() < 4 {
             eprintln!("Missing <out_dir>");
             std::process::exit(1);
@@ -294,23 +430,40 @@ fn main() {
             }
         }
 
-        let r1 = bench_b1::run_b1(seed);
-        write_b1(&out_dir, &r1);
+        if cmd == "all" {
+            let r1 = bench_b1::run_b1(seed);
+            write_b1(&out_dir, &r1);
 
-        let r2 = bench_b2::run_b2(seed);
-        write_b2(&out_dir, &r2);
+            let r2 = bench_b2::run_b2(seed);
+            write_b2(&out_dir, &r2);
 
-        let r3 = bench_b3::run_b3(seed);
-        write_b3(&out_dir, &r3);
+            let r3 = bench_b3::run_b3(seed);
+            write_b3(&out_dir, &r3);
 
-        let r4 = bench_b4::run_b4(seed);
-        write_b4(&out_dir, &r4);
+            let r4 = bench_b4::run_b4(seed);
+            write_b4(&out_dir, &r4);
 
-        let r5 = bench_b5::run_b5(seed);
-        write_b5(&out_dir, &r5);
+            let r5 = bench_b5::run_b5(seed);
+            write_b5(&out_dir, &r5);
 
-        let r6 = bench_b6::run_b6(seed, &repo_root, emit_samples);
-        write_b6(&out_dir, &r6);
+            let r6 = bench_b6::run_b6(seed, &repo_root, emit_samples);
+            write_b6(&out_dir, &r6);
+        } else {
+            let g1 = bench_g1::run_g1(seed);
+            write_g1(&out_dir, &g1);
+
+            let g2 = bench_g2::run_g2(seed, &repo_root);
+            write_g2(&out_dir, &g2);
+
+            let g3 = bench_g3::run_g3(seed);
+            write_g3(&out_dir, &g3);
+
+            let g4 = bench_g4::run_g4(seed);
+            write_g4(&out_dir, &g4);
+
+            let g5 = bench_g5::run_g5(seed, &repo_root, emit_samples);
+            write_g5(&out_dir, &g5);
+        }
     } else {
         eprintln!("Unknown command: {cmd}");
         std::process::exit(1);
@@ -340,5 +493,21 @@ mod tests {
 
         let r5 = bench_b5::run_b5(0xA500);
         assert_eq!(r5.len(), 4);
+    }
+
+    #[test]
+    fn end_to_end_smoke_aura_v3_genesis_g1_to_g4_exact() {
+        let g1 = bench_g1::run_g1(0xA600);
+        assert_eq!(g1.len(), 2);
+        assert!(g1[1].compression_ratio_2048 > 1000.0);
+        assert!(g1[1].topo_corr_2048 > 0.85);
+
+        let g3 = bench_g3::run_g3(0xA600);
+        assert_eq!(g3.len(), 3);
+        assert!(g3[2].prune_frac >= 0.50);
+
+        let g4 = bench_g4::run_g4(0xA600);
+        assert_eq!(g4.len(), 3);
+        assert!(g4[2].osi_at_birth > g4[0].osi_at_birth);
     }
 }

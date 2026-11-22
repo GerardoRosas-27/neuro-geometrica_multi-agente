@@ -5,3 +5,8 @@ pub mod bench_b3;
 pub mod bench_b4;
 pub mod bench_b5;
 pub mod bench_b6;
+pub mod bench_g1;
+pub mod bench_g2;
+pub mod bench_g3;
+pub mod bench_g4;
+pub mod bench_g5;

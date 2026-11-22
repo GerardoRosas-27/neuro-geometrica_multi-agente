@@ -14,4 +14,5 @@ aura-cortex = { path = "../aura-cortex" }
 aura-world = { path = "../aura-world" }
 aura-hippocampus = { path = "../aura-hippocampus" }
 aura-metacog = { path = "../aura-metacog" }
+aura-genesis = { path = "../aura-genesis" }
 aura-decoder = { path = "../aura-decoder" }

@@ -1,0 +1,5 @@
+seed,arm,early_md_bpb,eval_md_bpb,shift_rust_bpb,nonzero_peak_frac,nonzero_final_frac,pruned_synapses,compression_ratio,effective_rank,train_bytes_per_sec
+42499,bigram_byte_baseline,4.161619,4.161619,6.207373,1.000000,1.000000,0,1.0000,0.0000,0.00
+42499,aura_v2_baseline,4.409758,3.787016,5.231770,0.666606,0.548421,0,1.9899,33.0209,10658.44
+42499,aura_v3_genesis_frozen_infer,4.401139,3.700766,7.520482,0.725850,0.487183,8192,1.9899,34.1146,9558.28
+42499,aura_v3_genesis_full,4.401139,3.700766,4.987308,0.725850,0.487183,8192,1.9899,34.1146,9558.28

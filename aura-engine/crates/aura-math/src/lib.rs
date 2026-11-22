@@ -999,6 +999,8 @@ pub struct ScaledTernaryLayer {
     pub importance: Vec<f32>,
     pub anchor_w: Vec<f32>,
     pub flip_count: u64,
+    /// Optional microglia structural pruning mask (1 = pruned permanently to 0; empty = inactive)
+    pub prune_mask: Vec<u8>,
 
     // Reusable buffers to avoid per-call allocation
     xq_buf: Vec<i8>,
@@ -1029,6 +1031,7 @@ impl ScaledTernaryLayer {
             importance: vec![0.0; rows * cols],
             anchor_w: vec![0.0; rows * cols],
             flip_count: 0,
+            prune_mask: Vec::new(),
             xq_buf: vec![0i8; cols],
             yint_buf: vec![0i32; rows],
         };
@@ -1194,8 +1197,18 @@ impl ScaledTernaryLayer {
             let mut nz_sum = 0.0f32;
             let mut nz_cnt = 0usize;
 
+            let has_mask = self.prune_mask.len() == self.shadow_w.len();
             for c in 0..self.cols {
                 let idx = off + c;
+                if has_mask && self.prune_mask[idx] != 0 {
+                    if self.ternary.get_weight(r, c) != 0 {
+                        self.ternary.set_weight(r, c, 0);
+                        if count_flips {
+                            self.flip_count += 1;
+                        }
+                    }
+                    continue;
+                }
                 let w_lat = self.shadow_w[idx];
                 let old_q = self.ternary.get_weight(r, c);
                 let imp = self.importance[idx];
@@ -1267,8 +1280,13 @@ impl ScaledTernaryLayer {
         let t = self.adam_t as i32;
         let bc1 = 1.0 - cfg.beta1.powi(t);
         let bc2 = 1.0 - cfg.beta2.powi(t);
+        let has_mask = self.prune_mask.len() == self.shadow_w.len();
 
         for i in 0..self.shadow_w.len() {
+            if has_mask && self.prune_mask[i] != 0 {
+                self.shadow_w[i] = 0.0;
+                continue;
+            }
             let mut g = (self.grad_w[i] * inv_b).clamp(-cfg.grad_clip, cfg.grad_clip);
             if cfg.importance_lambda > 0.0 && self.importance[i] > 0.0 {
                 g += cfg.importance_lambda * self.importance[i] * (self.shadow_w[i] - self.anchor_w[i]);
@@ -1301,6 +1319,57 @@ impl ScaledTernaryLayer {
             true,
         );
         self.zero_grad();
+    }
+
+    /// Fraction of active non-zero 2-bit ternary weights in `{ -1, +1 }`.
+    pub fn nonzero_fraction(&self) -> f64 {
+        let mut nz = 0usize;
+        for r in 0..self.rows {
+            for c in 0..self.cols {
+                if self.ternary.get_weight(r, c) != 0 {
+                    nz += 1;
+                }
+            }
+        }
+        (nz as f64) / ((self.rows * self.cols).max(1) as f64)
+    }
+
+    /// Subroutine 3 (AURA v3 Genesis): Microglia structural pruning on 2-bit ternary weights.
+    /// Permanently removes the lowest-salience `prune_frac` weights per row (combining shadow
+    /// magnitude and Fisher/Adam second-moment utility) into exact `0` bit-planes and boosts
+    /// surviving row scales cleanly. Returns number of pruned synapses.
+    pub fn microglia_prune_ternary(&mut self, prune_frac: f32) -> usize {
+        let frac = prune_frac.clamp(0.0, 0.90);
+        if self.prune_mask.len() != self.shadow_w.len() {
+            self.prune_mask = vec![0u8; self.shadow_w.len()];
+        }
+        let mut pruned_total = 0usize;
+        let mut scores = vec![(0.0f32, 0usize); self.cols];
+
+        for r in 0..self.rows {
+            let off = r * self.cols;
+            for c in 0..self.cols {
+                let idx = off + c;
+                // Biological salience: magnitude * (1 + sqrt(grad_energy))
+                let sal = self.shadow_w[idx].abs() * (1.0 + self.adam_v[idx].sqrt() * 4.0);
+                scores[c] = (sal, c);
+            }
+            scores.sort_unstable_by(|a, b| a.0.total_cmp(&b.0));
+            let k_prune = ((self.cols as f32) * frac).floor() as usize;
+            for &(_, c) in scores.iter().take(k_prune) {
+                let idx = off + c;
+                if self.prune_mask[idx] == 0 {
+                    self.prune_mask[idx] = 1;
+                    self.shadow_w[idx] = 0.0;
+                    self.adam_m[idx] = 0.0;
+                    self.adam_v[idx] = 0.0;
+                    self.ternary.set_weight(r, c, 0);
+                    pruned_total += 1;
+                }
+            }
+        }
+        self.quantize_from_shadow(0.45, 0.0, 0.0, false);
+        pruned_total
     }
 }
 

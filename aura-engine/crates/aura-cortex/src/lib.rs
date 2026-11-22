@@ -372,6 +372,9 @@ pub struct FabricConfig {
     pub cache_tiled_csr: bool,
     /// Bottleneck 2.1 fix: keep amortized predictive state across windows + adaptive early exit.
     pub amortized_warm_start: bool,
+    /// AURA v3 Genesis (Subroutine 3): enable physical axonal conduction delays (`axon_delay[src]`)
+    /// so myelination (`delay -> 1`) physically accelerates cortical settling and propagation.
+    pub myelin_delay_enabled: bool,
 }
 
 impl Default for FabricConfig {
@@ -383,6 +386,7 @@ impl Default for FabricConfig {
             surprise_gated_neuromod: true,
             cache_tiled_csr: true,
             amortized_warm_start: true,
+            myelin_delay_enabled: false,
         }
     }
 }
@@ -397,7 +401,7 @@ pub struct SettlingStats {
     pub ne_level: u8,
 }
 
-/// Neuromorphic Event-Driven Cortical Fabric v2.
+/// Neuromorphic Event-Driven Cortical Fabric v2/v3.
 /// Strict invariant: ZERO floating-point instructions in `step()` and `settle_window_*()`.
 #[derive(Clone, Debug)]
 pub struct CorticalFabric {
@@ -414,10 +418,14 @@ pub struct CorticalFabric {
     pub precision_shift: Vec<u8>,
     pub trace_fast: Vec<i16>, // tau ~ 8 ticks
     pub trace_slow: Vec<i16>, // tau ~ 64 ticks (multi-timescale!)
+    /// Per-neuron axonal conduction delay in ticks (unmyelinated ~3..5 -> myelinated 1).
+    pub axon_delay: Vec<u8>,
 
     // Sparse CSR graph
     pub row_ptr: Vec<usize>,
     pub synapses: Vec<Synapse>,
+    /// Optional per-synapse activity counter for microglia developmental pruning (empty = disabled).
+    pub syn_usage: Vec<u32>,
 
     // Event-driven axonal delay ring buffer
     pub spike_ring: [Vec<u32>; MAX_DELAY],
@@ -522,8 +530,10 @@ impl CorticalFabric {
             precision_shift: vec![1; n_neurons],
             trace_fast: vec![0; n_neurons],
             trace_slow: vec![0; n_neurons],
+            axon_delay: vec![1; n_neurons],
             row_ptr,
             synapses,
+            syn_usage: Vec::new(),
             spike_ring: std::array::from_fn(|_| Vec::with_capacity(n_neurons / 4)),
             cos_lut: build_cos_lut(),
             tick: 0,
@@ -538,6 +548,69 @@ impl CorticalFabric {
             rng,
             spike_scratch: Vec::with_capacity(16),
         }
+    }
+
+    /// Construct a `CorticalFabric` directly from an externally decompressed CSR graph
+    /// (used by `aura-genesis` morphogenetic router & canonical microcircuit instantiation).
+    pub fn from_custom_graph(
+        n_neurons: usize,
+        freqs: Vec<u8>,
+        row_ptr: Vec<usize>,
+        synapses: Vec<Synapse>,
+        axon_delay: Vec<u8>,
+        seed: u64,
+        cfg: FabricConfig,
+    ) -> Self {
+        debug_assert_eq!(freqs.len(), n_neurons);
+        debug_assert_eq!(row_ptr.len(), n_neurons + 1);
+        debug_assert_eq!(axon_delay.len(), n_neurons);
+        let rng = Xorshift64::new(seed ^ 0xFAB3_6E4E_5150_0003);
+        Self {
+            n_neurons,
+            cfg,
+            v_basal: vec![0; n_neurons],
+            v_apical: vec![0; n_neurons],
+            error: vec![0; n_neurons],
+            threshold: vec![192; n_neurons],
+            phase: (0..n_neurons).map(|i| (i.wrapping_mul(13)) as u8).collect(),
+            freq: freqs,
+            precision_shift: vec![1; n_neurons],
+            trace_fast: vec![0; n_neurons],
+            trace_slow: vec![0; n_neurons],
+            axon_delay,
+            row_ptr,
+            synapses,
+            syn_usage: Vec::new(),
+            spike_ring: std::array::from_fn(|_| Vec::with_capacity(n_neurons / 4)),
+            cos_lut: build_cos_lut(),
+            tick: 0,
+            prev_fe: 0,
+            ema_fe_fast: 0,
+            ema_fe_slow: 0,
+            neuromod: Neuromodulators {
+                noradrenaline: 0,
+                acetylcholine: 0,
+                dopamine: 0,
+            },
+            rng,
+            spike_scratch: Vec::with_capacity(16),
+        }
+    }
+
+    /// Enable per-synapse activity counting for developmental microglia pruning.
+    pub fn enable_usage_tracking(&mut self) {
+        self.syn_usage = vec![0u32; self.synapses.len()];
+    }
+
+    /// Disable per-synapse activity counting (zero overhead in compiled inference).
+    pub fn disable_usage_tracking(&mut self) {
+        self.syn_usage.clear();
+    }
+
+    /// Exact explicit CSR memory footprint in bytes (`row_ptr` + `synapses`).
+    pub fn csr_memory_bytes(&self) -> usize {
+        self.row_ptr.len() * std::mem::size_of::<usize>()
+            + self.synapses.len() * std::mem::size_of::<Synapse>()
     }
 
     #[inline(always)]
@@ -692,10 +765,16 @@ impl CorticalFabric {
 
             if mask != 0 {
                 let mut m = mask;
+                let use_delay = self.cfg.myelin_delay_enabled;
                 while m != 0 {
                     let lane = m.trailing_zeros() as usize;
                     let idx = i + lane;
-                    self.spike_ring[next_slot].push(idx as u32);
+                    let slot = if use_delay {
+                        (self.tick + (self.axon_delay[idx] as usize).clamp(1, MAX_DELAY - 1)) % MAX_DELAY
+                    } else {
+                        next_slot
+                    };
+                    self.spike_ring[slot].push(idx as u32);
                     self.v_basal[idx] >>= 1;
                     self.trace_fast[idx] = (self.trace_fast[idx] + 64).min(256);
                     self.trace_slow[idx] = (self.trace_slow[idx] + 16).min(256);
@@ -718,13 +797,15 @@ impl CorticalFabric {
 
         // 1. EVENT-DRIVEN PROPAGATION WITH U(1) PHASE-GAUGE ATTENTION (ZERO MATMUL)
         let phase_gate = self.cfg.phase_gate_enabled;
+        let track_usage = self.syn_usage.len() == self.synapses.len();
         for &src in &active_spikes {
             let src_idx = src as usize;
             let src_phase = self.phase[src_idx];
             let start = self.row_ptr[src_idx];
             let end = self.row_ptr[src_idx + 1];
 
-            for syn in &self.synapses[start..end] {
+            for syn_idx in start..end {
+                let syn = self.synapses[syn_idx];
                 if syn.weight == 0 {
                     continue;
                 }
@@ -741,6 +822,9 @@ impl CorticalFabric {
                 } else {
                     128 >> syn.gain_shift
                 };
+                if track_usage {
+                    self.syn_usage[syn_idx] = self.syn_usage[syn_idx].saturating_add(1);
+                }
                 let impulse = if syn.weight > 0 { mag } else { -mag };
                 match syn.kind {
                     SynapseKind::BasalFeedforward => {
@@ -786,6 +870,7 @@ impl CorticalFabric {
             let mut s_fe: i64 = 0;
             let sensory_end = (self.n_neurons / 4).max(16);
             let ne_shift = 7u8.saturating_sub(ne >> 1);
+            let use_delay = self.cfg.myelin_delay_enabled;
 
             for i in 0..self.n_neurons {
                 self.v_basal[i] = (self.v_basal[i] - (self.v_basal[i] >> 2)).clamp(-512, 512);
@@ -823,7 +908,12 @@ impl CorticalFabric {
                 let drive = coincidence.max(pure_fe as i32);
 
                 if drive > self.threshold[i] {
-                    self.spike_ring[next_slot].push(i as u32);
+                    let slot = if use_delay {
+                        (self.tick + (self.axon_delay[i] as usize).clamp(1, MAX_DELAY - 1)) % MAX_DELAY
+                    } else {
+                        next_slot
+                    };
+                    self.spike_ring[slot].push(i as u32);
                     self.v_basal[i] >>= 1;
                     self.trace_fast[i] = (self.trace_fast[i] + 64).min(256);
                     self.trace_slow[i] = (self.trace_slow[i] + 16).min(256);
@@ -1016,6 +1106,98 @@ impl CorticalFabric {
                     self.ema_fe_slow > 0 && fe <= self.ema_fe_slow + (self.ema_fe_slow >> 4);
                 let stabilized = diff * 100 <= prev_fe.max(1) * tol_pct;
                 if (self.neuromod.noradrenaline < 6 && (at_equilibrium || stabilized)) || fe < 256 {
+                    break;
+                }
+            }
+            prev_fe = fe;
+        }
+        SettlingStats {
+            ticks_used: used,
+            final_fe,
+            sensory_fe,
+            total_spikes,
+            ne_level: self.neuromod.noradrenaline,
+        }
+    }
+
+    /// Clamp an arbitrary 2D spatial/wave sensory drive (`0..=320` integer intensities) onto
+    /// the Gamma sensory layer `0..sensory_end` (strictly integer, 0 floats).
+    pub fn clamp_sensory_pattern(&mut self, pattern: &[i32]) {
+        let sensory_end = (self.n_neurons / 4).max(16);
+        let slot = self.tick % MAX_DELAY;
+        let len = pattern.len().min(sensory_end);
+        for i in 0..len {
+            let v = pattern[i].clamp(0, 320);
+            self.v_basal[i] = v;
+            if v > 64 && (v - self.v_apical[i]).abs() > 40 {
+                self.spike_ring[slot].push(i as u32);
+            }
+        }
+    }
+
+    /// Amortized predictive settling on a clamped 2D spatial/retinal sensory pattern.
+    /// Respects physical axonal conduction delays (`axon_delay`) so myelinated circuits
+    /// achieve faster apical error cancellation in fewer ticks!
+    pub fn settle_pattern_amortized(
+        &mut self,
+        pattern: &[i32],
+        min_k: usize,
+        max_k: usize,
+        tol_pct: i64,
+    ) -> SettlingStats {
+        let sensory_end = (self.n_neurons / 4).max(16);
+        self.v_basal.fill(0);
+        for i in sensory_end..self.n_neurons {
+            self.v_apical[i] >>= 2;
+        }
+        // Keep in-flight delayed spikes only if myelin_delay_enabled == false; clear stale spikes
+        // between frames so each frame's settling latency reflects true axonal conduction delay!
+        for slot in &mut self.spike_ring {
+            slot.clear();
+        }
+        let mut prev_fe = i64::MAX;
+        let mut final_fe = 0i64;
+        let mut sensory_fe = 0i64;
+        let mut total_spikes = 0usize;
+        let mut used = 0usize;
+
+        // Physical axonal conduction round-trip: when saltatory delays are modeled, a newly
+        // clamped sensory frame must traverse at least one feedforward axonal conduction delay
+        // before cortical feedback can physically reflect the new pattern (prevents unmyelinated
+        // delay=3..5 circuits from exiting prematurely on stale warm-started apical voltage!).
+        let min_phys_ticks = if self.cfg.myelin_delay_enabled {
+            let n_s = pattern.len().min(sensory_end).max(1);
+            let sum_d: usize = self.axon_delay[..n_s]
+                .iter()
+                .map(|&d| (d as usize).max(1))
+                .sum();
+            let mean_d = (sum_d + n_s / 2) / n_s;
+            (mean_d + 1).max(2)
+        } else {
+            1
+        };
+        let eff_min_k = min_k.max(min_phys_ticks);
+
+        for step_idx in 0..max_k.max(1) {
+            self.clamp_sensory_pattern(pattern);
+            let (fe, sfe, sp) = self.step();
+            final_fe = fe;
+            sensory_fe = sfe;
+            total_spikes += sp;
+            used = step_idx + 1;
+
+            // Require apical feedback signal to arrive before allowing early exit when delays > 1
+            let ap_sum: i64 = self.v_apical[..pattern.len().min(sensory_end)]
+                .iter()
+                .map(|&v| (v as i64).abs())
+                .sum();
+            let feedback_arrived = !self.cfg.myelin_delay_enabled || ap_sum > 24 || used >= 6;
+
+            if used >= eff_min_k && feedback_arrived && prev_fe != i64::MAX {
+                let diff = (fe - prev_fe).abs();
+                let at_eq = self.ema_fe_slow > 0 && fe <= self.ema_fe_slow + (self.ema_fe_slow >> 4);
+                let stabilized = diff * 100 <= prev_fe.max(1) * tol_pct;
+                if (self.neuromod.noradrenaline < 6 && (at_eq || stabilized)) || fe < 256 {
                     break;
                 }
             }

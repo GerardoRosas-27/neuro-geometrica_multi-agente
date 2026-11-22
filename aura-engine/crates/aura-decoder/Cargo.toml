@@ -8,3 +8,4 @@ aura-math = { path = "../aura-math" }
 aura-perception = { path = "../aura-perception" }
 aura-cortex = { path = "../aura-cortex" }
 aura-hippocampus = { path = "../aura-hippocampus" }
+aura-genesis = { path = "../aura-genesis" }

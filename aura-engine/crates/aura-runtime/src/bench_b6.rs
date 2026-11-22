@@ -41,7 +41,7 @@ pub struct B6Result {
     pub shift_rust_bytes: usize,
 }
 
-fn load_repo_corpora(repo_root: &Path) -> (Vec<u8>, Vec<u8>, Vec<u8>) {
+pub fn load_repo_corpora(repo_root: &Path) -> (Vec<u8>, Vec<u8>, Vec<u8>) {
     // Domain A: Real Spanish/English Markdown from untouched `main` files
     let mut md_all = Vec::new();
     for rel in ["README.md", "docs/RESULTADOS_CONSOLIDADOS.md"] {

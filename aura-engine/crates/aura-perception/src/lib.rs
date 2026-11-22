@@ -361,6 +361,18 @@ impl EntropyPatcher {
             byte_pos: end_pos,
         }
     }
+
+    /// Clear transient stream buffers and entropy counts while preserving calibrated VICReg
+    /// variance/covariance normalization state (used across the prenatal-to-postnatal birth boundary).
+    pub fn reset_stream_keep_vicreg(&mut self) {
+        self.entropy_model.reset();
+        self.buf.clear();
+        self.buf_ent.clear();
+        self.tail_ctx = [0u8; 4];
+        self.ema_entropy = 4.0;
+        self.last_entropy = 4.0;
+        self.byte_pos = 0;
+    }
 }
 
 impl PerceptionEncoder for EntropyPatcher {
