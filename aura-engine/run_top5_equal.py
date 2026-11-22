@@ -19,6 +19,8 @@ SEEDS = [0xB600 + i for i in range(16)]
 ARCH_ORDER_BYTES = [
     "aura_v3_genesis",
     "aura_v2",
+    "metafe_3s",
+    "metafe_v2",
     "bq10",
     "constelacion_v4",
     "atlas_fw",
@@ -78,25 +80,24 @@ def run_one_seed(bin_path: Path, seed: int) -> tuple[str, float]:
 
 def main():
     bin_path = ENGINE_DIR / "target" / "release" / "top5-arena"
-    if not bin_path.exists():
-        subprocess.run(
-            [
-                "nice",
-                "-n",
-                "10",
-                "cargo",
-                "build",
-                "--release",
-                "--manifest-path",
-                str(ENGINE_DIR / "top5-arena" / "Cargo.toml"),
-                "--target-dir",
-                str(ENGINE_DIR / "target"),
-                "-j",
-                "2",
-            ],
-            cwd=REPO_ROOT,
-            check=True,
-        )
+    subprocess.run(
+        [
+            "nice",
+            "-n",
+            "10",
+            "cargo",
+            "build",
+            "--release",
+            "--manifest-path",
+            str(ENGINE_DIR / "top5-arena" / "Cargo.toml"),
+            "--target-dir",
+            str(ENGINE_DIR / "target"),
+            "-j",
+            "2",
+        ],
+        cwd=REPO_ROOT,
+        check=True,
+    )
 
     RAW_TOP5_DIR.mkdir(parents=True, exist_ok=True)
     print(f"[TOP5-ARENA] Running 16 CONFIRM seeds (0xB600..0xB60F) under equal training conditions...")
@@ -181,7 +182,7 @@ def main():
 
     # Head-to-head (`vs`) contrasts of AURA v3 Genesis against every architecture
     arena1_vs = {}
-    for other in ["aura_v2", "bq10", "atlas_fw", "constelacion_v4", "orbita_v1", "aura_v1"]:
+    for other in ["aura_v2", "metafe_3s", "metafe_v2", "bq10", "atlas_fw", "constelacion_v4", "orbita_v1", "aura_v1"]:
         arena1_vs[f"aura_v3_genesis_vs_{other}"] = {
             "eval_md_bpb": paired_diff(
                 b_by_arch["aura_v3_genesis"]["eval_md_bpb"],

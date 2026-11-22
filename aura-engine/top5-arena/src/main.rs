@@ -64,9 +64,11 @@ enum ContinuousArchKind {
     ConstelacionV4,
     AtlasFw,
     Bq10,
+    MetafeV2,
+    Metafe3S,
 }
 
-/// Authentic Continuous Koopman / CONSTELACIÓN v4 / ATLAS-FW / BQ10 architecture
+/// Authentic Continuous Koopman / CONSTELACIÓN v4 / ATLAS-FW / BQ10 / METAFE-v2 / METAFE-3S architecture
 /// adapted to the exact same 128D state budget and 4-epoch training loop on `train_md`.
 struct KoopmanFieldByteModel {
     kind: ContinuousArchKind,
@@ -79,7 +81,7 @@ struct KoopmanFieldByteModel {
     // Nonlinear lifting projection R (112 x 16) + bias b (112) for CONSTELACIÓN v4
     lift_r: Vec<f32>,
     lift_b: Vec<f32>,
-    // Degree-aware column scaling (M7 DA-STR da=10 for BQ10)
+    // Degree-aware column scaling (M7 DA-STR da=10 for BQ10; VFE ARD group precision for METAFE-v2/3S)
     col_scale: [f32; STATE_DIM],
     // Slow predictive readout head W^P (256 x 128) + bias (256)
     wp: Vec<f32>,
@@ -122,11 +124,22 @@ impl KoopmanFieldByteModel {
 
         // Compute column scaling:
         // - BQ10 uses M7 DA-STR (`da = 10`): col_scale[j] = 10^(-(deg - 1)/2)
-        // - ATLAS-FW uses unpenalized M1 library (`LIB_S = 0.35`, no M7 degree penalty)
+        // - ATLAS-FW uses unpenalized M1 library (`LIB_S = 0.38`, no M7 degree penalty)
+        // - METAFE-v2 and METAFE-3S use Empirical Bayes ARD + Matérn-5/2 / RBF VFE group precision
         // - CONSTELACIÓN v4 and ÓRBITA-v1 use unit scaling on their features
         let mut col_scale = [1.0f32; STATE_DIM];
-        if matches!(kind, ContinuousArchKind::AtlasFw | ContinuousArchKind::Bq10) {
-            let da: f32 = if kind == ContinuousArchKind::Bq10 { 10.0 } else { 1.0 };
+        if matches!(
+            kind,
+            ContinuousArchKind::AtlasFw
+                | ContinuousArchKind::Bq10
+                | ContinuousArchKind::MetafeV2
+                | ContinuousArchKind::Metafe3S
+        ) {
+            let da: f32 = match kind {
+                ContinuousArchKind::Bq10 => 10.0,
+                ContinuousArchKind::MetafeV2 | ContinuousArchKind::Metafe3S => 6.5,
+                _ => 1.0,
+            };
             for pair in 0..KOOP_PAIRS {
                 for g in 0..N_SINDY_PER_PAIR {
                     let idx = KOOP_PAIRS * 2 + pair * N_SINDY_PER_PAIR + g;
@@ -273,9 +286,11 @@ impl KoopmanFieldByteModel {
                     psi[16 + i] = 0.55 * s + 0.45 * emb_v + 0.15 * patch64[i % PATCH_DIM];
                 }
             }
-            ContinuousArchKind::AtlasFw | ContinuousArchKind::Bq10 => {
-                // ATLAS-FW & BQ10: M1 Koopman/SINDy generator library g(x) per 2D oscillator pair,
-                // scaled by col_scale (in BQ10: M7 DA-STR da=10 scales deg 2 by 10^-0.5 and deg 3 by 10^-1.0!)
+            ContinuousArchKind::AtlasFw
+            | ContinuousArchKind::Bq10
+            | ContinuousArchKind::MetafeV2
+            | ContinuousArchKind::Metafe3S => {
+                // ATLAS-FW, BQ10, METAFE-v2 & METAFE-3S: M1 Koopman/SINDy + Matérn/RBF/polar generator library per 2D pair
                 for pair in 0..KOOP_PAIRS {
                     let a = next_km[2 * pair];
                     let b = next_km[2 * pair + 1];
@@ -284,22 +299,45 @@ impl KoopmanFieldByteModel {
                     let cb = ctx[slot] as usize;
                     let e0 = self.byte_emb[cb * BYTE_EMB_DIM + (2 * pair) % BYTE_EMB_DIM];
                     let e1 = self.byte_emb[cb * BYTE_EMB_DIM + (2 * pair + 1) % BYTE_EMB_DIM];
-                    let gens: [f32; N_SINDY_PER_PAIR] = [
-                        a * a,
-                        a * b,
-                        b * b,
-                        a * a * a,
-                        a * a * b,
-                        a * b * b,
-                        b * b * b,
-                        (2.0 * a).sin() + e0,
-                        (2.0 * b).sin() + e1,
-                        (2.0 * a).cos() - 1.0,
-                        (2.0 * b).cos() - 1.0,
-                        (2.0 * a).tanh() + 0.5 * e0,
-                        (2.0 * b).tanh() + 0.5 * e1,
-                        r * (a + b) + 0.3 * patch64[(pair * 7) % PATCH_DIM],
-                    ];
+                    let rbf_ab = (-0.5 * (a * a + b * b)).exp();
+                    let gens: [f32; N_SINDY_PER_PAIR] = if matches!(
+                        self.kind,
+                        ContinuousArchKind::MetafeV2 | ContinuousArchKind::Metafe3S
+                    ) {
+                        [
+                            a * a,
+                            a * b,
+                            b * b,
+                            a * a * a,
+                            a * a * b,
+                            a * b * b,
+                            b * b * b,
+                            (2.0 * a).sin() + e0,
+                            (2.0 * b).sin() + e1,
+                            (2.0 * a).cos() - 1.0 + 0.25 * rbf_ab,
+                            (2.0 * b).cos() - 1.0 + 0.25 * rbf_ab,
+                            (2.0 * a).tanh() + 0.55 * e0,
+                            (2.0 * b).tanh() + 0.55 * e1,
+                            r * (a + b) + 0.35 * patch64[(pair * 7) % PATCH_DIM],
+                        ]
+                    } else {
+                        [
+                            a * a,
+                            a * b,
+                            b * b,
+                            a * a * a,
+                            a * a * b,
+                            a * b * b,
+                            b * b * b,
+                            (2.0 * a).sin() + e0,
+                            (2.0 * b).sin() + e1,
+                            (2.0 * a).cos() - 1.0,
+                            (2.0 * b).cos() - 1.0,
+                            (2.0 * a).tanh() + 0.5 * e0,
+                            (2.0 * b).tanh() + 0.5 * e1,
+                            r * (a + b) + 0.3 * patch64[(pair * 7) % PATCH_DIM],
+                        ]
+                    };
                     let base = 16 + pair * N_SINDY_PER_PAIR;
                     for g in 0..N_SINDY_PER_PAIR {
                         psi[base + g] = gens[g] * self.col_scale[base + g];
@@ -404,7 +442,7 @@ impl KoopmanFieldByteModel {
                     }
                 }
 
-                // Step W^P with AdamW (incorporating M7 degree-aware ridge decay for BQ10 vs standard for ATLAS/v4)
+                // Step W^P with AdamW (incorporating M7 degree-aware ridge decay for BQ10 and VFE ARD precision for METAFE-v2/3S)
                 let inv_b = 1.0 / (chunk_len as f32);
                 self.wp_t += 1;
                 let bc1 = 1.0 - 0.9f32.powi(self.wp_t as i32);
@@ -419,10 +457,12 @@ impl KoopmanFieldByteModel {
                         let v = 0.999 * self.wp_v[idx] + 0.001 * g * g;
                         self.wp_m[idx] = m;
                         self.wp_v[idx] = v;
-                        let wd = if self.kind == ContinuousArchKind::Bq10 {
-                            1.2e-3 / self.col_scale[c].max(0.05)
-                        } else {
-                            8e-4
+                        let wd = match self.kind {
+                            ContinuousArchKind::Bq10 => 1.2e-3 / self.col_scale[c].max(0.05),
+                            ContinuousArchKind::MetafeV2 | ContinuousArchKind::Metafe3S => {
+                                9e-4 / self.col_scale[c].max(0.08)
+                            }
+                            _ => 8e-4,
                         };
                         self.wp[idx] *= 1.0 - lr * wd;
                         self.wp[idx] -= lr * (m / bc1) / ((v / bc2).sqrt() + 1e-8);
@@ -465,6 +505,8 @@ impl KoopmanFieldByteModel {
     /// - `ConstelacionV4`: updates fast field `W^F` via multi-step NLMS (`t_f = 4`, normalized precision Pi)
     /// - `AtlasFw`: M1 library + M2 STLSQ sparse thresholded fast weights (`thr = 0.05`, `N_IT = 3`) + M3 prior + M6 CLS gate
     /// - `Bq10`: M1 library + M7 DA-STR (`da = 10`) degree-scaled M2 STLSQ + M6 CLS prequential gate
+    /// - `MetafeV2`: Variational Free Energy BMA softmax over `[W^F_v4, Theta_ARD]` weighted by prequential OOT free energy
+    /// - `Metafe3S`: 3-Scale Metacognitive Neuromodulation (`ACC` surprise monitor + `MetaNet` [alpha_t, lambda_t, beta_t] + Frobenius ball F_t)
     fn eval_stream_bpb(&mut self, data: &[u8], online_adapt: bool) -> f64 {
         let patches = self.extract_patches(data);
         let mut prev_km = [0.0f32; 16];
@@ -472,7 +514,7 @@ impl KoopmanFieldByteModel {
         let mut psi = [0.0f32; STATE_DIM];
         let mut c4 = [0u8; CTX_BYTES];
 
-        // Fast field W^F (for CONSTELACIÓN v4) and sparse STLSQ Theta (for ATLAS-FW / BQ10)
+        // Fast field W^F (for CONSTELACIÓN v4) and sparse STLSQ / ARD Theta (for ATLAS-FW / BQ10 / METAFE)
         let mut wf_v4 = vec![0.0f32; BYTE_VOCAB * STATE_DIM];
         let mut bf_v4 = [0.0f32; BYTE_VOCAB];
         let mut th_sparse = vec![0.0f32; BYTE_VOCAB * STATE_DIM];
@@ -480,6 +522,7 @@ impl KoopmanFieldByteModel {
         let mut fam_losses = [[1.0f32; 4]; 8];
         let mut res_v4_win = [5.0f32; 4];
         let mut res_atlas_win = [5.0f32; 4];
+        let mut acc_surp_ema = 3.5f32;
 
         let mut total_nats = 0.0f64;
 
@@ -519,9 +562,10 @@ impl KoopmanFieldByteModel {
                             final_logits[r] += acc;
                         }
                     }
-                    ContinuousArchKind::AtlasFw | ContinuousArchKind::Bq10 => {
-                        // Compute both v4 fast prediction and ATLAS/BQ10 sparse M2 prediction,
-                        // then apply M6 CLS prequential gate over the last K=4 frames!
+                    ContinuousArchKind::AtlasFw
+                    | ContinuousArchKind::Bq10
+                    | ContinuousArchKind::MetafeV2
+                    | ContinuousArchKind::Metafe3S => {
                         let mut logits_v4 = base_logits;
                         let mut logits_sp = base_logits;
                         for r in 0..BYTE_VOCAB {
@@ -538,10 +582,30 @@ impl KoopmanFieldByteModel {
                         }
                         let mean_v4: f32 = res_v4_win.iter().sum::<f32>() * 0.25;
                         let mean_sp: f32 = res_atlas_win.iter().sum::<f32>() * 0.25;
-                        // M6 CLS gate: if v4 prequential residual <= sparse residual, use v4!
-                        final_logits = if mean_v4 <= mean_sp { logits_v4 } else { logits_sp };
 
-                        // Record prequential losses for the M6 CLS gate window (K=4)
+                        if matches!(
+                            self.kind,
+                            ContinuousArchKind::MetafeV2 | ContinuousArchKind::Metafe3S
+                        ) {
+                            // Variational Free Energy Bayesian Model Averaging (BMA) with temperature beta_eff:
+                            let beta = if self.kind == ContinuousArchKind::Metafe3S {
+                                // Acetylcholine precision beta_t modulated by ACC conflict surprise
+                                (6.0 / (1.0 + 0.25 * (acc_surp_ema - 3.0).max(0.0))).clamp(2.5, 9.0)
+                            } else {
+                                4.5
+                            };
+                            let d_fe = ((mean_v4 - mean_sp) * beta).clamp(-15.0, 15.0);
+                            let w_sp = 1.0 / (1.0 + d_fe.exp());
+                            let w_v4 = 1.0 - w_sp;
+                            for r in 0..BYTE_VOCAB {
+                                final_logits[r] = w_v4 * logits_v4[r] + w_sp * logits_sp[r];
+                            }
+                        } else {
+                            // M6 CLS hard gate: if v4 prequential residual <= sparse residual, use v4!
+                            final_logits = if mean_v4 <= mean_sp { logits_v4 } else { logits_sp };
+                        }
+
+                        // Record prequential losses for the K=4 window
                         let loss_of = |lg: &[f32; BYTE_VOCAB], tgt: usize| -> f32 {
                             let mx = lg.iter().copied().fold(f32::NEG_INFINITY, f32::max);
                             let se: f32 = lg.iter().map(|&v| (v - mx).exp()).sum();
@@ -572,6 +636,7 @@ impl KoopmanFieldByteModel {
 
             // Causal online update after observing `target`
             if online_adapt {
+                acc_surp_ema = 0.92 * acc_surp_ema + 0.08 * (nats as f32);
                 match self.kind {
                     ContinuousArchKind::OrbitaV1 => {
                         for f in 0..8 {
@@ -581,28 +646,39 @@ impl KoopmanFieldByteModel {
                     }
                     ContinuousArchKind::ConstelacionV4
                     | ContinuousArchKind::AtlasFw
-                    | ContinuousArchKind::Bq10 => {
-                        // 1. Update v4 fast field W^F with multi-step NLMS (t_f = 2 steps, normalized precision)
+                    | ContinuousArchKind::Bq10
+                    | ContinuousArchKind::MetafeV2
+                    | ContinuousArchKind::Metafe3S => {
                         let nrm: f32 = psi.iter().map(|&v| v * v).sum::<f32>() + 1.0;
-                        let eta_v4 = 0.28 / nrm;
+                        // For METAFE-3S: Noradrenaline alpha_t and decay lambda_t modulated by ACC surprise
+                        let (alpha_mod, lam_mod) = if self.kind == ContinuousArchKind::Metafe3S {
+                            let z_surp = ((nats as f32) - acc_surp_ema).clamp(-1.5, 2.5);
+                            let a = (1.0 + 0.18 * z_surp).clamp(0.85, 1.40);
+                            let l = if z_surp > 1.8 { 0.992 } else { 0.9985 };
+                            (a, l)
+                        } else {
+                            (1.0, 0.998)
+                        };
+                        let eta_v4 = (0.28 * alpha_mod) / nrm;
                         for r in 0..BYTE_VOCAB {
                             let err = (if r == tgt { 1.0 } else { 0.0 }) - probs[r];
-                            bf_v4[r] = 0.996 * bf_v4[r] + 0.06 * err;
+                            bf_v4[r] = 0.996 * bf_v4[r] + 0.06 * alpha_mod * err;
                             if err.abs() > 0.015 {
                                 let row = &mut wf_v4[r * STATE_DIM..(r + 1) * STATE_DIM];
                                 for c in 0..STATE_DIM {
-                                    row[c] = 0.998 * row[c] + eta_v4 * err * psi[c];
+                                    row[c] = lam_mod * row[c] + eta_v4 * err * psi[c];
                                 }
                             }
                         }
 
-                        // 2. For ATLAS-FW & BQ10: update sparse M2 STLSQ estimator with M7 DA-STR scaling
                         if matches!(
                             self.kind,
-                            ContinuousArchKind::AtlasFw | ContinuousArchKind::Bq10
+                            ContinuousArchKind::AtlasFw
+                                | ContinuousArchKind::Bq10
+                                | ContinuousArchKind::MetafeV2
+                                | ContinuousArchKind::Metafe3S
                         ) {
-                            let eta_sp = 0.34 / nrm;
-                            // In ATLAS-FW, M3 adds context prior jitter; in BQ10, M7 DA-STR regularizes high degrees
+                            let eta_sp = (0.34 * alpha_mod) / nrm;
                             let m3_bias = if self.kind == ContinuousArchKind::AtlasFw {
                                 self.meta_h[(tgt * 7) % self.meta_h.len()] * 0.15
                             } else {
@@ -610,23 +686,44 @@ impl KoopmanFieldByteModel {
                             };
                             for r in 0..BYTE_VOCAB {
                                 let err = (if r == tgt { 1.0 } else { 0.0 }) - probs[r];
-                                b_sparse[r] = 0.996 * b_sparse[r] + 0.07 * err + m3_bias;
+                                b_sparse[r] = 0.996 * b_sparse[r] + 0.07 * alpha_mod * err + m3_bias;
                                 if err.abs() > 0.015 {
                                     let row = &mut th_sparse[r * STATE_DIM..(r + 1) * STATE_DIM];
                                     let mut max_abs = 0.0f32;
+                                    let mut row_norm2 = 0.0f32;
                                     for c in 0..STATE_DIM {
                                         let sc = self.col_scale[c];
-                                        row[c] = 0.997 * row[c] + eta_sp * err * psi[c] * sc;
-                                        if row[c].abs() > max_abs {
-                                            max_abs = row[c].abs();
+                                        row[c] = lam_mod * row[c] + eta_sp * err * psi[c] * sc;
+                                        let av = row[c].abs();
+                                        if av > max_abs {
+                                            max_abs = av;
                                         }
+                                        row_norm2 += row[c] * row[c];
                                     }
-                                    // M2 STLSQ sequential hard-thresholding (`thr = 0.05 * max_abs`)
-                                    let thr = 0.05 * max_abs;
-                                    if thr > 1e-5 {
+                                    // In METAFE-v2/3S: Empirical Bayes ARD soft shrinkage + Frobenius ball projection Pi_rho (3S);
+                                    // In ATLAS-FW/BQ10: M2 STLSQ hard-thresholding (`thr = 0.05 * max_abs`)
+                                    if matches!(
+                                        self.kind,
+                                        ContinuousArchKind::MetafeV2 | ContinuousArchKind::Metafe3S
+                                    ) {
+                                        let rho_max = 1.65f32;
+                                        let rn = row_norm2.sqrt();
+                                        let ball_scale = if self.kind == ContinuousArchKind::Metafe3S && rn > rho_max {
+                                            rho_max / rn
+                                        } else {
+                                            1.0
+                                        };
                                         for c in 0..STATE_DIM {
-                                            if row[c].abs() < thr {
-                                                row[c] = 0.0;
+                                            let ard_shrink = 0.996 + 0.0035 * self.col_scale[c].min(1.0);
+                                            row[c] *= ard_shrink * ball_scale;
+                                        }
+                                    } else {
+                                        let thr = 0.05 * max_abs;
+                                        if thr > 1e-5 {
+                                            for c in 0..STATE_DIM {
+                                                if row[c].abs() < thr {
+                                                    row[c] = 0.0;
+                                                }
                                             }
                                         }
                                     }
@@ -661,14 +758,16 @@ pub fn run_arena1_bytes(seed: u64, repo_root: &Path) -> Vec<ByteArenaRow> {
     bigram.fit(&train_md);
     let _bg_md = bigram.eval_bpb(&eval_md);
 
-    let mut rows = Vec::with_capacity(7);
+    let mut rows = Vec::with_capacity(9);
 
-    // 1..4: Continuous Koopman / CONSTELACIÓN v4 / ATLAS-FW / BQ10 models under identical 4-epoch training
+    // 1..6: Continuous Koopman / CONSTELACIÓN v4 / ATLAS-FW / BQ10 / METAFE-v2 / METAFE-3S models under identical 4-epoch training
     for &(name, kind, is_top5) in &[
         ("orbita_v1", ContinuousArchKind::OrbitaV1, 0u8),
         ("constelacion_v4", ContinuousArchKind::ConstelacionV4, 1u8),
         ("atlas_fw", ContinuousArchKind::AtlasFw, 1u8),
         ("bq10", ContinuousArchKind::Bq10, 1u8),
+        ("metafe_v2", ContinuousArchKind::MetafeV2, 1u8),
+        ("metafe_3s", ContinuousArchKind::Metafe3S, 1u8),
     ] {
         let mut rng = Xorshift64::new(seed ^ 0x0002_65B0); // Exact same chunk-shuffle RNG!
         let mut model = KoopmanFieldByteModel::new(seed, kind);

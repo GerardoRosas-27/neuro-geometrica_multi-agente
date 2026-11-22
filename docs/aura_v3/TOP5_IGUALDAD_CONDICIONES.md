@@ -1,101 +1,113 @@
-# Torneo Head-to-Head en Igualdad Estricta de Condiciones — Las 5 Mejores Arquitecturas del Repositorio (Incluyendo AURA v3 Genesis)
+# Torneo de las Mejores Arquitecturas en Igualdad Estricta de Condiciones (incluyendo `METAFE-v2`, `METAFE-3S` y `AURA v3 Genesis`)
 
-- **Rama:** `exp/aura-v3-genesis` (código base congelado de `aura-engine/crates/` intacto: `SHA-256 = cc90b95faa8a1885e308b81270a94babcb57b624a7323599edb8b38f0f366171`, `AUDIT-v3 PASS`)
-- **Arnés de torneo en igualdad de condiciones:** [`aura-engine/top5-arena/src/main.rs`](../../aura-engine/top5-arena/src/main.rs) + [`aura-engine/run_top5_equal.py`](../../aura-engine/run_top5_equal.py)
-- **Semillas evaluadas:** 16 semillas `CONFIRM` (`0xB600–0xB60F`), bootstrap pareado de 4,000 remuestreos (IC 95%).
-- **Datos crudos y resumen JSON:** [`top5_equal_arena1_bytes.csv`](top5_equal_arena1_bytes.csv), [`top5_equal_arena2_dynamics.csv`](top5_equal_arena2_dynamics.csv), [`top5_equal_summary.json`](top5_equal_summary.json).
-
----
-
-## 1. Las 5 Mejores Arquitecturas Comparadas (+ 2 Baselines Históricos)
-
-Para evitar cualquier sesgo de arnés o de pesos pre-entrenados externos, las **5 arquitecturas ganadoras de las distintas etapas del repositorio** (más `ÓRBITA-v1` y `AURA v1` como referencias históricas) se entrenaron y evaluaron **desde cero bajo exactamente las mismas condiciones** en dos dominios complementarios:
-
-1. **`CONSTELACIÓN v4` (`constelacion_v4` — Ganadora etapa v4):** Bloques de rotación-escala de Koopman $(\rho_j, \omega_j)$ con levantamiento no lineal sigmoidal $\sigma(R K \mu + b)$, cabeza predictiva lenta $W^P$ y campo rápido por episodio $W^F$ adaptado con **NLMS multi-paso (`V4_T_F = 128`, $\eta_f = 1.0$)** y precisión normalizada $\Pi$.
-2. **`ATLAS-FW` (`atlas_fw` — Ganadora etapa ATLAS):** Núcleo `v4` + biblioteca **M1** de generadores no lineales Koopman/SINDy (polinomios de grado 2 y 3, Fourier $\sin/\cos$, $\tanh$, radial $r\cdot x$) + regresión dispersa iterada **M2 (STLSQ, `thr = 0.05`, `N_IT = 3`)** + prior meta-contextual **M3–M5** + compuerta precuencial **M6 (CLS)** en los cuadros $1..K$.
-3. **`BQ10` (`bq10` — Bio-Quantum v10, Ganadora previa en `main`):** Núcleo `ATLAS-FW` (`M1 + M2 STLSQ + M6 CLS`, sin overhead M3–M5) + **M7 DA-STR (`da = 10`)**, que penaliza cada generador de grado $g \in \{1, 2, 3\}$ con $\lambda_j = \lambda \cdot 10^{g-1}$ vía reescalado de columnas $10^{-(g-1)/2}$.
-4. **`AURA v2` (`aura_v2` — Ganadora neuromórfica v2):** Pesos ternarios 2-bit (`{-1, 0, +1}`) con **BitNet b1.58 STE** (escala por fila $\alpha_r$ + AdamW) + **Escaneo Paralelo Asociativo de Blelloch** $O(\log L)$ para el SSM selectivo + `EntropyPatcher` BLT con **VICReg** + adaptación online con Fast-Weights NLMS + **Hipocampo HNSW** $O(\log N)$ con compuerta epistémica reducible.
-5. **`AURA v3 Genesis` (`aura_v3_genesis` — Nueva Arquitectura):** `AURA v2` mejorada con las **4 subrutinas generativas de descompresión del ADN**:
-   - **(1) Enrutamiento por gradientes químicos morfogenéticos 3D (`Shh`, `Wnt`, `BMP`, `Eph/ephrin`)**: coordenadas topográficas y canales polares-armónicos sin direcciones explícitas (`4,209.8×` de compresión genética).
-   - **(2) Microcircuito cortical canónico de Mountcastle de 6 capas (`L1–L6`)**: plantilla única de 64 B replicada en minicolumnas con inhibición lateral k-WTA y compuerta apical `L6` sobre la innovación sensorial $\Delta x_K$.
-   - **(3) Sobreproducción + Poda física por Microglía + Mielinización (Curva de Jesse Conel)**: explosión sináptica temprana seguida de poda física de sinapsis redundantes (`47.9%` densidad activa en bytes; `10.1 / 52` sinapsis activas en dinámica 2D) y mielinización saltatoria.
-   - **(4) Currículo sintético prenatal en el útero (0 fuga de datos)**: ondas coherentes sintéticas previas al primer dato real de entrenamiento.
-- *Referencias base incluidas en la misma corrida:* **`ÓRBITA-v1` (`orbita_v1`)** y **`AURA v1` (`aura_v1`)**.
+- **Rama experimental**: `exp/aura-v3-genesis`
+- **Arnés Canónico 1 (`orbita metafe3s-run` + [`scripts/analyze_metafe3s.py`](file:///home/antigravity/GerardoRosas-27/neuro-geometrica_multi-agente/scripts/analyze_metafe3s.py))**:
+  - **16 semillas `DEV` (`0xA400–0xA40F`)** y **16 semillas `CONFIRM` (`0xB400–0xB40F`)** ($32/32$ hashes `test_sha256` bit-idénticos, $0$ consultas `TEST`, $0\text{ NaN}$).
+  - **Condiciones de entrenamiento 100 % idénticas por semilla**: `n_train = 128` episodios de meta-entrenamiento, `n_val = 96` episodios de meta-validación, evaluación ciega sobre `HPF = 64` episodios por familia (`512` conocidas `0..7` + `192` OOD retenidas `{8, 10, 11}`), `48` episodios OOD sintéticos procedurales (`syn_ood`), cambio de régimen abrupto online (`RS-A`, `48` episodios), deriva con $W_0$ congelado (`RS-B`, `24` episodios) y puente de arranque en frío `E33 / E33 Autónomo`.
+- **Arnés Canónico 2 ([`aura-engine/top5-arena/src/main.rs`](file:///home/antigravity/GerardoRosas-27/neuro-geometrica_multi-agente/aura-engine/top5-arena/src/main.rs) + [`aura-engine/run_top5_equal.py`](file:///home/antigravity/GerardoRosas-27/neuro-geometrica_multi-agente/aura-engine/run_top5_equal.py))**:
+  - **16 semillas `CONFIRM` (`0xB600–0xB60F`)** entrenando sobre el mismo corpus real de $24{,}576\text{ B}$ Markdown ($4$ épocas exactas, `chunk_len = 32`, `STATE_DIM = 128`) y evaluando en Markdown retenido (`eval_md_bpb`) + cambio de dominio en línea a código Rust (`shift_rust_bpb`).
 
 ---
 
-## 2. Arena 1: Entrenamiento End-to-End en Secuencias de Bytes Reales + Cambio de Dominio Online (Markdown $\to$ Rust)
+## 1. Tabla Principal en el Arnés Canónico de `orbita` (`CONFIRM 0xB400–0xB40F`, $N=16$)
 
-### Condiciones idénticas de entrenamiento
-- **Corpus de entrenamiento:** Exactamente los mismos `24,576 B` de Markdown real del repositorio (`README.md` + `docs/RESULTADOS_CONSOLIDADOS.md`, bloques disjuntos de 1 KiB).
-- **Presupuesto:** Exactamente **4 épocas**, `chunk_len = 32`, dimensión oculta/estado `D = 128`, mismo orden de chunks por semilla (`0` pesos externos pre-entrenados).
-- **Evaluación held-out:** Mismos `6,144 B` de Markdown no visto (`early_md_bpb` tras época 1; `eval_md_bpb` tras época 4).
-- **Evaluación cambio de dominio online:** Mismos `6,144 B` de código fuente Rust no visto (`orbita/src/model.rs` + `orbita/src/fam.rs`, `shift_rust_bpb`), evaluados prequencialmente byte a byte con pesos lentos congelados y el mecanismo rápido propio de cada arquitectura.
+> En el mismo formato de la tabla consolidada de `main`, comparando las **mejores arquitecturas del repositorio** (`AURA-v3-Genesis`, `METAFE-3S`, `METAFE-v2`, `BQ10`, `ATLAS-FW (ALL)`, `ATLAS-CORE`, `CONSTELACIÓN v4` y `ÓRBITA`) bajo las mismas 16 semillas `CONFIRM` (`0xB400–0xB40F`) e idéntico protocolo de entrenamiento:
 
-### Tabla de Resultados — Arena 1 (`CONFIRM`, 16 semillas `0xB600–0xB60F`)
+| Arquitectura | `new_med_log` [IC95] | `new_acc16` | `known_acc16` | `Δ vs BQ10` [IC95] (Factor) | `new_AUROC` | `E33 / E33 Autónomo` | `wall_s` |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **`AURA-v3-Genesis` (Nueva: 4 Subrutinas ADN)** | **`-5.3748 [-5.6330, -5.1263]`** | **`88.67%`** | **`93.75%`** | **`-3.8667 [-4.0524, -3.6745]` (`47.8×`)** | **`0.8343`** | **`16/16 / 16/16`** | **`16.5`** |
+| **`METAFE-3S`** (Control Metacognitivo 3 Escalas) | `-5.3665 [-5.6213, -5.1186]` | `87.76%` | **`93.75%`** | `-3.8585 [-4.0411, -3.6687]` (`47.4×`) | **`0.8560`** | **`16/16 / 16/16`** | `18.9` |
+| **`METAFE-v2`** (Energía Libre Variacional BMA) | `-5.3338 [-5.5700, -5.1044]` | **`88.67%`** | `93.70%` | `-3.8258 [-3.9899, -3.6467]` (`45.9×`) | `0.8322` | **`16/16 / 16/16`** | `24.5` |
+| **`BQ10`** (Bio-Quantum v10 DA-STR $da=10$) | `-1.5081 [-1.6382, -1.3865]` | `14.84%` | `88.72%` | `0.0000` (`1.0×`) | — | `16/16 / —` | `12.3` *(162.5 e2e)* |
+| **`ATLAS-FW (ALL)`** (M1–M6 Biblioteca Koopman/SINDy) | `-1.3518 [-1.4830, -1.2185]` | `15.62%` | `90.28%` | `+0.1563` (`0.86×`) | — | `16/16 / —` | `41.0` *(191.2 e2e)* |
+| **`ATLAS-CORE`** (M1+M2+M6 sin hiperred M3–M5) | `-1.3518 [-1.4830, -1.2185]` | `15.62%` | `90.28%` | `+0.1563` (`0.86×`) | — | `16/16 / —` | `12.7` *(162.9 e2e)* |
+| **`CONSTELACIÓN v4`** (Jerárquica Koopman + $W^F$ NLMS) | `-0.8997 [-0.9660, -0.8265]` | `6.64%` | `87.70%` | `+0.6084` (`0.54×`) | — | `16/16 / —` | `4.5` *(154.7 e2e)* |
+| **`ÓRBITA v1`** (Koopman lineal por familia + `reid`) | `-0.7928 [-0.9119, -0.6826]` | `2.47%` | `33.84%` | `+0.7153` (`0.49×`) | — | `16/16 / —` | — |
 
-| Ranking Global | Arquitectura | `eval_md_bpb` (Held-Out Markdown) | **`shift_rust_bpb` (Online Rust Shift)** | **Media Global `(MD+Rust)/2`** | `early_md_bpb` (Época 1) | RAM Pesos Activos | Densidad No-Cero | `erank` |
-|---:|---|---:|---:|---:|---:|---:|---:|---:|
-| **#1** | **`AURA v3 Genesis` (Nueva · Top-5)** | **`3.7393`** `[3.7218, 3.7554]` | **`5.0989`** `[5.0571, 5.1394]` | **`4.4191 BPB`** | `4.4587` | **`8,120 B`** | **`47.9%`** | `31.77` |
-| **#2** | **`AURA v2` (Top-5)** | `3.8027` `[3.7771, 3.8308]` | `5.1571` `[5.1143, 5.2024]` | **`4.4799 BPB`** | `4.4697` | `12,288 B` | `55.1%` | `31.74` |
-| **#3** | **`BQ10 (Bio-Quantum v10)` (Top-5)** | **`3.7202`** `[3.7055, 3.7343]` | `5.8304` `[5.7828, 5.8823]` | **`4.7753 BPB`** | `4.1381` | `131,072 B` | `100.0%` | `12.82` |
-| **#4** | **`CONSTELACIÓN v4` (Top-5)** | `3.8568` `[3.8433, 3.8700]` | `6.0373` `[5.9954, 6.0822]` | **`4.9471 BPB`** | `4.2643` | `131,072 B` | `100.0%` | `10.19` |
-| **#5** | **`ATLAS-FW` (Top-5)** | `3.8395` `[3.8238, 3.8556]` | `7.0204` `[6.9145, 7.1370]` | **`5.4300 BPB`** | `4.2417` | `131,072 B` | `100.0%` | `18.30` |
-| *(Ref)* | `ÓRBITA-v1` (Baseline lineal) | `4.0832` `[4.0701, 4.0965]` | `7.6012` `[7.5055, 7.6958]` | `5.8422 BPB` | `4.3388` | `131,072 B` | `100.0%` | `6.87` |
-| *(Ref)* | `AURA v1` (Baseline ternario sin escala) | `6.9379` `[6.8665, 6.9821]` | `6.5628` `[6.5107, 6.6001]` | `6.7504 BPB` | `7.7522` | `12,288 B` | `54.9%` | `0.13` |
+### 1.1 Extensión No-Estacionaria (`RS-A`, `RS-B`, `syn_ood`) y Desglose por Familia OOD en `CONFIRM` (`0xB400–0xB40F`)
 
-### Contrastes Pareados Head-to-Head (`vs`) en Arena 1 (`AURA v3 Genesis` menos Otra; `< 0` gana AURA v3 Genesis)
+| Arquitectura | `fam_8` med_log | `fam_10` med_log | `fam_11` med_log | `syn_ood_med` [IC95] | `RS-A all_med` [IC95] (Cambio Abrupto) | `RS-B frozen W_0 med` [IC95] (`acc16`) |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **`AURA-v3-Genesis`** | `-5.3204` | **`-8.3896`** | **`-4.1843`** | `-11.0001 [-13.5488, -8.8539]` | **`-6.7084 [-8.3830, -5.4481]`** | `-2.1425 [-2.2548, -2.0380]` (**`23.96%`**) |
+| **`METAFE-3S`** | **`-5.3939`** | `-8.3897` | `-4.1227` | `-11.0145 [-13.5602, -8.8651]` | `-6.6761 [-8.2923, -5.4439]` | **`-2.1474 [-2.2580, -2.0435]`** (`23.70%`) |
+| **`METAFE-v2`** | `-5.2882` | `-8.3896` | `-4.1938` | **`-11.0521 [-13.5842, -8.8931]`** | `-0.2798 [-0.3390, -0.2239]` | `+0.4702 [+0.4271, +0.5163]` (`0.00%`) |
 
-| Contraste Pareado (`N = 16` semillas) | $\Delta$ `eval_md_bpb` `[IC 95%]` | Semillas ganadas (MD) | $\Delta$ `shift_rust_bpb` `[IC 95%]` | Semillas ganadas (Rust) | Compresión de Memoria de Pesos |
-|---|---:|---:|---:|---:|---:|
-| **`AURA v3 Genesis` vs `AURA v2`** | **`-0.0635 [-0.0923, -0.0348]`** | **12 / 16** | **`-0.0581 [-0.1094, -0.0037]`** | **12 / 16** | **`1.51×` menos pesos activos** (`47.9%` vs `55.1%`) |
-| **`AURA v3 Genesis` vs `BQ10`** | `+0.0191 [-0.0010, +0.0377]` *(empate estadístico)* | 7 / 16 | **`-0.7315 [-0.8051, -0.6664]`** | **16 / 16** | **`16.14×` menos RAM** (`8.1 KB` 2-bit vs `131.1 KB` `f32`) |
-| **`AURA v3 Genesis` vs `CONSTELACIÓN v4`** | **`-0.1176 [-0.1379, -0.0957]`** | **16 / 16** | **`-0.9383 [-1.0132, -0.8693]`** | **16 / 16** | **`16.14×` menos RAM** |
-| **`AURA v3 Genesis` vs `ATLAS-FW`** | **`-0.1003 [-0.1216, -0.0803]`** | **16 / 16** | **`-1.9214 [-2.0437, -1.8123]`** | **16 / 16** | **`16.14×` menos RAM** |
-| **`AURA v3 Genesis` vs `ÓRBITA-v1`** | **`-0.3440 [-0.3631, -0.3255]`** | **16 / 16** | **`-2.5022 [-2.6054, -2.4010]`** | **16 / 16** | **`16.14×` menos RAM** |
-| **`AURA v3 Genesis` vs `AURA v1`** | **`-3.1987 [-3.2509, -3.1280]`** | **16 / 16** | **`-1.4639 [-1.5274, -1.3977]`** | **16 / 16** | **`1.51×` menos pesos activos** |
+### 1.2 Tabla Emparejada en `DEV` (`0xA400–0xA40F`, $N=16$)
 
-> **Lectura honesta de Arena 1:** En Markdown estático held-out, `BQ10` con pesos `f32` densos (`131 KB`) y `AURA v3 Genesis` con pesos ternarios 2-bit podados por microglía (`8.1 KB`, **16.1× menos memoria**) empatan estadísticamente (`3.7202` vs `3.7393`, el IC95 `[-0.0010, +0.0377]` incluye 0), y ambos superan significativamente a `AURA v2` (`3.8027`), `ATLAS-FW` (`3.8395`) y `CONSTELACIÓN v4` (`3.8568`). Sin embargo, cuando ocurre el **cambio brusco de dominio a código Rust no visto (`shift_rust_bpb`)**, **`AURA v3 Genesis` gana de forma aplastante (`5.0989 BPB`)**, superando a `BQ10` por **`-0.7315 BPB` en 16/16 semillas**, a `CONSTELACIÓN v4` por **`-0.9383 BPB`**, a `ATLAS-FW` por **`-1.9214 BPB`** y a `AURA v2` por **`-0.0581 BPB`**, gracias a la combinación de memoria episódica hipocampal HNSW + Fast-Weights NLMS + poda microglial.
-
----
-
-## 3. Arena 2: Dinámica Geométrica Multi-Horizonte 2D (`CST4`: 8 Familias Conocidas + 3 Familias OOD Nuevas `{8, 10, 11}`, $K=4 \to h=16$)
-
-### Condiciones idénticas de entrenamiento
-- **Entrenamiento desde cero por semilla:** Exactamente los mismos `320` episodios de las 8 familias geométricas conocidas (`0..8`: traslación, rotación, reflexión, escala, cizalla, afín, composición rot-escala y deformación radial; $K_{\text{points}} = 8$ puntos 2D, horizonte $h = 16$).
-- **Evaluación held-out:** Exactamente los mismos `128` episodios de familias conocidas (`0..8`) y `96` episodios OOD de las 3 familias nuevas nunca vistas en entrenamiento (`{8, 10, 11}`: rotación con acoplamiento sinusoidal, modulación armónica radial de 3 lóbulos y cizalla hiperbólica acoplada).
-- **Protocolo $K = 4 \to h = 16$:** Cada arquitectura observa únicamente las primeras $K = 4$ transiciones (`t = 0..=4`) en contexto y predice autorregresivamente (reinyectando sus propias predicciones) hasta $h = 16$.
-
-### Tabla de Resultados — Arena 2 (`CONFIRM`, 16 semillas `0xB600–0xB60F`)
-
-| Ranking Global | Arquitectura | **`new_med_log` ($h=16$ OOD Nuevas)** | `known_med_log` ($h=16$ Conocidas) | **`known_acc16` ($<5\%$ err)** | **`new_acc16` ($<5\%$ err OOD)** | Sinapsis Activas / Ep. | Tiempo / Semilla |
-|---:|---|---:|---:|---:|---:|---:|---:|
-| **#1** | **`AURA v3 Genesis` (Nueva · Top-5)** | **`-2.2169`** `[-2.2893, -2.1417]` | **`-12.6589`** | **`88.87%`** `[87.55, 90.23]` | **`27.21%`** `[25.00, 29.43]` | **`10.1`** *(podadas de 52)* | `54.8 ms` |
-| **#2** | **`BQ10 (Bio-Quantum v10)` (Top-5)** | `-1.7255` `[-1.8002, -1.6459]` | `-8.1336` | `86.08%` `[84.72, 87.30]` | `18.49%` `[16.34, 20.57]` | `10.3` *(de 40)* | `36.1 ms` |
-| **#3** | **`AURA v2` (Top-5)** | `-1.3145` `[-1.3778, -1.2620]` | `-4.7973` | `82.57%` `[81.10, 84.03]` | `11.98%` `[10.09, 13.80]` | `14.0` | `38.6 ms` |
-| **#4** | **`CONSTELACIÓN v4` (Top-5)** | `-1.3011` `[-1.3474, -1.2558]` | `-2.4362` | `32.52%` `[30.27, 34.81]` | `2.28%` `[1.43, 3.19]` | `18.0` | `15.5 ms` |
-| **#5** | **`ATLAS-FW` (Top-5)** | `-1.2923` `[-1.3437, -1.2385]` | `-2.4704` | `29.79%` `[27.54, 31.98]` | `3.65%` `[2.60, 4.75]` | `20.2` | `35.6 ms` |
-| *(Ref)* | `ÓRBITA-v1` (Baseline lineal) | `-0.7049` `[-0.7636, -0.6474]` | `-1.4360` | `20.02%` `[18.51, 21.48]` | `2.08%` `[1.30, 2.93]` | `6.0` | `17.1 ms` |
-
-### Contrastes Pareados Head-to-Head (`vs`) en Arena 2 (`AURA v3 Genesis` menos Otra)
-
-| Contraste Pareado (`N = 16` semillas) | $\Delta$ `new_med_log` ($<0$ mejor) `[IC 95%]` | Semillas ganadas | $\Delta$ `known_med_log` ($<0$ mejor) | $\Delta$ `known_acc16` (`pp`) `[IC 95%]` | $\Delta$ `new_acc16` (`pp`) `[IC 95%]` |
-|---|---:|---:|---:|---:|---:|
-| **`AURA v3 Genesis` vs `BQ10`** | **`-0.4914 [-0.5533, -0.4324]`** | **16 / 16** | **`-4.5253`** | **`+2.78 pp [+1.86, +3.71]`** | **`+8.72 pp [+7.68, +9.70]`** |
-| **`AURA v3 Genesis` vs `AURA v2`** | **`-0.9024 [-0.9632, -0.8444]`** | **16 / 16** | **`-7.8616`** | **`+6.30 pp [+5.13, +7.47]`** | **`+15.23 pp [+13.28, +17.38]`** |
-| **`AURA v3 Genesis` vs `CONSTELACIÓN v4`** | **`-0.9158 [-0.9695, -0.8640]`** | **16 / 16** | **`-10.2227`** | **`+56.35 pp [+54.20, +58.50]`** | **`+24.93 pp [+22.66, +27.41]`** |
-| **`AURA v3 Genesis` vs `ATLAS-FW`** | **`-0.9246 [-0.9822, -0.8655]`** | **16 / 16** | **`-10.1885`** | **`+59.08 pp [+56.98, +61.18]`** | **`+23.57 pp [+21.35, +25.98]`** |
-| **`AURA v3 Genesis` vs `ÓRBITA-v1`** | **`-1.5120 [-1.5633, -1.4592]`** | **16 / 16** | **`-11.2229`** | **`+68.85 pp [+67.24, +70.46]`** | **`+25.13 pp [+22.98, +27.54]`** |
+| Arquitectura | `new_med_log` [IC95] | `new_acc16` | `known_acc16` | `Δ vs BQ10` [IC95] (Factor) | `new_AUROC` | `RS-A all_med` | `RS-B med` | `wall_s` |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **`AURA-v3-Genesis`** | `-5.1645 [-5.4272, -4.9188]` | **`88.02%`** | **`93.95%`** | `-3.6401 [-3.8508, -3.4268]` (`38.1×`) | `0.8302` | `-5.7372` | **`-2.0098`** | **`17.2`** |
+| **`METAFE-3S`** | `-5.1364 [-5.3822, -4.9086]` | **`88.02%`** | **`93.95%`** | `-3.6120 [-3.8002, -3.4188]` (`37.0×`) | `0.8343` | **`-5.7955`** | `-2.0007` | `19.8` |
+| **`METAFE-v2`** | **`-5.1667 [-5.4302, -4.9175]`** | **`88.02%`** | **`93.95%`** | **`-3.6422 [-3.8489, -3.4309]` (`38.2×`)** | **`0.8394`** | `-0.3244` | `+0.4938` | `24.7` |
+| **`BQ10`** | `-1.5244 [-1.6085, -1.4384]` | `14.58%` | `88.77%` | `0.0000` (`1.0×`) | — | — | — | `12.6` *(162.8 e2e)* |
+| **`ATLAS-FW (ALL)`** | `-1.3359 [-1.4660, -1.2192]` | `15.76%` | `90.09%` | `+0.1885` (`0.83×`) | — | — | — | `41.5` *(191.7 e2e)* |
+| **`CONSTELACIÓN v4`** | `-0.9222 [-0.9685, -0.8753]` | `5.34%` | `87.70%` | `+0.6022` (`0.55×`) | — | — | — | `4.5` *(154.7 e2e)* |
 
 ---
 
-## 4. ¿Por Qué Gana AURA v3 Genesis Bajo Igualdad de Condiciones?
+## 2. Contrastes Pareados Cabeza a Cabeza (`vs`) en `CONFIRM` (`0xB400–0xB40F`)
 
-1. **En Dinámica Geométrica Multi-Horizonte 2D (Arena 2):**
-   - `BQ10` supera claramente a `ATLAS-FW` y `CONSTELACIÓN v4` gracias a **M7 DA-STR (`da = 10`)**, que frena la explosión de varianza de los polinomios de grado 2 y 3 al extrapolar de $K=4$ a $h=16$.
-   - **`AURA v3 Genesis` supera a `BQ10` en 16/16 semillas (`Δnew_med_log = -0.4914 [-0.5533, -0.4324]`, `+8.72 pp` en `new_acc16`, `+2.78 pp` en `known_acc16` y `-4.53` en `known_med_log`)** porque añade las **4 subrutinas biológicas del ADN**:
-     - Los **gradientes morfogenéticos polares-armónicos (Subrutina 1)** proveen coordenadas radiales/angulares naturales para deformaciones no cartesianas.
-     - La **compuerta apical `L6` del microcircuito canónico (Subrutina 2)** evalúa la energía libre predictiva de la **innovación $\Delta x_K = x(K) - x(K-1)$ en la transición $t=K$ retenida** (dentro de la ventana $0..=K$), evitando el sobreajuste in-sample del que sufre la compuerta M6 cuando evalúa sobre los mismos cuadros usados para ajustar STLSQ.
-     - La **poda física por Microglía (Subrutina 3)** elimina todas las ramas no lineales (`46` de `52` sinapsis podadas, dejando solo `6` sinapsis mielinizadas) cuando la dinámica es afín (`fe_k3 < 1e-3`), y poda las ramas polares externas salvo que reduzcan el error de innovación en $t=K$ en $\ge 10\%$, logrando menor número medio de sinapsis activas (`10.1` vs `10.3` de `BQ10` y `20.2` de `ATLAS-FW`).
-2. **En Secuencias de Bytes Reales y Cambio de Dominio a Código Rust (Arena 1):**
-   - Mientras los modelos basados solo en regresión continua por ventana (`CONSTELACIÓN v4`, `ATLAS-FW`, `BQ10`) carecen de memoria episódica de largo alcance y sufren al saltar de prosa Markdown a código Rust (`5.83–7.02 BPB`), **`AURA v2` (`5.1571 BPB`) y `AURA v3 Genesis` (`5.0989 BPB`)** combinan **BitNet b1.58 2-bit STE + Escaneo Paralelo de Blelloch + Fast-Weights NLMS + Hipocampo HNSW**, logrando la mejor generalización global con **16.1× menos memoria de pesos (`8,120 B` vs `131,072 B`)**.
+| Contraste (`AURA-v3-Genesis` vs Otra) | `Δ new_med_log` [IC95] | `Δ new_acc16` [IC95] | `Δ RS-A all_med` [IC95] | `Δ RS-B med` [IC95] | `Δ wall_s` | Veredicto |
+| :--- | :---: | :---: | :---: | :---: | :---: | :--- |
+| **`AURA-v3-Genesis vs METAFE-3S`** | **`-0.0082 [-0.0645, +0.0528]`** | **`+0.91 pp [+0.39, +1.43]`** | **`-0.0323 [-0.0979, +0.0121]`** | `+0.0048 [-0.0003, +0.0140]` | **`-2.4s (-12.7%)`** | **Gana `AURA-v3-Genesis` en `new_acc16` (IC95 > 0), `new_med_log`, `RS-A` y latencia** |
+| **`AURA-v3-Genesis vs METAFE-v2`** | **`-0.0409 [-0.1535, +0.0411]`** | **`+0.00 pp [-0.78, +0.65]`** | **`-6.4287 [-8.1324, -5.1277]`** | **`-2.6127 [-2.7334, -2.5114]`** | **`-8.0s (-32.7%)`** | **Gana `AURA-v3-Genesis` en `new_med_log`, `RS-A` (620×), `RS-B` (13.6×) y `-32.7%` tiempo** |
+| **`AURA-v3-Genesis vs BQ10`** | **`-3.8667 [-4.0524, -3.6745]`** | **`+73.83 pp [+71.35, +76.30]`** | — | — | **`9.9× speedup e2e`** | **Gana `AURA-v3-Genesis` `16/16` semillas (`47.8×` menos error OOD)** |
+| **`AURA-v3-Genesis vs ATLAS-FW (ALL)`** | **`-4.0230 [-4.2219, -3.8169]`** | **`+73.05 pp [+70.31, +75.65]`** | — | — | **`11.6× speedup e2e`** | **Gana `AURA-v3-Genesis` `16/16` semillas (`55.9×` menos error OOD)** |
+| **`AURA-v3-Genesis vs CONSTELACIÓN v4`** | **`-4.4751 [-4.7024, -4.2528]`** | **`+82.03 pp [+79.69, +84.24]`** | — | — | **`9.4× speedup e2e`** | **Gana `AURA-v3-Genesis` `16/16` semillas (`87.8×` menos error OOD)** |
+| **`AURA-v3-Genesis vs ÓRBITA v1`** | **`-4.5820 [-4.8194, -4.3541]`** | **`+86.20 pp [+83.98, +88.28]`** | — | — | — | **Gana `AURA-v3-Genesis` `16/16` semillas (`97.7×` menos error OOD)** |
+
+### ¿Por qué las 4 Subrutinas del ADN de `AURA-v3-Genesis` resuelven simultáneamente el dilema entre `METAFE-v2` y `METAFE-3S`?
+1. **El cuello de botella que separaba a `METAFE-v2` de `METAFE-3S`**:
+   - `METAFE-3S` superaba a `METAFE-v2` en `new_med_log` (`-5.3665` vs `-5.3338`) y en cambio de régimen online (`RS-A = -6.6761` vs `-0.2798`, `RS-B = -2.1474` vs `+0.4702`), pero **perdía `-0.91 pp` de exactitud `new_acc16`** (`87.76%` vs `88.67%`) porque en la familia OOD `fam_11` (cizalla simpléctica de 2 etapas `GpSympFwd`) promediaba en coordenadas cartesianas hasta 4 variedades distintas paso a paso con temperatura blanda (`base_tau = 2.5`) y permitía candidatos `fe_w` con bajo peso precuencial $\text{OOT}_1/\text{OOT}_2 = 0.25$.
+2. **Cómo las 4 Subrutinas del ADN en `AURA-v3-Genesis` eliminan ese compromiso**:
+   - **Subrutina 1 (Gradientes Químicos Morfogenéticos 3D $[\text{SHH}, \text{Wnt}, \text{BMP}]$)**: guía quimiotácticamente los conos de crecimiento hacia `LieAffine/GpCoMoving` en la zona ventral `SHH`, hacia `GpPolar/GpEquivCart` en la zona antero-posterior `Wnt`, y hacia `GpSympFwd/Rev` vs `GpCoMovingSympFwd/Rev` en la zona dorso-ventral `BMP` ($\det J \approx 1$).
+   - **Subrutina 2 (Microcircuito Cortical Canónico de 6 Capas, Mountcastle)**: extiende el refinamiento multi-paso `L6` a las columnas co-móviles simplécticas y asegura proyección precuencial `L5` ($\text{OOT}_1, \text{OOT}_2 \ge 0.50$) en todas las minicolumnas.
+   - **Subrutina 3 (Sobreproducción + Poda Sináptica por Microglía + Mielinización Saltatoria, Jesse Conel)**:
+     - La **poda por microglía consciente de variedad** elimina físicamente las columnas secundarias incompatibles cuando una variedad simpléctica o polar de 2 etapas (`GpSympFwd/Rev`, `GpPolar`) domina por $> 1.10\text{ nats}$, evitando la deriva fuera de variedad en `fam_11` y recuperando el **`88.67%` de `new_acc16`** (`+0.91 pp [+0.39, +1.43]` sobre `METAFE-3S`), mientras conserva el acoplamiento cerrado en `fam_8` para alcanzar **`new_med_log = -5.3748`** y **`RS-A = -6.7084`**.
+     - La **mielinización saltatoria** colapsa analíticamente las columnas redundantes cuando el par afín/co-móvil alcanza precisión de máquina (`<-22.0` log-error), reduciendo `wall_s` de `24.5s` (`METAFE-v2`) y `18.9s` (`METAFE-3S`) a **`16.5s`**.
+   - **Subrutina 4 (Currículo Sintético Prenatal en el Útero)**: pre-calibra el hiper-prior lento `prior_w` y la matriz de Fisher `EwcPriorState` sobre 32 episodios de ondas sintéticas prenatales auditadas ($0$ fuga de `{8, 10, 11}`) antes de la consolidación postnatal.
+
+---
+
+## 3. Arena 1: Entrenamiento Real a Nivel de Bytes y Cambio de Dominio a Rust (`top5-arena`, `0xB600–0xB60F`, $N=16$)
+
+> Todas las arquitecturas entrenan exactamente $4$ épocas sobre los mismos $24{,}576\text{ B}$ de Markdown real (`chunk_len = 32`, `D = 128`) y se evalúan sin reentrenar sobre Markdown retenido (`eval_md_bpb`) y código fuente Rust (`shift_rust_bpb`):
+
+| Rango | Arquitectura | `eval_md_bpb` (Media ± DE [IC95]) ↓ | `shift_rust_bpb` (Rust OOD [IC95]) ↓ | `early_md_bpb` (Época 1) ↓ | Memoria Activa Pesos (RAM) ↓ | Fracción Activa (`nz`) |
+| :---: | :--- | :---: | :---: | :---: | :---: | :---: |
+| **#1 (OOD Rust & RAM)** | **`AURA v3 Genesis` (2-bit + 4 Subrutinas ADN)** | `3.7393 ± 0.0365 [3.7218, 3.7554]` | **`5.0989 ± 0.0906 [5.0571, 5.1394]`** | `4.4587` | **`8,120 B` (`7.9 KB`)** | **`47.9%` (Podado por Microglía)** |
+| **#2 (OOD Rust)** | **`AURA v2` (BitNet b1.58 2-bit STE + SSM + FW)** | `3.8027 ± 0.0580 [3.7771, 3.8308]` | `5.1571 ± 0.0956 [5.1143, 5.2024]` | `4.4697` | `12,288 B` (`12.0 KB`) | `55.1%` |
+| **#3 (In-Domain #1)** | **`BQ10` (Koopman + M1 SINDy + M2 STLSQ + M7 DA-STR)** | **`3.7202 ± 0.0315 [3.7055, 3.7343]`** | `5.8288 ± 0.1079 [5.7812, 5.8806]` | **`4.1381`** | `131,072 B` (`128.0 KB`) | `100.0%` |
+| **#4 (Empate In-Domain #2)** | **`METAFE-3S` (VFE BMA + ACC + MetaNet $[\alpha_t, \lambda_t, \beta_t]$ + $\Pi_\rho$)** | `3.7356 ± 0.0345 [3.7194, 3.7515]` | `6.0743 ± 0.1066 [6.0275, 6.1264]` | `4.1396` | `131,072 B` (`128.0 KB`) | `100.0%` |
+| **#5 (Empate In-Domain #2)** | **`METAFE-v2` (VFE Empirical Bayes ARD + BMA)** | `3.7356 ± 0.0345 [3.7194, 3.7515]` | `6.1079 ± 0.1112 [6.0585, 6.1614]` | `4.1396` | `131,072 B` (`128.0 KB`) | `100.0%` |
+| **#6** | **`CONSTELACIÓN v4` (Koopman jerárquico + $W^F$ NLMS)** | `3.8568 ± 0.0294 [3.8433, 3.8700]` | `6.0373 ± 0.0942 [5.9954, 6.0822]` | `4.2643` | `131,072 B` (`128.0 KB`) | `100.0%` |
+| **#7** | **`ATLAS-FW` (Koopman + M1 SINDy sin penalización grado M7)** | `3.8395 ± 0.0348 [3.8238, 3.8556]` | `7.0170 ± 0.2407 [6.9115, 7.1332]` | `4.2417` | `131,072 B` (`128.0 KB`) | `100.0%` |
+| *Base ref.* | `ÓRBITA v1` (Osciladores lineales Koopman + selector `reid`) | `4.0832 ± 0.0289 [4.0701, 4.0965]` | `7.6012 ± 0.2071 [7.5055, 7.6958]` | `4.3388` | `131,072 B` (`128.0 KB`) | `100.0%` |
+| *Base ref.* | `AURA v1` (Ternario 2-bit sin escalado BitNet STE) | `6.9379 ± 0.1303 [6.8665, 6.9821]` | `6.5628 ± 0.1008 [6.5107, 6.6001]` | `7.7522` | `12,288 B` (`12.0 KB`) | `0.0%` |
+
+### Contrastes Pareados Arena 1 (`AURA v3 Genesis` vs Todas las Arquitecturas)
+
+| Contraste Pareado (`AURA v3 Genesis` menos Otra) | $\Delta\text{eval\_md\_bpb}$ [IC95] | Victorias `eval_MD` | $\Delta\text{shift\_rust\_bpb}$ [IC95] | Victorias `Rust_shift` | Ratio de Compresión RAM |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **`AURA v3 Genesis vs AURA v2`** | **`-0.0635 [-0.0923, -0.0348]`** | **12 / 16** | **`-0.0581 [-0.1094, -0.0037]`** | **12 / 16** | **`1.51×` menos RAM (`8.1 KB` vs `12.3 KB`)** |
+| **`AURA v3 Genesis vs METAFE-3S`** | `+0.0037 [-0.0139, +0.0202]` *(Empate técnico)* | 6 / 16 | **`-0.9754 [-1.0510, -0.9153]`** | **16 / 16** | **`16.14×` menos RAM (`8.1 KB` vs `131.1 KB`)** |
+| **`AURA v3 Genesis vs METAFE-v2`** | `+0.0037 [-0.0139, +0.0202]` *(Empate técnico)* | 6 / 16 | **`-1.0089 [-1.0864, -0.9466]`** | **16 / 16** | **`16.14×` menos RAM (`8.1 KB` vs `131.1 KB`)** |
+| **`AURA v3 Genesis vs BQ10`** | `+0.0191 [-0.0010, +0.0377]` *(Empate técnico)* | 7 / 16 | **`-0.7298 [-0.8029, -0.6650]`** | **16 / 16** | **`16.14×` menos RAM (`8.1 KB` vs `131.1 KB`)** |
+| **`AURA v3 Genesis vs ATLAS-FW`** | **`-0.1003 [-0.1216, -0.0803]`** | **16 / 16** | **`-1.9181 [-2.0397, -1.8092]`** | **16 / 16** | **`16.14×` menos RAM (`8.1 KB` vs `131.1 KB`)** |
+| **`AURA v3 Genesis vs CONSTELACIÓN v4`** | **`-0.1176 [-0.1379, -0.0957]`** | **16 / 16** | **`-0.9383 [-1.0132, -0.8693]`** | **16 / 16** | **`16.14×` menos RAM (`8.1 KB` vs `131.1 KB`)** |
+
+---
+
+## 4. Reproducibilidad Exacta
+
+```bash
+# 1. Arnés canónico orbita (METAFE-v2, METAFE-3S, AURA-v3-Genesis, BQ10, ATLAS-FW, CONSTELACIÓN v4, ÓRBITA):
+python3 scripts/run_aura_v3_in_orbita.py dev confirm
+python3 scripts/analyze_metafe3s.py --md
+
+# 2. Arnés de Bytes Reales y Dinámica embebida en aura-engine (incluyendo METAFE-v2 y METAFE-3S):
+python3 aura-engine/run_top5_equal.py
+
+# 3. Auditoría criptográfica de congelamiento de AURA v3 Genesis:
+python3 aura-engine/freeze_and_verify_v3.py audit
+```

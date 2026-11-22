@@ -1,0 +1,8 @@
+START 0xB40D 2026-11-19T07:07:39+00:00
+0xB40D METAFE-v2          new_med=-6.4237 new_acc=0.9583 syn_med=-11.2608 rsA=-0.2497 rsB=+0.6101 24.39s
+0xB40D METAFE-3S          new_med=-6.4237 new_acc=0.9792 syn_med=-11.2608 rsA=-7.2189 rsB=-1.9762 18.64s
+0xB40D METAFE-3S-NoFast   new_med=-6.4237 new_acc=0.9792 syn_med=-11.2608 rsA=-7.2189 rsB=+0.6443 18.34s
+0xB40D METAFE-3S-NoRefute new_med=-6.4237 new_acc=0.9792 syn_med=-11.2608 rsA=-7.2189 rsB=-1.9762 12.20s
+0xB40D METAFE-3S-NoNM     new_med=-6.4237 new_acc=0.9792 syn_med=-11.2608 rsA=-0.2332 rsB=+0.4446 37.38s
+0xB40D ok 114.54s
+END 0xB40D rc=0 2026-11-19T07:09:33+00:00
