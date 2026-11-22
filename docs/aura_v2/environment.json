@@ -7,5 +7,5 @@
   "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)",
   "cargo": "cargo 1.99.1 (5f94df478 2026-08-27)",
   "git_branch": "exp/aura-v2-training",
-  "git_head": "02b634844b4c212a5bba692bf055aa247591dec5"
+  "git_head": "a48994f26db533bdc025cbfea27e560b0c786c54"
 }
