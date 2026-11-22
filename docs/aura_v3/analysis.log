@@ -1,0 +1,48 @@
+
+================ DEV AURA v3 GENESIS SUMMARY (15/15 PASS) ================
+[G1] genome=144B comp=4209.8x | topo: morpho=0.9990 vs rand=0.0096 | spatial FE: morpho=4097.4 vs rand=6429.1
+[G2] 1 template (64B) -> V1=99.73% A1=100.00% Bytes=76.95% | Sur A1->Vis=99.77% (OSI=0.490) vs Rand=35.90%
+[G3] Conel: new=2560 -> peak=9728 -> comp=3072 (prune=68.4%) | delay=5.08->1.81 | FE: comp=1870.5 sparse=1888.2 peak=2177.0 | ticks=3.74 vs 7.85 | tps=1.76x
+[G4] OSI@birth: waves=0.495 noise=0.333 none=0.332 | early FE: 1556.8 vs noise=1959.2 vs none=1960.4 | SM err: 0.4483 vs noise=1.1334 vs none=0.9118
+[G5a] Fabric v3 vs v2: early_fe=6964.3 vs 13398.2 | late_fe=7168.2 vs 12010.3 | ticks=3.54 vs 5.19 | comp=4209.8x
+[G5b] Bytes v3 vs v2: early_MD=4.4326 vs v2=4.4759 | final_MD=3.7431 vs v2=3.7990 vs bg=4.1616 | Rust=5.0331 vs frozen=7.4617 vs bg=6.2074 | nonzero=48.5% vs v2=54.9%
+  [PASS] H_G1a_genome_le_256B_and_comp_gt_1000x
+  [PASS] H_G1b_retinotopic_corr_gt_0.85_and_beats_random
+  [PASS] H_G1c_morphogen_spatial_fe_beats_random
+  [PASS] H_G2a_canonical_universal_3_modalities_gt_70pct
+  [PASS] H_G2b_sur_rewiring_osi_gt_0.35_and_beats_random_gt_10pp
+  [PASS] H_G2c_sur_rewired_a1_matches_v1_within_6pp
+  [PASS] H_G3a_conel_curve_overproduce_ge_2.5x_and_prune_ge_50pct
+  [PASS] H_G3b_lottery_ticket_compiled_beats_sparse_from_scratch
+  [PASS] H_G3c_myelination_reduces_ticks_and_boosts_tps_gt_1.25x
+  [PASS] H_G4a_prenatal_waves_beat_no_prenatal_fe_and_osi
+  [PASS] H_G4b_prenatal_waves_beat_white_noise_negative_control
+  [PASS] H_G4c_fetal_motor_twitches_beat_none_and_white_noise
+  [PASS] H_G5a_fabric_v3_genesis_beats_v2_early_ticks_late_and_comp
+  [PASS] H_G5b_bytes_v3_genesis_beats_v2_early_bpb_and_bigram
+  [PASS] H_G5c_bytes_v3_sparser_than_v2_and_online_rust_shift
+
+================ CONFIRM AURA v3 GENESIS SUMMARY (14/15 PASS) ================
+[G1] genome=144B comp=4209.8x | topo: morpho=0.9990 vs rand=-0.0087 | spatial FE: morpho=4167.4 vs rand=6406.4
+[G2] 1 template (64B) -> V1=99.69% A1=100.00% Bytes=74.53% | Sur A1->Vis=99.92% (OSI=0.498) vs Rand=35.59%
+[G3] Conel: new=2560 -> peak=9728 -> comp=3072 (prune=68.4%) | delay=5.07->1.82 | FE: comp=1871.1 sparse=1889.3 peak=2187.6 | ticks=3.73 vs 7.95 | tps=1.75x
+[G4] OSI@birth: waves=0.502 noise=0.324 none=0.323 | early FE: 1555.1 vs noise=1961.7 vs none=1963.7 | SM err: 0.4498 vs noise=1.1400 vs none=0.9138
+[G5a] Fabric v3 vs v2: early_fe=7048.3 vs 13462.2 | late_fe=7247.7 vs 11979.4 | ticks=3.52 vs 5.19 | comp=4209.8x
+[G5b] Bytes v3 vs v2: early_MD=4.4587 vs v2=4.4697 | final_MD=3.7393 vs v2=3.8027 vs bg=4.1616 | Rust=5.0989 vs frozen=7.6332 vs bg=6.2074 | nonzero=47.9% vs v2=55.1%
+  [PASS] H_G1a_genome_le_256B_and_comp_gt_1000x
+  [PASS] H_G1b_retinotopic_corr_gt_0.85_and_beats_random
+  [PASS] H_G1c_morphogen_spatial_fe_beats_random
+  [PASS] H_G2a_canonical_universal_3_modalities_gt_70pct
+  [PASS] H_G2b_sur_rewiring_osi_gt_0.35_and_beats_random_gt_10pp
+  [PASS] H_G2c_sur_rewired_a1_matches_v1_within_6pp
+  [PASS] H_G3a_conel_curve_overproduce_ge_2.5x_and_prune_ge_50pct
+  [PASS] H_G3b_lottery_ticket_compiled_beats_sparse_from_scratch
+  [PASS] H_G3c_myelination_reduces_ticks_and_boosts_tps_gt_1.25x
+  [PASS] H_G4a_prenatal_waves_beat_no_prenatal_fe_and_osi
+  [PASS] H_G4b_prenatal_waves_beat_white_noise_negative_control
+  [PASS] H_G4c_fetal_motor_twitches_beat_none_and_white_noise
+  [PASS] H_G5a_fabric_v3_genesis_beats_v2_early_ticks_late_and_comp
+  [FAIL] H_G5b_bytes_v3_genesis_beats_v2_early_bpb_and_bigram
+  [PASS] H_G5c_bytes_v3_sparser_than_v2_and_online_rust_shift
+
+Saved summary -> docs/aura_v3/summary.json

@@ -1,0 +1,39 @@
+{
+  "seed": "0xB600",
+  "all_identical_excluding_timing": true,
+  "files": {
+    "g1.csv": {
+      "identical": true,
+      "fields_checked": 18,
+      "diffs": []
+    },
+    "g2.csv": {
+      "identical": true,
+      "fields_checked": 30,
+      "diffs": []
+    },
+    "g3.csv": {
+      "identical": true,
+      "fields_checked": 33,
+      "diffs": []
+    },
+    "g4.csv": {
+      "identical": true,
+      "fields_checked": 15,
+      "diffs": []
+    },
+    "g5_fabric.csv": {
+      "identical": true,
+      "fields_checked": 14,
+      "diffs": []
+    },
+    "g5_bytes.csv": {
+      "identical": true,
+      "fields_checked": 40,
+      "diffs": []
+    },
+    "g5_samples.txt": {
+      "identical": true
+    }
+  }
+}
