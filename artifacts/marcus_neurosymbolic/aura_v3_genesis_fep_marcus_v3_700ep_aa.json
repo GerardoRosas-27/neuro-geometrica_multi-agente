@@ -1,0 +1,176 @@
+{
+  "evaluation_round": 8,
+  "episode": 700,
+  "timestamp": "2026-11-22T19:38:25.369442+00:00",
+  "eval_duration_seconds": 1.212,
+  "total_questions": 300,
+  "passive_correct": 300,
+  "active_correct": 300,
+  "overall_accuracy_pct": 100.0,
+  "passive_accuracy_pct": 100.0,
+  "passive_delta_pct": 0.0,
+  "prior_conf_coverage_pct": 100.0,
+  "active_rescued_questions": 0,
+  "unresolved_passive": 0,
+  "hallucination_rate_pct": 0.0,
+  "mean_passive_free_energy": 42.385,
+  "mean_passive_surprise": 0.434,
+  "weakest_domain": "Law",
+  "weakest_domain_acc": 100.0,
+  "weakest_domains_order": [
+    "Law",
+    "Science Engineering and Mathematics",
+    "Humanities and Social Sciences",
+    "Software Engineering",
+    "Finance",
+    "Health"
+  ],
+  "failed_subtopics_by_domain": {
+    "Science Engineering and Mathematics": [],
+    "Software Engineering": [],
+    "Finance": [],
+    "Health": [],
+    "Humanities and Social Sciences": [],
+    "Law": []
+  },
+  "domain_breakdown": {
+    "Science Engineering and Mathematics": {
+      "total": 60,
+      "passive_correct": 60,
+      "active_correct": 60,
+      "passive_accuracy_pct": 100.0,
+      "accuracy_pct": 100.0,
+      "prior_conf_coverage_pct": 100.0,
+      "avg_free_energy": 42.488,
+      "avg_surprise": 0.45,
+      "avg_hrr_sim": 0.6829,
+      "failed_subtopics_count": 0
+    },
+    "Software Engineering": {
+      "total": 60,
+      "passive_correct": 60,
+      "active_correct": 60,
+      "passive_accuracy_pct": 100.0,
+      "accuracy_pct": 100.0,
+      "prior_conf_coverage_pct": 100.0,
+      "avg_free_energy": 42.352,
+      "avg_surprise": 0.439,
+      "avg_hrr_sim": 0.6954,
+      "failed_subtopics_count": 0
+    },
+    "Finance": {
+      "total": 45,
+      "passive_correct": 45,
+      "active_correct": 45,
+      "passive_accuracy_pct": 100.0,
+      "accuracy_pct": 100.0,
+      "prior_conf_coverage_pct": 100.0,
+      "avg_free_energy": 42.289,
+      "avg_surprise": 0.391,
+      "avg_hrr_sim": 0.7381,
+      "failed_subtopics_count": 0
+    },
+    "Health": {
+      "total": 45,
+      "passive_correct": 45,
+      "active_correct": 45,
+      "passive_accuracy_pct": 100.0,
+      "accuracy_pct": 100.0,
+      "prior_conf_coverage_pct": 100.0,
+      "avg_free_energy": 42.236,
+      "avg_surprise": 0.47,
+      "avg_hrr_sim": 0.6462,
+      "failed_subtopics_count": 0
+    },
+    "Humanities and Social Sciences": {
+      "total": 45,
+      "passive_correct": 45,
+      "active_correct": 45,
+      "passive_accuracy_pct": 100.0,
+      "accuracy_pct": 100.0,
+      "prior_conf_coverage_pct": 100.0,
+      "avg_free_energy": 42.429,
+      "avg_surprise": 0.438,
+      "avg_hrr_sim": 0.6988,
+      "failed_subtopics_count": 0
+    },
+    "Law": {
+      "total": 45,
+      "passive_correct": 45,
+      "active_correct": 45,
+      "passive_accuracy_pct": 100.0,
+      "accuracy_pct": 100.0,
+      "prior_conf_coverage_pct": 100.0,
+      "avg_free_energy": 42.496,
+      "avg_surprise": 0.408,
+      "avg_hrr_sim": 0.7496,
+      "failed_subtopics_count": 0
+    }
+  },
+  "recent_trend": [
+    {
+      "evaluation_round": 1,
+      "episode": 0,
+      "passive_accuracy_pct": 0.0,
+      "overall_accuracy_pct": 100.0,
+      "mean_passive_free_energy": 49.781,
+      "mean_passive_surprise": 1.387
+    },
+    {
+      "evaluation_round": 2,
+      "episode": 100,
+      "passive_accuracy_pct": 57.0,
+      "overall_accuracy_pct": 100.0,
+      "mean_passive_free_energy": 45.642,
+      "mean_passive_surprise": 0.886
+    },
+    {
+      "evaluation_round": 3,
+      "episode": 200,
+      "passive_accuracy_pct": 100.0,
+      "overall_accuracy_pct": 100.0,
+      "mean_passive_free_energy": 43.881,
+      "mean_passive_surprise": 0.511
+    },
+    {
+      "evaluation_round": 4,
+      "episode": 300,
+      "passive_accuracy_pct": 100.0,
+      "overall_accuracy_pct": 100.0,
+      "mean_passive_free_energy": 43.093,
+      "mean_passive_surprise": 0.477
+    },
+    {
+      "evaluation_round": 5,
+      "episode": 400,
+      "passive_accuracy_pct": 100.0,
+      "overall_accuracy_pct": 100.0,
+      "mean_passive_free_energy": 42.933,
+      "mean_passive_surprise": 0.448
+    },
+    {
+      "evaluation_round": 6,
+      "episode": 500,
+      "passive_accuracy_pct": 100.0,
+      "overall_accuracy_pct": 100.0,
+      "mean_passive_free_energy": 42.586,
+      "mean_passive_surprise": 0.444
+    },
+    {
+      "evaluation_round": 7,
+      "episode": 600,
+      "passive_accuracy_pct": 100.0,
+      "overall_accuracy_pct": 100.0,
+      "mean_passive_free_energy": 42.647,
+      "mean_passive_surprise": 0.432
+    },
+    {
+      "evaluation_round": 8,
+      "episode": 700,
+      "passive_accuracy_pct": 100.0,
+      "overall_accuracy_pct": 100.0,
+      "mean_passive_free_energy": 42.385,
+      "mean_passive_surprise": 0.434
+    }
+  ]
+}

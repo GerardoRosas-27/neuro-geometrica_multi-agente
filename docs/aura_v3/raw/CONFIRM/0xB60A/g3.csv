@@ -1,0 +1,4 @@
+seed,arm,synapses_newborn,synapses_peak,synapses_final,csr_bytes_final,prune_frac,mean_axon_delay,eval_fe,eval_sensory_fe,avg_ticks,throughput_tps_2048
+46602,peak_unpruned,2560,9728,9728,118792,0.000000,5.0859,2145.4537,2145.4537,7.9074,202212.55
+46602,sparse_from_scratch,2560,9728,3072,38920,0.684211,5.0898,1852.8241,1852.8241,7.6852,390290.47
+46602,compiled_myelinated,2560,9728,3072,38920,0.684211,1.8320,1829.5556,1829.5556,3.3981,352673.62

@@ -1,0 +1,5 @@
+seed,arm,total_patches,compression_ratio,bpp_predictable,bpp_static,p1_err,p2_err,p4a_err,effective_rank,familiar_reducible_epi,static_reducible_epi,ood_reducible_epi,static_aleatoric,ood_aleatoric,static_hipp_writes,ood_hipp_writes
+46349,aura_v1_baseline,1049,11.2654,11.3968,1.0117,1.003103,0.927706,0.835190,19.4934,2499.11,728.20,1771.58,9883.77,3815.22,0,79
+46349,fixed_patcher_4,800,1.0000,4.0000,4.0000,0.419063,0.640833,0.493134,14.6801,591.05,67.31,595.73,11772.34,2038.18,0,98
+46349,no_vicreg,1289,5.5446,5.5538,1.0017,0.587487,0.837816,0.596885,14.8921,114.76,12.57,123.17,3340.28,916.13,0,33
+46349,aura_v2_full,1289,5.5446,5.5538,1.0017,0.584794,0.892557,0.569446,20.2050,318.29,50.35,507.88,10424.81,3181.56,0,95

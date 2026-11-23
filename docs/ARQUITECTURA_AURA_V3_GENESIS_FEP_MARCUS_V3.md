@@ -1,8 +1,8 @@
 # Documentación Maestra: Arquitectura `AURA v3 Genesis + FEP-MARCUS v3`
 ## Diseño Completo, Hipótesis Preregistradas, Autocrítica Honesta ("la Hipocresía" del Diseño de IA), Pruebas y Resultados Consolidados
 
-> **Rama de código e implementación:** `exp/aura-v3-genesis` (commit `8b8a7b2`, código fuente congelado `aura-engine` SHA-256 `cc90b95faa8a1885e308b81270a94babcb57b624a7323599edb8b38f0f366171`) y arnés base `exp/marcus-free-energy-active-inference` (`a4e48b2`).  
-> **Documentación y artefactos de verificación consolidados en `main`:** [`docs/aura_v3/`](aura_v3/), [`docs/marcus_neurosymbolic/`](marcus_neurosymbolic/) y [`artifacts/marcus_neurosymbolic/`](../artifacts/marcus_neurosymbolic/).  
+> **Estado en `main`:** **Integrada completamente en `main`** (código Rust `aura-engine/`, `marcus_neurosymbolic/`, `orbita/`, motor Python 7B `scripts/fep_marcus_core.py` y `scripts/marcus_fep_multiagent_infinite_loop.py`, artefactos y documentación fusionados desde `exp/aura-v3-genesis@8b8a7b2`; código congelado `aura-engine` SHA-256 `cc90b95faa8a1885e308b81270a94babcb57b624a7323599edb8b38f0f366171`).  
+> **Documentación y artefactos de verificación en `main`:** [`docs/aura_v3/`](aura_v3/), [`docs/marcus_neurosymbolic/`](marcus_neurosymbolic/) y [`artifacts/marcus_neurosymbolic/`](../artifacts/marcus_neurosymbolic/).  
 > **Veredicto científico:** `AURA v3 Genesis + FEP-MARCUS v3` es la arquitectura ganadora global en cognición funcional/metacognición, modelo de mundo interno y optimización de Energía Libre/sorpresa, mientras que `AURA v3 Genesis` es #1 en generalización dinámica OOD (`orbita`, `47.8×` menos error que `BQ10`) y en transferencia OOD de bytes a Rust (`top5-arena`, `16/16` semillas con `16.14×` menos RAM).
 
 ---
@@ -191,12 +191,12 @@ En investigación de IA es demasiado frecuente construir arquitecturas bio-inspi
 
 ---
 
-## 7. Guía de Reproducibilidad Exacta
+## 7. Guía de Reproducibilidad Exacta (Directamente en `main`)
 
-Todo el código ejecutable reside en las ramas experimentales preservadas (`exp/aura-v3-genesis@8b8a7b2` y `exp/marcus-free-energy-active-inference@a4e48b2`):
+Todo el código ejecutable, los crates Rust (`aura-engine/`, `marcus_neurosymbolic/`, `orbita/`) y el arnés Python 7B multi-agente están integrados directamente en `main`:
 
 ```bash
-git checkout exp/aura-v3-genesis
+git checkout main
 
 # 1. Auditoría criptográfica de congelamiento + tests de AURA v3 Genesis (G1-G5):
 python3 aura-engine/freeze_and_verify_v3.py audit

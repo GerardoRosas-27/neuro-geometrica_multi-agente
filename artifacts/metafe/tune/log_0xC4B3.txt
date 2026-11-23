@@ -1,0 +1,10 @@
+START 0xC4B3 2026-11-18T23:04:50+00:00
+0xC4B3 FE-ARD         new_med=-1.7711 new_acc=0.2500 known_acc=0.8906 syn_med=-1.6893 e33_auto=true 0.39s
+0xC4B3 GP-Cart-FE     new_med=-3.6772 new_acc=0.6458 known_acc=0.8984 syn_med=-1.9185 e33_auto=true 2.77s
+0xC4B3 GP-Polar-FE    new_med=-3.2225 new_acc=0.5625 known_acc=0.9297 syn_med=-2.7966 e33_auto=true 3.28s
+0xC4B3 GP-Symp-FE     new_med=-3.5634 new_acc=0.5625 known_acc=0.8984 syn_med=-1.8648 e33_auto=true 3.70s
+0xC4B3 METAFE-NoFE    new_med=-2.1893 new_acc=0.3750 known_acc=0.8984 syn_med=-2.4267 e33_auto=true 5.71s
+0xC4B3 METAFE-NoRoll  new_med=-5.1047 new_acc=0.8542 known_acc=0.9219 syn_med=-2.5279 e33_auto=true 5.71s
+0xC4B3 METAFE         new_med=-5.0054 new_acc=0.8750 known_acc=0.9297 syn_med=-4.2826 e33_auto=true 9.32s
+0xC4B3 ok 30.89s
+END 0xC4B3 rc=0 2026-11-18T23:05:21+00:00

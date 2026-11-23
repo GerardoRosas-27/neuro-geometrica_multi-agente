@@ -1,0 +1,3 @@
+seed,arm,genome_bytes,csr_bytes_2048,compression_ratio_2048,topo_corr_2048,spatial_late_fe,spatial_sensory_fe,avg_ticks
+42498,random_v2_wiring,507912,507912,1.0000,0.011233,6950.5250,2628.5625,3.8125
+42498,morphogen_router_v3,144,606216,4209.8333,0.999023,4295.4000,2082.4250,3.6500

@@ -1,0 +1,6 @@
+seed,arm,modality,template_bytes,test_acc_pct,osi_score
+46606,v1_canonical_visual,visual,64,99.3750,0.526584
+46606,a1_canonical_audio,audio,64,100.0000,0.000000
+46606,lang_canonical_bytes,bytes,64,75.0000,0.000000
+46606,a1_rewired_visual_sur,visual_rewired,64,100.0000,0.530224
+46606,random_unstructured_visual,visual_control,0,39.3750,0.214264

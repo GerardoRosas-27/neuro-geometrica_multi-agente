@@ -1,0 +1,11 @@
+{
+  "platform": "Linux-6.12.105+-x86_64-with-glibc2.36",
+  "machine": "x86_64",
+  "cpu_model": "Intel(R) Xeon(R) Platinum 8481C",
+  "cpu_count": 2,
+  "python": "3.11.2",
+  "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)",
+  "cargo": "cargo 1.99.1 (5f94df478 2026-08-27)",
+  "git_branch": "exp/aura-v2-training",
+  "git_head": "a48994f26db533bdc025cbfea27e560b0c786c54"
+}

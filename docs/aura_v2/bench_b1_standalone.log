@@ -1,0 +1,9 @@
+=== B1 Standalone Zero-Mul + Cache Tiling Benchmark (seed=0xB500) ===
+max_abs_diff          = 0
+mem_ratio_1024        = 16.0x (262144 B packed 2-bit vs 4194304 B f32)
+256x256 d=67% B=1     = naive 34.97 us | f32 34.69 us | lut4_avx2 1.70 us
+1024x1024 d=30% B=1   = naive 507.29 us | f32 657.10 us | lut4_avx2 17.30 us
+1024x1024 d=67% B=1   = naive 800.62 us | f32 640.63 us | lut4_avx2 17.56 us
+1024x1024 d=67% B=16  = naive 13957.36 us | f32 10793.02 us | lut4_tiled 290.79 us (48.00x vs naive, 37.12x vs f32)
+CorticalFabric 2048   = scatter 57232 tps | tiled 262030 tps (4.58x)
+FastWeight 256 NLMS   = naive 32802 ups (err=32346466825) | nlms_avx2 55210 ups (err=2682, 1.68x)

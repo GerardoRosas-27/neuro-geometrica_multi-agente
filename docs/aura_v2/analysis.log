@@ -1,0 +1,52 @@
+
+================ DEV SUMMARY (17/17 PASS) ================
+[B1] diff=0 mem=16.0x | 1024 B=16: lut4=290.5us vs naive=13056.4us (44.99x [44.28,45.74]) vs f32=10824.8us (37.30x [36.76,37.84]) | CSR tiled=5.00x | NLMS=1.70x (err 2682 vs 32346466825)
+[B2] ticks: amort=4.95 vs cold16=16.0 (3.23x) | FE: amort=4362.8 cold16=4388.7 cold4=4597.1 frozen=5527.8 no_nm=10269.8 | NE delta=+1.59 [+1.13,+2.07] | scan_diff=(1.79e-07,4.77e-07)
+[B3] combined A+B: v2_full=72.36% v1=61.91% no_rep=68.62% no_hyst=72.23% | forgetting_A: full=11.58pp no_rep=29.98pp no_hyst=14.49pp | flips: full=33221 vs no_hyst=102232
+[B4] D=5120B acc: aura_v2=100.00% ssm_only=6.25% local_trace=7.03% | hipp_store=0.621%
+[B5] TV-static fix: ood_epi=574.1 vs static_epi=51.7 (writes: static=0.0 vs ood=100.9) | comp=5.76x | p2_err: v2=0.8526 v1=0.9286 fixed4=0.6232 | erank: v2=19.77 no_vic=15.35
+[B6] Real MD BPB: v2=3.7600 bigram=4.0428 v1_unscaled=6.8561 | Rust shift BPB: online=5.2497 vs frozen=7.8024 | comp=1.99x erank=33.11 (11953 B/s)
+  [PASS] H1a_exact_parity_and_16x_mem
+  [PASS] H1b_lut4_b16_speedup_gt_3x_naive_and_1.5x_f32
+  [PASS] H1c_tiled_csr_and_nlms_speedup_and_stability
+  [PASS] H2a_amortized_settling_ge_2.5x_ticks_and_lower_fe_vs_cold4_frozen
+  [PASS] H2b_ne_shift_burst_and_no_neuromod_paradox_fixed
+  [PASS] H2c_blelloch_parallel_scan_exact_parity
+  [PASS] H3a_break_v1_capacity_ceiling_gt_10pp
+  [PASS] H3b_sleep_replay_reduces_forgetting_and_boosts_combined
+  [PASS] H3c_importance_hysteresis_reduces_flips_and_forgetting
+  [PASS] H4a_long_horizon_5120B_beats_local_and_ssm
+  [PASS] H4b_sublinear_hippocampus_storage_lt_5pct
+  [PASS] H5a_solves_tv_static_trap_and_write_gating
+  [PASS] H5b_phase_aware_compression_and_beats_v1_error
+  [PASS] H5c_vicreg_prevents_dimensional_collapse
+  [PASS] H6a_real_md_bpb_beats_v1_and_bigram
+  [PASS] H6b_online_rust_shift_beats_frozen
+  [PASS] H6c_real_text_compression_and_healthy_erank
+
+================ CONFIRM SUMMARY (17/17 PASS) ================
+[B1] diff=0 mem=16.0x | 1024 B=16: lut4=291.9us vs naive=12941.5us (44.37x [43.70,44.94]) vs f32=10798.8us (37.02x [36.49,37.47]) | CSR tiled=4.93x | NLMS=1.64x (err 2682 vs 32346466825)
+[B2] ticks: amort=4.97 vs cold16=16.0 (3.22x) | FE: amort=4443.0 cold16=4423.7 cold4=4601.0 frozen=5524.9 no_nm=10316.7 | NE delta=+1.31 [+0.93,+1.67] | scan_diff=(1.79e-07,4.77e-07)
+[B3] combined A+B: v2_full=72.57% v1=61.87% no_rep=69.00% no_hyst=72.57% | forgetting_A: full=11.63pp no_rep=29.62pp no_hyst=14.43pp | flips: full=32873 vs no_hyst=102081
+[B4] D=5120B acc: aura_v2=100.00% ssm_only=3.52% local_trace=5.08% | hipp_store=0.621%
+[B5] TV-static fix: ood_epi=580.9 vs static_epi=51.9 (writes: static=0.0 vs ood=98.5) | comp=5.94x | p2_err: v2=0.8517 v1=0.9297 fixed4=0.6350 | erank: v2=20.15 no_vic=15.44
+[B6] Real MD BPB: v2=3.7546 bigram=4.0428 v1_unscaled=6.8734 | Rust shift BPB: online=5.2601 vs frozen=7.7848 | comp=1.99x erank=33.21 (11995 B/s)
+  [PASS] H1a_exact_parity_and_16x_mem
+  [PASS] H1b_lut4_b16_speedup_gt_3x_naive_and_1.5x_f32
+  [PASS] H1c_tiled_csr_and_nlms_speedup_and_stability
+  [PASS] H2a_amortized_settling_ge_2.5x_ticks_and_lower_fe_vs_cold4_frozen
+  [PASS] H2b_ne_shift_burst_and_no_neuromod_paradox_fixed
+  [PASS] H2c_blelloch_parallel_scan_exact_parity
+  [PASS] H3a_break_v1_capacity_ceiling_gt_10pp
+  [PASS] H3b_sleep_replay_reduces_forgetting_and_boosts_combined
+  [PASS] H3c_importance_hysteresis_reduces_flips_and_forgetting
+  [PASS] H4a_long_horizon_5120B_beats_local_and_ssm
+  [PASS] H4b_sublinear_hippocampus_storage_lt_5pct
+  [PASS] H5a_solves_tv_static_trap_and_write_gating
+  [PASS] H5b_phase_aware_compression_and_beats_v1_error
+  [PASS] H5c_vicreg_prevents_dimensional_collapse
+  [PASS] H6a_real_md_bpb_beats_v1_and_bigram
+  [PASS] H6b_online_rust_shift_beats_frozen
+  [PASS] H6c_real_text_compression_and_healthy_erank
+
+Saved summary -> docs/aura_v2/summary.json

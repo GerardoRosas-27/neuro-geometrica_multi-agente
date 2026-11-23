@@ -1,0 +1,7 @@
+train_md_bytes=24576
+eval_md_bytes=6144
+shift_rust_bytes=6144
+PROMPT_MD: ## Resultados de 
+GEN_MD:     en Gentolidodizado ****************************************************************************
+PROMPT_RS: pub fn 
+GEN_RS:    se **** (nestíanacora sostoracontos [`docs/rafion S$ Dafisado = + Mwron GPUtrata ** Elualadod_a

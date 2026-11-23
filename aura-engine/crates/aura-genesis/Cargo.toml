@@ -1,0 +1,9 @@
+[package]
+name = "aura-genesis"
+version = "0.3.0"
+edition = "2021"
+
+[dependencies]
+aura-math = { path = "../aura-math" }
+aura-cortex = { path = "../aura-cortex" }
+aura-world = { path = "../aura-world" }

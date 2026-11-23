@@ -1,0 +1,53 @@
+{
+  "phase": "DEV",
+  "seeds": [
+    "0xA500",
+    "0xA501",
+    "0xA502",
+    "0xA503",
+    "0xA504",
+    "0xA505",
+    "0xA506",
+    "0xA507",
+    "0xA508",
+    "0xA509",
+    "0xA50A",
+    "0xA50B",
+    "0xA50C",
+    "0xA50D",
+    "0xA50E",
+    "0xA50F"
+  ],
+  "sources_sha256": "d3f710b5372dadeecac478386316acbd0c5e61b80c9b058aa298ac56f134914d",
+  "file_count": 16,
+  "elapsed_sec": 148.727,
+  "per_seed_sec": {
+    "0xA500": 18.666,
+    "0xA501": 18.938,
+    "0xA502": 18.529,
+    "0xA503": 18.49,
+    "0xA504": 18.546,
+    "0xA505": 18.448,
+    "0xA506": 18.548,
+    "0xA507": 18.461,
+    "0xA508": 18.805,
+    "0xA509": 18.434,
+    "0xA50A": 18.56,
+    "0xA50B": 18.427,
+    "0xA50C": 18.448,
+    "0xA50D": 18.351,
+    "0xA50E": 18.944,
+    "0xA50F": 18.581
+  },
+  "environment": {
+    "platform": "Linux-6.12.105+-x86_64-with-glibc2.36",
+    "machine": "x86_64",
+    "cpu_model": "Intel(R) Xeon(R) Platinum 8481C",
+    "cpu_count": 2,
+    "python": "3.11.2",
+    "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)",
+    "cargo": "cargo 1.99.1 (5f94df478 2026-08-27)",
+    "git_branch": "exp/aura-v2-training",
+    "git_head": "02b634844b4c212a5bba692bf055aa247591dec5"
+  }
+}

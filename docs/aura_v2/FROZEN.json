@@ -1,0 +1,23 @@
+{
+  "sources_sha256": "d3f710b5372dadeecac478386316acbd0c5e61b80c9b058aa298ac56f134914d",
+  "file_count": 16,
+  "files": {
+    "crates/aura-cortex/src/lib.rs": "13d55605e3329c612eef10fcd42a86558562b8b8c4fd1baef75fdc887259ea2a",
+    "crates/aura-decoder/src/lib.rs": "1a892c64d21ccc1cb9ff39b501e2b6f02e8f869c567ee7c26b37f476d30daae0",
+    "crates/aura-hippocampus/src/lib.rs": "efedf6c3803951732e28e1fdbbe2677224ff0d4419d5b065479932dbd42e2fa6",
+    "crates/aura-math/src/lib.rs": "e82943927e562a2d5ff74d645b07591f5a5927e43db60670328782a10155df1c",
+    "crates/aura-metacog/src/lib.rs": "bb93c7e0227a26906771b6ce530ba3020b5fde059ac1bfa118245b9157e1076e",
+    "crates/aura-perception/src/lib.rs": "fb2752d8cf0eae7f7325006520b1281d24b317abb8061f2cffbd3b4441ac0fd6",
+    "crates/aura-runtime/src/agent.rs": "69d640ee744d5c098ff0ad70dc996706ac4f9c57563c48b264ab46537cab8b6a",
+    "crates/aura-runtime/src/bench_b1.rs": "8ae3bd855f3acdb83c3c9587057df112084839bf6f0efcf12ef751cb8317f3e1",
+    "crates/aura-runtime/src/bench_b2.rs": "ee88e6ac05ccd98177e6b4d50de91299ca4527ae7e469d49f94eb99d5d16a6cc",
+    "crates/aura-runtime/src/bench_b3.rs": "bc63c1c3d2696f631a770eb06aaeca6c1106152108347bc825bfbb9314c8f3af",
+    "crates/aura-runtime/src/bench_b4.rs": "c10caeb39b12a4db8c07bf514ec27b0dfc88e9d2a30622432bdac721e4555b17",
+    "crates/aura-runtime/src/bench_b5.rs": "2f4bc6e9d342befd9a54ca1c3174c2c22b0186c86e53545711ff02d7e67b196e",
+    "crates/aura-runtime/src/bench_b6.rs": "8a206f5f681fea157c9bae557e79f9456f2ab071e4889907dcbb656d27cb9e67",
+    "crates/aura-runtime/src/lib.rs": "9d35643ec76b9a1177210aaefe9965fecfef207982b6c2ad303bba75842f1861",
+    "crates/aura-runtime/src/main.rs": "7d2119c1e809083b8a7c5c94017ed6ab1d6aa1745bc67c1dd5995c7efafea0d6",
+    "crates/aura-world/src/lib.rs": "cccf06a2207475f61e2e678cd6354c2c22303532906d3b3c6cad0cf7245b3de7"
+  },
+  "dev_git_parent": "02b634844b4c212a5bba692bf055aa247591dec5"
+}

@@ -1,41 +1,41 @@
-> **Nueva Frontera Documentada (`exp/aura-v3-genesis` @ `8b8a7b2`): `AURA v3 Genesis + FEP-MARCUS v3`** (4 Subrutinas Generativas de ADN + Arquitectura Metacognitiva de 2º Orden con Energía Libre Variacional $\mathcal{F}$, ELBO, Inferencia Activa $G(\pi)$, Física Spelke 3D y Causalidad Pearl $do(X)$) y **`AURA v3 Genesis`** en dinámica OOD / bytes (`new_med_log = -5.3748`, `47.8×` menos error OOD que `BQ10`, `shift_rust = 5.0989 bpb` con `16.14×` menos RAM). **Documentación maestra (arquitectura, hipótesis, autocrítica honesta, pruebas y resultados):** [`docs/ARQUITECTURA_AURA_V3_GENESIS_FEP_MARCUS_V3.md`](docs/ARQUITECTURA_AURA_V3_GENESIS_FEP_MARCUS_V3.md).
+> **Arquitectura Ganadora Integrada en `main`: `AURA v3 Genesis + FEP-MARCUS v3`** (4 Subrutinas Generativas de ADN en [`aura-engine/`](aura-engine/) + Arquitectura Metacognitiva de 2º Orden con Energía Libre Variacional $\mathcal{F}$, ELBO, Inferencia Activa $G(\pi)$, Física Spelke 3D y Causalidad Pearl $do(X)$ en [`marcus_neurosymbolic/`](marcus_neurosymbolic/) y [`scripts/fep_marcus_core.py`](scripts/fep_marcus_core.py)) + **`AURA v3 Genesis`** en [`orbita/`](orbita/) (`new_med_log = -5.3748`, `47.8×` menos error OOD que `BQ10`, `shift_rust = 5.0989 bpb` con `16.14×` menos RAM). **Documentación maestra (arquitectura, hipótesis, autocrítica honesta, pruebas y resultados):** [`docs/ARQUITECTURA_AURA_V3_GENESIS_FEP_MARCUS_V3.md`](docs/ARQUITECTURA_AURA_V3_GENESIS_FEP_MARCUS_V3.md).
 >
-> **Arquitectura Ganadora previa en el código de `main`: BQ10 (bio-quantum v10)** = núcleo ATLAS-FW (M1 decay + M2 momentum + M6 dual-rate timescale) + M7 DA-STR (regularización ridge por grado `da=10`) ejecutado sobre AMD Radeon RX 7800 XT (WGPU/Vulkan).
+> **Ganadora previa integrada en `main`: BQ10 (bio-quantum v10)** = núcleo ATLAS-FW (M1 decay + M2 momentum + M6 dual-rate timescale) + M7 DA-STR (regularización ridge por grado `da=10`) ejecutado sobre AMD Radeon RX 7800 XT (WGPU/Vulkan).
 >
-> ## Estructura de las Líneas de Investigación en el Repositorio
+> ## Estructura de las Líneas de Investigación Integradas en `main`
 >
 > 1. **Línea Principal: Sustrato de Campo Continuo Token a Token (`gemma_campo`)**
->    - **Ramas:** `exp/gemma-campo-chat`, `exp/gemma-campo-infinito`
+>    - **Ramas:** `exp/gemma-campo-chat`, `exp/gemma-campo-infinito` (integrado en `main`)
 >    - **Objetivo:** Memoria continua latente durante la generación del LLM, acoplando innovación causal de embeddings $e(x_t)$ y subespacio contextual $V_{\text{ctx}}$ ($k_{\text{skip}}=16$).
 >    - **Resultados Test (3h GPU AMD RX 7800 XT):** $\Delta\text{NLL}_{\text{campo}-\text{oracle}} = \mathbf{+0.0186} \le 0.05$ (**Pasa H2**), PPL = **5.661** vs 5.554 del LLM intacto, $z$-MSE = **0.196** (vs 1.239 de repeat), olvido catastrófico **+0.064%** ($\le 5\%$). Pasa H1, H1k, H2, H3, OLV, EST, REP.
 >    - **Reporte:** [`docs/gemma_campo_chat/run_3h_bq10/RESULTADOS.md`](docs/gemma_campo_chat/run_3h_bq10/RESULTADOS.md).
 >
 > 2. **Segunda Línea de Investigación: Campo de Estado Continuo por Turno (`campo_estado_turno`)**
->    - **Rama:** `exp/campo-estado-turno`
+>    - **Rama:** `exp/campo-estado-turno` (integrado en `main`)
 >    - **Objetivo:** Dinámicas latentes a nivel de turno de diálogo completo ($z_t \in \mathbb{R}^{64}$, $F=2721$ modos de Lie) acopladas a decodificador soft-prompt $z \to P \cdot H$ con LLM congelado.
 >    - **Resultados Test (3h GPU AMD RX 7800 XT):** $z$-MSE = **0.368** (supera a MLP 0.387 y repeat 1.092, **Pasa T1 y T2**). NLL cae de 1.946 a **0.628** (PPL cae de 7.00 a **1.87**, **Pasa T3**), supera al control barajado por −0.412 nats (**Pasa T4**). Pesos del LLM 100% intactos.
 >    - **Reporte:** [`docs/campo_estado_turno/run_3h_bq10/RESULTADOS.md`](docs/campo_estado_turno/run_3h_bq10/RESULTADOS.md).
 >
 > 3. **Tercera Línea de Investigación: Soft-Bellman Simplicial 3D en GPU (`soft_bellman_simplicial_v3_gpu`)**
->    - **Ramas:** `exp/soft-bellman-simplicial-v2`, `exp/soft-bellman-v1`
+>    - **Ramas:** `exp/soft-bellman-simplicial-v2`, `exp/soft-bellman-v1` (integrado en `main`)
 >    - **Objetivo:** Planificación y geodésicas en complejos tetraédricos sobre GPU AMD RX 7800 XT (WGPU/Vulkan) con optimización baricéntrica continua Snell-Fermat, Hodge $\Delta_1$, energía Regge y barrera Cayley-Menger.
 >    - **Resultados CONFIRM:** Paridad GPU vs CPU analítico ($< 1.61\times 10^{-6}$ error, 18.09 ms). Reducción de costo continuo de **−13.24%** vs oráculo grueso y **−2.47%** vs refinado; regret **0.0091%** con 100% de éxito. En ley cambiada, `v3_adapted` reduce sobrecosto a **0.1355%** (**−9.15 pp**, 68.5× menor error que v2) y zero-shot logra **4.96%** (supera a euclídeo 5.28%).
 >    - **Reporte:** [`docs/soft_bellman_simplicial_v3_gpu/RESULTADOS_V3_GPU.md`](docs/soft_bellman_simplicial_v3_gpu/RESULTADOS_V3_GPU.md).
 >
 > 4. **Cuarta Línea de Investigación: Bio-Quantum Engine x50 Masivo en GPU (`bio_quantum_engine`)**
->    - **Rama:** `exp/bq10-gpu-amd`
+>    - **Rama:** `exp/bq10-gpu-amd` (integrado en `main`)
 >    - **Objetivo:** Escalado masivo de constelaciones cuántico-biológicas en AMD Radeon RX 7800 XT (WGPU/Vulkan).
 >    - **Resultados x50:** 1,638,400 episodios en 86.80 s (**18,874.7 eps/s**), 1,024 nodos, 4,096 sinapsis con 0 violaciones de Ley de Dale y consolidación circadiana SWR $\Delta R = -0.00042$.
 >    - **Reporte:** [`docs/RESULTADOS_GPU_RX7800XT.md`](docs/RESULTADOS_GPU_RX7800XT.md) y [`docs/bq10/README.md`](docs/bq10/README.md).
 >
-> 5. **Quinta Línea de Investigación: `AURA v3 Genesis` (4 Subrutinas Generativas de ADN + `METAFE-v2/3S`)**
->    - **Rama:** `exp/aura-v3-genesis` (`77c7a6e` congelado, `ee04c56` torneo igualdad de condiciones)
+> 5. **Quinta Línea de Investigación: `AURA v3 Genesis` (4 Subrutinas Generativas de ADN + `METAFE-v2/3S`, integrado en `main`)**
+>    - **Código en `main`:** [`aura-engine/`](aura-engine/) + [`orbita/src/constelacion4/metafe3s.rs`](orbita/src/constelacion4/metafe3s.rs) + [`orbita/src/constelacion4/metafe.rs`](orbita/src/constelacion4/metafe.rs) (fusionado desde `exp/aura-v3-genesis`)
 >    - **Objetivo:** Descompresión cortical por 4 subrutinas biológicas (gradientes morfogenéticos 3D `[SHH, Wnt, BMP]`, microcircuito canónico de 6 capas Mountcastle, sobreproducción + poda microglial Conel + mielinización, y currículo prenatal *in-utero* sin fuga).
 >    - **Resultados CONFIRM:** `14/15 PASS` en `G1–G5` (`AUDIT-v3 PASS`, replay bit-exacto `150/150`, compresión `4,209.8×`, `OSI = 0.498`, poda `68.42%` en RAM). En `orbita CONFIRM` (16 semillas): **`new_med_log = -5.3748`** (`47.8×` vs `BQ10`, supera a `METAFE-3S` `-5.3665` y `METAFE-v2` `-5.3338`), `new_acc16 = 88.67%`, `RS-A = -6.7084`, `16.5s`. En `top5-arena`: **`shift_rust = 5.0989 bpb`** (`16/16` victorias, `8.1 KB` RAM).
 >    - **Reportes:** [`docs/aura_v3/RESULTADOS.md`](docs/aura_v3/RESULTADOS.md), [`docs/aura_v3/AUDIT.md`](docs/aura_v3/AUDIT.md) y [`docs/aura_v3/TOP5_IGUALDAD_CONDICIONES.md`](docs/aura_v3/TOP5_IGUALDAD_CONDICIONES.md).
 >
-> 6. **Sexta Línea de Investigación: `AURA v3 Genesis + FEP-MARCUS v3` (Metacognición 2º Orden + Inferencia Activa + Modelo de Mundo Interno)**
->    - **Ramas:** `exp/aura-v3-genesis` (`8b8a7b2`) sobre `exp/marcus-free-energy-active-inference` (`a4e48b2`)
+> 6. **Sexta Línea de Investigación: `AURA v3 Genesis + FEP-MARCUS v3` (Metacognición 2º Orden + Inferencia Activa + Modelo de Mundo Interno, integrado en `main`)**
+>    - **Código en `main`:** [`marcus_neurosymbolic/`](marcus_neurosymbolic/) + [`scripts/fep_marcus_core.py`](scripts/fep_marcus_core.py) + [`scripts/marcus_fep_multiagent_infinite_loop.py`](scripts/marcus_fep_multiagent_infinite_loop.py) (fusionado desde `exp/aura-v3-genesis`)
 >    - **Objetivo:** Adaptar las 4 subrutinas de ADN de `AURA v3 Genesis` al sustrato neuro-simbólico de Energía Libre Variacional ($\mathcal{F}$, ELBO, $G(\pi)$), física Spelke 3D, causalidad Pearl $do(X)$ y metacognición Nelson-Narens con 5 especialistas multi-agente.
 >    - **Resultados Versus (Suite Rust `BM-6`–`BM-10` + 700 eps `--reset-state`):** Supera a `FEP-MARCUS v3` puro en `BM-6` (`40.0%` vs `37.7%` reducción FE), `BM-9` OOD (`9.70` vs `10.08 nats`), `BM-10` (`Brier = 0.0978`, ahorro `43.3%` vs `36.7%`), Energía Libre final (`36.64` vs `38.51 nats`), Sorpresa final (`0.3284` vs `0.3655`, `-10.15%`), `6/6` dominios AA (`42.385` vs `42.560 nats`), poda microglial física (`50.72%`, `0` viol. Dale) y **`31.79%` de ahorro E-Step** (`4.34×` vs `7.33%`).
 >    - **Reportes:** [`docs/ARQUITECTURA_AURA_V3_GENESIS_FEP_MARCUS_V3.md`](docs/ARQUITECTURA_AURA_V3_GENESIS_FEP_MARCUS_V3.md) y [`docs/aura_v3/VERSUS_AURA_V3_FEP_MARCUS_V3.md`](docs/aura_v3/VERSUS_AURA_V3_FEP_MARCUS_V3.md).

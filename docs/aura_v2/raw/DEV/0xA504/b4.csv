@@ -1,0 +1,4 @@
+seed,arm,acc_d128,acc_d512,acc_d2048,acc_d5120,hipp_store_frac_pct,total_episodes
+42244,local_trace_only,12.5000,0.0000,0.0000,6.2500,0.0000,64
+42244,ssm_only_no_hipp,100.0000,100.0000,25.0000,6.2500,0.0000,64
+42244,aura_v2_hipp_credit,100.0000,100.0000,100.0000,100.0000,0.6208,64

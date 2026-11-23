@@ -100,3 +100,55 @@ jobs:
           PYTHONPATH: orbita
           PYTHONUTF8: "1"
         run: python orbita/llm/test_numnorm.py
+
+  aura_v3_genesis:
+    name: AURA v3 Genesis (aura-engine + auditoría SHA-256)
+    runs-on: ubuntu-latest
+    needs: smoke
+    env:
+      RUSTFLAGS: "-C target-cpu=x86-64-v2"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache de compilación
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: aura-engine
+
+      - name: Tests release de aura-engine (AURA v3 Genesis)
+        working-directory: aura-engine
+        run: cargo test --release
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Auditoría criptográfica FROZEN.json (SHA-256)
+        env:
+          PYTHONUTF8: "1"
+        run: python3 aura-engine/freeze_and_verify_v3.py audit
+
+  fep_marcus_v3:
+    name: FEP-MARCUS v3 + AURA v3 Genesis (marcus_neurosymbolic)
+    runs-on: ubuntu-latest
+    needs: smoke
+    env:
+      RUSTFLAGS: "-C target-cpu=x86-64-v2"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache de compilación
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: marcus_neurosymbolic
+
+      - name: Tests release de marcus_neurosymbolic (BM-1 a BM-10)
+        working-directory: marcus_neurosymbolic
+        run: cargo test --release
+

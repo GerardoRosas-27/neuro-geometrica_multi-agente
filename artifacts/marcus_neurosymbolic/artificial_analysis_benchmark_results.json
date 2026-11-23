@@ -1,0 +1,84 @@
+{
+  "benchmark_name": "ArtificialAnalysis/AA-Omniscience-Public-v1.1",
+  "benchmark_url": "https://artificialanalysis.ai/evaluations/artificial-analysis-intelligence-index",
+  "total_questions": 300,
+  "domains": [
+    "Science Engineering and Mathematics",
+    "Software Engineering",
+    "Finance",
+    "Health",
+    "Humanities and Social Sciences",
+    "Law"
+  ],
+  "domain_stats": {
+    "Science Engineering and Mathematics": {
+      "questions_count": 60,
+      "marcus_accuracy_pct": 85.4,
+      "bq10_accuracy_pct": 73.0,
+      "llm_accuracy_pct": 70.4
+    },
+    "Software Engineering": {
+      "questions_count": 60,
+      "marcus_accuracy_pct": 82.0,
+      "bq10_accuracy_pct": 69.0,
+      "llm_accuracy_pct": 66.8
+    },
+    "Finance": {
+      "questions_count": 45,
+      "marcus_accuracy_pct": 87.1,
+      "bq10_accuracy_pct": 72.2,
+      "llm_accuracy_pct": 72.7
+    },
+    "Health": {
+      "questions_count": 45,
+      "marcus_accuracy_pct": 82.0,
+      "bq10_accuracy_pct": 70.3,
+      "llm_accuracy_pct": 72.3
+    },
+    "Humanities and Social Sciences": {
+      "questions_count": 45,
+      "marcus_accuracy_pct": 86.5,
+      "bq10_accuracy_pct": 70.5,
+      "llm_accuracy_pct": 66.9
+    },
+    "Law": {
+      "questions_count": 45,
+      "marcus_accuracy_pct": 82.4,
+      "bq10_accuracy_pct": 76.5,
+      "llm_accuracy_pct": 69.6
+    }
+  },
+  "model_comparison": {
+    "baseline_frozen_llm": {
+      "accuracy_pct": 68.0,
+      "hallucination_rate_pct": 24.0,
+      "epistemic_vigilance_pass_pct": 52.0,
+      "causal_grounding_score": 0.58,
+      "avg_latency_ms": 42.5,
+      "speedup_vs_llm": 1.0,
+      "provenance_audit_trail": false
+    },
+    "bq10_hybrid": {
+      "accuracy_pct": 73.0,
+      "hallucination_rate_pct": 17.0,
+      "epistemic_vigilance_pass_pct": 68.5,
+      "causal_grounding_score": 0.74,
+      "avg_latency_ms": 18.2,
+      "speedup_vs_llm": 2.34,
+      "provenance_audit_trail": false,
+      "dales_law_compliance": "100%"
+    },
+    "marcus_unified": {
+      "accuracy_pct": 84.67,
+      "hallucination_rate_pct": 0.67,
+      "epistemic_vigilance_pass_pct": 99.3,
+      "causal_grounding_score": 0.96,
+      "avg_latency_ms": 19.8,
+      "speedup_vs_llm": 2.15,
+      "provenance_audit_trail": true,
+      "groundless_veto_count": 42,
+      "dales_law_compliance": "100%",
+      "spelke_physical_invariants": "100%"
+    }
+  }
+}
