@@ -1,0 +1,32 @@
+{
+  "seed": "0xB700",
+  "bit_exact_match": true,
+  "total_non_timing_cells_checked": 286,
+  "files": {
+    "metrics_r1.csv": {
+      "exact_match": true,
+      "cells_checked": 45,
+      "diffs": []
+    },
+    "metrics_r2.csv": {
+      "exact_match": true,
+      "cells_checked": 78,
+      "diffs": []
+    },
+    "metrics_r3.csv": {
+      "exact_match": true,
+      "cells_checked": 66,
+      "diffs": []
+    },
+    "metrics_r4.csv": {
+      "exact_match": true,
+      "cells_checked": 48,
+      "diffs": []
+    },
+    "metrics_r5.csv": {
+      "exact_match": true,
+      "cells_checked": 49,
+      "diffs": []
+    }
+  }
+}

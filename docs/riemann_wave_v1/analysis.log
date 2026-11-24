@@ -1,0 +1,64 @@
+
+=== DEV (8/12 criteria PASS) ===
+  H_R1a: PASS
+  H_R1b: PASS
+  H_R2a: PASS
+  H_R2b: PASS
+  H_R2c: PASS
+  H_R3a: FAIL
+  H_R3b: FAIL
+  H_R4a: PASS
+  H_R4b: PASS
+  H_R5a: PASS
+  H_R5b: FAIL
+  H_R5c: FAIL
+Key paired deltas:
+  r1_snr_riemann_vs_poisson                = +58.31326 [+58.19938, +58.42843]
+  r1_ks_dyson_gue_minus_poisson            = -0.26202 [-0.26586, -0.25789]
+  r2_cond_dyson_vs_poisson                 = -8.09774 [-9.52646, -6.81334]
+  r2_rmse_ols015_dyson_vs_poisson          = -3558575.30355 [-8764665.07822, -265429.75785]
+  r2_rmse_ridge015_dyson_vs_poisson        = -0.06866 [-0.08863, -0.05057]
+  r2_rmse_ridge015_dyson_vs_fourier        = +0.01309 [+0.00730, +0.01992]
+  r3_ghost_peak_dyson_vs_fourier           = +1.38181 [+0.79889, +2.09059]
+  r3_ghost_peak_riemann_vs_fourier         = +0.05067 [-0.03175, +0.13490]
+  r3_irreg_rmse_ridge_dyson_vs_poisson     = -0.06008 [-0.13799, +0.01566]
+  r4_stream_rmse_dyson_vs_poisson          = -0.06722 [-0.12674, -0.01262]
+  r4_stream_rmse_adapt_dyson_vs_norep      = -0.17680 [-0.21495, -0.14083]
+  r5_1d_kerr_dyson_vs_poisson              = -0.15191 [-0.19827, -0.10901]
+  r5_1d_roll8_dyson_vs_poisson             = -0.00037 [-0.00289, +0.00214]
+  r5_1d_roll8_dyson_vs_qmc                 = -0.00046 [-0.00136, +0.00042]
+  r5_2d_kerr_ginibre_vs_poisson            = -0.09106 [-0.11936, -0.06525]
+  r5_2d_roll8_ginibre_vs_poisson           = -0.00168 [-0.00331, +0.00009]
+  r5_2d_roll8_ginibre_vs_qmc               = -0.00197 [-0.00369, -0.00017]
+
+=== CONFIRM (8/12 criteria PASS) ===
+  H_R1a: PASS
+  H_R1b: PASS
+  H_R2a: PASS
+  H_R2b: PASS
+  H_R2c: PASS
+  H_R3a: FAIL
+  H_R3b: FAIL
+  H_R4a: FAIL
+  H_R4b: PASS
+  H_R5a: PASS
+  H_R5b: FAIL
+  H_R5c: PASS
+Key paired deltas:
+  r1_snr_riemann_vs_poisson                = +58.27778 [+58.09429, +58.48613]
+  r1_ks_dyson_gue_minus_poisson            = -0.26448 [-0.26788, -0.26076]
+  r2_cond_dyson_vs_poisson                 = -8.70954 [-10.16174, -7.26830]
+  r2_rmse_ols015_dyson_vs_poisson          = -18908783.48325 [-42027806.41311, -2914576.93426]
+  r2_rmse_ridge015_dyson_vs_poisson        = -0.04743 [-0.06940, -0.02642]
+  r2_rmse_ridge015_dyson_vs_fourier        = +0.02281 [+0.01365, +0.03224]
+  r3_ghost_peak_dyson_vs_fourier           = +2.52115 [+1.65595, +3.43679]
+  r3_ghost_peak_riemann_vs_fourier         = +0.07432 [-0.03367, +0.18527]
+  r3_irreg_rmse_ridge_dyson_vs_poisson     = +0.00143 [-0.06007, +0.06939]
+  r4_stream_rmse_dyson_vs_poisson          = -0.03217 [-0.09604, +0.03148]
+  r4_stream_rmse_adapt_dyson_vs_norep      = -0.15843 [-0.19449, -0.12684]
+  r5_1d_kerr_dyson_vs_poisson              = -0.13023 [-0.15829, -0.10384]
+  r5_1d_roll8_dyson_vs_poisson             = -0.00006 [-0.00066, +0.00058]
+  r5_1d_roll8_dyson_vs_qmc                 = -0.00015 [-0.00050, +0.00014]
+  r5_2d_kerr_ginibre_vs_poisson            = -0.11968 [-0.14706, -0.09568]
+  r5_2d_roll8_ginibre_vs_poisson           = -0.00752 [-0.01259, -0.00341]
+  r5_2d_roll8_ginibre_vs_qmc               = -0.00111 [-0.00292, +0.00071]
