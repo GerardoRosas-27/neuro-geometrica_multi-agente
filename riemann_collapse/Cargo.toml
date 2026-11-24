@@ -1,0 +1,13 @@
+[package]
+name = "riemann-collapse-v1"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Isolated experiment: Past-Future wave collapse & exact configuration search for Riemann prime emergence"
+
+[workspace]
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1

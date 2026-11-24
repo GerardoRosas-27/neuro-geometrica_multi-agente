@@ -1,0 +1,14 @@
+{
+  "sources_sha256": "a0277590be2c2c65900f4883ff147d983231014b4ab47e4fe2bcbf0f406f6cb6",
+  "file_count": 7,
+  "files": {
+    "riemann_collapse/src/collapse.rs": "59f316bb8563040b990f45a5db763c248c713af9b8b3c3cfa2626669f055e5fd",
+    "riemann_collapse/src/lib.rs": "6d681bd226ab141eaecfbc2813f7c67d887feea2872a9c4903964e44f3242e0f",
+    "riemann_collapse/src/main.rs": "63962ca0301d5475c649d7c6a4ecdb030c1462df1e32a81f4251b4a52fe956b5",
+    "riemann_collapse/src/riemann.rs": "875749e811e002c7b355ffa38591619f4bd363f10e0d9fb5591567606e42db15",
+    "riemann_collapse/src/rng.rs": "95f23f9a7e90a4195add66ec2bb3cc6a7c503386b28b5623703b62dc345389e6",
+    "riemann_collapse/src/suites.rs": "e5ec6dd7756f1e6e3dd2070cfb8fee2ea2b154f4ff3aaf41af7ccf7d74b0ed38",
+    "riemann_collapse/Cargo.toml": "c286526c4a2443393412fb0902cb921d9bae5fb940bbe225f3ec584615ec4373"
+  },
+  "dev_git_parent": "6f447cb62ae0190a06c2081856391f64ef83a4b6"
+}

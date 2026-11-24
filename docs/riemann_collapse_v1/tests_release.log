@@ -1,0 +1,25 @@
+   Compiling riemann-collapse-v1 v0.1.0 (/home/antigravity/GerardoRosas-27/neuro-geometrica_multi-agente/riemann_collapse)
+    Finished `release` profile [optimized] target(s) in 13.75s
+     Running unittests src/lib.rs (target/release/build/riemann-collapse-v1/97568ac2b68009bf/out/riemann_collapse_v1-97568ac2b68009bf)
+
+running 5 tests
+test tests::test_guinand_weil_gradient_and_blind_peaks_on_true_zeros ... ok
+test tests::test_riemann_zeros_match_odlyzko_1e9 ... ok
+test tests::test_sieve_and_von_mangoldt_exactness ... ok
+test tests::test_transactional_complex_overlap_identity ... ok
+test tests::test_strict_emergence_past_future_neither_alone_has_primes ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+
+     Running unittests src/main.rs (target/release/build/riemann-collapse-v1/2de90efbdc4a4014/out/riemann_collapse_v1-2de90efbdc4a4014)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests riemann_collapse_v1
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
