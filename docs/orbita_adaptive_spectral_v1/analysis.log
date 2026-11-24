@@ -1,0 +1,114 @@
+
+================ DEV (N=16 seeds, 10,000 paired bootstrap) ================
+
+--- Suite O1: Oficial ÓRBITA §16 (TEST 256 + E33 Free-Run h1..h64) ---
+  ORBITA_BASE           p=2602 ms=  0.0  acc1=97.83%  rel1=0.0082  hole=98.93%  h8=70.61%  h16=31.25% [25.88%, 37.01%]  h32= 7.91%  gate=16/16  <r>=0.00->0.00
+  ORBITA_ASC            p=3514 ms=415.3  acc1=98.05%  rel1=0.0076  hole=98.97%  h8=80.86%  h16=40.62% [33.79%, 47.95%]  h32=10.16%  gate=16/16  <r>=0.38->0.43
+  ORBITA_RIEMANN_FIXED  p=3514 ms=374.9  acc1=97.85%  rel1=0.0080  hole=98.93%  h8=74.12%  h16=34.57% [29.20%, 40.33%]  h32= 7.71%  gate=15/16  <r>=0.59->0.59
+  ORBITA_FOURIER_FIXED  p=3514 ms=345.5  acc1=97.80%  rel1=0.0080  hole=98.88%  h8=73.24%  h16=34.18% [28.42%, 40.23%]  h32= 7.23%  gate=16/16  <r>=0.00->0.00
+  ORBITA_POISSON_FIXED  p=3514 ms=357.7  acc1=97.78%  rel1=0.0080  hole=98.93%  h8=74.12%  h16=33.89% [28.42%, 39.75%]  h32= 8.11%  gate=16/16  <r>=0.39->0.39
+  ORBITA_MLP_RES        p=3514 ms=332.9  acc1=97.83%  rel1=0.0081  hole=98.93%  h8=71.19%  h16=32.42% [27.05%, 38.09%]  h32= 8.01%  gate=16/16  <r>=0.00->0.00
+
+--- Suite O2: Abducción de Contexto Desconocido & 40 Pares Compuestos Inéditos (ÓRBITA) ---
+  ORBITA_ASC            p= 530  unseen=94.22% [92.34%, 96.09%]  train= 94.5%  cfr= 99.8%  <r>=0.372->0.630  psr=31.06
+  ORBITA_RIEMANN_FIXED  p= 530  unseen=79.38% [75.31%, 83.28%]  train= 77.6%  cfr=100.0%  <r>=0.619->0.619  psr=8.09
+  ORBITA_FOURIER_FIXED  p= 530  unseen=82.19% [78.91%, 85.31%]  train= 89.4%  cfr=100.0%  <r>=0.000->0.000  psr=5.07
+  ORBITA_POISSON_FIXED  p= 530  unseen=73.12% [68.28%, 77.97%]  train= 80.0%  cfr= 99.8%  <r>=0.389->0.389  psr=6.16
+  ORBITA_MLP            p= 880  unseen=28.28% [21.56%, 34.69%]  train=100.0%  cfr=  0.0%  <r>=0.000->0.000  psr=0.00
+
+--- Suite O3: Aprendizaje Continuo Few-Shot de 4 Familias Nuevas No Lineales (8..11) ---
+  ORBITA_BASE           ep=   0 ms=   0.0  known16=37.96%  new_h1= 0.13%  new_h8= 0.00%  new_h16= 0.00% [ 0.00%,  0.00%]  rel16=5.400  pur=  0.0%
+  ORBITA_OBS            ep=   0 ms=   0.0  known16=39.84%  new_h1=40.62%  new_h8= 5.73%  new_h16= 2.21% [ 1.43%,  3.12%]  rel16=1.134  pur=  0.0%
+  ORBITA_LAT            ep=7296 ms=3192.9  known16=40.56%  new_h1=66.02%  new_h8= 8.59%  new_h16= 2.99% [ 1.95%,  4.17%]  rel16=3.482  pur=  0.0%
+  ORBITA_ASC            ep=5128 ms=13939.6  known16=39.84%  new_h1=82.42%  new_h8=32.03%  new_h16=14.32% [11.85%, 16.54%]  rel16=0.416  pur= 92.8%
+  ORBITA_RIEMANN_FIXED  ep=5128 ms=13972.0  known16=39.84%  new_h1=72.53%  new_h8=20.18%  new_h16= 3.12% [ 1.69%,  4.56%]  rel16=0.515  pur= 88.9%
+  ORBITA_FOURIER_FIXED  ep=5128 ms=13963.0  known16=39.84%  new_h1=79.82%  new_h8=28.39%  new_h16= 5.21% [ 3.91%,  6.64%]  rel16=0.462  pur= 93.8%
+  ORBITA_POISSON_FIXED  ep=5128 ms=13595.3  known16=39.84%  new_h1=72.40%  new_h8=20.44%  new_h16= 3.78% [ 2.60%,  5.08%]  rel16=0.552  pur= 90.0%
+  ORBITA_MLP            ep=5128 ms=11963.2  known16=39.84%  new_h1=71.48%  new_h8=22.79%  new_h16= 9.51% [ 6.77%, 12.37%]  rel16=0.562  pur= 86.6%
+
+--- Suite O4: Tamiz Espectral de Números Primos (¿Qué Inferencia Se Esconde?) ---
+  [O4a Dinámica ÓRBITA 12 familias]
+    full_adaptive         acc1=91.62%  acc16=28.56%  rel1=0.0186  cos=0.9855  odd=39.08%  irred_rel=0.0042  comp_rel=0.0258  E=100.0%
+    prime_harmonic_exact  acc1= 5.82%  acc16= 0.00%  rel1=0.1967  cos=0.7286  odd=59.22%  irred_rel=0.2507  comp_rel=0.1697  E= 86.2%
+    riemann_prime_dual    acc1= 1.48%  acc16= 0.00%  rel1=0.2577  cos=0.6197  odd=33.09%  irred_rel=0.3624  comp_rel=0.2053  E= 76.1%
+    log_prime_exact       acc1= 1.48%  acc16= 0.00%  rel1=0.2688  cos=0.5883  odd=20.98%  irred_rel=0.3817  comp_rel=0.2123  E= 71.4%
+    composite_only        acc1= 3.26%  acc16= 0.00%  rel1=0.2135  cos=0.7069  odd=15.85%  irred_rel=0.2841  comp_rel=0.1782  E= 86.1%
+    even_only             acc1= 3.69%  acc16= 0.00%  rel1=0.2169  cos=0.6952  odd= 0.00%  irred_rel=0.2869  comp_rel=0.1819  E= 83.6%
+    random_matched        acc1= 3.12%  acc16= 0.00%  rel1=0.2331  cos=0.6785  odd=47.48%  irred_rel=0.3313  comp_rel=0.1840  E= 84.1%
+  [O4b Colapso Pasado x Futuro (40 pares inéditos)]
+    full_adaptive         pair_acc=94.22% [92.34%, 96.09%]  PSR=31.06 [28.89, 33.22]  ghost=0.0040  E=100.0%
+    prime_harmonic_exact  pair_acc=49.84% [46.25%, 53.44%]  PSR=11.17 [9.98, 12.39]  ghost=0.0130  E= 20.4%
+    riemann_prime_dual    pair_acc=58.44% [53.12%, 63.44%]  PSR=15.75 [14.49, 17.05]  ghost=0.0069  E= 28.4%
+    log_prime_exact       pair_acc=61.72% [56.09%, 67.34%]  PSR=16.30 [14.79, 17.82]  ghost=0.0059  E= 31.1%
+    composite_only        pair_acc=52.81% [48.59%, 56.88%]  PSR=12.95 [11.55, 14.37]  ghost=0.0133  E= 23.0%
+    even_only             pair_acc=53.28% [48.75%, 58.13%]  PSR=12.68 [11.06, 14.50]  ghost=0.0111  E= 22.7%
+    random_matched        pair_acc=46.72% [40.47%, 53.44%]  PSR=11.42 [9.11, 13.73]  ghost=0.0423  E= 35.4%
+
+--- Veredicto de los 8 Criterios Preregistrados ---
+  H_O1a: PASS
+  H_O1b: PASS
+  H_O1c: PASS
+  H_O2a: PASS
+  H_O3a: FAIL
+  H_O3b: PASS
+  H_O4a: FAIL
+  H_O4b: PASS
+TOTAL DEV: 6/8 PASS
+
+================ CONFIRM (N=16 seeds, 10,000 paired bootstrap) ================
+
+--- Suite O1: Oficial ÓRBITA §16 (TEST 256 + E33 Free-Run h1..h64) ---
+  ORBITA_BASE           p=2602 ms=  0.0  acc1=98.19%  rel1=0.0081  hole=99.02%  h8=68.65%  h16=32.32% [26.76%, 37.70%]  h32= 7.32%  gate=16/16  <r>=0.00->0.00
+  ORBITA_ASC            p=3514 ms=434.7  acc1=98.44%  rel1=0.0076  hole=99.17%  h8=75.68%  h16=37.79% [31.84%, 43.75%]  h32=10.06%  gate=16/16  <r>=0.38->0.44
+  ORBITA_RIEMANN_FIXED  p=3514 ms=387.9  acc1=98.22%  rel1=0.0079  hole=99.02%  h8=71.58%  h16=33.79% [28.12%, 39.45%]  h32= 8.40%  gate=16/16  <r>=0.59->0.59
+  ORBITA_FOURIER_FIXED  p=3514 ms=351.6  acc1=98.22%  rel1=0.0079  hole=99.02%  h8=71.19%  h16=32.81% [26.46%, 39.26%]  h32= 9.08%  gate=16/16  <r>=0.00->0.00
+  ORBITA_POISSON_FIXED  p=3514 ms=357.1  acc1=98.27%  rel1=0.0079  hole=99.12%  h8=71.00%  h16=34.28% [28.32%, 40.14%]  h32= 7.32%  gate=16/16  <r>=0.39->0.39
+  ORBITA_MLP_RES        p=3514 ms=330.8  acc1=98.19%  rel1=0.0080  hole=99.02%  h8=68.75%  h16=32.71% [26.86%, 38.38%]  h32= 8.30%  gate=16/16  <r>=0.00->0.00
+
+--- Suite O2: Abducción de Contexto Desconocido & 40 Pares Compuestos Inéditos (ÓRBITA) ---
+  ORBITA_ASC            p= 530  unseen=92.03% [89.69%, 94.22%]  train= 92.8%  cfr= 99.8%  <r>=0.371->0.629  psr=29.20
+  ORBITA_RIEMANN_FIXED  p= 530  unseen=77.19% [74.38%, 79.69%]  train= 80.8%  cfr= 97.7%  <r>=0.619->0.619  psr=8.08
+  ORBITA_FOURIER_FIXED  p= 530  unseen=79.06% [76.09%, 81.56%]  train= 85.1%  cfr= 99.6%  <r>=0.000->0.000  psr=4.83
+  ORBITA_POISSON_FIXED  p= 530  unseen=77.19% [73.28%, 80.62%]  train= 78.4%  cfr= 96.2%  <r>=0.395->0.395  psr=6.18
+  ORBITA_MLP            p= 880  unseen=22.97% [19.69%, 26.25%]  train=100.0%  cfr=  0.0%  <r>=0.000->0.000  psr=0.00
+
+--- Suite O3: Aprendizaje Continuo Few-Shot de 4 Familias Nuevas No Lineales (8..11) ---
+  ORBITA_BASE           ep=   0 ms=   0.0  known16=34.51%  new_h1= 0.65%  new_h8= 0.13%  new_h16= 0.00% [ 0.00%,  0.00%]  rel16=5.199  pur=  0.0%
+  ORBITA_OBS            ep=   0 ms=   0.0  known16=36.91%  new_h1=40.76%  new_h8= 6.12%  new_h16= 2.34% [ 1.30%,  3.52%]  rel16=1.194  pur=  0.0%
+  ORBITA_LAT            ep=6720 ms=3208.1  known16=37.96%  new_h1=67.19%  new_h8= 8.72%  new_h16= 2.86% [ 1.95%,  3.78%]  rel16=3.434  pur=  0.0%
+  ORBITA_ASC            ep=5128 ms=14150.0  known16=36.91%  new_h1=80.86%  new_h8=30.21%  new_h16=11.07% [ 8.07%, 13.93%]  rel16=0.428  pur= 89.3%
+  ORBITA_RIEMANN_FIXED  ep=5128 ms=14172.1  known16=36.91%  new_h1=75.91%  new_h8=17.84%  new_h16= 2.99% [ 1.56%,  4.82%]  rel16=0.485  pur= 86.5%
+  ORBITA_FOURIER_FIXED  ep=5128 ms=14050.7  known16=36.91%  new_h1=80.08%  new_h8=25.91%  new_h16= 5.47% [ 3.65%,  7.68%]  rel16=0.450  pur= 90.8%
+  ORBITA_POISSON_FIXED  ep=5128 ms=13864.7  known16=36.91%  new_h1=73.18%  new_h8=19.14%  new_h16= 3.12% [ 2.08%,  4.17%]  rel16=0.501  pur= 87.9%
+  ORBITA_MLP            ep=5128 ms=12062.2  known16=36.91%  new_h1=72.53%  new_h8=23.05%  new_h16= 7.29% [ 5.34%,  9.38%]  rel16=0.477  pur= 84.3%
+
+--- Suite O4: Tamiz Espectral de Números Primos (¿Qué Inferencia Se Esconde?) ---
+  [O4a Dinámica ÓRBITA 12 familias]
+    full_adaptive         acc1=90.23%  acc16=26.04%  rel1=0.0215  cos=0.9814  odd=40.18%  irred_rel=0.0052  comp_rel=0.0296  E=100.0%
+    prime_harmonic_exact  acc1= 5.25%  acc16= 0.00%  rel1=0.1970  cos=0.7325  odd=58.24%  irred_rel=0.2348  comp_rel=0.1780  E= 83.9%
+    riemann_prime_dual    acc1= 1.30%  acc16= 0.00%  rel1=0.2647  cos=0.6009  odd=32.74%  irred_rel=0.3616  comp_rel=0.2162  E= 72.4%
+    log_prime_exact       acc1= 1.00%  acc16= 0.00%  rel1=0.2747  cos=0.5709  odd=21.50%  irred_rel=0.3775  comp_rel=0.2232  E= 67.9%
+    composite_only        acc1= 2.56%  acc16= 0.00%  rel1=0.2153  cos=0.7083  odd=15.77%  irred_rel=0.2712  comp_rel=0.1874  E= 83.4%
+    even_only             acc1= 2.56%  acc16= 0.00%  rel1=0.2185  cos=0.6915  odd= 0.00%  irred_rel=0.2718  comp_rel=0.1919  E= 80.4%
+    random_matched        acc1= 3.69%  acc16= 0.00%  rel1=0.2413  cos=0.6483  odd=46.38%  irred_rel=0.3220  comp_rel=0.2010  E= 75.8%
+  [O4b Colapso Pasado x Futuro (40 pares inéditos)]
+    full_adaptive         pair_acc=92.03% [89.69%, 94.22%]  PSR=29.20 [27.35, 31.13]  ghost=0.0055  E=100.0%
+    prime_harmonic_exact  pair_acc=47.97% [42.81%, 53.44%]  PSR=11.45 [9.77, 13.21]  ghost=0.0095  E= 18.8%
+    riemann_prime_dual    pair_acc=54.37% [49.53%, 59.84%]  PSR=12.72 [11.01, 14.54]  ghost=0.0090  E= 30.1%
+    log_prime_exact       pair_acc=55.47% [49.84%, 60.78%]  PSR=13.67 [11.73, 15.64]  ghost=0.0088  E= 32.8%
+    composite_only        pair_acc=51.25% [46.41%, 56.25%]  PSR=11.91 [10.38, 13.43]  ghost=0.0128  E= 23.0%
+    even_only             pair_acc=53.75% [49.84%, 57.81%]  PSR=11.10 [9.79, 12.55]  ghost=0.0097  E= 22.5%
+    random_matched        pair_acc=48.91% [44.53%, 52.97%]  PSR=11.46 [9.77, 13.17]  ghost=0.0155  E= 23.7%
+
+--- Veredicto de los 8 Criterios Preregistrados ---
+  H_O1a: FAIL
+  H_O1b: FAIL
+  H_O1c: FAIL
+  H_O2a: PASS
+  H_O3a: FAIL
+  H_O3b: FAIL
+  H_O4a: FAIL
+  H_O4b: PASS
+TOTAL CONFIRM: 2/8 PASS
+
+Saved structured summary to /home/antigravity/GerardoRosas-27/neuro-geometrica_multi-agente/docs/orbita_adaptive_spectral_v1/summary_confirm.json

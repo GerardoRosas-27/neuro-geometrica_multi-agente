@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="940" height="300" viewBox="0 0 940 300">
+<style>text{font-family:ui-sans-serif,system-ui,-apple-system,sans-serif;fill:#0f172a}.t{font-size:14px;font-weight:700}.s{font-size:11px;fill:#475569}.l{font-size:10.5px;fill:#1e293b}.v{font-size:10px;font-weight:600;font-family:ui-monospace,monospace}.g{stroke:#e2e8f0;stroke-width:1}.ax{stroke:#94a3b8;stroke-width:1.2}</style>
+<rect width="940" height="300" fill="#ffffff" rx="8"/>
+<text x="24" y="26" class="t">Suite O2 — Abducción de Reglas ÓRBITA Desconocidas y 40 Pares Compuestos Inéditos (CONFIRM)</text>
+<text x="195.0" y="50.0" class="t">Pares compuestos inéditos (60.6% OOD)</text>
+<line x1="195.0" y1="62.0" x2="195.0" y2="262.0" class="g"/>
+<text x="195.0" y="276.0" text-anchor="middle" class="s">0.0%</text>
+<line x1="260.0" y1="62.0" x2="260.0" y2="262.0" class="g"/>
+<text x="260.0" y="276.0" text-anchor="middle" class="s">25.0%</text>
+<line x1="325.0" y1="62.0" x2="325.0" y2="262.0" class="g"/>
+<text x="325.0" y="276.0" text-anchor="middle" class="s">50.0%</text>
+<line x1="390.0" y1="62.0" x2="390.0" y2="262.0" class="g"/>
+<text x="390.0" y="276.0" text-anchor="middle" class="s">75.0%</text>
+<line x1="455.0" y1="62.0" x2="455.0" y2="262.0" class="g"/>
+<text x="455.0" y="276.0" text-anchor="middle" class="s">100.0%</text>
+<text x="187.0" y="86.0" text-anchor="end" class="l">ÓRBITA + ASC (0 Riemann)</text>
+<rect x="195.0" y="72.0" width="239.3" height="20.0" fill="#10b981" rx="3" opacity="0.9"/>
+<line x1="428.2" y1="82.0" x2="440.0" y2="82.0" stroke="#0f172a" stroke-width="1.6"/>
+<text x="446.0" y="86.0" class="v">92.0%</text>
+<text x="187.0" y="126.0" text-anchor="end" class="l">ÓRBITA + Riemann Fijo</text>
+<rect x="195.0" y="112.0" width="200.7" height="20.0" fill="#8b5cf6" rx="3" opacity="0.9"/>
+<line x1="388.4" y1="122.0" x2="402.2" y2="122.0" stroke="#0f172a" stroke-width="1.6"/>
+<text x="408.2" y="126.0" class="v">77.2%</text>
+<text x="187.0" y="166.0" text-anchor="end" class="l">ÓRBITA + Fourier Fijo</text>
+<rect x="195.0" y="152.0" width="205.6" height="20.0" fill="#3b82f6" rx="3" opacity="0.9"/>
+<line x1="392.8" y1="162.0" x2="407.1" y2="162.0" stroke="#0f172a" stroke-width="1.6"/>
+<text x="413.1" y="166.0" class="v">79.1%</text>
+<text x="187.0" y="206.0" text-anchor="end" class="l">ÓRBITA + Poisson Fijo</text>
+<rect x="195.0" y="192.0" width="200.7" height="20.0" fill="#ef4444" rx="3" opacity="0.9"/>
+<line x1="385.5" y1="202.0" x2="404.6" y2="202.0" stroke="#0f172a" stroke-width="1.6"/>
+<text x="410.6" y="206.0" class="v">77.2%</text>
+<text x="187.0" y="246.0" text-anchor="end" class="l">ÓRBITA + MLP (1:1)</text>
+<rect x="195.0" y="232.0" width="59.7" height="20.0" fill="#f59e0b" rx="3" opacity="0.9"/>
+<line x1="246.2" y1="242.0" x2="263.2" y2="242.0" stroke="#0f172a" stroke-width="1.6"/>
+<text x="269.2" y="246.0" class="v">23.0%</text>
+<text x="635.0" y="50.0" class="t">Pares de entrenamiento (brecha de sobreajuste)</text>
+<line x1="635.0" y1="62.0" x2="635.0" y2="262.0" class="g"/>
+<text x="635.0" y="276.0" text-anchor="middle" class="s">0.0%</text>
+<line x1="692.5" y1="62.0" x2="692.5" y2="262.0" class="g"/>
+<text x="692.5" y="276.0" text-anchor="middle" class="s">25.0%</text>
+<line x1="750.0" y1="62.0" x2="750.0" y2="262.0" class="g"/>
+<text x="750.0" y="276.0" text-anchor="middle" class="s">50.0%</text>
+<line x1="807.5" y1="62.0" x2="807.5" y2="262.0" class="g"/>
+<text x="807.5" y="276.0" text-anchor="middle" class="s">75.0%</text>
+<line x1="865.0" y1="62.0" x2="865.0" y2="262.0" class="g"/>
+<text x="865.0" y="276.0" text-anchor="middle" class="s">100.0%</text>
+<text x="627.0" y="86.0" text-anchor="end" class="l">ÓRBITA + ASC (0 Riemann)</text>
+<rect x="635.0" y="72.0" width="213.4" height="20.0" fill="#10b981" rx="3" opacity="0.9"/>
+<line x1="844.0" y1="82.0" x2="852.3" y2="82.0" stroke="#0f172a" stroke-width="1.6"/>
+<text x="858.3" y="86.0" class="v">92.8%</text>
+<text x="627.0" y="126.0" text-anchor="end" class="l">ÓRBITA + Riemann Fijo</text>
+<rect x="635.0" y="112.0" width="185.8" height="20.0" fill="#8b5cf6" rx="3" opacity="0.9"/>
+<line x1="811.4" y1="122.0" x2="830.2" y2="122.0" stroke="#0f172a" stroke-width="1.6"/>
+<text x="836.2" y="126.0" class="v">80.8%</text>
+<text x="627.0" y="166.0" text-anchor="end" class="l">ÓRBITA + Fourier Fijo</text>
+<rect x="635.0" y="152.0" width="195.7" height="20.0" fill="#3b82f6" rx="3" opacity="0.9"/>
+<line x1="821.3" y1="162.0" x2="840.1" y2="162.0" stroke="#0f172a" stroke-width="1.6"/>
+<text x="846.1" y="166.0" class="v">85.1%</text>
+<text x="627.0" y="206.0" text-anchor="end" class="l">ÓRBITA + Poisson Fijo</text>
+<rect x="635.0" y="192.0" width="180.2" height="20.0" fill="#ef4444" rx="3" opacity="0.9"/>
+<line x1="806.4" y1="202.0" x2="824.6" y2="202.0" stroke="#0f172a" stroke-width="1.6"/>
+<text x="830.6" y="206.0" class="v">78.4%</text>
+<text x="627.0" y="246.0" text-anchor="end" class="l">ÓRBITA + MLP (1:1)</text>
+<rect x="635.0" y="232.0" width="230.0" height="20.0" fill="#f59e0b" rx="3" opacity="0.9"/>
+<line x1="865.0" y1="242.0" x2="865.0" y2="242.0" stroke="#0f172a" stroke-width="1.6"/>
+<text x="871.0" y="246.0" class="v">100.0%</text>
+</svg>

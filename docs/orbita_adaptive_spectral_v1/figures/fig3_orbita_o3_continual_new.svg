@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="940" height="365" viewBox="0 0 940 365">
+<style>text{font-family:ui-sans-serif,system-ui,-apple-system,sans-serif;fill:#0f172a}.t{font-size:14px;font-weight:700}.s{font-size:11px;fill:#475569}.l{font-size:10.5px;fill:#1e293b}.v{font-size:10px;font-weight:600;font-family:ui-monospace,monospace}.g{stroke:#e2e8f0;stroke-width:1}.ax{stroke:#94a3b8;stroke-width:1.2}</style>
+<rect width="940" height="365" fill="#ffffff" rx="8"/>
+<text x="24" y="26" class="t">Suite O3 — Aprendizaje Continuo Few-Shot de 4 Familias Nuevas No Lineales (8..11) vs Retención (0..7)</text>
+<text x="195.0" y="50.0" class="t">Nuevas 8..11: acc h16 held-out (sin etiquetas)</text>
+<line x1="195.0" y1="62.0" x2="195.0" y2="327.0" class="g"/>
+<text x="195.0" y="341.0" text-anchor="middle" class="s">0.0%</text>
+<line x1="257.5" y1="62.0" x2="257.5" y2="327.0" class="g"/>
+<text x="257.5" y="341.0" text-anchor="middle" class="s">12.5%</text>
+<line x1="320.0" y1="62.0" x2="320.0" y2="327.0" class="g"/>
+<text x="320.0" y="341.0" text-anchor="middle" class="s">25.0%</text>
+<line x1="382.5" y1="62.0" x2="382.5" y2="327.0" class="g"/>
+<text x="382.5" y="341.0" text-anchor="middle" class="s">37.5%</text>
+<line x1="445.0" y1="62.0" x2="445.0" y2="327.0" class="g"/>
+<text x="445.0" y="341.0" text-anchor="middle" class="s">50.0%</text>
+<text x="187.0" y="82.6" text-anchor="end" class="l">ÓRBITA + ASC (0 Riemann)</text>
+<rect x="195.0" y="69.0" width="55.3" height="19.2" fill="#10b981" rx="3" opacity="0.9"/>
+<line x1="235.4" y1="78.6" x2="264.7" y2="78.6" stroke="#0f172a" stroke-width="1.6"/>
+<text x="270.7" y="82.6" class="v">11.1%</text>
+<text x="187.0" y="115.7" text-anchor="end" class="l">ÓRBITA + MLP (1:1)</text>
+<rect x="195.0" y="102.1" width="36.5" height="19.2" fill="#f59e0b" rx="3" opacity="0.9"/>
+<line x1="221.7" y1="111.7" x2="241.9" y2="111.7" stroke="#0f172a" stroke-width="1.6"/>
+<text x="247.9" y="115.7" class="v">7.3%</text>
+<text x="187.0" y="148.8" text-anchor="end" class="l">ÓRBITA + Riemann Fijo</text>
+<rect x="195.0" y="135.2" width="15.0" height="19.2" fill="#8b5cf6" rx="3" opacity="0.9"/>
+<line x1="202.8" y1="144.8" x2="219.1" y2="144.8" stroke="#0f172a" stroke-width="1.6"/>
+<text x="225.1" y="148.8" class="v">3.0%</text>
+<text x="187.0" y="181.9" text-anchor="end" class="l">ÓRBITA + Fourier Fijo</text>
+<rect x="195.0" y="168.3" width="27.3" height="19.2" fill="#3b82f6" rx="3" opacity="0.9"/>
+<line x1="213.2" y1="177.9" x2="233.4" y2="177.9" stroke="#0f172a" stroke-width="1.6"/>
+<text x="239.4" y="181.9" class="v">5.5%</text>
+<text x="187.0" y="215.1" text-anchor="end" class="l">ÓRBITA + Poisson Fijo</text>
+<rect x="195.0" y="201.5" width="15.6" height="19.2" fill="#ef4444" rx="3" opacity="0.9"/>
+<line x1="205.4" y1="211.1" x2="215.8" y2="211.1" stroke="#0f172a" stroke-width="1.6"/>
+<text x="221.8" y="215.1" class="v">3.1%</text>
+<text x="187.0" y="248.2" text-anchor="end" class="l">ÓRBITA + LAT</text>
+<rect x="195.0" y="234.6" width="14.3" height="19.2" fill="#0ea5e9" rx="3" opacity="0.9"/>
+<line x1="204.8" y1="244.2" x2="213.9" y2="244.2" stroke="#0f172a" stroke-width="1.6"/>
+<text x="219.9" y="248.2" class="v">2.9%</text>
+<text x="187.0" y="281.3" text-anchor="end" class="l">ÓRBITA + OBS (reid)</text>
+<rect x="195.0" y="267.7" width="11.7" height="19.2" fill="#475569" rx="3" opacity="0.9"/>
+<line x1="201.5" y1="277.3" x2="212.6" y2="277.3" stroke="#0f172a" stroke-width="1.6"/>
+<text x="218.6" y="281.3" class="v">2.3%</text>
+<text x="187.0" y="314.4" text-anchor="end" class="l">ÓRBITA Base</text>
+<rect x="195.0" y="300.8" width="1.0" height="19.2" fill="#64748b" rx="3" opacity="0.9"/>
+<line x1="195.0" y1="310.4" x2="195.0" y2="310.4" stroke="#0f172a" stroke-width="1.6"/>
+<text x="201.0" y="314.4" class="v">0.0%</text>
+<text x="635.0" y="50.0" class="t">Conocidas 0..7: retención acc h16 (0 olvido)</text>
+<line x1="635.0" y1="62.0" x2="635.0" y2="327.0" class="g"/>
+<text x="635.0" y="341.0" text-anchor="middle" class="s">0.0%</text>
+<line x1="692.5" y1="62.0" x2="692.5" y2="327.0" class="g"/>
+<text x="692.5" y="341.0" text-anchor="middle" class="s">15.0%</text>
+<line x1="750.0" y1="62.0" x2="750.0" y2="327.0" class="g"/>
+<text x="750.0" y="341.0" text-anchor="middle" class="s">30.0%</text>
+<line x1="807.5" y1="62.0" x2="807.5" y2="327.0" class="g"/>
+<text x="807.5" y="341.0" text-anchor="middle" class="s">45.0%</text>
+<line x1="865.0" y1="62.0" x2="865.0" y2="327.0" class="g"/>
+<text x="865.0" y="341.0" text-anchor="middle" class="s">60.0%</text>
+<text x="627.0" y="82.6" text-anchor="end" class="l">ÓRBITA + ASC (0 Riemann)</text>
+<rect x="635.0" y="69.0" width="141.5" height="19.2" fill="#10b981" rx="3" opacity="0.9"/>
+<line x1="761.5" y1="78.6" x2="792.5" y2="78.6" stroke="#0f172a" stroke-width="1.6"/>
+<text x="798.5" y="82.6" class="v">36.9%</text>
+<text x="627.0" y="115.7" text-anchor="end" class="l">ÓRBITA + MLP (1:1)</text>
+<rect x="635.0" y="102.1" width="141.5" height="19.2" fill="#f59e0b" rx="3" opacity="0.9"/>
+<line x1="761.5" y1="111.7" x2="792.5" y2="111.7" stroke="#0f172a" stroke-width="1.6"/>
+<text x="798.5" y="115.7" class="v">36.9%</text>
+<text x="627.0" y="148.8" text-anchor="end" class="l">ÓRBITA + Riemann Fijo</text>
+<rect x="635.0" y="135.2" width="141.5" height="19.2" fill="#8b5cf6" rx="3" opacity="0.9"/>
+<line x1="761.5" y1="144.8" x2="792.5" y2="144.8" stroke="#0f172a" stroke-width="1.6"/>
+<text x="798.5" y="148.8" class="v">36.9%</text>
+<text x="627.0" y="181.9" text-anchor="end" class="l">ÓRBITA + Fourier Fijo</text>
+<rect x="635.0" y="168.3" width="141.5" height="19.2" fill="#3b82f6" rx="3" opacity="0.9"/>
+<line x1="761.5" y1="177.9" x2="792.5" y2="177.9" stroke="#0f172a" stroke-width="1.6"/>
+<text x="798.5" y="181.9" class="v">36.9%</text>
+<text x="627.0" y="215.1" text-anchor="end" class="l">ÓRBITA + Poisson Fijo</text>
+<rect x="635.0" y="201.5" width="141.5" height="19.2" fill="#ef4444" rx="3" opacity="0.9"/>
+<line x1="761.5" y1="211.1" x2="792.5" y2="211.1" stroke="#0f172a" stroke-width="1.6"/>
+<text x="798.5" y="215.1" class="v">36.9%</text>
+<text x="627.0" y="248.2" text-anchor="end" class="l">ÓRBITA + LAT</text>
+<rect x="635.0" y="234.6" width="145.5" height="19.2" fill="#0ea5e9" rx="3" opacity="0.9"/>
+<line x1="765.3" y1="244.2" x2="796.5" y2="244.2" stroke="#0f172a" stroke-width="1.6"/>
+<text x="802.5" y="248.2" class="v">38.0%</text>
+<text x="627.0" y="281.3" text-anchor="end" class="l">ÓRBITA + OBS (reid)</text>
+<rect x="635.0" y="267.7" width="141.5" height="19.2" fill="#475569" rx="3" opacity="0.9"/>
+<line x1="761.5" y1="277.3" x2="792.5" y2="277.3" stroke="#0f172a" stroke-width="1.6"/>
+<text x="798.5" y="281.3" class="v">36.9%</text>
+<text x="627.0" y="314.4" text-anchor="end" class="l">ÓRBITA Base</text>
+<rect x="635.0" y="300.8" width="132.3" height="19.2" fill="#64748b" rx="3" opacity="0.9"/>
+<line x1="753.0" y1="310.4" x2="782.2" y2="310.4" stroke="#0f172a" stroke-width="1.6"/>
+<text x="788.2" y="314.4" class="v">34.5%</text>
+</svg>

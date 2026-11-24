@@ -44,5 +44,51 @@
       "0xA40F": 78.1476
     },
     "frozen_verified": false
+  },
+  "CONFIRM": {
+    "timestamp_utc": "2026-11-24T10:16:53.979652+00:00",
+    "git_head": "edb9374825c98b577ec0b955f92b55d0cd23d9e4",
+    "binary_sha256": "e47ce9ee11a53a5d5e3d28ac76f0e29fb927c9f5b790ac33538def8357436089",
+    "n_seeds": 16,
+    "completed_seeds": 16,
+    "seeds": [
+      "0xB400",
+      "0xB401",
+      "0xB402",
+      "0xB403",
+      "0xB404",
+      "0xB405",
+      "0xB406",
+      "0xB407",
+      "0xB408",
+      "0xB409",
+      "0xB40A",
+      "0xB40B",
+      "0xB40C",
+      "0xB40D",
+      "0xB40E",
+      "0xB40F"
+    ],
+    "workers": 2,
+    "total_seconds_last_batch": 162.9615,
+    "per_seed_seconds": {
+      "0xB400": 80.8901,
+      "0xB401": 80.5238,
+      "0xB402": 79.0138,
+      "0xB403": 78.8006,
+      "0xB404": 80.9965,
+      "0xB405": 80.2124,
+      "0xB406": 81.5081,
+      "0xB407": 81.1418,
+      "0xB408": 82.0617,
+      "0xB409": 82.3554,
+      "0xB40A": 81.0619,
+      "0xB40B": 80.9522,
+      "0xB40C": 79.1048,
+      "0xB40D": 80.2338,
+      "0xB40E": 83.0774,
+      "0xB40F": 82.7215
+    },
+    "frozen_verified": true
   }
 }

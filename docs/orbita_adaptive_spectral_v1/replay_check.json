@@ -1,0 +1,33 @@
+{
+  "seed": "0xB400",
+  "timestamp_utc": "2026-11-24T10:18:15.201778+00:00",
+  "note": "Bit-exact verification over all deterministic columns (excluding wall-clock ms timings).",
+  "bit_exact_match": true,
+  "files": {
+    "metrics_o1.csv": {
+      "ref_sha256": "76416058f17da3d5a7d6a150cef1ad4f72e752ab3a0178019df0aaacfcf39f9c",
+      "replay_sha256": "76416058f17da3d5a7d6a150cef1ad4f72e752ab3a0178019df0aaacfcf39f9c",
+      "match": true
+    },
+    "metrics_o2.csv": {
+      "ref_sha256": "3fbe0cc2343fe994f7f417972515b99cbf6ff0a2ad0bc2620c0e4887feae65fb",
+      "replay_sha256": "3fbe0cc2343fe994f7f417972515b99cbf6ff0a2ad0bc2620c0e4887feae65fb",
+      "match": true
+    },
+    "metrics_o3.csv": {
+      "ref_sha256": "73a5776a61218b199ae50c4390b9ffcd0cc3b7f30b4f8be90308a9f799c49036",
+      "replay_sha256": "73a5776a61218b199ae50c4390b9ffcd0cc3b7f30b4f8be90308a9f799c49036",
+      "match": true
+    },
+    "metrics_o4.csv": {
+      "ref_sha256": "d31bd22e94ee27bd8afb71767f5a89bdfbd0bf921809bae4b0d96923c977daaf",
+      "replay_sha256": "d31bd22e94ee27bd8afb71767f5a89bdfbd0bf921809bae4b0d96923c977daaf",
+      "match": true
+    },
+    "trace_prime_sieve.csv": {
+      "ref_sha256": "dc9ecf91007320ce1f59ad08e48eeee41ae2c183631f2a06a8ddc3e83a37d7a4",
+      "replay_sha256": "dc9ecf91007320ce1f59ad08e48eeee41ae2c183631f2a06a8ddc3e83a37d7a4",
+      "match": true
+    }
+  }
+}

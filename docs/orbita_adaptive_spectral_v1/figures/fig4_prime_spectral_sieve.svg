@@ -1,0 +1,161 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="940" height="565" viewBox="0 0 940 565">
+<style>text{font-family:ui-sans-serif,system-ui,-apple-system,sans-serif;fill:#0f172a}.t{font-size:14px;font-weight:700}.s{font-size:11px;fill:#475569}.l{font-size:10.5px;fill:#1e293b}.v{font-size:10px;font-weight:600;font-family:ui-monospace,monospace}.g{stroke:#e2e8f0;stroke-width:1}.ax{stroke:#94a3b8;stroke-width:1.2}</style>
+<rect width="940" height="565" fill="#ffffff" rx="8"/>
+<text x="24" y="26" class="t">Suite O4 — Tamiz Espectral Primo: ¿Qué Inferencia Se Esconde en Frecuencias Exactas Primas? (CONFIRM)</text>
+<text x="200.0" y="50.0" class="t">O4b: Abducción Pasado×Futuro (pares inéditos)</text>
+<line x1="200.0" y1="62.0" x2="200.0" y2="272.0" class="g"/>
+<text x="200.0" y="286.0" text-anchor="middle" class="s">0.0%</text>
+<line x1="260.0" y1="62.0" x2="260.0" y2="272.0" class="g"/>
+<text x="260.0" y="286.0" text-anchor="middle" class="s">25.0%</text>
+<line x1="320.0" y1="62.0" x2="320.0" y2="272.0" class="g"/>
+<text x="320.0" y="286.0" text-anchor="middle" class="s">50.0%</text>
+<line x1="380.0" y1="62.0" x2="380.0" y2="272.0" class="g"/>
+<text x="380.0" y="286.0" text-anchor="middle" class="s">75.0%</text>
+<line x1="440.0" y1="62.0" x2="440.0" y2="272.0" class="g"/>
+<text x="440.0" y="286.0" text-anchor="middle" class="s">100.0%</text>
+<text x="192.0" y="81.0" text-anchor="end" class="l">Campo Completo (100%)</text>
+<rect x="200.0" y="68.3" width="220.9" height="17.4" fill="#10b981" rx="3" opacity="0.9"/>
+<line x1="415.2" y1="77.0" x2="426.1" y2="77.0" stroke="#0f172a" stroke-width="1.6"/>
+<text x="432.1" y="81.0" class="v">92.0%</text>
+<text x="192.0" y="111.0" text-anchor="end" class="l">Solo Primos Exactos</text>
+<rect x="200.0" y="98.3" width="115.1" height="17.4" fill="#f59e0b" rx="3" opacity="0.9"/>
+<line x1="302.8" y1="107.0" x2="328.2" y2="107.0" stroke="#0f172a" stroke-width="1.6"/>
+<text x="334.2" y="111.0" class="v">48.0%</text>
+<text x="192.0" y="141.0" text-anchor="end" class="l">Solo Ceros Riemann (Dual)</text>
+<rect x="200.0" y="128.3" width="130.5" height="17.4" fill="#8b5cf6" rx="3" opacity="0.9"/>
+<line x1="318.9" y1="137.0" x2="343.6" y2="137.0" stroke="#0f172a" stroke-width="1.6"/>
+<text x="349.6" y="141.0" class="v">54.4%</text>
+<text x="192.0" y="171.0" text-anchor="end" class="l">Solo log(p) Exactos</text>
+<rect x="200.0" y="158.3" width="133.1" height="17.4" fill="#06b6d4" rx="3" opacity="0.9"/>
+<line x1="319.6" y1="167.0" x2="345.9" y2="167.0" stroke="#0f172a" stroke-width="1.6"/>
+<text x="351.9" y="171.0" class="v">55.5%</text>
+<text x="192.0" y="201.0" text-anchor="end" class="l">Solo Compuestos (ctrl)</text>
+<rect x="200.0" y="188.3" width="123.0" height="17.4" fill="#ef4444" rx="3" opacity="0.9"/>
+<line x1="311.4" y1="197.0" x2="335.0" y2="197.0" stroke="#0f172a" stroke-width="1.6"/>
+<text x="341.0" y="201.0" class="v">51.2%</text>
+<text x="192.0" y="231.0" text-anchor="end" class="l">Solo Pares (ctrl)</text>
+<rect x="200.0" y="218.3" width="129.0" height="17.4" fill="#ec4899" rx="3" opacity="0.9"/>
+<line x1="319.6" y1="227.0" x2="338.8" y2="227.0" stroke="#0f172a" stroke-width="1.6"/>
+<text x="344.8" y="231.0" class="v">53.8%</text>
+<text x="192.0" y="261.0" text-anchor="end" class="l">Aleatorio Emparejado</text>
+<rect x="200.0" y="248.3" width="117.4" height="17.4" fill="#64748b" rx="3" opacity="0.9"/>
+<line x1="306.9" y1="257.0" x2="327.1" y2="257.0" stroke="#0f172a" stroke-width="1.6"/>
+<text x="333.1" y="261.0" class="v">48.9%</text>
+<text x="645.0" y="50.0" class="t">O4b: Supresión de ecos fantasma (PSR)</text>
+<line x1="645.0" y1="62.0" x2="645.0" y2="272.0" class="g"/>
+<text x="645.0" y="286.0" text-anchor="middle" class="s">0.00×</text>
+<line x1="701.2" y1="62.0" x2="701.2" y2="272.0" class="g"/>
+<text x="701.2" y="286.0" text-anchor="middle" class="s">8.95×</text>
+<line x1="757.5" y1="62.0" x2="757.5" y2="272.0" class="g"/>
+<text x="757.5" y="286.0" text-anchor="middle" class="s">17.90×</text>
+<line x1="813.8" y1="62.0" x2="813.8" y2="272.0" class="g"/>
+<text x="813.8" y="286.0" text-anchor="middle" class="s">26.85×</text>
+<line x1="870.0" y1="62.0" x2="870.0" y2="272.0" class="g"/>
+<text x="870.0" y="286.0" text-anchor="middle" class="s">35.80×</text>
+<text x="637.0" y="81.0" text-anchor="end" class="l">Campo Completo (100%)</text>
+<rect x="645.0" y="68.3" width="183.5" height="17.4" fill="#10b981" rx="3" opacity="0.9"/>
+<line x1="816.9" y1="77.0" x2="840.7" y2="77.0" stroke="#0f172a" stroke-width="1.6"/>
+<text x="846.7" y="81.0" class="v">29.20×</text>
+<text x="637.0" y="111.0" text-anchor="end" class="l">Solo Primos Exactos</text>
+<rect x="645.0" y="98.3" width="71.9" height="17.4" fill="#f59e0b" rx="3" opacity="0.9"/>
+<line x1="706.4" y1="107.0" x2="728.0" y2="107.0" stroke="#0f172a" stroke-width="1.6"/>
+<text x="734.0" y="111.0" class="v">11.45×</text>
+<text x="637.0" y="141.0" text-anchor="end" class="l">Solo Ceros Riemann (Dual)</text>
+<rect x="645.0" y="128.3" width="80.0" height="17.4" fill="#8b5cf6" rx="3" opacity="0.9"/>
+<line x1="714.2" y1="137.0" x2="736.4" y2="137.0" stroke="#0f172a" stroke-width="1.6"/>
+<text x="742.4" y="141.0" class="v">12.72×</text>
+<text x="637.0" y="171.0" text-anchor="end" class="l">Solo log(p) Exactos</text>
+<rect x="645.0" y="158.3" width="85.9" height="17.4" fill="#06b6d4" rx="3" opacity="0.9"/>
+<line x1="718.7" y1="167.0" x2="743.3" y2="167.0" stroke="#0f172a" stroke-width="1.6"/>
+<text x="749.3" y="171.0" class="v">13.67×</text>
+<text x="637.0" y="201.0" text-anchor="end" class="l">Solo Compuestos (ctrl)</text>
+<rect x="645.0" y="188.3" width="74.9" height="17.4" fill="#ef4444" rx="3" opacity="0.9"/>
+<line x1="710.2" y1="197.0" x2="729.4" y2="197.0" stroke="#0f172a" stroke-width="1.6"/>
+<text x="735.4" y="201.0" class="v">11.91×</text>
+<text x="637.0" y="231.0" text-anchor="end" class="l">Solo Pares (ctrl)</text>
+<rect x="645.0" y="218.3" width="69.8" height="17.4" fill="#ec4899" rx="3" opacity="0.9"/>
+<line x1="706.5" y1="227.0" x2="723.9" y2="227.0" stroke="#0f172a" stroke-width="1.6"/>
+<text x="729.9" y="231.0" class="v">11.10×</text>
+<text x="637.0" y="261.0" text-anchor="end" class="l">Aleatorio Emparejado</text>
+<rect x="645.0" y="248.3" width="72.0" height="17.4" fill="#64748b" rx="3" opacity="0.9"/>
+<line x1="706.4" y1="257.0" x2="727.8" y2="257.0" stroke="#0f172a" stroke-width="1.6"/>
+<text x="733.8" y="261.0" class="v">11.46×</text>
+<text x="200.0" y="313.0" class="t">O4a: Paridad impar aislada (p>2 impar)</text>
+<line x1="200.0" y1="325.0" x2="200.0" y2="535.0" class="g"/>
+<text x="200.0" y="549.0" text-anchor="middle" class="s">0.0%</text>
+<line x1="260.0" y1="325.0" x2="260.0" y2="535.0" class="g"/>
+<text x="260.0" y="549.0" text-anchor="middle" class="s">25.0%</text>
+<line x1="320.0" y1="325.0" x2="320.0" y2="535.0" class="g"/>
+<text x="320.0" y="549.0" text-anchor="middle" class="s">50.0%</text>
+<line x1="380.0" y1="325.0" x2="380.0" y2="535.0" class="g"/>
+<text x="380.0" y="549.0" text-anchor="middle" class="s">75.0%</text>
+<line x1="440.0" y1="325.0" x2="440.0" y2="535.0" class="g"/>
+<text x="440.0" y="549.0" text-anchor="middle" class="s">100.0%</text>
+<text x="192.0" y="344.0" text-anchor="end" class="l">Campo Completo (100%)</text>
+<rect x="200.0" y="331.3" width="96.4" height="17.4" fill="#10b981" rx="3" opacity="0.9"/>
+<line x1="294.8" y1="340.0" x2="298.2" y2="340.0" stroke="#0f172a" stroke-width="1.6"/>
+<text x="304.2" y="344.0" class="v">40.2%</text>
+<text x="192.0" y="374.0" text-anchor="end" class="l">Solo Primos Exactos</text>
+<rect x="200.0" y="361.3" width="139.8" height="17.4" fill="#f59e0b" rx="3" opacity="0.9"/>
+<line x1="334.1" y1="370.0" x2="345.5" y2="370.0" stroke="#0f172a" stroke-width="1.6"/>
+<text x="351.5" y="374.0" class="v">58.2%</text>
+<text x="192.0" y="404.0" text-anchor="end" class="l">Solo Ceros Riemann (Dual)</text>
+<rect x="200.0" y="391.3" width="78.6" height="17.4" fill="#8b5cf6" rx="3" opacity="0.9"/>
+<line x1="273.4" y1="400.0" x2="283.4" y2="400.0" stroke="#0f172a" stroke-width="1.6"/>
+<text x="289.4" y="404.0" class="v">32.7%</text>
+<text x="192.0" y="434.0" text-anchor="end" class="l">Solo log(p) Exactos</text>
+<rect x="200.0" y="421.3" width="51.6" height="17.4" fill="#06b6d4" rx="3" opacity="0.9"/>
+<line x1="245.4" y1="430.0" x2="257.9" y2="430.0" stroke="#0f172a" stroke-width="1.6"/>
+<text x="263.9" y="434.0" class="v">21.5%</text>
+<text x="192.0" y="464.0" text-anchor="end" class="l">Solo Compuestos (ctrl)</text>
+<rect x="200.0" y="451.3" width="37.8" height="17.4" fill="#ef4444" rx="3" opacity="0.9"/>
+<line x1="233.4" y1="460.0" x2="242.7" y2="460.0" stroke="#0f172a" stroke-width="1.6"/>
+<text x="248.7" y="464.0" class="v">15.8%</text>
+<text x="192.0" y="494.0" text-anchor="end" class="l">Solo Pares (ctrl)</text>
+<rect x="200.0" y="481.3" width="1.0" height="17.4" fill="#ec4899" rx="3" opacity="0.9"/>
+<line x1="200.0" y1="490.0" x2="200.0" y2="490.0" stroke="#0f172a" stroke-width="1.6"/>
+<text x="206.0" y="494.0" class="v">0.0%</text>
+<text x="192.0" y="524.0" text-anchor="end" class="l">Aleatorio Emparejado</text>
+<rect x="200.0" y="511.3" width="111.3" height="17.4" fill="#64748b" rx="3" opacity="0.9"/>
+<line x1="295.3" y1="520.0" x2="327.8" y2="520.0" stroke="#0f172a" stroke-width="1.6"/>
+<text x="333.8" y="524.0" class="v">46.4%</text>
+<text x="645.0" y="313.0" class="t">O4a: Fidelidad direccional del flujo (disp_cos)</text>
+<line x1="645.0" y1="325.0" x2="645.0" y2="535.0" class="g"/>
+<text x="645.0" y="549.0" text-anchor="middle" class="s">0.000</text>
+<line x1="701.2" y1="325.0" x2="701.2" y2="535.0" class="g"/>
+<text x="701.2" y="549.0" text-anchor="middle" class="s">0.250</text>
+<line x1="757.5" y1="325.0" x2="757.5" y2="535.0" class="g"/>
+<text x="757.5" y="549.0" text-anchor="middle" class="s">0.500</text>
+<line x1="813.8" y1="325.0" x2="813.8" y2="535.0" class="g"/>
+<text x="813.8" y="549.0" text-anchor="middle" class="s">0.750</text>
+<line x1="870.0" y1="325.0" x2="870.0" y2="535.0" class="g"/>
+<text x="870.0" y="549.0" text-anchor="middle" class="s">1.000</text>
+<text x="637.0" y="344.0" text-anchor="end" class="l">Campo Completo (100%)</text>
+<rect x="645.0" y="331.3" width="220.8" height="17.4" fill="#10b981" rx="3" opacity="0.9"/>
+<line x1="863.5" y1="340.0" x2="867.6" y2="340.0" stroke="#0f172a" stroke-width="1.6"/>
+<text x="873.6" y="344.0" class="v">0.981</text>
+<text x="637.0" y="374.0" text-anchor="end" class="l">Solo Primos Exactos</text>
+<rect x="645.0" y="361.3" width="164.8" height="17.4" fill="#f59e0b" rx="3" opacity="0.9"/>
+<line x1="806.6" y1="370.0" x2="813.2" y2="370.0" stroke="#0f172a" stroke-width="1.6"/>
+<text x="819.2" y="374.0" class="v">0.733</text>
+<text x="637.0" y="404.0" text-anchor="end" class="l">Solo Ceros Riemann (Dual)</text>
+<rect x="645.0" y="391.3" width="135.2" height="17.4" fill="#8b5cf6" rx="3" opacity="0.9"/>
+<line x1="776.6" y1="400.0" x2="783.9" y2="400.0" stroke="#0f172a" stroke-width="1.6"/>
+<text x="789.9" y="404.0" class="v">0.601</text>
+<text x="637.0" y="434.0" text-anchor="end" class="l">Solo log(p) Exactos</text>
+<rect x="645.0" y="421.3" width="128.5" height="17.4" fill="#06b6d4" rx="3" opacity="0.9"/>
+<line x1="769.7" y1="430.0" x2="777.2" y2="430.0" stroke="#0f172a" stroke-width="1.6"/>
+<text x="783.2" y="434.0" class="v">0.571</text>
+<text x="637.0" y="464.0" text-anchor="end" class="l">Solo Compuestos (ctrl)</text>
+<rect x="645.0" y="451.3" width="159.4" height="17.4" fill="#ef4444" rx="3" opacity="0.9"/>
+<line x1="801.1" y1="460.0" x2="807.8" y2="460.0" stroke="#0f172a" stroke-width="1.6"/>
+<text x="813.8" y="464.0" class="v">0.708</text>
+<text x="637.0" y="494.0" text-anchor="end" class="l">Solo Pares (ctrl)</text>
+<rect x="645.0" y="481.3" width="155.6" height="17.4" fill="#ec4899" rx="3" opacity="0.9"/>
+<line x1="797.1" y1="490.0" x2="804.2" y2="490.0" stroke="#0f172a" stroke-width="1.6"/>
+<text x="810.2" y="494.0" class="v">0.691</text>
+<text x="637.0" y="524.0" text-anchor="end" class="l">Aleatorio Emparejado</text>
+<rect x="645.0" y="511.3" width="145.9" height="17.4" fill="#64748b" rx="3" opacity="0.9"/>
+<line x1="779.5" y1="520.0" x2="801.4" y2="520.0" stroke="#0f172a" stroke-width="1.6"/>
+<text x="807.4" y="524.0" class="v">0.648</text>
+</svg>
