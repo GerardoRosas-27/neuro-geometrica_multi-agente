@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 940 440" width="940" height="440" style="background:#ffffff;font-family:Inter,system-ui,-apple-system,sans-serif;">
+<defs><style>.title{font-size:15px;font-weight:700;fill:#0f172a}.sub{font-size:11.5px;font-weight:600;fill:#334155}.axis{font-size:10px;fill:#475569}.legend{font-size:10.5px;fill:#1e293b}.grid{stroke:#e2e8f0;stroke-width:1}.frame{stroke:#94a3b8;stroke-width:1.1;fill:none}</style></defs>
+<text x="24" y="26" class="title">Suites C2 &amp; C3 — Búsqueda Automática de la Configuración Exacta y Transición de Resolución de Rayleigh</text>
+<text x="66" y="58" class="sub">A. Búsqueda inversa (Autofoco 1D/2D → DE 7D → Polish M=128) (0xB800)</text>
+<line x1="66.0" y1="363.0" x2="456.0" y2="363.0" class="grid"/>
+<text x="60.0" y="366.5" text-anchor="end" class="axis">0.00</text>
+<line x1="66.0" y1="289.2" x2="456.0" y2="289.2" class="grid"/>
+<text x="60.0" y="292.8" text-anchor="end" class="axis">15.24</text>
+<line x1="66.0" y1="215.5" x2="456.0" y2="215.5" class="grid"/>
+<text x="60.0" y="219.0" text-anchor="end" class="axis">30.49</text>
+<line x1="66.0" y1="141.8" x2="456.0" y2="141.8" class="grid"/>
+<text x="60.0" y="145.2" text-anchor="end" class="axis">45.73</text>
+<line x1="66.0" y1="68.0" x2="456.0" y2="68.0" class="grid"/>
+<text x="60.0" y="71.5" text-anchor="end" class="axis">60.97</text>
+<line x1="66.0" y1="68.0" x2="66.0" y2="363.0" class="grid"/>
+<text x="66.0" y="377.0" text-anchor="middle" class="axis">0.0</text>
+<line x1="131.0" y1="68.0" x2="131.0" y2="363.0" class="grid"/>
+<text x="131.0" y="377.0" text-anchor="middle" class="axis">500.0</text>
+<line x1="196.0" y1="68.0" x2="196.0" y2="363.0" class="grid"/>
+<text x="196.0" y="377.0" text-anchor="middle" class="axis">1000.0</text>
+<line x1="261.0" y1="68.0" x2="261.0" y2="363.0" class="grid"/>
+<text x="261.0" y="377.0" text-anchor="middle" class="axis">1500.0</text>
+<line x1="326.0" y1="68.0" x2="326.0" y2="363.0" class="grid"/>
+<text x="326.0" y="377.0" text-anchor="middle" class="axis">2000.0</text>
+<line x1="391.0" y1="68.0" x2="391.0" y2="363.0" class="grid"/>
+<text x="391.0" y="377.0" text-anchor="middle" class="axis">2500.0</text>
+<line x1="456.0" y1="68.0" x2="456.0" y2="363.0" class="grid"/>
+<text x="456.0" y="377.0" text-anchor="middle" class="axis">3000.0</text>
+<rect x="66.0" y="68.0" width="390.0" height="295.0" class="frame"/>
+<text x="261.0" y="393.0" text-anchor="middle" class="axis">Evaluaciones de J_train (solo ventana x ∈ [2, 60])</text>
+<text x="22.0" y="215.5" text-anchor="middle" class="axis" transform="rotate(-90 22.0 215.5)">Objetivo J_train (M=128)</text>
+<polyline fill="none" stroke="#1d4ed8" stroke-width="2.0" points="193.40,309.36 200.16,295.35 217.06,315.88 233.96,293.27 250.86,273.02 267.76,190.92 284.66,215.68 301.56,201.06 318.46,194.81 335.36,193.74 345.50,189.57 347.58,143.95 349.53,118.87 351.48,116.23 353.56,116.23 355.64,109.17 357.72,109.17 359.41,102.75 361.49,102.75 363.44,101.13 365.39,101.09 367.34,101.06 369.29,101.04 371.24,101.03 373.19,101.03 375.27,101.03 377.22,100.91 379.04,100.81 380.99,100.81 383.07,100.81 385.02,100.55 387.10,100.54 389.18,100.53 391.26,100.53 393.34,100.52 395.42,100.52 397.50,100.52 399.58,100.52 401.66,100.51 403.74,100.51 405.43,100.41 407.12,100.20 409.07,100.01 411.15,100.01 413.23,100.00 415.31,100.00 417.39,100.00 419.47,100.00 421.55,100.00 423.63,100.00 425.71,100.00 427.79,99.99 429.61,99.90 431.56,99.79 433.64,99.78 435.72,99.78 437.80,99.78 439.88,99.77 441.96,99.77 444.04,99.77 446.12,99.77 447.94,99.76 449.89,99.61 451.97,99.61 454.05,99.61 456.00,99.61"/>
+<line x1="193.4" y1="68" x2="193.4" y2="363" stroke="#94a3b8" stroke-dasharray="3,3"/>
+<text x="196.4" y="82" style="font-size:8.5px;fill:#475569">DE 7D</text>
+<line x1="345.5" y1="68" x2="345.5" y2="363" stroke="#94a3b8" stroke-dasharray="3,3"/>
+<text x="348.5" y="82" style="font-size:8.5px;fill:#475569">Polish M=128</text>
+<text x="524" y="58" class="sub">B. Transición de fase de Rayleigh por número de pares de ondas M</text>
+<line x1="524.0" y1="363.0" x2="910.0" y2="363.0" class="grid"/>
+<text x="518.0" y="366.5" text-anchor="end" class="axis">0.45</text>
+<line x1="524.0" y1="289.2" x2="910.0" y2="289.2" class="grid"/>
+<text x="518.0" y="292.8" text-anchor="end" class="axis">0.59</text>
+<line x1="524.0" y1="215.5" x2="910.0" y2="215.5" class="grid"/>
+<text x="518.0" y="219.0" text-anchor="end" class="axis">0.74</text>
+<line x1="524.0" y1="141.8" x2="910.0" y2="141.8" class="grid"/>
+<text x="518.0" y="145.2" text-anchor="end" class="axis">0.89</text>
+<line x1="524.0" y1="68.0" x2="910.0" y2="68.0" class="grid"/>
+<text x="518.0" y="71.5" text-anchor="end" class="axis">1.03</text>
+<line x1="524.0" y1="68.0" x2="524.0" y2="363.0" class="grid"/>
+<text x="524.0" y="377.0" text-anchor="middle" class="axis">0.0</text>
+<line x1="601.2" y1="68.0" x2="601.2" y2="363.0" class="grid"/>
+<text x="601.2" y="377.0" text-anchor="middle" class="axis">1.0</text>
+<line x1="678.4" y1="68.0" x2="678.4" y2="363.0" class="grid"/>
+<text x="678.4" y="377.0" text-anchor="middle" class="axis">2.0</text>
+<line x1="755.6" y1="68.0" x2="755.6" y2="363.0" class="grid"/>
+<text x="755.6" y="377.0" text-anchor="middle" class="axis">3.0</text>
+<line x1="832.8" y1="68.0" x2="832.8" y2="363.0" class="grid"/>
+<text x="832.8" y="377.0" text-anchor="middle" class="axis">4.0</text>
+<line x1="910.0" y1="68.0" x2="910.0" y2="363.0" class="grid"/>
+<text x="910.0" y="377.0" text-anchor="middle" class="axis">5.0</text>
+<rect x="524.0" y="68.0" width="386.0" height="295.0" class="frame"/>
+<text x="717.0" y="393.0" text-anchor="middle" class="axis">Número de pares de ondas M (escala log₂)</text>
+<text x="480.0" y="215.5" text-anchor="middle" class="axis" transform="rotate(-90 480.0 215.5)">ROC-AUC potencias de primos</text>
+<polyline fill="none" stroke="#1d4ed8" stroke-width="2.0" points="524.00,219.04 601.20,174.99 678.40,138.66 755.60,107.78 832.80,90.07 910.00,83.26"/>
+<polyline fill="none" stroke="#dc2626" stroke-width="2.0" points="524.00,274.69 601.20,255.22 678.40,209.34 755.60,161.81 832.80,125.18 910.00,87.22"/>
+<circle cx="524.0" cy="219.0" r="3.5" fill="#1d4ed8"/>
+<circle cx="524.0" cy="274.7" r="3.5" fill="#dc2626"/>
+<text x="524.0" y="377" text-anchor="middle" style="font-size:9.5px;font-weight:600;fill:#0f172a">M=8</text>
+<circle cx="601.2" cy="175.0" r="3.5" fill="#1d4ed8"/>
+<circle cx="601.2" cy="255.2" r="3.5" fill="#dc2626"/>
+<text x="601.2" y="377" text-anchor="middle" style="font-size:9.5px;font-weight:600;fill:#0f172a">M=16</text>
+<circle cx="678.4" cy="138.7" r="3.5" fill="#1d4ed8"/>
+<circle cx="678.4" cy="209.3" r="3.5" fill="#dc2626"/>
+<text x="678.4" y="377" text-anchor="middle" style="font-size:9.5px;font-weight:600;fill:#0f172a">M=32</text>
+<circle cx="755.6" cy="107.8" r="3.5" fill="#1d4ed8"/>
+<circle cx="755.6" cy="161.8" r="3.5" fill="#dc2626"/>
+<text x="755.6" y="377" text-anchor="middle" style="font-size:9.5px;font-weight:600;fill:#0f172a">M=64</text>
+<circle cx="832.8" cy="90.1" r="3.5" fill="#1d4ed8"/>
+<circle cx="832.8" cy="125.2" r="3.5" fill="#dc2626"/>
+<text x="832.8" y="377" text-anchor="middle" style="font-size:9.5px;font-weight:600;fill:#0f172a">M=128</text>
+<circle cx="910.0" cy="83.3" r="3.5" fill="#1d4ed8"/>
+<circle cx="910.0" cy="87.2" r="3.5" fill="#dc2626"/>
+<text x="910.0" y="377" text-anchor="middle" style="font-size:9.5px;font-weight:600;fill:#0f172a">M=256</text>
+<rect x="695" y="295" width="206" height="44" rx="4" fill="#ffffff" fill-opacity="0.92" stroke="#cbd5e1"/>
+<line x1="705" y1="310" x2="725" y2="310" stroke="#1d4ed8" stroke-width="2"/><text x="732" y="314" class="legend">Ventana x ∈ [2, 100]</text>
+<line x1="705" y1="327" x2="725" y2="327" stroke="#dc2626" stroke-width="2"/><text x="732" y="331" class="legend">Held-out x ∈ [61, 150]</text>
+</svg>

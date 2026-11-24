@@ -1,0 +1,32 @@
+
+=== DEV (8/10 criteria PASS) ===
+  H_C1a: FAIL
+  H_C1b: PASS
+  H_C1c: PASS
+  H_C2a: PASS
+  H_C2b: FAIL
+  H_C2c: PASS
+  H_C3a: PASS
+  H_C3b: PASS
+  H_C4a: PASS
+  H_C4b: PASS
+  C2 discovered exact config: tau=-0.002240 (|err|=0.002240), k_sum=0.999677 (|err|=0.000325), dphi=+2.68844 (|err|=0.07070), sigma=-0.5912, beta=+0.000020, p_win=0.994
+  C2 heldout [61..150] AUC: opt=0.91511 vs rand=0.52705 | SNR opt=2.477 vs sigma=-0.5: 2.438
+  C4 blind zeros found (/20): dyson=19.62 (err=0.4116) vs no_rep=13.06 (err=6.1712)
+  C4 blind extrap psi(x)-x corr [601..1200]: dyson=0.7869 vs no_rep=0.6227 vs rand=-0.0419 vs exact20=0.7997
+
+=== CONFIRM (8/10 criteria PASS) ===
+  H_C1a: FAIL
+  H_C1b: PASS
+  H_C1c: PASS
+  H_C2a: PASS
+  H_C2b: FAIL
+  H_C2c: PASS
+  H_C3a: PASS
+  H_C3b: PASS
+  H_C4a: PASS
+  H_C4b: PASS
+  C2 discovered exact config: tau=-0.001017 (|err|=0.002284), k_sum=0.999740 (|err|=0.000328), dphi=+1.14950 (|err|=0.05491), sigma=-0.5906, beta=+0.000008, p_win=0.998
+  C2 heldout [61..150] AUC: opt=0.91475 vs rand=0.50337 | SNR opt=2.473 vs sigma=-0.5: 2.434
+  C4 blind zeros found (/20): dyson=19.62 (err=0.3644) vs no_rep=12.56 (err=5.8030)
+  C4 blind extrap psi(x)-x corr [601..1200]: dyson=0.7874 vs no_rep=0.5680 vs rand=-0.0204 vs exact20=0.7997

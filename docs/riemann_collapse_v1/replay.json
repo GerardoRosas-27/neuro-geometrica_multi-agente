@@ -1,0 +1,27 @@
+{
+  "seed": "0xB800",
+  "bit_exact_match": true,
+  "total_non_timing_cells_checked": 277,
+  "files": {
+    "metrics_c1.csv": {
+      "exact_match": true,
+      "cells_checked": 50,
+      "diffs": []
+    },
+    "metrics_c2.csv": {
+      "exact_match": true,
+      "cells_checked": 76,
+      "diffs": []
+    },
+    "metrics_c3.csv": {
+      "exact_match": true,
+      "cells_checked": 119,
+      "diffs": []
+    },
+    "metrics_c4.csv": {
+      "exact_match": true,
+      "cells_checked": 32,
+      "diffs": []
+    }
+  }
+}

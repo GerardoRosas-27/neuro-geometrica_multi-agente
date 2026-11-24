@@ -1,0 +1,5 @@
+seed,phase,arm,distinct_zeros_found,mean_zero_err,auc_2_45,snr_2_45,extrap_psi_corr,eval_ms
+47114,CONFIRM,random_freq_ctrl,6,10.28255405,0.53002070,0.07097516,0.20732732,0.000
+47114,CONFIRM,blind_collapse_dyson,19,0.40923235,0.90269151,1.96670073,0.78068029,851.578
+47114,CONFIRM,blind_collapse_no_repulsion,12,9.30071204,0.83850932,1.35121965,0.58864592,858.083
+47114,CONFIRM,exact_20_zeros,20,0.00000000,0.91097308,2.18120216,0.79965130,0.000
