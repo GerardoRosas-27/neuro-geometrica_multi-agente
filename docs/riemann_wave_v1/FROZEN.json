@@ -1,0 +1,15 @@
+{
+  "sources_sha256": "6ee81050faf1e80ea0fea003ef3174424813f907c99f0b3022ee980c813b0f52",
+  "file_count": 8,
+  "files": {
+    "riemann_wave/src/dyson.rs": "17734e3ef9f5224f236cf38838e3eab8959eb1a22f6dc0f52698e459136b76e9",
+    "riemann_wave/src/lib.rs": "9ba030d27e511f1800ba7c0725bb7a82021741e11def3e6fcaad39f5a2ded13a",
+    "riemann_wave/src/linalg.rs": "3866a82b2dc0d39f0af40f9a5ce6c382078df57f00e81d8867a4c915932ad2d7",
+    "riemann_wave/src/main.rs": "8ec85d38d2c294631e1c28b580b71b9b4e00b898f33e0e089fe310f71a1a8a74",
+    "riemann_wave/src/riemann.rs": "d071c25d3b8f46dc1b7e73ebdccd0870cd39cfe697618b4fccc38ddd775b30b4",
+    "riemann_wave/src/rng.rs": "27663e6f36720f3f633a3453e59a9b6e0b2b785f4e9490a1f79ff10cb0c08d40",
+    "riemann_wave/src/suites.rs": "40078308912c4838133aa29956330919371973945cd15d6965047f1b958ced46",
+    "riemann_wave/Cargo.toml": "4099c0d28a611056a673e76191e83623fc102918b08531e2443e82320ec4cfda"
+  },
+  "dev_git_parent": "ed1868897af1c751a6444bd390f3d75b30a8247d"
+}

@@ -1,0 +1,27 @@
+   Compiling riemann-wave-v1 v0.1.0 (/home/antigravity/GerardoRosas-27/neuro-geometrica_multi-agente/riemann_wave)
+    Finished `release` profile [optimized] target(s) in 15.10s
+     Running unittests src/lib.rs (target/release/build/riemann-wave-v1/f769b20ad2852a2e/out/riemann_wave_v1-f769b20ad2852a2e)
+
+running 7 tests
+test tests::test_erf_and_inv_normal_cdf_accuracy ... ok
+test tests::test_hermitian_jacobi_eigensolver_exactness ... ok
+test tests::test_dyson_and_ginibre_stability_and_determinism ... ok
+test tests::test_riemann_zeros_match_odlyzko ... ok
+test tests::test_rls_matches_batch_ridge ... ok
+test tests::test_thin_svd_ols_ridge_and_cond ... ok
+test tests::test_prime_wave_interference_discriminates_prime_powers ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+     Running unittests src/main.rs (target/release/build/riemann-wave-v1/78feb74f503e73d4/out/riemann_wave_v1-78feb74f503e73d4)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests riemann_wave_v1
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

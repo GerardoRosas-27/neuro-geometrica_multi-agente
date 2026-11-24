@@ -1,0 +1,20 @@
+{
+  "phase": "DEV",
+  "workers": 2,
+  "seed_start": "0xA700",
+  "seed_end": "0xA70F",
+  "sources_sha256": "6ee81050faf1e80ea0fea003ef3174424813f907c99f0b3022ee980c813b0f52",
+  "file_count": 8,
+  "start_epoch": 1795490860.3215935,
+  "command": [
+    "run.py",
+    "DEV",
+    "--workers",
+    "2",
+    "--skip-build"
+  ],
+  "rustc": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
+  "system": "Linux x86_64",
+  "elapsed_seconds": 27.084,
+  "completed": 16
+}
