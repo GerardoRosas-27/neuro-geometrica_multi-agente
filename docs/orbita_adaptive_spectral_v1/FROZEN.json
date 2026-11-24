@@ -1,0 +1,53 @@
+{
+  "experiment": "orbita_adaptive_spectral_v1",
+  "branch": "exp/orbita-adaptive-spectral",
+  "frozen_at_utc": "2026-11-24T10:05:28.734655+00:00",
+  "git_head_at_freeze": "228bb05a1e6da59fb45f524d5c6883d86e92dba9",
+  "dev_seeds": [
+    "0xA400",
+    "0xA401",
+    "0xA402",
+    "0xA403",
+    "0xA404",
+    "0xA405",
+    "0xA406",
+    "0xA407",
+    "0xA408",
+    "0xA409",
+    "0xA40A",
+    "0xA40B",
+    "0xA40C",
+    "0xA40D",
+    "0xA40E",
+    "0xA40F"
+  ],
+  "confirm_seeds": [
+    "0xB400",
+    "0xB401",
+    "0xB402",
+    "0xB403",
+    "0xB404",
+    "0xB405",
+    "0xB406",
+    "0xB407",
+    "0xB408",
+    "0xB409",
+    "0xB40A",
+    "0xB40B",
+    "0xB40C",
+    "0xB40D",
+    "0xB40E",
+    "0xB40F"
+  ],
+  "files": {
+    "docs/orbita_adaptive_spectral_v1/PLAN.md": "2943e872cfd3da050abfb28174b52b280e5349a9a0beafa84441cc3f03558ec3",
+    "orbita/src/adaptive_spectral.rs": "f7b93820ebdc557121db9b74eb9d39fa1cf2bd30349a6a7806cd262623e064d5",
+    "orbita/src/main.rs": "270f1e923030545e961d93e982045930ed4dbe569f1b26e6ef4ee37a4f46686c",
+    "orbita/src/model.rs": "5e0eea0adeafc52a899ab2cd5ba9400100b841b63ba2420ad34ddce1f956458e",
+    "orbita/scripts/asc_run.py": "8968755b0fac21659885e07fe375b816539b99c44d42e70c5314b6b82379ae21",
+    "orbita/scripts/asc_summarize.py": "a181433c9764cf50899ef314a8217598e745c6a1d96cb506b068e61dfd991089",
+    "orbita/scripts/asc_freeze_audit.py": "82134ef2992bc8e1b22d51163eb409a1b24b083c84c466a1c08f7f6cb98f8658",
+    "orbita/scripts/asc_plots.py": "dd82cf70e1e01e1403df3b68574617694f97cb18aa4f1b0b13f46f68010fa6ae",
+    "orbita/target/release/orbita": "e47ce9ee11a53a5d5e3d28ac76f0e29fb927c9f5b790ac33538def8357436089"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "timestamp_utc": "2026-11-24T10:00:09.829845+00:00",
+  "platform": "Linux-6.18.57-x86_64-with-glibc2.39",
+  "python": "3.12.16",
+  "rustc": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
+  "git_head": "228bb05a1e6da59fb45f524d5c6883d86e92dba9",
+  "binary_sha256": "e47ce9ee11a53a5d5e3d28ac76f0e29fb927c9f5b790ac33538def8357436089"
+}

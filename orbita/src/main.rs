@@ -12,6 +12,7 @@ mod latent;
 mod constelacion;
 mod constelacion3;
 mod constelacion4;
+mod adaptive_spectral;
 use cdt_rqm_epr::field_autonomy_v4::*;
 use cdt_rqm_epr::v4_dataset::{generate_and_seal, DatasetConfig, Example, Sealed, N_FAM};
 use cdt_rqm_epr::v4_distill::{family_fit_residual, onestep_breakdown, TRUST_TAU};
@@ -249,6 +250,8 @@ fn main() {
         Some("cst3-diag") => constelacion3::diag(&a),
         Some("cst3-oracle") => constelacion3::oracle_icl(&a),
         Some("gemma-embed") => gemma_embed::run(&a, |k| arg(&a, k)),
+        Some("asc-run") => adaptive_spectral::run(&a),
+        Some("asc-fresh") => adaptive_spectral::fresh(&a),
         _ => eprintln!("uso: orbita export|eval|fresh|parity ..."),
     }
 }

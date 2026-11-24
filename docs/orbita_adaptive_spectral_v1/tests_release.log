@@ -1,0 +1,11 @@
+
+running 6 tests
+test adaptive_spectral::tests::test_mlp_res_4d_grad_finite_diff ... ok
+test adaptive_spectral::tests::test_adaptive_rejects_riemann_zeros - should panic ... ok
+test adaptive_spectral::tests::test_riemann_zeros_accuracy ... ok
+test adaptive_spectral::tests::test_wave_field_4d_grad_finite_diff ... ok
+test adaptive_spectral::tests::test_zero_init_exact_parity_and_param_counts ... ok
+test adaptive_spectral::tests::test_spectral_wave_net2_grad_finite_diff ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 19 filtered out; finished in 0.02s
+
