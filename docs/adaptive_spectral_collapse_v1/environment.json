@@ -1,5 +1,5 @@
 {
-  "timestamp_utc": "2026-11-24T08:11:20.926905+00:00",
+  "timestamp_utc": "2026-11-24T08:15:28.178549+00:00",
   "platform": "Linux-6.18.57-x86_64-with-glibc2.39",
   "machine": "x86_64",
   "cpu_count": 2,
@@ -7,5 +7,5 @@
   "rustc_version": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
   "cargo_version": "cargo 1.100.0 (3acc79c0c 2026-11-05)",
   "git_branch": "exp/adaptive-spectral-collapse",
-  "git_head": "919b976853424052e567ca4d3678a8fb1147a744"
+  "git_head": "ea7c199406fbe655c9b92a16405015ae779bb5b5"
 }

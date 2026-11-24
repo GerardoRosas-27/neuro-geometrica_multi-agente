@@ -1,0 +1,38 @@
+{
+  "seed": "0xD100",
+  "timestamp_utc": "2026-11-24T08:18:45.544138+00:00",
+  "note": "Bit-exact verification over all deterministic metric & trace columns (excluding wall-clock ms timings).",
+  "bit_exact_match": true,
+  "files": {
+    "metrics_a1.csv": {
+      "ref_sha256": "a63f026414b117b8b4e8e3e7ff254d8d751c7c9b3849a7649da4beaebbeb359c",
+      "replay_sha256": "a63f026414b117b8b4e8e3e7ff254d8d751c7c9b3849a7649da4beaebbeb359c",
+      "match": true
+    },
+    "metrics_a2.csv": {
+      "ref_sha256": "93e7f0a90b018878a4f17acb678fdc454fe14a8ae71f061dd3123c7bacea385b",
+      "replay_sha256": "93e7f0a90b018878a4f17acb678fdc454fe14a8ae71f061dd3123c7bacea385b",
+      "match": true
+    },
+    "metrics_a3.csv": {
+      "ref_sha256": "4e015a84013ad88e86fef7f665579784f8795bd0004b29bfe8f2641281d3a824",
+      "replay_sha256": "4e015a84013ad88e86fef7f665579784f8795bd0004b29bfe8f2641281d3a824",
+      "match": true
+    },
+    "metrics_a4.csv": {
+      "ref_sha256": "d74aaf8337ac04a5ba3411fee7a9d852b66a6120259f2ea2fe31af69d0f7c6be",
+      "replay_sha256": "d74aaf8337ac04a5ba3411fee7a9d852b66a6120259f2ea2fe31af69d0f7c6be",
+      "match": true
+    },
+    "trace_1d_wave.csv": {
+      "ref_sha256": "191858fddbc4ef1d9481e6ee63f359d81f1e2d7b5959bdd57f89b9f86a62ee37",
+      "replay_sha256": "191858fddbc4ef1d9481e6ee63f359d81f1e2d7b5959bdd57f89b9f86a62ee37",
+      "match": true
+    },
+    "trace_states_freqs.csv": {
+      "ref_sha256": "e27df7c37701e5600b72317179c5bc25edb096fca2ef6a653852ab1fa81c2ee8",
+      "replay_sha256": "e27df7c37701e5600b72317179c5bc25edb096fca2ef6a653852ab1fa81c2ee8",
+      "match": true
+    }
+  }
+}
