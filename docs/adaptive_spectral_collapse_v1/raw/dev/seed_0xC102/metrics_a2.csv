@@ -1,0 +1,8 @@
+seed,phase,arm,unseen_pred_rmse,unseen_class_acc,cf_exact_acc,cf_pred_rmse
+0xC102,DEV,adaptive_spectral,0.364427,0.777108,0.771084,0.389628
+0xC102,DEV,riemann_fixed,0.667773,0.500000,0.180723,0.713225
+0xC102,DEV,fourier_fixed,0.703784,0.524096,0.132530,0.701384
+0xC102,DEV,dyson_gue_fixed,0.679070,0.481928,0.096386,0.698856
+0xC102,DEV,poisson_fixed,0.703445,0.530120,0.084337,0.721652
+0xC102,DEV,qmc_halton_fixed,0.742712,0.524096,0.180723,0.706596
+0xC102,DEV,mlp_conventional,0.420937,0.710843,0.469880,0.499508

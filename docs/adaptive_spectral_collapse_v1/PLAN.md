@@ -66,6 +66,12 @@ Los **6 brazos espectrales** comparten exactamente el mismo optimizador, número
    - En contrafactuales $do(c_a \to c_{\text{new}})$ y analogías $A:B::C:?$, opera directamente en el espacio sensorial desplazado $\tilde{\mathbf{x}}_{\text{cf}} = \tilde{\mathbf{x}}_{a,b} - \frac{1}{\sqrt{2}}\mathbf{x}_{\hat{a}} + \frac{1}{\sqrt{2}}\mathbf{x}_{c_{\text{new}}}$ y $\tilde{\mathbf{x}}_D = \tilde{\mathbf{x}}_C + (\tilde{\mathbf{x}}_B - \tilde{\mathbf{x}}_A)$.
    - En aprendizaje continuo (`A4`), expande su cabeza `24 -> 28` y ajusta con repetición de memoria (*experience replay*) de pares antiguos + los 16 pares nuevos bajo el mismo presupuesto de pasos que los brazos espectrales.
 
+### §3.1 Adenda Transparente pre-Freeze (Diagnóstico `DEV`, antes de `FROZEN.json` y sin tocar ningún criterio de §4)
+Durante el diagnóstico en `DEV` (`0xC100..=0xC10F`) se detectaron dos desbalances físicos que perjudicaban artificialmente a los 6 brazos espectrales frente al MLP (`1,118` parámetros):
+1. Con `M_3D = 24` modos planos en 3D para $K = 24$ estados (`586` parámetros, la mitad que el MLP), la razón señal-a-ruido holográfica teórica era $\sqrt{M/K} = \sqrt{24/24} = 1.0$, produciendo techo de abducción incluso sin ruido. Al escalar el campo espectral a **$M_1 = 24$ modos/canal 1D** y **$M_3 = 96$ vectores de onda 3D** con decodificación continua de paquete de onda sobre ráster espacial uniforme $11^3$ + ascenso de gradiente continuo (0 tabla de pares), se alcanza verdadera paridad paramétrica 1:1 (**`962` parámetros espectrales** vs. **`1,118` parámetros MLP**).
+2. La proyección lineal $W_v \in \mathbb{R}^{4 \times 16}$ tenía rango máximo 16 para 24 conceptos con rasgos 4D independientes; se sustituye por una tabla aprendida de rasgos causales por estado descubierto $\hat{\mathbf{v}}_k \in \mathbb{R}^4$ (`96` params) + red simétrica `12 -> 8 (tanh) -> 2` (`122` params, total `218` params en cabeza causal, `962` totales).
+3. **Inmutabilidad:** Ninguna de las 8 hipótesis ni ninguno de los umbrales de §4 (`H_A1a`–`H_A4a`) fue modificado, y las 16 semillas frescas de `CONFIRM` (`0xD100..=0xD10F`) permanecen sin ejecutar hasta el congelamiento `FROZEN.json`.
+
 ---
 
 ## 4. Las 4 Suites Experimentales (`A1`–`A4`) y los 8 Criterios Preregistrados
