@@ -1,0 +1,124 @@
+
+================ DEV (N=16 seeds, 10,000 paired bootstrap) ================
+
+--- Suite I1: Rastreo Retrodictivo de Origen ---
+  sigma = 0.0000:
+    riemann_prime_collapse    acc=100.00% [100.00%, 100.00%]  f1=100.00% [100.00%, 100.00%]  snr=138.5905 [138.5905, 138.5905]
+    random_collapse           acc=12.88% [11.17%, 14.58%]  f1=21.87% [20.36%, 23.44%]  snr=7.2471 [3.5224, 10.9863]
+    dyson_gue_collapse        acc=14.39% [12.69%, 16.00%]  f1=23.48% [21.88%, 25.09%]  snr=5.6909 [2.6323, 9.2632]
+    fourier_linear_collapse   acc=26.42% [23.77%, 29.36%]  f1=26.42% [23.77%, 29.36%]  snr=31.2710 [31.2710, 31.2710]
+  sigma = 0.0020:
+    riemann_prime_collapse    acc=99.34% [98.86%, 99.72%]  f1=99.34% [98.86%, 99.72%]  snr=127.7091 [123.2660, 133.0056]
+    random_collapse           acc=12.12% [10.32%, 13.92%]  f1=21.69% [20.08%, 23.34%]  snr=8.1723 [4.4339, 11.9105]
+    dyson_gue_collapse        acc=14.30% [12.59%, 15.91%]  f1=23.34% [21.73%, 24.91%]  snr=6.9014 [3.5335, 10.3691]
+    fourier_linear_collapse   acc=28.50% [25.66%, 31.34%]  f1=28.50% [25.66%, 31.34%]  snr=31.2710 [31.2710, 31.2711]
+  sigma = 0.0060:
+    riemann_prime_collapse    acc=90.15% [88.73%, 91.48%]  f1=91.10% [89.96%, 92.19%]  snr=126.1872 [120.3154, 132.3684]
+    random_collapse           acc=12.88% [10.98%, 14.87%]  f1=22.59% [21.07%, 24.10%]  snr=7.2339 [3.4993, 10.9796]
+    dyson_gue_collapse        acc=16.38% [14.30%, 18.28%]  f1=25.14% [23.25%, 26.94%]  snr=5.5166 [2.6081, 9.2036]
+    fourier_linear_collapse   acc=25.09% [23.30%, 26.80%]  f1=25.09% [23.30%, 26.80%]  snr=31.2710 [31.2709, 31.2710]
+
+--- Suite I2: Predicción 'Del Otro Lado' + Contrafactual do(c_a -> c_new) ---
+  riemann_prime_collapse    orig=99.34% [98.86%, 99.72%]  cls4=99.34% [98.86%, 99.72%]  rmse=0.0744 [0.0265, 0.1236]  cf_acc=98.48% [97.82%, 99.15%]  cf_rmse=0.1031 [0.0607, 0.1444]
+  random_collapse           orig=12.31% [10.89%, 13.73%]  cls4=32.20% [29.73%, 34.75%]  rmse=1.0505 [1.0252, 1.0754]  cf_acc=4.83% [3.79%, 5.97%]  cf_rmse=1.1137 [1.0896, 1.1384]
+  dyson_gue_collapse        orig=14.39% [12.41%, 16.29%]  cls4=35.23% [31.72%, 38.54%]  rmse=1.0309 [1.0033, 1.0573]  cf_acc=5.11% [3.69%, 6.44%]  cf_rmse=1.1001 [1.0766, 1.1235]
+  fourier_linear_collapse   orig=28.98% [26.70%, 30.97%]  cls4=50.47% [48.67%, 52.08%]  rmse=0.7949 [0.7765, 0.8136]  cf_acc=8.05% [6.91%, 9.28%]  cf_rmse=1.0401 [1.0155, 1.0650]
+
+--- Suite I3: Desambiguación Bayesiana Pasado x Futuro (sigma=0.015) ---
+  riemann_bayes_collapse    acc=87.28% [85.72%, 88.75%]  f1=88.19% [86.67%, 89.59%]
+  riemann_uniform_collapse  acc=68.38% [65.31%, 71.53%]  f1=70.20% [67.39%, 73.12%]
+  random_bayes_collapse     acc=64.84% [61.22%, 68.41%]  f1=69.23% [65.88%, 72.42%]
+  prior_only_ctrl           acc=21.69% [19.78%, 23.59%]  f1=52.81% [51.47%, 54.09%]
+
+--- Suite I4a: Transferencia Analógica (A:B::C:?) ---
+  riemann_prime_collapse    exact=97.66% [96.95%, 98.36%]  f1=97.89% [97.19%, 98.55%]
+  random_collapse           exact=13.36% [11.41%, 15.47%]  f1=22.07% [19.92%, 24.45%]
+  dyson_gue_collapse        exact=12.89% [10.78%, 15.16%]  f1=21.41% [19.26%, 23.59%]
+  fourier_linear_collapse   exact=26.17% [23.59%, 28.75%]  f1=26.17% [23.59%, 28.75%]
+
+--- Suite I4b: Curva de Ruido (Riemann Prime, K=12) ---
+  sigma=0.0000  exact=100.00% [100.00%, 100.00%]  snr=138.5905 [138.5905, 138.5905]
+  sigma=0.0010  exact=99.81% [99.53%, 100.00%]  snr=133.2497 [130.1999, 136.0701]
+  sigma=0.0030  exact=97.82% [97.06%, 98.48%]  snr=126.2215 [121.8843, 131.2537]
+  sigma=0.0080  exact=83.90% [82.67%, 85.13%]  snr=135.9378 [130.0385, 141.7733]
+  sigma=0.0150  exact=61.27% [58.71%, 63.64%]  snr=124.2772 [115.1134, 132.8866]
+  sigma=0.0300  exact=35.32% [32.95%, 37.78%]  snr=86.5040 [75.1840, 97.2953]
+
+--- Suite I4c: Curva de Capacidad 1D (sigma=0.003, M=128) ---
+  K= 8  min_log_gap=0.02598  exact=100.00% [100.00%, 100.00%]
+  K=12  min_log_gap=0.00988  exact=97.54% [96.87%, 98.20%]
+  K=18  min_log_gap=0.00222  exact=81.50% [80.60%, 82.39%]
+
+--- Veredicto de los 8 Criterios Preregistrados ---
+  H_I1a: PASS
+  H_I1b: PASS
+  H_I2a: PASS
+  H_I2b: PASS
+  H_I3a: FAIL
+  H_I4a: PASS
+  H_I4b: PASS
+  H_I4c: PASS
+TOTAL DEV: 7/8 PASS
+
+================ CONFIRM (N=16 seeds, 10,000 paired bootstrap) ================
+
+--- Suite I1: Rastreo Retrodictivo de Origen ---
+  sigma = 0.0000:
+    riemann_prime_collapse    acc=100.00% [100.00%, 100.00%]  f1=100.00% [100.00%, 100.00%]  snr=138.5905 [138.5905, 138.5905]
+    random_collapse           acc=13.16% [11.36%, 14.96%]  f1=22.59% [21.26%, 24.05%]  snr=10.9196 [7.6039, 13.8661]
+    dyson_gue_collapse        acc=16.76% [14.02%, 19.70%]  f1=25.99% [23.30%, 28.60%]  snr=10.0489 [6.3394, 13.7101]
+    fourier_linear_collapse   acc=26.70% [23.30%, 30.11%]  f1=26.70% [23.30%, 30.11%]  snr=31.2710 [31.2710, 31.2710]
+  sigma = 0.0020:
+    riemann_prime_collapse    acc=99.15% [98.67%, 99.62%]  f1=99.20% [98.72%, 99.62%]  snr=133.0779 [129.6218, 136.5868]
+    random_collapse           acc=12.50% [10.42%, 14.68%]  f1=21.92% [20.45%, 23.53%]  snr=10.5711 [7.2546, 13.8247]
+    dyson_gue_collapse        acc=17.14% [14.39%, 19.89%]  f1=26.33% [23.77%, 28.88%]  snr=10.1885 [6.4896, 13.8456]
+    fourier_linear_collapse   acc=27.27% [25.38%, 29.36%]  f1=27.27% [25.38%, 29.36%]  snr=31.2710 [31.2710, 31.2711]
+  sigma = 0.0060:
+    riemann_prime_collapse    acc=87.31% [85.51%, 89.11%]  f1=88.45% [86.88%, 90.01%]  snr=128.4888 [123.2162, 133.6181]
+    random_collapse           acc=12.31% [10.51%, 14.20%]  f1=22.02% [20.50%, 23.48%]  snr=10.1103 [6.3868, 13.8015]
+    dyson_gue_collapse        acc=17.33% [15.25%, 19.41%]  f1=26.70% [24.48%, 28.98%]  snr=10.2337 [6.6288, 13.8155]
+    fourier_linear_collapse   acc=26.89% [24.34%, 29.55%]  f1=26.89% [24.34%, 29.55%]  snr=31.2710 [31.2710, 31.2711]
+
+--- Suite I2: Predicción 'Del Otro Lado' + Contrafactual do(c_a -> c_new) ---
+  riemann_prime_collapse    orig=99.24% [98.86%, 99.62%]  cls4=99.34% [98.96%, 99.72%]  rmse=0.0822 [0.0402, 0.1257]  cf_acc=98.20% [97.35%, 98.96%]  cf_rmse=0.1364 [0.0792, 0.1966]
+  random_collapse           orig=12.41% [10.32%, 14.49%]  cls4=34.94% [32.95%, 36.93%]  rmse=1.0443 [1.0186, 1.0690]  cf_acc=3.69% [2.84%, 4.55%]  cf_rmse=1.1207 [1.0850, 1.1547]
+  dyson_gue_collapse        orig=17.14% [14.58%, 19.79%]  cls4=38.83% [34.75%, 42.71%]  rmse=1.0030 [0.9673, 1.0397]  cf_acc=6.63% [5.30%, 7.95%]  cf_rmse=1.0830 [1.0544, 1.1111]
+  fourier_linear_collapse   orig=26.42% [24.34%, 28.41%]  cls4=46.31% [43.94%, 48.77%]  rmse=0.8341 [0.8116, 0.8552]  cf_acc=7.29% [5.78%, 9.09%]  cf_rmse=1.0424 [1.0148, 1.0725]
+
+--- Suite I3: Desambiguación Bayesiana Pasado x Futuro (sigma=0.015) ---
+  riemann_bayes_collapse    acc=88.62% [87.38%, 89.81%]  f1=89.61% [88.42%, 90.73%]
+  riemann_uniform_collapse  acc=63.84% [59.19%, 68.38%]  f1=67.11% [62.89%, 70.91%]
+  random_bayes_collapse     acc=66.25% [62.44%, 70.09%]  f1=71.30% [68.72%, 73.89%]
+  prior_only_ctrl           acc=20.94% [19.44%, 22.50%]  f1=52.59% [51.52%, 53.72%]
+
+--- Suite I4a: Transferencia Analógica (A:B::C:?) ---
+  riemann_prime_collapse    exact=97.03% [96.09%, 97.89%]  f1=97.27% [96.45%, 98.09%]
+  random_collapse           exact=12.19% [9.69%, 14.92%]  f1=21.64% [19.38%, 24.02%]
+  dyson_gue_collapse        exact=17.89% [13.98%, 21.72%]  f1=27.34% [23.87%, 30.82%]
+  fourier_linear_collapse   exact=27.58% [25.31%, 29.92%]  f1=27.58% [25.31%, 29.92%]
+
+--- Suite I4b: Curva de Ruido (Riemann Prime, K=12) ---
+  sigma=0.0000  exact=100.00% [100.00%, 100.00%]  snr=138.5905 [138.5905, 138.5905]
+  sigma=0.0010  exact=99.62% [99.24%, 99.91%]  snr=132.4266 [129.4615, 135.1525]
+  sigma=0.0030  exact=98.01% [97.35%, 98.67%]  snr=126.2756 [122.6108, 129.9481]
+  sigma=0.0080  exact=81.72% [79.55%, 84.09%]  snr=123.2124 [116.1561, 130.2352]
+  sigma=0.0150  exact=59.09% [56.91%, 61.08%]  snr=111.9406 [99.5122, 124.6705]
+  sigma=0.0300  exact=34.47% [31.34%, 37.69%]  snr=72.8239 [61.2368, 84.2852]
+
+--- Suite I4c: Curva de Capacidad 1D (sigma=0.003, M=128) ---
+  K= 8  min_log_gap=0.02598  exact=100.00% [100.00%, 100.00%]
+  K=12  min_log_gap=0.00988  exact=97.63% [96.78%, 98.48%]
+  K=18  min_log_gap=0.00222  exact=81.78% [81.00%, 82.56%]
+
+--- Veredicto de los 8 Criterios Preregistrados ---
+  H_I1a: FAIL
+  H_I1b: PASS
+  H_I2a: PASS
+  H_I2b: PASS
+  H_I3a: FAIL
+  H_I4a: PASS
+  H_I4b: PASS
+  H_I4c: PASS
+TOTAL CONFIRM: 6/8 PASS
+
+Saved structured summary to /home/antigravity/GerardoRosas-27/neuro-geometrica_multi-agente/docs/riemann_prime_inference_v1/summary_confirm.json

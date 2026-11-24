@@ -1,0 +1,14 @@
+seed,phase,subtask,arm,param_name,param_value,n_events,exact_acc,aux_metric
+0xB908,CONFIRM,analogy,riemann_prime_collapse,sigma,0.0020,80,0.937500,0.943750
+0xB908,CONFIRM,analogy,random_collapse,sigma,0.0020,80,0.212500,0.293750
+0xB908,CONFIRM,analogy,dyson_gue_collapse,sigma,0.0020,80,0.337500,0.368750
+0xB908,CONFIRM,analogy,fourier_linear_collapse,sigma,0.0020,80,0.262500,0.262500
+0xB908,CONFIRM,noise_sweep,riemann_prime_collapse,sigma,0.0000,66,1.000000,138.590458
+0xB908,CONFIRM,noise_sweep,riemann_prime_collapse,sigma,0.0010,66,1.000000,139.092659
+0xB908,CONFIRM,noise_sweep,riemann_prime_collapse,sigma,0.0030,66,1.000000,132.005142
+0xB908,CONFIRM,noise_sweep,riemann_prime_collapse,sigma,0.0080,66,0.848485,100.815286
+0xB908,CONFIRM,noise_sweep,riemann_prime_collapse,sigma,0.0150,66,0.530303,80.814518
+0xB908,CONFIRM,noise_sweep,riemann_prime_collapse,sigma,0.0300,66,0.439394,79.899291
+0xB908,CONFIRM,capacity_sweep,riemann_prime_collapse,k_vocab,8,28,1.000000,0.025975
+0xB908,CONFIRM,capacity_sweep,riemann_prime_collapse,k_vocab,12,66,0.954545,0.009877
+0xB908,CONFIRM,capacity_sweep,riemann_prime_collapse,k_vocab,18,153,0.843137,0.002222

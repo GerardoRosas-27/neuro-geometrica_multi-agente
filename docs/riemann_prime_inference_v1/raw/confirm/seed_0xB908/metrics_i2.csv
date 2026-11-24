@@ -1,0 +1,5 @@
+seed,phase,arm,n_pairs,origin_exact_acc,pred_rmse,class_acc,cf_exact_acc,cf_rmse
+0xB908,CONFIRM,riemann_prime_collapse,66,1.000000,0.000000,1.000000,1.000000,0.000000
+0xB908,CONFIRM,random_collapse,66,0.166667,0.997989,0.378788,0.060606,1.071675
+0xB908,CONFIRM,dyson_gue_collapse,66,0.272727,0.976694,0.484848,0.106061,1.081917
+0xB908,CONFIRM,fourier_linear_collapse,66,0.287879,0.838588,0.469697,0.060606,0.986299

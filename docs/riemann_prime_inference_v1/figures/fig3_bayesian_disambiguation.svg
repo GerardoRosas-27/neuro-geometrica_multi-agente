@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1040 440" width="1040" height="440" style="background:#ffffff;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif">
+<rect width="1040" height="440" fill="#ffffff"/>
+<text x="28" y="34" font-size="18" font-weight="700" fill="#0f172a">Figura 3 — Desambiguación Bayesiana Transaccional bajo Alto Ruido (Suite I3, sigma=0.015)</text>
+<text x="28" y="54" font-size="12" fill="#475569">El prior pasado suave acoplado a la onda futura de Riemann desambigua productos casi colisionantes (323 vs 319)</text>
+<rect x="24.0" y="72.0" width="488.0" height="344.0" rx="8" fill="#f8fafc" stroke="#e2e8f0"/>
+<text x="38.0" y="96.0" font-size="13" font-weight="700" fill="#0f172a">A. Caso ambiguo: 17x19=323 desplazado -0.008 hacia 11x29=319</text>
+<line x1="76.0" y1="356.0" x2="492.0" y2="356.0" stroke="#e2e8f0" stroke-dasharray="3,3"/>
+<text x="68.0" y="360.0" font-size="10" text-anchor="end" fill="#475569">0.00</text>
+<line x1="76.0" y1="299.3" x2="492.0" y2="299.3" stroke="#e2e8f0" stroke-dasharray="3,3"/>
+<text x="68.0" y="303.3" font-size="10" text-anchor="end" fill="#475569">0.25</text>
+<line x1="76.0" y1="242.7" x2="492.0" y2="242.7" stroke="#e2e8f0" stroke-dasharray="3,3"/>
+<text x="68.0" y="246.7" font-size="10" text-anchor="end" fill="#475569">0.50</text>
+<line x1="76.0" y1="186.0" x2="492.0" y2="186.0" stroke="#e2e8f0" stroke-dasharray="3,3"/>
+<text x="68.0" y="190.0" font-size="10" text-anchor="end" fill="#475569">0.75</text>
+<line x1="76.0" y1="129.3" x2="492.0" y2="129.3" stroke="#e2e8f0" stroke-dasharray="3,3"/>
+<text x="68.0" y="133.3" font-size="10" text-anchor="end" fill="#475569">1.00</text>
+<line x1="76.0" y1="356.0" x2="492.0" y2="356.0" stroke="#475569"/>
+<line x1="171.1" y1="118.0" x2="171.1" y2="356.0" stroke="#dc2626" stroke-dasharray="4,3"/>
+<text x="175.1" y="132.0" font-size="9.5" font-weight="700" text-anchor="start" fill="#dc2626">ln(11) [rival 319]</text>
+<line x1="458.0" y1="118.0" x2="458.0" y2="356.0" stroke="#059669" stroke-dasharray="4,3"/>
+<text x="454.0" y="132.0" font-size="9.5" font-weight="700" text-anchor="end" fill="#059669">ln(17) [real 323]</text>
+<polyline fill="none" stroke="#2563eb" stroke-width="1.8" stroke-dasharray="5,3" points="76.00,356.00 79.89,356.00 83.78,356.00 87.66,356.00 91.55,356.00 95.44,356.00 99.33,356.00 103.22,356.00 107.10,356.00 110.99,356.00 114.88,356.00 118.77,356.00 122.65,356.00 126.54,356.00 130.43,356.00 134.32,356.00 138.21,356.00 142.09,356.00 145.98,356.00 149.87,356.00 153.76,356.00 157.64,356.00 161.53,356.00 165.42,310.12 169.31,187.89 173.20,129.33 177.08,218.12 180.97,325.14 184.86,356.00 188.75,356.00 192.64,356.00 196.52,356.00 200.41,356.00 204.30,356.00 208.19,356.00 212.07,356.00 215.96,356.00 219.85,356.00 223.74,356.00 227.63,356.00 231.51,356.00 235.40,356.00 239.29,356.00 243.18,356.00 247.07,356.00 250.95,356.00 254.84,356.00 258.73,356.00 262.62,356.00 266.50,356.00 270.39,341.29 274.28,310.84 278.17,320.25 282.06,356.00 285.94,356.00 289.83,356.00 293.72,356.00 297.61,356.00 301.50,356.00 305.38,356.00 309.27,356.00 313.16,356.00 317.05,356.00 320.93,356.00 324.82,356.00 328.71,356.00 332.60,356.00 336.49,356.00 340.37,356.00 344.26,356.00 348.15,356.00 352.04,356.00 355.93,356.00 359.81,356.00 363.70,356.00 367.59,356.00 371.48,356.00 375.36,356.00 379.25,356.00 383.14,356.00 387.03,356.00 390.92,356.00 394.80,356.00 398.69,356.00 402.58,356.00 406.47,356.00 410.36,356.00 414.24,356.00 418.13,356.00 422.02,356.00 425.91,356.00 429.79,356.00 433.68,356.00 437.57,356.00 441.46,356.00 445.35,354.15 449.23,283.06 453.12,168.32 457.01,157.50 460.90,267.63 464.78,350.88 468.67,356.00 472.56,356.00 476.45,356.00 480.34,356.00 484.22,356.00 488.11,356.00 492.00,356.00"/>
+<polyline fill="none" stroke="#059669" stroke-width="2.4" points="76.00,356.00 79.89,356.00 83.78,356.00 87.66,356.00 91.55,356.00 95.44,356.00 99.33,356.00 103.22,356.00 107.10,356.00 110.99,356.00 114.88,356.00 118.77,356.00 122.65,356.00 126.54,356.00 130.43,356.00 134.32,356.00 138.21,356.00 142.09,356.00 145.98,356.00 149.87,356.00 153.76,356.00 157.64,356.00 161.53,356.00 165.42,355.30 169.31,353.49 173.20,352.65 177.08,353.98 180.97,355.55 184.86,356.00 188.75,356.00 192.64,356.00 196.52,356.00 200.41,356.00 204.30,356.00 208.19,356.00 212.07,356.00 215.96,356.00 219.85,356.00 223.74,356.00 227.63,356.00 231.51,356.00 235.40,356.00 239.29,356.00 243.18,356.00 247.07,356.00 250.95,356.00 254.84,356.00 258.73,356.00 262.62,356.00 266.50,356.00 270.39,355.70 274.28,355.04 278.17,355.21 282.06,356.00 285.94,356.00 289.83,356.00 293.72,356.00 297.61,356.00 301.50,356.00 305.38,356.00 309.27,356.00 313.16,356.00 317.05,356.00 320.93,356.00 324.82,356.00 328.71,356.00 332.60,356.00 336.49,356.00 340.37,356.00 344.26,356.00 348.15,356.00 352.04,356.00 355.93,356.00 359.81,356.00 363.70,356.00 367.59,356.00 371.48,356.00 375.36,356.00 379.25,356.00 383.14,356.00 387.03,356.00 390.92,356.00 394.80,356.00 398.69,356.00 402.58,356.00 406.47,356.00 410.36,356.00 414.24,356.00 418.13,356.00 422.02,356.00 425.91,356.00 429.79,356.00 433.68,356.00 437.57,356.00 441.46,356.00 445.35,353.91 449.23,273.07 453.12,141.78 457.01,129.33 460.90,255.37 464.78,350.21 468.67,356.00 472.56,356.00 476.45,356.00 480.34,356.00 484.22,356.00 488.11,356.00 492.00,356.00"/>
+<rect x="86.0" y="334.0" width="12" height="4" fill="#059669"/>
+<text x="102.0" y="339.0" font-size="10" fill="#0f172a">Riemann Bayesiano</text>
+<rect x="251.0" y="334.0" width="12" height="4" fill="#2563eb"/>
+<text x="267.0" y="339.0" font-size="10" fill="#0f172a">Riemann Uniforme</text>
+<text x="284.0" y="384.0" font-size="11" text-anchor="middle" fill="#475569">Coordenada candidata u = ln(p)</text>
+<rect x="528.0" y="72.0" width="488.0" height="344.0" rx="8" fill="#f8fafc" stroke="#e2e8f0"/>
+<text x="542.0" y="96.0" font-size="13" font-weight="700" fill="#0f172a">B. Exactitud bajo ruido severo sigma = 0.015 (200 eventos/semilla)</text>
+<line x1="590.0" y1="356.0" x2="996.0" y2="356.0" stroke="#e2e8f0" stroke-dasharray="3,3"/>
+<text x="582.0" y="360.0" font-size="10" text-anchor="end" fill="#475569">0%</text>
+<line x1="590.0" y1="298.5" x2="996.0" y2="298.5" stroke="#e2e8f0" stroke-dasharray="3,3"/>
+<text x="582.0" y="302.5" font-size="10" text-anchor="end" fill="#475569">26%</text>
+<line x1="590.0" y1="241.0" x2="996.0" y2="241.0" stroke="#e2e8f0" stroke-dasharray="3,3"/>
+<text x="582.0" y="245.0" font-size="10" text-anchor="end" fill="#475569">52%</text>
+<line x1="590.0" y1="183.5" x2="996.0" y2="183.5" stroke="#e2e8f0" stroke-dasharray="3,3"/>
+<text x="582.0" y="187.5" font-size="10" text-anchor="end" fill="#475569">79%</text>
+<line x1="590.0" y1="126.0" x2="996.0" y2="126.0" stroke="#e2e8f0" stroke-dasharray="3,3"/>
+<text x="582.0" y="130.0" font-size="10" text-anchor="end" fill="#475569">105%</text>
+<line x1="590.0" y1="356.0" x2="996.0" y2="356.0" stroke="#475569"/>
+<text x="550.0" y="241.0" font-size="11" fill="#475569" text-anchor="middle" transform="rotate(-90 550.0 241.0)">Exactitud de par exacto</text>
+<rect x="612.8" y="161.9" width="56.0" height="194.1" rx="4" fill="#059669" opacity="0.90"/>
+<line x1="640.8" y1="164.6" x2="640.8" y2="159.3" stroke="#0f172a" stroke-width="1.6"/>
+<line x1="635.8" y1="164.6" x2="645.8" y2="164.6" stroke="#0f172a" stroke-width="1.6"/>
+<line x1="635.8" y1="159.3" x2="645.8" y2="159.3" stroke="#0f172a" stroke-width="1.6"/>
+<text x="640.8" y="153.3" font-size="10.5" font-weight="700" text-anchor="middle" fill="#0f172a">88.6%</text>
+<text x="640.8" y="371.0" font-size="10" text-anchor="middle" fill="#0f172a">Riemann</text>
+<text x="640.8" y="383.0" font-size="10" text-anchor="middle" fill="#0f172a">Bayesiano</text>
+<rect x="714.2" y="216.2" width="56.0" height="139.8" rx="4" fill="#2563eb" opacity="0.90"/>
+<line x1="742.2" y1="226.4" x2="742.2" y2="206.2" stroke="#0f172a" stroke-width="1.6"/>
+<line x1="737.2" y1="226.4" x2="747.2" y2="226.4" stroke="#0f172a" stroke-width="1.6"/>
+<line x1="737.2" y1="206.2" x2="747.2" y2="206.2" stroke="#0f172a" stroke-width="1.6"/>
+<text x="742.2" y="200.2" font-size="10.5" font-weight="700" text-anchor="middle" fill="#0f172a">63.8%</text>
+<text x="742.2" y="371.0" font-size="10" text-anchor="middle" fill="#0f172a">Riemann</text>
+<text x="742.2" y="383.0" font-size="10" text-anchor="middle" fill="#0f172a">Uniforme</text>
+<rect x="815.8" y="310.1" width="56.0" height="45.9" rx="4" fill="#64748b" opacity="0.90"/>
+<line x1="843.8" y1="313.4" x2="843.8" y2="306.7" stroke="#0f172a" stroke-width="1.6"/>
+<line x1="838.8" y1="313.4" x2="848.8" y2="313.4" stroke="#0f172a" stroke-width="1.6"/>
+<line x1="838.8" y1="306.7" x2="848.8" y2="306.7" stroke="#0f172a" stroke-width="1.6"/>
+<text x="843.8" y="300.7" font-size="10.5" font-weight="700" text-anchor="middle" fill="#0f172a">20.9%</text>
+<text x="843.8" y="371.0" font-size="10" text-anchor="middle" fill="#0f172a">Solo</text>
+<text x="843.8" y="383.0" font-size="10" text-anchor="middle" fill="#0f172a">Prior</text>
+<rect x="917.2" y="210.9" width="56.0" height="145.1" rx="4" fill="#dc2626" opacity="0.90"/>
+<line x1="945.2" y1="219.2" x2="945.2" y2="202.5" stroke="#0f172a" stroke-width="1.6"/>
+<line x1="940.2" y1="219.2" x2="950.2" y2="219.2" stroke="#0f172a" stroke-width="1.6"/>
+<line x1="940.2" y1="202.5" x2="950.2" y2="202.5" stroke="#0f172a" stroke-width="1.6"/>
+<text x="945.2" y="196.5" font-size="10.5" font-weight="700" text-anchor="middle" fill="#0f172a">66.2%</text>
+<text x="945.2" y="371.0" font-size="10" text-anchor="middle" fill="#0f172a">Aleatorio</text>
+<text x="945.2" y="383.0" font-size="10" text-anchor="middle" fill="#0f172a">+ Prior</text>
+</svg>
