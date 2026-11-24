@@ -1,0 +1,11 @@
+{
+  "timestamp_utc": "2026-11-24T06:49:56.986220+00:00",
+  "platform": "Linux-6.18.57-x86_64-with-glibc2.39",
+  "machine": "x86_64",
+  "cpu_count": 2,
+  "python_version": "3.12.16",
+  "rustc_version": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
+  "cargo_version": "cargo 1.100.0 (3acc79c0c 2026-11-05)",
+  "git_branch": "exp/riemann-prime-inference",
+  "git_head": "07288b2f830b782dca5d0d1da459addd211bb06d"
+}

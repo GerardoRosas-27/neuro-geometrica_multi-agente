@@ -1,0 +1,27 @@
+   Compiling riemann-prime-inference-v1 v0.1.0 (/home/antigravity/GerardoRosas-27/neuro-geometrica_multi-agente/riemann_prime_inference)
+    Finished `release` profile [optimized] target(s) in 14.78s
+     Running unittests src/lib.rs (target/release/build/riemann-prime-inference-v1/93a0e1cf6da9526a/out/riemann_prime_inference_v1-93a0e1cf6da9526a)
+
+running 7 tests
+test tests::test_capacity_min_log_gap_shrinks_monotonically ... ok
+test tests::test_noiseless_riemann_origin_recovery_ge_98pct ... ok
+test tests::test_riemann_zeros_accuracy_sub_1e9 ... ok
+test tests::test_smooth_prior_is_bounded_and_spike_free ... ok
+test tests::test_unique_prime_products_vs_linear_collisions ... ok
+test tests::test_deterministic_replay_and_causal_law_finite ... ok
+test tests::test_wave_interpolation_matches_direct_sum ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.23s
+
+     Running unittests src/main.rs (target/release/build/riemann-prime-inference-v1/eb82a5a15883e31c/out/riemann_prime_inference_v1-eb82a5a15883e31c)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests riemann_prime_inference_v1
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

@@ -1,0 +1,5 @@
+seed,phase,arm,sigma,n_events,origin_exact_acc,origin_partial_f1
+0xA907,DEV,riemann_bayes_collapse,0.0150,200,0.905000,0.912500
+0xA907,DEV,riemann_uniform_collapse,0.0150,200,0.680000,0.695000
+0xA907,DEV,random_bayes_collapse,0.0150,200,0.680000,0.710000
+0xA907,DEV,prior_only_ctrl,0.0150,200,0.275000,0.567500

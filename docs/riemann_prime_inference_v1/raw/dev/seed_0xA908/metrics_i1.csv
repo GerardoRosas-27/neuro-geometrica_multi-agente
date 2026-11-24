@@ -1,0 +1,13 @@
+seed,phase,arm,sigma,n_pairs,origin_exact_acc,origin_partial_f1,peak_margin_snr
+0xA908,DEV,riemann_prime_collapse,0.0000,66,1.000000,1.000000,138.590458
+0xA908,DEV,random_collapse,0.0000,66,0.166667,0.242424,0.714199
+0xA908,DEV,dyson_gue_collapse,0.0000,66,0.106061,0.212121,1.347848
+0xA908,DEV,fourier_linear_collapse,0.0000,66,0.227273,0.227273,31.270974
+0xA908,DEV,riemann_prime_collapse,0.0020,66,1.000000,1.000000,128.831480
+0xA908,DEV,random_collapse,0.0020,66,0.181818,0.265152,0.691150
+0xA908,DEV,dyson_gue_collapse,0.0020,66,0.106061,0.204545,1.343800
+0xA908,DEV,fourier_linear_collapse,0.0020,66,0.257576,0.257576,31.271048
+0xA908,DEV,riemann_prime_collapse,0.0060,66,0.954545,0.954545,114.161845
+0xA908,DEV,random_collapse,0.0060,66,0.196970,0.257576,0.773003
+0xA908,DEV,dyson_gue_collapse,0.0060,66,0.136364,0.265152,0.760617
+0xA908,DEV,fourier_linear_collapse,0.0060,66,0.272727,0.272727,31.271000
