@@ -1,0 +1,10 @@
+[package]
+name = "wave_collision"
+version = "0.1.0"
+edition = "2021"
+description = "Standalone 768-wave self-calibrating colliding-wave interferometric network (zero dense W_pair, zero connection to ORBITA or CDT-RQM)."
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1

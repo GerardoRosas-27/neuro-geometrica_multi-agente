@@ -1,0 +1,20 @@
+{
+  "timestamp_utc": "2026-11-25T17:53:21.602919+00:00",
+  "branch": "exp/wave-collision-autocal",
+  "git_head_pre_freeze": "876eaa9a8bb1d073c2286bb1888282c6b3f1f018",
+  "files": {
+    "docs/wave_collision_v1/PLAN.md": "1221cd80bc3e984330673a748f03779cdb55b76e61fdf3a97651be0243b70cf3",
+    "wave_collision/Cargo.toml": "99a8006700a9756c8688d59c0ebd40cde72dcb56c8c16fae771568509c738702",
+    "wave_collision/src/main.rs": "4381149a4d5fca1761a05562d38b4737221f6f972561997781c29a798336a3ee",
+    "wave_collision/src/rng.rs": "6d8f2dfeb0a1b4cf8f6dae3701c7398d7f1aebfb1d091f519c72bcae4977e61b",
+    "wave_collision/src/domains.rs": "4ea4f2fbdae82284c9a3aaea765ceacb53d78155f3ea350988070139eb7d1b4e",
+    "wave_collision/src/models.rs": "bdcf13643c5c49b397daf288db99ce1fe59af74e45e0535e9e8f0f16c6678a7f",
+    "wave_collision/src/metrics.rs": "8134143553556a4aa9bd5b946f71aa3c9bb6a1d2ae17ed04acc0b1fa8dee2ef0",
+    "wave_collision/src/suites.rs": "8d4ca0f6ea923734bb2073fe3c787d709b56c8bed17e3ff95edeed8c4bbfdb8f",
+    "wave_collision/scripts/wc_run.py": "dd712b889a140b2731d65212dea079cd31466c55970aab63a3e3e6077661f275",
+    "wave_collision/scripts/wc_summarize.py": "3d8e0afc3a9a2603182019e7aac3332568a2513c98bc8c3e11f4a4b08f2c9d5c",
+    "wave_collision/scripts/wc_freeze_audit.py": "63d8e7890e3971b7781287d788c7942b10aa031ff73f1de8df6f60951d20bd2e",
+    "wave_collision/scripts/wc_plots.py": "5e12d4c5f01fad9f40797415be2d18e9ac8a450b28247e7f6868805eac4dcfd7",
+    "wave_collision/target/release/wave_collision": "05186b08c4a4de57f4e655a5341ff33e62b173c585b3eb7315b936bb156d6b03"
+  }
+}

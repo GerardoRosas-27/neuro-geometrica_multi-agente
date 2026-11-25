@@ -1,0 +1,14 @@
+   Compiling wave_collision v0.1.0 (/home/antigravity/GerardoRosas-27/neuro-geometrica_multi-agente/wave_collision)
+    Finished `release` profile [optimized] target(s) in 15.97s
+     Running unittests src/main.rs (wave_collision/target/release/build/wave_collision/6ec660b3b97e3d95/out/wave_collision-6ec660b3b97e3d95)
+
+running 6 tests
+test tests::test_adaptive_rejects_riemann_injection - should panic ... ok
+test tests::test_exact_parameter_counts_and_parity ... ok
+test tests::test_mlp_film_and_regularizer_and_vicreg_gradients ... ok
+test tests::test_bit_exact_frozen_waves_during_autocal_and_frozen_transfer ... ok
+test tests::test_wave_collision_gradients_all_modes_and_autocal ... ok
+test tests::test_riemann_zeros_256_accuracy ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.26s
+

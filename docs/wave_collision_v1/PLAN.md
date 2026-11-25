@@ -20,9 +20,9 @@ Cada colisión \(m = 16g + k \in \{0..255\}\) posee dos ondas con frecuencias au
 - **Campo estacionario del banco \(g \in \{0..15\}\):**
   $$h_g(\mathbf{u}, \mathbf{v}) = \frac{1}{\sqrt{16}} \sum_{k=0}^{15} C_{16g+k}(\mathbf{u}, \mathbf{v})$$
 
-### Etapa 2 — Colisión Secundaria Onda-Onda (`256` Ondas Moduladas en Fase)
-Las `16` ondas estacionarias \(h_0..h_{15}\) chocan entre sí mediante modulación interferométrica de fase con `256` frecuencias de acoplamiento \(\kappa_{g,j}\) y `256` fases \(\psi_{g,j}\):
-$$z_g(\mathbf{u}, \mathbf{v}) = h_g(\mathbf{u}, \mathbf{v}) + \frac{\rho_g}{\sqrt{16}} \sum_{j=0}^{15} \cos\!\bigl(\kappa_{g,j}\, h_j(\mathbf{u}, \mathbf{v}) + \psi_{g,j}\bigr)$$
+### Etapa 2 — Colisión Secundaria Onda-Onda Acoplada (`256` Ondas Heterodinas de Fase, Vacío Exacto)
+Las `16` ondas estacionarias \(h_0..h_{15}\) chocan directamente entre sí (onda \(h_g\) contra onda \(h_j\)) mediante interferencia heterodina acotada con `256` frecuencias \(\kappa_{g,j}\) y `256` fases \(\psi_{g,j}\), garantizando vacío exacto (\(h = 0 \Rightarrow z = 0\)) sin término de sesgo DC:
+$$z_g(\mathbf{u}, \mathbf{v}) = h_g(\mathbf{u}, \mathbf{v}) + \frac{\rho_g}{\sqrt{16}} \sum_{j=0}^{15} \sin\!\bigl(\kappa_{g,j}\, h_j(\mathbf{u}, \mathbf{v})\bigr)\,\cos\!\bigl(\kappa_{j,g}\, h_g(\mathbf{u}, \mathbf{v}) + \psi_{g,j}\bigr)$$
 donde \(\rho_g = 1\) en Dominio A (y es una de las `16` ganancias resonantes auto-calibrables en `transfer_autocal_A`, sumando `16 + 16 + 16 = 48` perillas).
 
 ### Paridad de Parámetros y Justicia Experimental
