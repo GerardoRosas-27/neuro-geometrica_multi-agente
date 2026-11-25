@@ -15,6 +15,7 @@ y la Sorpresa Estructurada S(o) integrando:
   7. Tester Autónomo en tiempo real (FepEnergyTester).
 """
 
+import gc
 import os
 import re
 import math
@@ -3288,6 +3289,9 @@ class RepoTextCorpusSplitter:
         "docs/marcus_neurosymbolic/RESULTADOS_FEP_MULTIAGENTE_INFINITO.md",
         "docs/aura_v3/RESULTADOS_BPB_AURA_V3_FEP_MARCUS_V3.md",
         "docs/ARQUITECTURA_AURA_V3_GENESIS_FEP_MARCUS_V3.md",
+        "scripts/fep_marcus_core.py",
+        "scripts/marcus_fep_multiagent_infinite_loop.py",
+        "scripts/test_fep_marcus_bpb.py",
     }
     MODALITIES = ((".md", "markdown"), (".rs", "rust"), (".py", "python"))
 
@@ -3323,6 +3327,7 @@ class RepoTextCorpusSplitter:
         seen_global_hashes = set()
         rng = np.random.default_rng(self.seed ^ 0x5EEDB9B1)
 
+        raw_splits: Dict[str, Tuple[List[Tuple[str, bytes]], List[Tuple[str, bytes]]]] = {}
         for ext, name in self.MODALITIES:
             files: List[Tuple[str, bytes]] = []
             for p in sorted(self.repo_root.rglob(f"*{ext}")):
@@ -3348,16 +3353,21 @@ class RepoTextCorpusSplitter:
 
             tr_raw = [f for i, f in enumerate(files) if i % 5 != 4]
             va_cand = [f for i, f in enumerate(files) if i % 5 == 4]
+            raw_splits[name] = (tr_raw, va_cand)
 
-            # Filtro estricto anti-fuga: 0 bloques compartidos de 128B (stride 32B)
-            tr_blocks_128 = {
-                b[j:j + 128]
-                for _, b in tr_raw
-                for j in range(0, max(0, len(b) - 127), 32)
-            }
+        # Filtro estricto anti-fuga GLOBAL cross-domain: 0 bloques compartidos de 128B (stride 32B)
+        global_tr_blocks_128 = {
+            b[j:j + 128]
+            for _, (tr_raw, _) in raw_splits.items()
+            for _, b in tr_raw
+            for j in range(0, max(0, len(b) - 127), 32)
+        }
+
+        for _, name in self.MODALITIES:
+            tr_raw, va_cand = raw_splits[name]
             va_clean = [
                 f for f in va_cand
-                if not any(f[1][j:j + 128] in tr_blocks_128 for j in range(0, max(0, len(f[1]) - 127), 32))
+                if not any(f[1][j:j + 128] in global_tr_blocks_128 for j in range(0, max(0, len(f[1]) - 127), 32))
             ]
 
             self.train_files[name] = tr_raw
@@ -3536,23 +3546,51 @@ class BigramByteBaseline:
 class DaleMountcastleNeuralByteColumn:
     """
     Subrutina 2 (Microcircuito Cortical Canónico de 6 Capas Mountcastle) + Ley de Dale estricta:
-      - L4 (Entrada talámica): ventana causal de 8 bytes embebidos (128D) + 12 rasgos estructurales (140D).
-      - L2/3 (Codificación predictiva lateral): capa oculta 192D con pesos segregados W1^E, W1^I >= 0.
-      - L5 (Proyección motora de salida): readout 256 bytes con pesos segregados W2^E, W2^I >= 0.
-      - L6/L1 (Retroalimentación apical): M-Step predictivo exacto sobre Cross-Entropy + proyección Dale.
+      - Modo estándar (`enable_multiscale_l4=False`, línea base FEP-MARCUS v3):
+          L4 (8 bytes embebidos 128D + 12 rasgos = 140D) -> L2/3 (192D tanh, W1^E, W1^I >= 0) -> L5 (256D).
+      - Modo AURA v3 Genesis (`enable_multiscale_l4=True`):
+          L4 multi-escala talamocortical (8 bytes posicionales 128D + campos receptivos n-grama 2/3/4/6B
+          hasheados 4x32D = 128D + 12 rasgos estructurales = 268D) -> L2/3 (256D ReLU, W1^E, W1^I >= 0)
+          -> L5 (256D, W2^E, W2^I >= 0) -> L6/L1 gradiente predictivo exacto + proyección Dale estricta.
       - Subrutina 3a: Poda física por Microglía (devora co-activación E/I y sinapsis < umbral a 0 exacto).
       - Subrutina 4: Pre-entrenamiento sintético prenatal *in-utero* (0% bytes del repositorio).
     """
-    def __init__(self, ctx_len: int = 8, d_emb: int = 16, d_hid: int = 192, seed: int = 42):
+    def __init__(
+        self,
+        ctx_len: int = 8,
+        d_emb: int = 16,
+        d_hid: int = 192,
+        seed: int = 42,
+        enable_multiscale_l4: bool = False,
+        n_hash: int = 8192,
+        d_hash: int = 32,
+    ):
         self.ctx_len = ctx_len
         self.d_emb = d_emb
         self.d_hid = d_hid
-        self.d_in = ctx_len * d_emb + 12
+        self.enable_multiscale_l4 = bool(enable_multiscale_l4)
+        self.n_hash = int(n_hash)
+        self.d_hash = int(d_hash)
+        self.d_in = (ctx_len * d_emb + 4 * d_hash + 12) if self.enable_multiscale_l4 else (ctx_len * d_emb + 12)
         self.rng = np.random.default_rng(seed ^ 0xDA1E0002)
 
-        self.emb = self.rng.normal(0.0, 0.25, (256, d_emb)).astype(np.float32)
-        w1 = self.rng.normal(0.0, math.sqrt(2.0 / (self.d_in + d_hid)), (d_hid, self.d_in)).astype(np.float32)
-        w2 = self.rng.normal(0.0, math.sqrt(2.0 / (d_hid + 256)), (256, d_hid)).astype(np.float32)
+        if self.enable_multiscale_l4:
+            self.emb = self.rng.normal(0.0, 0.12, (257, d_emb)).astype(np.float32)
+            self.h2_emb = self.rng.normal(0.0, 0.08, (self.n_hash, self.d_hash)).astype(np.float32)
+            self.h3_emb = self.rng.normal(0.0, 0.08, (self.n_hash, self.d_hash)).astype(np.float32)
+            self.h4_emb = self.rng.normal(0.0, 0.08, (self.n_hash, self.d_hash)).astype(np.float32)
+            self.h6_emb = self.rng.normal(0.0, 0.08, (self.n_hash, self.d_hash)).astype(np.float32)
+            w1 = self.rng.normal(0.0, math.sqrt(2.0 / self.d_in), (d_hid, self.d_in)).astype(np.float32)
+            w2 = self.rng.normal(0.0, math.sqrt(2.0 / d_hid), (256, d_hid)).astype(np.float32)
+        else:
+            self.emb = self.rng.normal(0.0, 0.25, (256, d_emb)).astype(np.float32)
+            self.h2_emb = None
+            self.h3_emb = None
+            self.h4_emb = None
+            self.h6_emb = None
+            w1 = self.rng.normal(0.0, math.sqrt(2.0 / (self.d_in + d_hid)), (d_hid, self.d_in)).astype(np.float32)
+            w2 = self.rng.normal(0.0, math.sqrt(2.0 / (d_hid + 256)), (256, d_hid)).astype(np.float32)
+
         self.w1_e = np.maximum(np.float32(0.0), w1)
         self.w1_i = np.maximum(np.float32(0.0), -w1)
         self.b1 = np.zeros(d_hid, dtype=np.float32)
@@ -3600,46 +3638,99 @@ class DaleMountcastleNeuralByteColumn:
         }
 
     def weight_fingerprint(self) -> float:
-        return float(
+        fp = float(
             np.sum(self.w1_e, dtype=np.float64)
             + np.sum(self.w1_i, dtype=np.float64)
             + np.sum(self.w2_e, dtype=np.float64)
             + np.sum(self.w2_i, dtype=np.float64)
             + np.sum(self.b2, dtype=np.float64)
+            + np.sum(self.emb, dtype=np.float64)
         )
+        if self.enable_multiscale_l4 and self.h2_emb is not None:
+            fp += float(
+                np.sum(self.h2_emb, dtype=np.float64)
+                + np.sum(self.h3_emb, dtype=np.float64)
+                + np.sum(self.h4_emb, dtype=np.float64)
+                + np.sum(self.h6_emb, dtype=np.float64)
+            )
+        return fp
 
-    def _build_features(self, seq: np.ndarray, idxs: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    def _build_features(self, seq: np.ndarray, idxs: np.ndarray) -> Tuple[Any, np.ndarray]:
         bsz = len(idxs)
-        ctx = np.zeros((bsz, self.ctx_len), dtype=np.int32)
+        if not self.enable_multiscale_l4:
+            ctx = np.zeros((bsz, self.ctx_len), dtype=np.int32)
+            for k in range(self.ctx_len):
+                pos = idxs - (self.ctx_len - k)
+                valid = pos >= 0
+                ctx[valid, k] = seq[pos[valid]]
+            emb_flat = self.emb[ctx].reshape(bsz, -1)
+            b1 = ctx[:, -1]
+            b2 = ctx[:, -2]
+            feats = np.zeros((bsz, 12), dtype=np.float32)
+            feats[:, 0] = ((b1 >= 97) & (b1 <= 122)).astype(np.float32)
+            feats[:, 1] = ((b1 >= 65) & (b1 <= 90)).astype(np.float32)
+            feats[:, 2] = ((b1 >= 48) & (b1 <= 57)).astype(np.float32)
+            feats[:, 3] = (b1 == 32).astype(np.float32)
+            feats[:, 4] = (b1 == 10).astype(np.float32)
+            feats[:, 5] = (b1 >= 128).astype(np.float32)
+            feats[:, 6] = ((b1 == 46) | (b1 == 44) | (b1 == 58) | (b1 == 59)).astype(np.float32)
+            feats[:, 7] = ((b1 == 40) | (b1 == 41) | (b1 == 91) | (b1 == 93) | (b1 == 123) | (b1 == 125)).astype(np.float32)
+            feats[:, 8] = ((b1 == 124) | (b1 == 42) | (b1 == 96) | (b1 == 35) | (b1 == 45)).astype(np.float32)
+            feats[:, 9] = ((b2 >= 97) & (b2 <= 122)).astype(np.float32)
+            feats[:, 10] = (b2 == 32).astype(np.float32)
+            feats[:, 11] = (b2 == 10).astype(np.float32)
+            return ctx, np.concatenate([emb_flat, feats], axis=1)
+
+        mask = np.uint32(self.n_hash - 1)
+        ctx = np.full((bsz, self.ctx_len), 256, dtype=np.int32)
+        raw = np.zeros((bsz, self.ctx_len), dtype=np.uint32)
         for k in range(self.ctx_len):
             pos = idxs - (self.ctx_len - k)
             valid = pos >= 0
-            ctx[valid, k] = seq[pos[valid]]
-        emb_flat = self.emb[ctx].reshape(bsz, -1)
+            if np.any(valid):
+                vals = seq[pos[valid]]
+                ctx[valid, k] = vals
+                raw[valid, k] = vals.astype(np.uint32) + np.uint32(1)
+        h2 = (((raw[:, 6] * np.uint32(2654435761)) ^ (raw[:, 7] * np.uint32(40503))) & mask).astype(np.int32)
+        h3 = (((h2.astype(np.uint32) * np.uint32(16777619)) ^ (raw[:, 5] * np.uint32(2246822519))) & mask).astype(np.int32)
+        h4 = (((h3.astype(np.uint32) * np.uint32(16777619)) ^ (raw[:, 4] * np.uint32(3266489917))) & mask).astype(np.int32)
+        h6 = (
+            ((h4.astype(np.uint32) * np.uint32(16777619))
+             ^ (raw[:, 3] * np.uint32(668265263))
+             ^ (raw[:, 2] * np.uint32(374761393))) & mask
+        ).astype(np.int32)
+
         b1 = ctx[:, -1]
         b2 = ctx[:, -2]
         feats = np.zeros((bsz, 12), dtype=np.float32)
-        feats[:, 0] = ((b1 >= 97) & (b1 <= 122)).astype(np.float32)
-        feats[:, 1] = ((b1 >= 65) & (b1 <= 90)).astype(np.float32)
-        feats[:, 2] = ((b1 >= 48) & (b1 <= 57)).astype(np.float32)
-        feats[:, 3] = (b1 == 32).astype(np.float32)
-        feats[:, 4] = (b1 == 10).astype(np.float32)
-        feats[:, 5] = (b1 >= 128).astype(np.float32)
-        feats[:, 6] = ((b1 == 46) | (b1 == 44) | (b1 == 58) | (b1 == 59)).astype(np.float32)
-        feats[:, 7] = ((b1 == 40) | (b1 == 41) | (b1 == 91) | (b1 == 93) | (b1 == 123) | (b1 == 125)).astype(np.float32)
-        feats[:, 8] = ((b1 == 124) | (b1 == 42) | (b1 == 96) | (b1 == 35) | (b1 == 45)).astype(np.float32)
-        feats[:, 9] = ((b2 >= 97) & (b2 <= 122)).astype(np.float32)
-        feats[:, 10] = (b2 == 32).astype(np.float32)
+        feats[:, 0] = (b1 == 32).astype(np.float32)
+        feats[:, 1] = (b1 == 10).astype(np.float32)
+        feats[:, 2] = (b1 == 9).astype(np.float32)
+        feats[:, 3] = ((b1 >= 97) & (b1 <= 122)).astype(np.float32)
+        feats[:, 4] = ((b1 >= 65) & (b1 <= 90)).astype(np.float32)
+        feats[:, 5] = ((b1 >= 48) & (b1 <= 57)).astype(np.float32)
+        feats[:, 6] = (b1 == 95).astype(np.float32)
+        feats[:, 7] = ((b1 == 46) | (b1 == 44) | (b1 == 58) | (b1 == 59)).astype(np.float32)
+        feats[:, 8] = ((b1 == 40) | (b1 == 41) | (b1 == 91) | (b1 == 93) | (b1 == 123) | (b1 == 125)).astype(np.float32)
+        feats[:, 9] = ((b1 == 124) | (b1 == 42) | (b1 == 96) | (b1 == 35)).astype(np.float32)
+        feats[:, 10] = ((b1 >= 128) & (b1 < 256)).astype(np.float32)
         feats[:, 11] = (b2 == 10).astype(np.float32)
-        return ctx, np.concatenate([emb_flat, feats], axis=1)
 
-    def _forward(self, seq: np.ndarray, idxs: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-        ctx, x = self._build_features(seq, idxs)
+        emb_flat = self.emb[ctx].reshape(bsz, -1)
+        x = np.concatenate(
+            [emb_flat, self.h2_emb[h2], self.h3_emb[h3], self.h4_emb[h4], self.h6_emb[h6], feats],
+            axis=1,
+        )
+        return (ctx, h2, h3, h4, h6), x
+
+    def _forward(self, seq: np.ndarray, idxs: np.ndarray) -> Tuple[Any, np.ndarray, np.ndarray, np.ndarray]:
+        ctx_pack, x = self._build_features(seq, idxs)
         w1 = self.w1_e - self.w1_i
         w2 = self.w2_e - self.w2_i
-        h = np.tanh(x @ w1.T + self.b1)
+        z1 = x @ w1.T + self.b1
+        h = np.maximum(z1, np.float32(0.0)) if self.enable_multiscale_l4 else np.tanh(z1)
         logits = h @ w2.T + self.b2
-        return ctx, x, h, logits
+        return ctx_pack, x, h, logits
 
     def run_prenatal_waves(self, seed: int = 42, n_bytes: int = 4096) -> float:
         """Subrutina 4: Pre-calibración in-utero sobre ondas sintéticas puras (0 bytes del repo)."""
@@ -3666,7 +3757,7 @@ class DaleMountcastleNeuralByteColumn:
             idxs = idxs_all[s:s + batch_size]
             bsz = len(idxs)
             y = seq[idxs].astype(np.int32)
-            ctx, x, h, logits = self._forward(seq, idxs)
+            ctx_pack, x, h, logits = self._forward(seq, idxs)
 
             lmax = logits.max(axis=1, keepdims=True)
             ex = np.exp(logits - lmax)
@@ -3683,20 +3774,31 @@ class DaleMountcastleNeuralByteColumn:
             dw2 = dlogits.T @ h
             db2 = dlogits.sum(axis=0)
             dh = dlogits @ w2
-            dh_pre = dh * (np.float32(1.0) - h * h)
+            if self.enable_multiscale_l4:
+                dh_pre = dh
+                dh_pre[h <= np.float32(0.0)] = np.float32(0.0)
+            else:
+                dh_pre = dh * (np.float32(1.0) - h * h)
             dw1 = dh_pre.T @ x
             db1 = dh_pre.sum(axis=0)
             dx = dh_pre @ (self.w1_e - self.w1_i)
-            demb_flat = dx[:, :self.ctx_len * self.d_emb].reshape(bsz, self.ctx_len, self.d_emb)
-            demb = np.zeros_like(self.emb)
-            np.add.at(demb, ctx, demb_flat)
 
             self.adam_step += 1
             bc1 = np.float32(1.0 - (0.9 ** self.adam_step))
             bc2 = np.float32(1.0 - (0.999 ** self.adam_step))
             lr_f = np.float32(lr)
 
-            for pname, grad in (("w2", dw2), ("b2", db2), ("w1", dw1), ("b1", db1), ("emb", demb)):
+            if not self.enable_multiscale_l4:
+                ctx = ctx_pack
+                demb_flat = dx[:, :self.ctx_len * self.d_emb].reshape(bsz, self.ctx_len, self.d_emb)
+                demb = np.zeros_like(self.emb)
+                np.add.at(demb, ctx, demb_flat)
+                adam_items = (("w2", dw2), ("b2", db2), ("w1", dw1), ("b1", db1), ("emb", demb))
+            else:
+                ctx, h2, h3, h4, h6 = ctx_pack
+                adam_items = (("w2", dw2), ("b2", db2), ("w1", dw1), ("b1", db1))
+
+            for pname, grad in adam_items:
                 m = getattr(self, f"m_{pname}")
                 v = getattr(self, f"v_{pname}")
                 m *= b1_a
@@ -3714,6 +3816,16 @@ class DaleMountcastleNeuralByteColumn:
                     self.w2_i = np.maximum(np.float32(0.0), -w_eff)
                 else:
                     setattr(self, pname, getattr(self, pname) - upd)
+
+            if self.enable_multiscale_l4:
+                lr_e = np.float32(lr * 6.0)
+                e_dim = self.ctx_len * self.d_emb
+                dh_s = self.d_hash
+                np.add.at(self.emb, ctx, -lr_e * dx[:, :e_dim].reshape(bsz, self.ctx_len, self.d_emb))
+                np.add.at(self.h2_emb, h2, -lr_e * dx[:, e_dim:e_dim + dh_s])
+                np.add.at(self.h3_emb, h3, -lr_e * dx[:, e_dim + dh_s:e_dim + 2 * dh_s])
+                np.add.at(self.h4_emb, h4, -lr_e * dx[:, e_dim + 2 * dh_s:e_dim + 3 * dh_s])
+                np.add.at(self.h6_emb, h6, -lr_e * dx[:, e_dim + 3 * dh_s:e_dim + 4 * dh_s])
 
         return (tot_nats / max(1, n_batches)) / math.log(2.0)
 
@@ -3775,6 +3887,8 @@ class CorticalMorphogeneticByteColumn:
         self.word_tbl: Optional[Dict[Tuple[bytes, bytes], Any]] = {} if enable_aux else None
         self.total_bytes_ingested = 0
         self.pruned_cortical_branches = 0
+        self._p01_cache_key: Optional[Tuple[Any, ...]] = None
+        self._p01_cache_val: Optional[Tuple[Any, ...]] = None
 
         self.d: List[float] = []
         self.th: List[float] = []
@@ -3833,8 +3947,41 @@ class CorticalMorphogeneticByteColumn:
         self.total_bytes_ingested += n
         tables = self.tables
         mo = self.max_order
-        inc = self._inc_packed
         aux = self.enable_aux
+        if not aux:
+            for i in range(n):
+                b = data[i]
+                lim = i if i < mo else mo
+                for o in range(lim, -1, -1):
+                    tbl = tables[o]
+                    ctx = data[i - o:i] if o else b""
+                    node = tbl.get(ctx)
+                    if node is None:
+                        tbl[ctx] = (1 << 8) | b
+                    elif type(node) is int:
+                        sym0 = node & 0xFF
+                        cnt0 = node >> 8
+                        if sym0 == b:
+                            tbl[ctx] = ((cnt0 + 1) << 8) | b
+                            if o > 0:
+                                break
+                        else:
+                            tbl[ctx] = [cnt0 + 1, 2, {sym0: cnt0, b: 1}]
+                    else:
+                        dd = node[2]
+                        c = dd.get(b)
+                        if c is None:
+                            dd[b] = 1
+                            node[0] += 1
+                            node[1] += 1
+                        else:
+                            dd[b] = c + 1
+                            node[0] += 1
+                            if o > 0:
+                                break
+            return
+
+        inc = self._inc_packed
         s1 = self.skip1
         wt = self.word_tbl
         prev_w = b""
@@ -3847,17 +3994,16 @@ class CorticalMorphogeneticByteColumn:
                 ctx = data[i - o:i] if o else b""
                 if inc(tables[o], ctx, b) and o > 0:
                     break
-            if aux:
-                if i >= 4:
-                    inc(s1, data[i - 4:i - 2] + data[i - 1:i], b)
-                if prev_w:
-                    inc(wt, (prev_w, bytes(cur_w)), b)
-                if (48 <= b <= 57) or (65 <= b <= 90) or (97 <= b <= 122) or b == 95 or b >= 128:
-                    if len(cur_w) < 4:
-                        cur_w.append(b)
-                elif cur_w:
-                    prev_w = bytes(cur_w)
-                    cur_w.clear()
+            if i >= 4:
+                inc(s1, data[i - 4:i - 2] + data[i - 1:i], b)
+            if prev_w:
+                inc(wt, (prev_w, bytes(cur_w)), b)
+            if (48 <= b <= 57) or (65 <= b <= 90) or (97 <= b <= 122) or b == 95 or b >= 128:
+                if len(cur_w) < 4:
+                    cur_w.append(b)
+            elif cur_w:
+                prev_w = bytes(cur_w)
+                cur_w.clear()
 
     def microglia_prune_tree(self, min_order: int = 11, max_singletons_per_order: int = 120000) -> int:
         """
@@ -3914,60 +4060,72 @@ class CorticalMorphogeneticByteColumn:
         bp = base_prior.astype(np.float32, copy=False)
         use_myelin = self.enable_aura_v3_genesis and (myelin_thresh > 0.0)
 
-        # Precomputación exacta (100% read-only y efímera) de los niveles de mayor ramificación o=0 y o=1:
-        # P_0 = ((th_0 + d_0*u_0)/(T_0 + th_0)) * bp + q_0
-        # P_1(b) = ((th_1 + d_1*u_1)/(T_1 + th_1)) * P_0 + q_1(b)
-        # Matemáticamente idéntico a recorrer la recursión completa hasta bp, eliminando ~95% de iteraciones.
-        tbl0 = tables[0]
-        node0 = tbl0.get(b"")
-        if node0 is None:
-            p0_vec = bp
-            tot0 = 0
+        # Precomputación exacta memoizada por huella inmutable de estado (o=0 y o=1):
+        cache_key = (
+            self.total_bytes_ingested,
+            self.pruned_cortical_branches,
+            float(bp[0]),
+            float(bp[32]),
+            ds[0],
+            ds[1] if mo >= 1 else 0.0,
+            ths[0],
+            ths[1] if mo >= 1 else 0.0,
+        )
+        if self._p01_cache_key == cache_key and self._p01_cache_val is not None:
+            p0_vec, tot0, p1_vecs, p1_tots, has_node0 = self._p01_cache_val
         else:
-            d0, th0 = ds[0], ths[0]
-            if type(node0) is int:
-                sym0 = node0 & 0xFF
-                cnt0 = node0 >> 8
-                tot0 = cnt0
-                inv0 = 1.0 / (cnt0 + th0)
-                p0_vec = (bp * ((th0 + d0) * inv0)).astype(np.float32)
-                if cnt0 > d0:
-                    p0_vec[sym0] += (cnt0 - d0) * inv0
+            tbl0 = tables[0]
+            node0 = tbl0.get(b"")
+            if node0 is None:
+                p0_vec = bp
+                tot0 = 0
             else:
-                tot0, uniq0, sc0 = node0
-                inv0 = 1.0 / (tot0 + th0)
-                p0_vec = (bp * ((th0 + d0 * uniq0) * inv0)).astype(np.float32)
-                for sym0, cnt0 in sc0.items():
+                d0, th0 = ds[0], ths[0]
+                if type(node0) is int:
+                    sym0 = node0 & 0xFF
+                    cnt0 = node0 >> 8
+                    tot0 = cnt0
+                    inv0 = 1.0 / (cnt0 + th0)
+                    p0_vec = (bp * ((th0 + d0) * inv0)).astype(np.float32)
                     if cnt0 > d0:
                         p0_vec[sym0] += (cnt0 - d0) * inv0
-
-        p1_vecs: List[Optional[np.ndarray]] = [None] * 256
-        p1_tots: List[int] = [0] * 256
-        if mo >= 1 and node0 is not None:
-            tbl1 = tables[1]
-            d1, th1 = ds[1], ths[1]
-            for k1, node1 in tbl1.items():
-                b1 = k1[0]
-                if type(node1) is int:
-                    sym1 = node1 & 0xFF
-                    cnt1 = node1 >> 8
-                    p1_tots[b1] = cnt1
-                    inv1 = 1.0 / (cnt1 + th1)
-                    v1 = (p0_vec * ((th1 + d1) * inv1)).astype(np.float32)
-                    if cnt1 > d1:
-                        v1[sym1] += (cnt1 - d1) * inv1
-                    p1_vecs[b1] = v1
                 else:
-                    tot1, uniq1, sc1 = node1
-                    p1_tots[b1] = tot1
-                    inv1 = 1.0 / (tot1 + th1)
-                    v1 = (p0_vec * ((th1 + d1 * uniq1) * inv1)).astype(np.float32)
-                    for sym1, cnt1 in sc1.items():
+                    tot0, uniq0, sc0 = node0
+                    inv0 = 1.0 / (tot0 + th0)
+                    p0_vec = (bp * ((th0 + d0 * uniq0) * inv0)).astype(np.float32)
+                    for sym0, cnt0 in sc0.items():
+                        if cnt0 > d0:
+                            p0_vec[sym0] += (cnt0 - d0) * inv0
+
+            p1_vecs: List[Optional[np.ndarray]] = [None] * 256
+            p1_tots: List[int] = [0] * 256
+            if mo >= 1 and node0 is not None:
+                tbl1 = tables[1]
+                d1, th1 = ds[1], ths[1]
+                for k1, node1 in tbl1.items():
+                    b1 = k1[0]
+                    if type(node1) is int:
+                        sym1 = node1 & 0xFF
+                        cnt1 = node1 >> 8
+                        p1_tots[b1] = cnt1
+                        inv1 = 1.0 / (cnt1 + th1)
+                        v1 = (p0_vec * ((th1 + d1) * inv1)).astype(np.float32)
                         if cnt1 > d1:
                             v1[sym1] += (cnt1 - d1) * inv1
-                    p1_vecs[b1] = v1
+                        p1_vecs[b1] = v1
+                    else:
+                        tot1, uniq1, sc1 = node1
+                        p1_tots[b1] = tot1
+                        inv1 = 1.0 / (tot1 + th1)
+                        v1 = (p0_vec * ((th1 + d1 * uniq1) * inv1)).astype(np.float32)
+                        for sym1, cnt1 in sc1.items():
+                            if cnt1 > d1:
+                                v1[sym1] += (cnt1 - d1) * inv1
+                        p1_vecs[b1] = v1
 
-        has_node0 = node0 is not None
+            has_node0 = node0 is not None
+            self._p01_cache_key = cache_key
+            self._p01_cache_val = (p0_vec, tot0, p1_vecs, p1_tots, has_node0)
         d_a, th_a = 0.72, 0.85
 
         for i in range(n):
@@ -4043,7 +4201,10 @@ class CorticalMorphogeneticByteColumn:
 
             matched_o[i] = hit_o
 
-            if aux:
+            if not aux:
+                if use_myelin and hit_o >= 8 and hit_tot >= 10 and float(row.max()) >= myelin_thresh:
+                    myelin_mask[i] = True
+            else:
                 if use_myelin and hit_o >= 6 and hit_tot >= 6 and float(row.max()) >= myelin_thresh:
                     myelin_mask[i] = True
                     p_skip[i] = row
@@ -4096,21 +4257,318 @@ class CorticalMorphogeneticByteColumn:
 
         return p_hpyp, p_skip, p_word, matched_o, myelin_mask
 
+    def fit_transformed_bytes(self, data: bytes, trans_table: bytes) -> None:
+        """
+        Ingesta contextos normalizados (`data.translate(trans_table)`) prediciendo el byte REAL `data[i]`
+        con update exclusion, compartiendo plantillas numéricas/léxicas cross-domain sin fuga.
+        """
+        n = len(data)
+        if n == 0:
+            return
+        self.total_bytes_ingested += n
+        norm_data = data.translate(trans_table)
+        tables = self.tables
+        mo = self.max_order
+        for i in range(n):
+            b = data[i]
+            lim = i if i < mo else mo
+            for o in range(lim, -1, -1):
+                tbl = tables[o]
+                ctx = norm_data[i - o:i] if o else b""
+                node = tbl.get(ctx)
+                if node is None:
+                    tbl[ctx] = (1 << 8) | b
+                elif type(node) is int:
+                    sym0 = node & 0xFF
+                    cnt0 = node >> 8
+                    if sym0 == b:
+                        tbl[ctx] = ((cnt0 + 1) << 8) | b
+                        if o > 0:
+                            break
+                    else:
+                        tbl[ctx] = [cnt0 + 1, 2, {sym0: cnt0, b: 1}]
+                else:
+                    dd = node[2]
+                    c = dd.get(b)
+                    if c is None:
+                        dd[b] = 1
+                        node[0] += 1
+                        node[1] += 1
+                    else:
+                        dd[b] = c + 1
+                        node[0] += 1
+                        if o > 0:
+                            break
+
+
+_DIGIT_NORM_TABLE = bytes(ord("0") if (48 <= c <= 57) else c for c in range(256))
+_CASEDIGIT_NORM_TABLE = bytes(
+    ord("0") if (48 <= c <= 57) else (c + 32 if 65 <= c <= 90 else c)
+    for c in range(256)
+)
+
+
+class SharedLexicalSkipCortex:
+    """
+    Corteza Léxica y Estructural Cross-Domain de AURA v3 Genesis:
+      - Columna léxica jerárquica de 3 niveles sin truncar a 4B (`cur_w`, `(prev_w, cur_w)`,
+        `(prev2_w, prev_w, cur_w)` hasta 20 bytes).
+      - Columnas Skip multi-escala (`Skip-1`, `Skip-1b`, `Skip-2`) con empaquetado int-singleton.
+      - Estrictamente causal (actualiza estado léxico DESPUÉS de predecir b_i) y 100% read-only en eval.
+    """
+    def __init__(self):
+        self.w1: Dict[bytes, Any] = {}
+        self.w2: Dict[Tuple[int, bytes], Any] = {}
+        self.w3: Dict[Tuple[int, int, bytes], Any] = {}
+        self.skip1: Dict[bytes, Any] = {}
+        self.skip1b: Dict[bytes, Any] = {}
+        self.skip2: Dict[bytes, Any] = {}
+        self.total_bytes_ingested = 0
+
+    @staticmethod
+    def _apply_node_into(base_row: np.ndarray, node: Any, d: float, th: float, out_row: np.ndarray) -> None:
+        if node is None:
+            out_row[:] = base_row
+            return
+        if type(node) is int:
+            sym = node & 0xFF
+            cnt = node >> 8
+            inv = 1.0 / (cnt + th)
+            np.multiply(base_row, (th + d) * inv, out=out_row)
+            if cnt > d:
+                out_row[sym] += (cnt - d) * inv
+        else:
+            tot, uniq, sc = node
+            inv = 1.0 / (tot + th)
+            np.multiply(base_row, (th + d * uniq) * inv, out=out_row)
+            for sym, cnt in sc.items():
+                if cnt > d:
+                    out_row[sym] += (cnt - d) * inv
+
+    def state_fingerprint(self) -> Tuple[int, int, int]:
+        return (
+            self.total_bytes_ingested,
+            len(self.w1) + len(self.w2) + len(self.w3),
+            len(self.skip1) + len(self.skip1b) + len(self.skip2),
+        )
+
+    def fit_bytes(self, data: bytes) -> None:
+        n = len(data)
+        if n == 0:
+            return
+        self.total_bytes_ingested += n
+        inc = CorticalMorphogeneticByteColumn._inc_packed
+        w1, w2, w3 = self.w1, self.w2, self.w3
+        s1, s1b, s2 = self.skip1, self.skip1b, self.skip2
+        prev2_w = 0
+        prev_w = 0
+        cur_w = bytearray()
+
+        for i in range(n):
+            b = data[i]
+            cw = bytes(cur_w)
+            if prev2_w and prev_w:
+                if not inc(w3, (prev2_w, prev_w, cw), b):
+                    if not inc(w2, (prev_w, cw), b):
+                        inc(w1, cw, b)
+            elif prev_w:
+                if not inc(w2, (prev_w, cw), b):
+                    inc(w1, cw, b)
+            elif cw:
+                inc(w1, cw, b)
+
+            if i >= 4:
+                inc(s1, data[i - 4:i - 2] + data[i - 1:i], b)
+            if i >= 5:
+                inc(s2, data[i - 5:i - 3] + data[i - 1:i], b)
+            if i >= 6:
+                inc(s1b, data[i - 6:i - 3] + data[i - 2:i], b)
+
+            if (48 <= b <= 57) or (65 <= b <= 90) or (97 <= b <= 122) or b == 95 or b >= 128:
+                if len(cur_w) < 20:
+                    cur_w.append(b)
+            elif cur_w:
+                prev2_w = prev_w
+                prev_w = hash(bytes(cur_w))
+                cur_w.clear()
+
+    def predict_word_skip_256(
+        self,
+        data: bytes,
+        p_base: np.ndarray,
+        skip_mask: Optional[np.ndarray] = None,
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        n = len(data)
+        p_word = np.empty((n, 256), dtype=np.float32)
+        p_skip = np.empty((n, 256), dtype=np.float32)
+        tmp1 = np.empty(256, dtype=np.float32)
+        tmp2 = np.empty(256, dtype=np.float32)
+        apply_nd = self._apply_node_into
+        w1, w2, w3 = self.w1, self.w2, self.w3
+        s1, s1b, s2 = self.skip1, self.skip1b, self.skip2
+        prev2_w = 0
+        prev_w = 0
+        cur_w = bytearray()
+
+        for i in range(n):
+            b = data[i]
+            row = p_base[i]
+            if skip_mask is not None and skip_mask[i]:
+                p_word[i] = row
+                p_skip[i] = row
+            else:
+                cw = bytes(cur_w)
+                src = row
+                nd1 = w1.get(cw) if cw else None
+                if nd1 is not None:
+                    apply_nd(src, nd1, 0.72, 0.90, tmp1)
+                    src = tmp1
+                nd2 = w2.get((prev_w, cw)) if prev_w else None
+                if nd2 is not None:
+                    apply_nd(src, nd2, 0.75, 0.85, tmp2)
+                    src = tmp2
+                nd3 = w3.get((prev2_w, prev_w, cw)) if (prev2_w and prev_w) else None
+                if nd3 is not None:
+                    apply_nd(src, nd3, 0.78, 0.80, p_word[i])
+                else:
+                    p_word[i] = src
+
+                src = row
+                ns2 = s2.get(data[i - 5:i - 3] + data[i - 1:i]) if i >= 5 else None
+                if ns2 is not None:
+                    apply_nd(src, ns2, 0.74, 0.90, tmp1)
+                    src = tmp1
+                ns1 = s1.get(data[i - 4:i - 2] + data[i - 1:i]) if i >= 4 else None
+                if ns1 is not None:
+                    apply_nd(src, ns1, 0.72, 0.85, tmp2)
+                    src = tmp2
+                ns1b = s1b.get(data[i - 6:i - 3] + data[i - 2:i]) if i >= 6 else None
+                if ns1b is not None:
+                    apply_nd(src, ns1b, 0.76, 0.80, p_skip[i])
+                else:
+                    p_skip[i] = src
+
+            if (48 <= b <= 57) or (65 <= b <= 90) or (97 <= b <= 122) or b == 95 or b >= 128:
+                if len(cur_w) < 20:
+                    cur_w.append(b)
+            elif cur_w:
+                prev2_w = prev_w
+                prev_w = hash(bytes(cur_w))
+                cur_w.clear()
+
+        return p_word, p_skip
+
+
+class HippocampalCA3LongRangeMatch:
+    """
+    Compleción de Patrones Hipocampal CA3 (Memoria Episódica de Largo Alcance, órdenes 8..64):
+      - Indexa anclas de 8 bytes EXCLUSIVAMENTE sobre el corpus `train` con empaquetado compacto
+        int-singleton (hasta 4 posiciones recientes por ancla).
+      - En inferencia congelada (100% read-only, 0 lookahead, 0 acceso a held-out), extiende la
+        coincidencia hacia atrás sobre b_{<i} hasta 64 bytes y proyecta la continuación episódica
+        sobre `p_base` proporcionalmente a la longitud exacta del match.
+    """
+    def __init__(self, anchor_len: int = 8, max_match: int = 64):
+        self.anchor_len = int(anchor_len)
+        self.max_match = int(max_match)
+        self.corpus = bytearray()
+        self.index: Dict[bytes, Any] = {}
+
+    def state_fingerprint(self) -> Tuple[int, int]:
+        return (len(self.corpus), len(self.index))
+
+    def fit_bytes(self, data: bytes) -> None:
+        n = len(data)
+        if n == 0:
+            return
+        start = len(self.corpus)
+        self.corpus.extend(data)
+        self.corpus.append(0)  # separador entre documentos de train
+        al = self.anchor_len
+        idx = self.index
+        for k in range(al, n):
+            key = data[k - al:k]
+            pos = start + k
+            cur = idx.get(key)
+            if cur is None:
+                idx[key] = pos
+            elif type(cur) is int:
+                idx[key] = [cur, pos]
+            elif len(cur) < 4:
+                cur.append(pos)
+            else:
+                cur[0] = cur[1]
+                cur[1] = cur[2]
+                cur[2] = cur[3]
+                cur[3] = pos
+
+    def predict_256(
+        self,
+        data: bytes,
+        p_base: np.ndarray,
+        skip_mask: Optional[np.ndarray] = None,
+    ) -> np.ndarray:
+        n = len(data)
+        out = p_base.copy()
+        al = self.anchor_len
+        mm = self.max_match
+        idx = self.index
+        buf = self.corpus
+        for i in range(al, n):
+            if skip_mask is not None and skip_mask[i]:
+                continue
+            cur = idx.get(data[i - al:i])
+            if cur is None:
+                continue
+            positions = (cur,) if type(cur) is int else cur
+            best_len = 0
+            votes: Dict[int, float] = {}
+            for pos in positions:
+                ml = al
+                lim = i if i < pos else pos
+                if lim > mm:
+                    lim = mm
+                while ml < lim and data[i - ml - 1] == buf[pos - ml - 1]:
+                    ml += 1
+                nxt = buf[pos]
+                if nxt == 0:
+                    continue
+                if ml > best_len:
+                    best_len = ml
+                w_v = (ml - al + 1.0) ** 1.6
+                votes[nxt] = votes.get(nxt, 0.0) + w_v
+            if best_len >= al + 2 and votes:
+                conf = min(0.92, 1.0 - 4.5 / (best_len - al + 4.5))
+                tot_v = sum(votes.values())
+                row = out[i]
+                row *= np.float32(1.0 - conf)
+                scale = conf / tot_v
+                for sym, v in votes.items():
+                    row[sym] += np.float32(v * scale)
+        return out
+
 
 class AuraFepCorticalLanguageModel:
     """
     Motor de Lenguaje Cortical Integrado en AURA v3 Genesis + FEP-MARCUS v3:
-      - Fusiona 5 vías predictivas causales en el simplex exacto Delta^255 mediante
-        Product-of-Experts de Energía Libre Variacional (parámetros naturales ponderados
-        por precisión bayesiana Pi_m) + mezcla BMA calibrada:
-          1. Columna Cortical HPYP especialista (órdenes 0..12 con gradientes [SHH, Wnt, BMP])
-          2. Columna Estructural Skip-1 `(b_{t-4}, b_{t-3}, _, b_{t-1})`
-          3. Columna Léxica Word-Bigram `(prev_word, cur_word_prefix)`
-          4. Corteza Generalista Compartida Cross-Domain (órdenes 0..8)
-          5. Columna Neural Cortical Mountcastle de 6 capas bajo Ley de Dale estricta (W^E, W^I >= 0)
-      - Soporta inferencia ciega de modalidad por Inferencia Bayesiana Causal q(k | b_{<t})
-        sin etiquetas de dominio en test, evaluación estrictamente congelada (0 mutaciones)
-        y adaptación causal online efímera (Fast-Weights) para cambio de dominio OOD.
+      - Modo Línea Base (`enable_aura_v3_genesis=False`, FEP-MARCUS v3):
+          5 expertos (HPYP-8, Skip-1, Word-4B, Shared-6, Dale-Neural 192D) con precisiones planas.
+      - Modo Completo (`enable_aura_v3_genesis=True`, AURA v3 Genesis + FEP-MARCUS v3):
+          8 vías predictivas causales fusionadas mediante Energía Libre Variacional de Friston
+          (Product-of-Experts dinámico ponderado por entropía `W[r,m] + K[r,m]*conf_m(t)` + BMA
+          híbrido en 4 regímenes morfogenéticos `[SHH, SHH-Wnt, Wnt-BMP, Deep-BMP]`, calibrado
+          exclusivamente sobre `train_cal` + OOF pre-actualización de `train` con 0% fuga):
+            1. Columna Cortical HPYP especialista (órdenes 0..14, Bayes Empírico `[SHH, Wnt, BMP]`)
+            2. Corteza Compartida Cross-Domain HPYP (órdenes 0..14)
+            3. Corteza Compartida Normalizada en Dígitos (órdenes 0..12, `0-9 -> '0'`)
+            4. Corteza Compartida Normalizada Caso+Dígitos (órdenes 0..10, `A-Z -> a-z, 0-9 -> '0'`)
+            5. Corteza Léxica Cross-Domain Jerárquica 3 Niveles sin truncar + Lowercase
+            6. Corteza Estructural Multi-Skip Cross-Domain (`Skip-1`, `Skip-1b`, `Skip-2`)
+            7. Compleción Episódica Hipocampal CA3 de Largo Alcance (órdenes 8..64 sobre `train`)
+            8. 3 Columnas Neurales Corticales Mountcastle especializadas por dominio (L4 multi-escala
+               talamocortical 2/3/4/6B -> 256D -> 256D bajo Ley de Dale estricta `W^E, W^I >= 0`, 0 viol.)
+      - Soporta inferencia ciega de modalidad por Inferencia Bayesiana Causal q(k | b_{<t}),
+        evaluación estrictamente congelada (0 mutaciones) y adaptación causal online efímera (Fast-Weights).
     """
     DOMAINS = ("markdown", "rust", "python")
 
@@ -4119,50 +4577,124 @@ class AuraFepCorticalLanguageModel:
         self.enable_aura_v3_genesis = bool(enable_aura_v3_genesis)
         self.base_prior = np.full(256, 1.0 / 256.0, dtype=np.float32)
 
-        self.specialists: Dict[str, CorticalMorphogeneticByteColumn] = {
-            dom: CorticalMorphogeneticByteColumn(
-                max_order=12 if enable_aura_v3_genesis else 8,
-                enable_aux=True,
-                enable_aura_v3_genesis=enable_aura_v3_genesis,
+        if enable_aura_v3_genesis:
+            self.specialists: Dict[str, CorticalMorphogeneticByteColumn] = {
+                dom: CorticalMorphogeneticByteColumn(
+                    max_order=14, enable_aux=False, enable_aura_v3_genesis=True
+                )
+                for dom in self.DOMAINS
+            }
+            self.shared_cortex = CorticalMorphogeneticByteColumn(
+                max_order=14, enable_aux=False, enable_aura_v3_genesis=True
             )
-            for dom in self.DOMAINS
-        }
-        self.shared_cortex = CorticalMorphogeneticByteColumn(
-            max_order=8 if enable_aura_v3_genesis else 6,
-            enable_aux=False,
-            enable_aura_v3_genesis=enable_aura_v3_genesis,
-        )
-        self.neural_column = DaleMountcastleNeuralByteColumn(
-            ctx_len=8, d_emb=16, d_hid=192, seed=seed
-        )
+            self.shared_digit_norm: Optional[CorticalMorphogeneticByteColumn] = CorticalMorphogeneticByteColumn(
+                max_order=12, enable_aux=False, enable_aura_v3_genesis=True
+            )
+            self.shared_casedigit_norm: Optional[CorticalMorphogeneticByteColumn] = CorticalMorphogeneticByteColumn(
+                max_order=10, enable_aux=False, enable_aura_v3_genesis=True
+            )
+            self.shared_lex_skip: Optional[SharedLexicalSkipCortex] = SharedLexicalSkipCortex()
+            self.ca3_long_match: Optional[HippocampalCA3LongRangeMatch] = HippocampalCA3LongRangeMatch(
+                anchor_len=8, max_match=64
+            )
+            self.domain_neurals: Dict[str, DaleMountcastleNeuralByteColumn] = {
+                dom: DaleMountcastleNeuralByteColumn(
+                    ctx_len=8,
+                    d_emb=16,
+                    d_hid=256,
+                    seed=seed + idx * 17,
+                    enable_multiscale_l4=True,
+                )
+                for idx, dom in enumerate(self.DOMAINS)
+            }
+            self.neural_column = self.domain_neurals["markdown"]
 
-        # Precisiones variacionales por régimen morfogenético [SHH (0..2), Wnt (3..6), BMP (7..12)]
-        # sobre 5 expertos: [HPYP, Skip-1, Word, Shared, Dale-Neural]
-        self.regime_precisions = np.array(
-            [
-                [0.44, 0.14, 0.14, 0.18, 0.10],  # SHH: contextos cortos/novedosos -> mayor peso neural + shared
-                [0.58, 0.12, 0.14, 0.11, 0.05],  # Wnt: estructura meso-escala
-                [0.70, 0.08, 0.10, 0.09, 0.03],  # BMP: contextos largos de alta evidencia
-            ],
-            dtype=np.float32,
-        )
-        self.poe_alpha = 0.80 if enable_aura_v3_genesis else 0.50
+            # 4 regímenes morfogenéticos [SHH 0..2, SHH-Wnt 3..5, Wnt-BMP 6..9, Deep-BMP 10+] x 8 expertos:
+            # [Spec14, Shared14, DNorm12, CDNorm10, SharedWord3, SharedSkip, CA3, DaleNeuralV2]
+            self.friston_W = np.array(
+                [
+                    [0.08, 0.14, 0.16, 0.22, 0.20, 0.08, 0.04, 0.08],
+                    [0.12, 0.14, 0.20, 0.16, 0.18, 0.08, 0.06, 0.06],
+                    [0.16, 0.16, 0.10, 0.14, 0.20, 0.08, 0.12, 0.04],
+                    [0.18, 0.14, 0.06, 0.06, 0.14, 0.06, 0.34, 0.02],
+                ],
+                dtype=np.float32,
+            )
+            self.friston_K = np.zeros((4, 8), dtype=np.float32)
+            self.friston_B = self.friston_W / np.maximum(self.friston_W.sum(axis=1, keepdims=True), np.float32(1e-6))
+            self.regime_precisions = self.friston_W
+            self.poe_alpha = 0.94
+        else:
+            self.specialists = {
+                dom: CorticalMorphogeneticByteColumn(
+                    max_order=8, enable_aux=True, enable_aura_v3_genesis=False
+                )
+                for dom in self.DOMAINS
+            }
+            self.shared_cortex = CorticalMorphogeneticByteColumn(
+                max_order=6, enable_aux=False, enable_aura_v3_genesis=False
+            )
+            self.shared_digit_norm = None
+            self.shared_casedigit_norm = None
+            self.shared_lex_skip = None
+            self.ca3_long_match = None
+            self.domain_neurals = {}
+            self.neural_column = DaleMountcastleNeuralByteColumn(
+                ctx_len=8, d_emb=16, d_hid=192, seed=seed, enable_multiscale_l4=False
+            )
+            self.friston_W = None
+            self.friston_K = None
+            self.friston_B = None
+            self.regime_precisions = np.array(
+                [
+                    [0.44, 0.14, 0.14, 0.18, 0.10],
+                    [0.58, 0.12, 0.14, 0.11, 0.05],
+                    [0.70, 0.08, 0.10, 0.09, 0.03],
+                ],
+                dtype=np.float32,
+            )
+            self.poe_alpha = 0.50
 
         self.cycles_trained = 0
+        self.ingested_shards: set = set()
         self.total_train_bytes_seen = 0
         self.prenatal_waves_ran = False
         self.prenatal_repo_bytes = 0
         self.swr_pruning_events = 0
         self.cumulative_neural_train_buf = bytearray()
+        self.domain_neural_train_bufs: Dict[str, bytearray] = {d: bytearray() for d in self.DOMAINS}
+        self.oof_cal_stacks: List[Tuple[List[np.ndarray], np.ndarray, np.ndarray]] = []
         self.last_neural_epoch_bpb = 8.0
+
+    def _total_dale_violations(self) -> int:
+        if self.enable_aura_v3_genesis and self.domain_neurals:
+            return sum(col.dale_violations() for col in self.domain_neurals.values())
+        return self.neural_column.dale_violations()
+
+    def _aggregate_neural_synapse_stats(self) -> Dict[str, Any]:
+        if self.enable_aura_v3_genesis and self.domain_neurals:
+            tot = 0
+            zeros = 0
+            dv = 0
+            for col in self.domain_neurals.values():
+                st = col.synapse_stats()
+                tot += st["total_dale_synapses"]
+                zeros += st["zero_dale_synapses"]
+                dv += st["dale_violations"]
+            return {
+                "total_dale_synapses": tot,
+                "zero_dale_synapses": zeros,
+                "pruned_pct": round((zeros / max(1, tot)) * 100.0, 2),
+                "dale_violations": dv,
+            }
+        return self.neural_column.synapse_stats()
 
     def run_prenatal_in_utero_byte_waves(self, n_bytes: int = 4096) -> Dict[str, Any]:
         """
-        Subrutina 4: Calibra el prior base estructural y la columna neural Mountcastle con ondas
+        Subrutina 4: Calibra el prior base estructural y las columnas neurales Mountcastle con ondas
         sintéticas puras (0 bytes del repositorio) antes del Ciclo 0.
         """
         waves = generate_synthetic_prenatal_byte_waves(seed=self.seed, n_bytes=n_bytes)
-        # Prior base suave en 8 categorías universales ASCII (idéntico dentro de cada clase)
         counts = np.full(256, 0.5, dtype=np.float64)
         for b in waves:
             if 97 <= b <= 122:
@@ -4179,7 +4711,17 @@ class AuraFepCorticalLanguageModel:
                 counts[91:97] += 0.05
                 counts[123:127] += 0.05
         self.base_prior = (counts / np.sum(counts)).astype(np.float32)
-        pre_bpb = self.neural_column.run_prenatal_waves(seed=self.seed, n_bytes=n_bytes)
+
+        if self.enable_aura_v3_genesis and self.domain_neurals:
+            pre_bpbs = []
+            for idx, dom in enumerate(self.DOMAINS):
+                pre_bpbs.append(
+                    self.domain_neurals[dom].run_prenatal_waves(seed=self.seed + idx * 17, n_bytes=n_bytes)
+                )
+            pre_bpb = float(np.mean(pre_bpbs))
+        else:
+            pre_bpb = self.neural_column.run_prenatal_waves(seed=self.seed, n_bytes=n_bytes)
+
         self.prenatal_waves_ran = True
         self.prenatal_repo_bytes = 0
         return {
@@ -4189,11 +4731,373 @@ class AuraFepCorticalLanguageModel:
         }
 
     def state_fingerprint(self) -> Dict[str, Any]:
-        return {
+        fp: Dict[str, Any] = {
             "specialists": {d: self.specialists[d].state_fingerprint() for d in self.DOMAINS},
             "shared": self.shared_cortex.state_fingerprint(),
             "neural": round(self.neural_column.weight_fingerprint(), 6),
         }
+        if self.enable_aura_v3_genesis:
+            fp["shared_dnorm"] = self.shared_digit_norm.state_fingerprint() if self.shared_digit_norm else None
+            fp["shared_cdnorm"] = self.shared_casedigit_norm.state_fingerprint() if self.shared_casedigit_norm else None
+            fp["shared_lex_skip"] = self.shared_lex_skip.state_fingerprint() if self.shared_lex_skip else None
+            fp["ca3_long_match"] = self.ca3_long_match.state_fingerprint() if self.ca3_long_match else None
+            fp["domain_neurals"] = {
+                d: round(col.weight_fingerprint(), 6) for d, col in self.domain_neurals.items()
+            }
+        return fp
+
+    def _predict_aura_v3_experts(
+        self,
+        data: bytes,
+        domain: str,
+        enable_myelination: bool = True,
+    ) -> Tuple[List[np.ndarray], np.ndarray, np.ndarray]:
+        """Calcula los 8 expertos causales de AURA v3 Genesis (100% read-only, 0 lookahead)."""
+        spec = self.specialists[domain]
+        my_thr = 0.965 if (enable_myelination and self.enable_aura_v3_genesis) else 0.0
+        ph, _, _, mo_spec, mym = spec.predict_slab_256(data, self.base_prior, myelin_thresh=my_thr)
+        skip_m = mym if (my_thr > 0.0 and np.any(mym)) else None
+
+        psh, _, _, mo_sh, _ = self.shared_cortex.predict_slab_256(
+            data, self.base_prior, myelin_thresh=0.0, skip_mask=skip_m
+        )
+        assert self.shared_digit_norm is not None
+        assert self.shared_casedigit_norm is not None
+        assert self.shared_lex_skip is not None
+        assert self.ca3_long_match is not None
+
+        pdn, _, _, _, _ = self.shared_digit_norm.predict_slab_256(
+            data.translate(_DIGIT_NORM_TABLE), self.base_prior, myelin_thresh=0.0, skip_mask=skip_m
+        )
+        pcdn, _, _, _, _ = self.shared_casedigit_norm.predict_slab_256(
+            data.translate(_CASEDIGIT_NORM_TABLE), self.base_prior, myelin_thresh=0.0, skip_mask=skip_m
+        )
+        psw, psk = self.shared_lex_skip.predict_word_skip_256(data, psh, skip_mask=skip_m)
+        pca3 = self.ca3_long_match.predict_256(data, psh, skip_mask=skip_m)
+        pn = self.domain_neurals[domain].predict_probs_256(data)
+        mo_max = np.maximum(mo_spec, mo_sh)
+        return [ph, psh, pdn, pcdn, psw, psk, pca3, pn], mo_max, mym
+
+    def _fuse_aura_v3_friston_4regime(
+        self,
+        experts: List[np.ndarray],
+        matched_o: np.ndarray,
+        myelin_mask: Optional[np.ndarray],
+        W: Optional[np.ndarray] = None,
+        K: Optional[np.ndarray] = None,
+        B: Optional[np.ndarray] = None,
+        alpha: Optional[float] = None,
+    ) -> np.ndarray:
+        """
+        Fusión Variacional de Friston en 4 regímenes morfogenéticos `[SHH, SHH-Wnt, Wnt-BMP, Deep-BMP]`:
+        combina Product-of-Experts con precisión dinámica guiada por entropía `W[r,m] + K[r,m]*conf_m(t)`
+        y rescate convexo BMA, preservando exactitud en Delta^255 y atajo de mielinización saltatoria.
+        """
+        W_use = self.friston_W if W is None else W
+        K_use = self.friston_K if K is None else K
+        B_use = self.friston_B if B is None else B
+        a_use = self.poe_alpha if alpha is None else alpha
+        assert W_use is not None and K_use is not None and B_use is not None
+
+        n = len(matched_o)
+        reg = np.where(matched_o <= 2, 0, np.where(matched_o <= 5, 1, np.where(matched_o <= 9, 2, 3)))
+        logits = np.zeros((n, 256), dtype=np.float32)
+        p_bma = np.zeros((n, 256), dtype=np.float32)
+        eps = np.float32(1e-7)
+        inv_8ln2 = np.float32(1.0 / (8.0 * math.log(2.0)))
+
+        for m, p in enumerate(experts):
+            pf = np.maximum(p.astype(np.float32, copy=False), eps)
+            lp = np.log(pf)
+            conf = np.clip(np.float32(1.0) + np.einsum("ij,ij->i", pf, lp)[:, None] * inv_8ln2, 0.0, 1.0)
+            lp *= (W_use[reg, m:m + 1] + K_use[reg, m:m + 1] * conf)
+            logits += lp
+            pf *= B_use[reg, m:m + 1]
+            p_bma += pf
+
+        logits -= logits.max(axis=1, keepdims=True)
+        np.exp(logits, out=logits)
+        p_poe = logits / np.maximum(logits.sum(axis=1, keepdims=True), np.float32(1e-9))
+        p_final = np.float32(a_use) * p_poe + np.float32(1.0 - a_use) * p_bma
+
+        if myelin_mask is not None and np.any(myelin_mask):
+            p_final[myelin_mask] = experts[0][myelin_mask]
+
+        p_final /= np.maximum(p_final.sum(axis=1, keepdims=True), np.float32(1e-9))
+        return p_final
+
+    def _optimize_morphogens_on_train_cal(self, splitter: RepoTextCorpusSplitter) -> None:
+        """
+        Optimización Bayes Empírico de los parámetros morfogenéticos `[SHH, Wnt, BMP]` (d_o, th_o)
+        EXCLUSIVAMENTE sobre `train_cal` (0 bytes de held-out, sin reconstruir tablas).
+        Evalúa exactamente la probabilidad escalar P(y_i | ctx_i) sobre cadenas pre-extraídas.
+        """
+        grid = (
+            (0.46, 0.36, 0.08, 0.05, 0.45, 1.15),
+            (0.42, 0.40, 0.08, 0.05, 0.40, 1.40),
+            (0.48, 0.34, 0.06, 0.04, 0.55, 1.60),
+            (0.50, 0.32, 0.06, 0.04, 0.60, 2.00),
+            (0.44, 0.38, 0.08, 0.04, 0.50, 2.40),
+            (0.40, 0.42, 0.08, 0.04, 0.35, 1.80),
+        )
+        bp = self.base_prior
+
+        def _tune_col(col: CorticalMorphogeneticByteColumn, bufs: List[bytes], trans: Optional[bytes] = None) -> None:
+            mo = col.max_order
+            tables = col.tables
+            node0 = tables[0].get(b"")
+            if node0 is None:
+                return
+            tbl1 = tables[1] if mo >= 1 else None
+            # Pre-extraer cadenas exactas de nodos HPYP una sola vez por byte objetivo
+            samples = []
+            for b in bufs:
+                sl = b[:1024]
+                if len(sl) < 64:
+                    continue
+                inp = sl.translate(trans) if trans is not None else sl
+                n_sl = len(sl)
+                for i in range(n_sl):
+                    yi = sl[i]
+                    nd1 = tbl1.get(inp[i - 1:i]) if (i > 0 and tbl1 is not None) else None
+                    chain_hi = None
+                    if nd1 is not None and i >= 2 and mo >= 2:
+                        lim = i if i < mo else mo
+                        ch = []
+                        for o in range(2, lim + 1):
+                            nd = tables[o].get(inp[i - o:i])
+                            if nd is None:
+                                break
+                            ch.append((o, nd))
+                        if ch:
+                            chain_hi = ch
+                    samples.append((yi, float(bp[yi]), nd1, chain_hi))
+            if not samples:
+                return
+
+            best_ce = float("inf")
+            best_pair = (list(col.d), list(col.th))
+            n_samp = len(samples)
+            for d0, d1, dw, db, t0, t1 in grid:
+                ds, ths = [], []
+                for o in range(mo + 1):
+                    u = o / max(1, mo)
+                    c_shh = math.exp(-2.1 * u)
+                    c_wnt = math.exp(-2.4 * ((u - 0.5) ** 2))
+                    c_bmp = math.exp(-2.1 * (1.0 - u))
+                    ds.append(min(0.92, d0 + d1 * (1.0 - c_shh) + dw * c_wnt + db * c_bmp))
+                    ths.append(t0 + t1 * u + 0.25 * c_wnt)
+                d_0, th_0 = ds[0], ths[0]
+                d_1 = ds[1] if mo >= 1 else 0.0
+                th_1 = ths[1] if mo >= 1 else 0.0
+                if type(node0) is int:
+                    sym0 = node0 & 0xFF
+                    cnt0 = node0 >> 8
+                    inv0 = 1.0 / (cnt0 + th_0)
+                    sc0_map = None
+                    m0 = (th_0 + d_0) * inv0
+                    add0 = (cnt0 - d_0) * inv0 if cnt0 > d_0 else 0.0
+                else:
+                    tot0, uniq0, sc0_map = node0
+                    inv0 = 1.0 / (tot0 + th_0)
+                    m0 = (th_0 + d_0 * uniq0) * inv0
+                    sym0 = -1
+                    add0 = 0.0
+
+                tot_n = 0.0
+                for yi, bp_y, nd1, chain_hi in samples:
+                    p0_y = bp_y * m0
+                    if sc0_map is None:
+                        if yi == sym0:
+                            p0_y += add0
+                    else:
+                        c0 = sc0_map.get(yi, 0)
+                        if c0 > d_0:
+                            p0_y += (c0 - d_0) * inv0
+
+                    if nd1 is None:
+                        py = p0_y
+                    else:
+                        if type(nd1) is int:
+                            s1 = nd1 & 0xFF
+                            c1 = nd1 >> 8
+                            inv1 = 1.0 / (c1 + th_1)
+                            p1_y = p0_y * ((th_1 + d_1) * inv1)
+                            if s1 == yi and c1 > d_1:
+                                p1_y += (c1 - d_1) * inv1
+                        else:
+                            tot1, uniq1, sc1 = nd1
+                            inv1 = 1.0 / (tot1 + th_1)
+                            p1_y = p0_y * ((th_1 + d_1 * uniq1) * inv1)
+                            c1 = sc1.get(yi, 0)
+                            if c1 > d_1:
+                                p1_y += (c1 - d_1) * inv1
+
+                        if chain_hi is None:
+                            py = p1_y
+                        else:
+                            w = 1.0
+                            acc_y = 0.0
+                            for o, nd in reversed(chain_hi):
+                                d = ds[o]
+                                th = ths[o]
+                                if type(nd) is int:
+                                    s_k = nd & 0xFF
+                                    c_k = nd >> 8
+                                    inv = 1.0 / (c_k + th)
+                                    if s_k == yi and c_k > d:
+                                        acc_y += w * ((c_k - d) * inv)
+                                    w *= (th + d) * inv
+                                else:
+                                    tot_k, uniq_k, sc_k = nd
+                                    inv = 1.0 / (tot_k + th)
+                                    c_k = sc_k.get(yi, 0)
+                                    if c_k > d:
+                                        acc_y += w * inv * (c_k - d)
+                                    w *= (th + d * uniq_k) * inv
+                                if w < 1e-8:
+                                    break
+                            py = w * p1_y + acc_y
+                    tot_n -= math.log(py if py > 1e-12 else 1e-12)
+                ce = tot_n / n_samp
+                if ce < best_ce:
+                    best_ce = ce
+                    best_pair = (ds, ths)
+            col.d, col.th = best_pair
+
+        cal_all = [splitter.train_cal_buffers.get(d, b"") for d in self.DOMAINS]
+        _tune_col(self.shared_cortex, cal_all)
+        if self.shared_digit_norm is not None:
+            _tune_col(self.shared_digit_norm, cal_all, trans=_DIGIT_NORM_TABLE)
+        if self.shared_casedigit_norm is not None:
+            _tune_col(self.shared_casedigit_norm, cal_all, trans=_CASEDIGIT_NORM_TABLE)
+        for dom in self.DOMAINS:
+            _tune_col(self.specialists[dom], [splitter.train_cal_buffers.get(dom, b"")])
+
+    def _calibrate_aura_v3_friston_on_train_cal(
+        self,
+        splitter: RepoTextCorpusSplitter,
+        steps: int = 80,
+        cal_bytes_per_dom: int = 6144,
+        include_oof: bool = False,
+    ) -> None:
+        """
+        Optimiza (W, K, B, alpha) de la fusión Friston de 4 regímenes minimizando Cross-Entropy
+        exacta (Energía Libre Variacional) EXCLUSIVAMENTE sobre `train_cal` (+ OOF in-train).
+        """
+        cal_stacks: List[Tuple[List[np.ndarray], np.ndarray, np.ndarray]] = []
+        for dom in self.DOMAINS:
+            buf = splitter.train_cal_buffers.get(dom, b"")[:cal_bytes_per_dom]
+            if len(buf) < 64:
+                continue
+            exs, mo, _ = self._predict_aura_v3_experts(buf, domain=dom, enable_myelination=False)
+            y = np.frombuffer(buf, dtype=np.uint8).astype(np.int32)
+            cal_stacks.append((exs, mo, y))
+        if include_oof and self.oof_cal_stacks:
+            cal_stacks.extend(self.oof_cal_stacks)
+        if not cal_stacks:
+            return
+
+        M = len(cal_stacks[0][0])
+        R = 4
+        W = np.full((R, M), 1.0 / M, dtype=np.float32)
+        K = np.zeros((R, M), dtype=np.float32)
+
+        all_ps: List[List[np.ndarray]] = [[] for _ in range(M)]
+        all_mo: List[np.ndarray] = []
+        all_y: List[np.ndarray] = []
+        eps = np.float32(1e-7)
+        for exs, mo, y in cal_stacks:
+            for m in range(M):
+                all_ps[m].append(np.maximum(exs[m].astype(np.float32, copy=False), eps))
+            all_mo.append(mo)
+            all_y.append(y)
+
+        ps = [np.concatenate(all_ps[m], axis=0) for m in range(M)]
+        mo_cat = np.concatenate(all_mo, axis=0)
+        y_cat = np.concatenate(all_y, axis=0)
+        N = len(y_cat)
+        ar = np.arange(N)
+        reg = np.where(mo_cat <= 2, 0, np.where(mo_cat <= 5, 1, np.where(mo_cat <= 9, 2, 3)))
+        reg_idx = [np.flatnonzero(reg == r) for r in range(R)]
+
+        inv_8ln2 = np.float32(1.0 / (8.0 * math.log(2.0)))
+        log_ps = [np.log(p) for p in ps]
+        confs = [
+            np.clip(np.float32(1.0) + np.einsum("ij,ij->i", p, lp)[:, None] * inv_8ln2, 0.0, 1.0).astype(np.float32)
+            for p, lp in zip(ps, log_ps)
+        ]
+        true_lps = [lp[ar, y_cat] for lp in log_ps]
+
+        lr = np.float32(0.08)
+        mW = np.zeros_like(W)
+        vW = np.zeros_like(W)
+        mK = np.zeros_like(K)
+        vK = np.zeros_like(K)
+        logits = np.empty((N, 256), dtype=np.float32)
+        tmp = np.empty((N, 256), dtype=np.float32)
+
+        for step in range(1, steps + 1):
+            logits.fill(0.0)
+            for m in range(M):
+                coeff = W[reg, m:m + 1] + K[reg, m:m + 1] * confs[m]
+                np.multiply(log_ps[m], coeff, out=tmp)
+                logits += tmp
+            logits -= logits.max(axis=1, keepdims=True)
+            np.exp(logits, out=logits)
+            logits /= np.maximum(logits.sum(axis=1, keepdims=True), np.float32(1e-9))
+
+            gW = np.zeros_like(W)
+            gK = np.zeros_like(K)
+            for m in range(M):
+                d_eff = np.einsum("ij,ij->i", logits, log_ps[m]) - true_lps[m]
+                c_vec = confs[m][:, 0]
+                for r in range(R):
+                    idx_r = reg_idx[r]
+                    if len(idx_r) > 0:
+                        dr = d_eff[idx_r]
+                        gW[r, m] = np.sum(dr)
+                        gK[r, m] = np.dot(dr, c_vec[idx_r])
+            gW = gW / np.float32(N) + np.float32(0.002) * (W - np.float32(1.0 / M))
+            gK = gK / np.float32(N) + np.float32(0.004) * K
+            mW = np.float32(0.9) * mW + np.float32(0.1) * gW
+            vW = np.float32(0.999) * vW + np.float32(0.001) * (gW * gW)
+            mK = np.float32(0.9) * mK + np.float32(0.1) * gK
+            vK = np.float32(0.999) * vK + np.float32(0.001) * (gK * gK)
+            bc1 = np.float32(1.0 - (0.9 ** step))
+            bc2 = np.float32(1.0 - (0.999 ** step))
+            W -= (lr / bc1) * mW / (np.sqrt(vW / bc2) + np.float32(1e-8))
+            K -= (lr / bc1) * mK / (np.sqrt(vK / bc2) + np.float32(1e-8))
+            np.clip(W, 0.0, 2.0, out=W)
+            np.clip(K, 0.0, 1.5, out=K)
+
+        B = np.maximum(W + np.float32(0.5) * K, np.float32(1e-3))
+        B /= B.sum(axis=1, keepdims=True)
+
+        logits.fill(0.0)
+        p_bma = np.zeros((N, 256), dtype=np.float32)
+        for m in range(M):
+            logits += (W[reg, m:m + 1] + K[reg, m:m + 1] * confs[m]) * log_ps[m]
+            p_bma += B[reg, m:m + 1] * ps[m]
+        logits -= logits.max(axis=1, keepdims=True)
+        np.exp(logits, out=logits)
+        p_poe = logits / np.maximum(logits.sum(axis=1, keepdims=True), np.float32(1e-9))
+
+        p_poe_y = p_poe[ar, y_cat].astype(np.float64)
+        p_bma_y = p_bma[ar, y_cat].astype(np.float64)
+        best_a = 0.94
+        best_nll = float("inf")
+        for cand_a in (1.0, 0.97, 0.94, 0.90, 0.85, 0.80, 0.72):
+            nll = float(-np.mean(np.log(np.maximum(cand_a * p_poe_y + (1.0 - cand_a) * p_bma_y, 1e-12))))
+            if nll < best_nll:
+                best_nll = nll
+                best_a = cand_a
+
+        self.friston_W = W
+        self.friston_K = K
+        self.friston_B = B
+        self.regime_precisions = W
+        self.poe_alpha = float(best_a)
 
     def train_cycle_shard(
         self,
@@ -4201,56 +5105,123 @@ class AuraFepCorticalLanguageModel:
         splitter: RepoTextCorpusSplitter,
         neural_samples: int = 65536,
         calibrate_on_train_cal: bool = True,
+        total_cycles: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
-        Ejecuta 1 ciclo de entrenamiento progresivo sobre el shard disjunto `cycle_idx` de `train`:
-          1. Ingesta incremental del shard en cada columna especialista y en la corteza compartida.
-          2. Entrenamiento de 1 época cíclica de la Columna Neural Dale Mountcastle (L4->L2/3->L5->L6).
-          3. Calibración de precisiones variacionales FEP exclusivamente sobre `train_cal` (0 acceso a held-out).
+        Ejecuta 1 ciclo de entrenamiento progresivo sobre el shard disjunto `cycle_idx` de `train`
+        (o 1 ciclo de consolidación neural/variacional profunda cuando `cycle_idx >= splitter.n_cycles`,
+        estrictamente sobre `train`, sin duplicar conteos HPYP y con 0 acceso a held-out).
         """
         t0 = time.perf_counter()
-        shard_idx = cycle_idx % splitter.n_cycles
+        n_shards = splitter.n_cycles
+        is_consolidation = cycle_idx >= n_shards
+        shard_idx = cycle_idx % n_shards
         bytes_this_cycle = 0
-        per_dom_bytes: Dict[str, int] = {}
+        per_dom_bytes: Dict[str, int] = {d: 0 for d in self.DOMAINS}
+        gc_was = gc.isenabled()
+        if gc_was:
+            gc.disable()
+        try:
+            if not is_consolidation and shard_idx not in self.ingested_shards:
+                # Capturar muestra OOF pre-actualización (100% no vista pero estrictamente dentro de `train`)
+                if self.enable_aura_v3_genesis and cycle_idx >= 4 and len(self.oof_cal_stacks) < 12:
+                    for dom in self.DOMAINS:
+                        docs_peek = splitter.train_shards[dom][shard_idx]
+                        if not docs_peek:
+                            continue
+                        oof_buf = b"\n\n".join(docs_peek)[:1024]
+                        if len(oof_buf) >= 256:
+                            exs_o, mo_o, _ = self._predict_aura_v3_experts(oof_buf, domain=dom, enable_myelination=False)
+                            y_o = np.frombuffer(oof_buf, dtype=np.uint8).astype(np.int32)
+                            self.oof_cal_stacks.append((exs_o, mo_o, y_o))
 
-        for dom in self.DOMAINS:
-            docs = splitter.train_shards[dom][shard_idx]
-            dom_b = 0
-            for doc in docs:
-                self.specialists[dom].fit_bytes(doc)
-                self.shared_cortex.fit_bytes(doc)
-                dom_b += len(doc)
-                # Acumular muestra representativa acotada (hasta 1.5 MB) para épocas neurales rápidas
-                if len(self.cumulative_neural_train_buf) < 1_500_000:
-                    self.cumulative_neural_train_buf.extend(doc[:min(len(doc), 32768)])
-                    self.cumulative_neural_train_buf.append(10)
-            per_dom_bytes[dom] = dom_b
-            bytes_this_cycle += dom_b
+                for dom in self.DOMAINS:
+                    docs = splitter.train_shards[dom][shard_idx]
+                    dom_b = 0
+                    for doc in docs:
+                        self.specialists[dom].fit_bytes(doc)
+                        self.shared_cortex.fit_bytes(doc)
+                        if self.enable_aura_v3_genesis:
+                            if self.shared_digit_norm is not None:
+                                self.shared_digit_norm.fit_transformed_bytes(doc, _DIGIT_NORM_TABLE)
+                            if self.shared_casedigit_norm is not None:
+                                self.shared_casedigit_norm.fit_transformed_bytes(doc, _CASEDIGIT_NORM_TABLE)
+                            if self.shared_lex_skip is not None:
+                                self.shared_lex_skip.fit_bytes(doc)
+                            if self.ca3_long_match is not None:
+                                self.ca3_long_match.fit_bytes(doc)
+                            if len(self.domain_neural_train_bufs[dom]) < 2_200_000:
+                                self.domain_neural_train_bufs[dom].extend(doc)
+                                self.domain_neural_train_bufs[dom].append(10)
+                        else:
+                            if len(self.cumulative_neural_train_buf) < 1_500_000:
+                                self.cumulative_neural_train_buf.extend(doc[:min(len(doc), 32768)])
+                                self.cumulative_neural_train_buf.append(10)
+                        dom_b += len(doc)
+                    per_dom_bytes[dom] = dom_b
+                    bytes_this_cycle += dom_b
+                self.ingested_shards.add(shard_idx)
+                self.total_train_bytes_seen += bytes_this_cycle
+                if self.enable_aura_v3_genesis:
+                    gc.freeze()
 
-        self.cycles_trained += 1
-        self.total_train_bytes_seen += bytes_this_cycle
+            self.cycles_trained += 1
 
-        lr_cycle = max(1.5e-3, 4.5e-3 * (0.88 ** max(0, self.cycles_trained - 1)))
-        neural_bpb = self.neural_column.train_cyclic_epoch(
-            bytes(self.cumulative_neural_train_buf),
-            n_samples=neural_samples,
-            batch_size=1024,
-            lr=lr_cycle,
-        )
-        self.last_neural_epoch_bpb = float(neural_bpb)
+            if self.enable_aura_v3_genesis and self.domain_neurals:
+                tot_c = max(n_shards, total_cycles or n_shards)
+                progress = min(1.0, (self.cycles_trained - 1) / max(1, tot_c))
+                lr_cycle = 1.5e-3 + 4.5e-3 * 0.5 * (1.0 + math.cos(math.pi * progress))
+                n_samp = int(neural_samples * (1.25 if is_consolidation else 1.0))
+                dom_bpbs = []
+                for dom in self.DOMAINS:
+                    buf_d = bytes(self.domain_neural_train_bufs[dom])
+                    if len(buf_d) > 32:
+                        b_d = self.domain_neurals[dom].train_cyclic_epoch(
+                            buf_d, n_samples=n_samp, batch_size=512, lr=lr_cycle
+                        )
+                        dom_bpbs.append(b_d)
+                neural_bpb = float(np.mean(dom_bpbs)) if dom_bpbs else 8.0
+                self.last_neural_epoch_bpb = neural_bpb
 
-        if calibrate_on_train_cal and self.enable_aura_v3_genesis and self.cycles_trained >= 2:
-            self._calibrate_precisions_on_train_cal(splitter)
+                if calibrate_on_train_cal:
+                    is_final_c = (total_cycles is not None and self.cycles_trained >= total_cycles)
+                    if self.cycles_trained == 4:
+                        self._calibrate_aura_v3_friston_on_train_cal(
+                            splitter, steps=35, cal_bytes_per_dom=2048, include_oof=False
+                        )
+                    elif self.cycles_trained == n_shards and not (total_cycles is not None and total_cycles > n_shards):
+                        self._optimize_morphogens_on_train_cal(splitter)
+                        self._calibrate_aura_v3_friston_on_train_cal(
+                            splitter, steps=60, cal_bytes_per_dom=4096, include_oof=True
+                        )
+                    elif is_final_c:
+                        self._optimize_morphogens_on_train_cal(splitter)
+                        self._calibrate_aura_v3_friston_on_train_cal(
+                            splitter, steps=60, cal_bytes_per_dom=4096, include_oof=True
+                        )
+            else:
+                lr_cycle = max(1.5e-3, 4.5e-3 * (0.88 ** max(0, self.cycles_trained - 1)))
+                neural_bpb = self.neural_column.train_cyclic_epoch(
+                    bytes(self.cumulative_neural_train_buf),
+                    n_samples=neural_samples,
+                    batch_size=1024,
+                    lr=lr_cycle,
+                )
+                self.last_neural_epoch_bpb = float(neural_bpb)
+        finally:
+            if gc_was:
+                gc.enable()
 
         dt = time.perf_counter() - t0
         return {
             "cycle": self.cycles_trained,
             "shard_idx": shard_idx,
+            "phase": "CONSOLIDATION" if is_consolidation else "INGESTION",
             "bytes_ingested_cycle": bytes_this_cycle,
             "total_train_bytes_seen": self.total_train_bytes_seen,
             "per_domain_bytes": per_dom_bytes,
             "neural_train_bpb": round(float(neural_bpb), 4),
-            "dale_violations": self.neural_column.dale_violations(),
+            "dale_violations": self._total_dale_violations(),
             "train_seconds": round(dt, 2),
         }
 
@@ -4267,14 +5238,13 @@ class AuraFepCorticalLanguageModel:
         poe_alpha: Optional[float] = None,
     ) -> np.ndarray:
         """
-        Fusión Variacional por Energía Libre (Product-of-Experts en parámetros naturales + BMA)
-        sobre el simplex exacto Delta^255 con atajo de mielinización saltatoria (`System1Fast`).
+        Fusión Variacional por Energía Libre (Product-of-Experts + BMA) para la línea base FEP-MARCUS v3.
         """
         rp = self.regime_precisions if regime_precisions is None else regime_precisions
         alpha = self.poe_alpha if poe_alpha is None else poe_alpha
 
         regime_idx = np.where(matched_o <= 2, 0, np.where(matched_o <= 6, 1, 2))
-        w = rp[regime_idx]  # (N, 5)
+        w = rp[regime_idx]
         w0 = w[:, 0:1]
         w1 = w[:, 1:2]
         w2 = w[:, 2:3]
@@ -4302,94 +5272,25 @@ class AuraFepCorticalLanguageModel:
         p_final /= np.maximum(p_final.sum(axis=1, keepdims=True), np.float32(1e-9))
         return p_final
 
-    def _calibrate_precisions_on_train_cal(self, splitter: RepoTextCorpusSplitter) -> None:
-        """
-        Calibra las precisiones variacionales Pi_m y la mezcla PoE/BMA EXCLUSIVAMENTE sobre
-        el corte interno `train_cal` (0 bytes de held-out).
-        """
-        # Evaluar expertos sobre 2 KiB por dominio de train_cal (solo 6 KiB -> <0.5s)
-        stacks = []
-        for dom in self.DOMAINS:
-            buf = splitter.train_cal_buffers.get(dom, b"")[:2048]
-            if len(buf) < 64:
-                continue
-            ph, ps, pw, mo, mym = self.specialists[dom].predict_slab_256(
-                buf, self.base_prior, myelin_thresh=0.0
-            )
-            psh, _, _, _, _ = self.shared_cortex.predict_slab_256(
-                buf, self.base_prior, myelin_thresh=0.0
-            )
-            pn = self.neural_column.predict_probs_256(buf)
-            y = np.frombuffer(buf, dtype=np.uint8).astype(np.int32)
-            stacks.append((ph, ps, pw, psh, pn, mo, mym, y))
-
-        if not stacks:
-            return
-
-        candidates = [
-            (
-                np.array([
-                    [0.44, 0.14, 0.14, 0.18, 0.10],
-                    [0.58, 0.12, 0.14, 0.11, 0.05],
-                    [0.70, 0.08, 0.10, 0.09, 0.03],
-                ], dtype=np.float32),
-                0.80,
-            ),
-            (
-                np.array([
-                    [0.42, 0.15, 0.15, 0.20, 0.08],
-                    [0.60, 0.12, 0.14, 0.11, 0.03],
-                    [0.72, 0.08, 0.10, 0.08, 0.02],
-                ], dtype=np.float32),
-                0.85,
-            ),
-            (
-                np.array([
-                    [0.48, 0.14, 0.14, 0.19, 0.05],
-                    [0.64, 0.11, 0.13, 0.10, 0.02],
-                    [0.76, 0.07, 0.09, 0.07, 0.01],
-                ], dtype=np.float32),
-                0.82,
-            ),
-            (
-                np.array([
-                    [0.40, 0.14, 0.14, 0.20, 0.12],
-                    [0.56, 0.13, 0.15, 0.12, 0.04],
-                    [0.68, 0.09, 0.11, 0.10, 0.02],
-                ], dtype=np.float32),
-                0.78,
-            ),
-        ]
-
-        best_ce = float("inf")
-        best_cfg = (self.regime_precisions, self.poe_alpha)
-        for cand_rp, cand_alpha in candidates:
-            tot_n = 0.0
-            tot_b = 0
-            for ph, ps, pw, psh, pn, mo, mym, y in stacks:
-                pf = self._fuse_experts_probs(
-                    ph, ps, pw, psh, pn, mo, mym, regime_precisions=cand_rp, poe_alpha=cand_alpha
-                )
-                py = np.maximum(pf[np.arange(len(y)), y].astype(np.float64), 1e-12)
-                tot_n += float(-np.sum(np.log(py)))
-                tot_b += len(y)
-            ce = tot_n / max(1, tot_b)
-            if ce < best_ce:
-                best_ce = ce
-                best_cfg = (cand_rp, cand_alpha)
-
-        self.regime_precisions = best_cfg[0].copy()
-        self.poe_alpha = float(best_cfg[1])
-
     def execute_microglia_swr_pruning(self) -> Dict[str, Any]:
         """Subrutina 3a: Poda física por Microglía en sueño SWR sobre sinapsis Dale neurales y árbol cortical."""
         self.swr_pruning_events += 1
-        neural_st = self.neural_column.microglia_prune(threshold=0.015)
-        pruned_branches = 0
-        for dom in self.DOMAINS:
-            pruned_branches += self.specialists[dom].microglia_prune_tree(
-                min_order=11, max_singletons_per_order=140000
-            )
+        if self.enable_aura_v3_genesis and self.domain_neurals:
+            for col in self.domain_neurals.values():
+                col.microglia_prune(threshold=0.012)
+            neural_st = self._aggregate_neural_synapse_stats()
+            pruned_branches = 0
+            for dom in self.DOMAINS:
+                pruned_branches += self.specialists[dom].microglia_prune_tree(
+                    min_order=14, max_singletons_per_order=220000
+                )
+        else:
+            neural_st = self.neural_column.microglia_prune(threshold=0.015)
+            pruned_branches = 0
+            for dom in self.DOMAINS:
+                pruned_branches += self.specialists[dom].microglia_prune_tree(
+                    min_order=11, max_singletons_per_order=140000
+                )
         return {
             "swr_pruning_events": self.swr_pruning_events,
             "neural_dale_pruned_synapses": neural_st["zero_dale_synapses"],
@@ -4411,12 +5312,16 @@ class AuraFepCorticalLanguageModel:
         """
         Retorna `(p_final (N,256), p_neural (N,256), myelin_mask (N,))` estrictamente causal y read-only.
         """
+        if self.enable_aura_v3_genesis:
+            experts, mo_max, mym = self._predict_aura_v3_experts(
+                data, domain=domain, enable_myelination=enable_myelination
+            )
+            p_final = self._fuse_aura_v3_friston_4regime(experts, mo_max, mym)
+            return p_final, experts[-1], mym
+
         spec = self.specialists[domain]
-        my_thr = 0.90 if (enable_myelination and self.enable_aura_v3_genesis) else 0.0
-        ph, ps, pw, mo, mym = spec.predict_slab_256(data, self.base_prior, myelin_thresh=my_thr)
-        psh, _, _, _, _ = self.shared_cortex.predict_slab_256(
-            data, self.base_prior, myelin_thresh=0.0, skip_mask=mym if my_thr > 0.0 else None
-        )
+        ph, ps, pw, mo, mym = spec.predict_slab_256(data, self.base_prior, myelin_thresh=0.0)
+        psh, _, _, _, _ = self.shared_cortex.predict_slab_256(data, self.base_prior, myelin_thresh=0.0)
         pn = self.neural_column.predict_probs_256(data)
         p_final = self._fuse_experts_probs(ph, ps, pw, psh, pn, mo, mym)
         return p_final, pn, mym
@@ -4440,7 +5345,7 @@ class AuraFepCorticalLanguageModel:
             p_final,
             data,
             myelin_mask=mym,
-            dale_violations=self.neural_column.dale_violations(),
+            dale_violations=self._total_dale_violations(),
             frozen_verified=frozen_ok,
         )
         y_arr = np.frombuffer(data, dtype=np.uint8).astype(np.int32)
@@ -4478,34 +5383,63 @@ class AuraFepCorticalLanguageModel:
                 continue
             total_docs += 1
             n = len(buf)
-            # Calcular distribuciones causales de los 3 especialistas (sin usar true_dom)
             dom_probs = {}
-            for d in self.DOMAINS:
-                pf, _, _ = self.predict_domain_probs_256(buf, domain=d, enable_myelination=True)
-                dom_probs[d] = pf
+            if self.enable_aura_v3_genesis:
+                # Reutilizar los 5 expertos compartidos (independientes de dominio) una sola vez por flujo
+                assert self.shared_digit_norm is not None
+                assert self.shared_casedigit_norm is not None
+                assert self.shared_lex_skip is not None
+                assert self.ca3_long_match is not None
+                psh, _, _, mo_sh, _ = self.shared_cortex.predict_slab_256(buf, self.base_prior, myelin_thresh=0.0)
+                pdn, _, _, _, _ = self.shared_digit_norm.predict_slab_256(
+                    buf.translate(_DIGIT_NORM_TABLE), self.base_prior, myelin_thresh=0.0
+                )
+                pcdn, _, _, _, _ = self.shared_casedigit_norm.predict_slab_256(
+                    buf.translate(_CASEDIGIT_NORM_TABLE), self.base_prior, myelin_thresh=0.0
+                )
+                psw, psk = self.shared_lex_skip.predict_word_skip_256(buf, psh)
+                pca3 = self.ca3_long_match.predict_256(buf, psh)
+                for d in self.DOMAINS:
+                    ph, _, _, mo_sp, mym = self.specialists[d].predict_slab_256(
+                        buf, self.base_prior, myelin_thresh=0.965
+                    )
+                    pn = self.domain_neurals[d].predict_probs_256(buf)
+                    mo_max = np.maximum(mo_sp, mo_sh)
+                    dom_probs[d] = self._fuse_aura_v3_friston_4regime(
+                        [ph, psh, pdn, pcdn, psw, psk, pca3, pn], mo_max, mym
+                    )
+            else:
+                for d in self.DOMAINS:
+                    pf, _, _ = self.predict_domain_probs_256(buf, domain=d, enable_myelination=True)
+                    dom_probs[d] = pf
 
-            q = np.full(len(self.DOMAINS), 1.0 / len(self.DOMAINS), dtype=np.float64)
+            p0 = dom_probs[self.DOMAINS[0]]
+            p1 = dom_probs[self.DOMAINS[1]]
+            p2 = dom_probs[self.DOMAINS[2]]
+            q0 = q1 = q2 = 1.0 / 3.0
             leak = 0.002
-            blind_p = np.empty((n, 256), dtype=np.float32)
+            stay = 1.0 - leak
+            leak_third = leak / 3.0
+            q_hist = np.empty((n, 3), dtype=np.float32)
             for i in range(n):
-                # 1. Predecir b_i ANTES de observar b_i usando posterior causal q(k | b_{<i})
-                mix = (
-                    q[0] * dom_probs[self.DOMAINS[0]][i]
-                    + q[1] * dom_probs[self.DOMAINS[1]][i]
-                    + q[2] * dom_probs[self.DOMAINS[2]][i]
-                )
-                blind_p[i] = mix
-                # 2. Actualizar posterior bayesiano q(k | b_{<=i}) con verosimilitud causal observada
+                q_hist[i, 0] = q0
+                q_hist[i, 1] = q1
+                q_hist[i, 2] = q2
                 bi = buf[i]
-                likes = np.array(
-                    [max(float(dom_probs[d][i, bi]), 1e-9) for d in self.DOMAINS],
-                    dtype=np.float64,
-                )
-                q = q * likes
-                q /= max(float(np.sum(q)), 1e-12)
-                q = (1.0 - leak) * q + (leak / len(self.DOMAINS))
+                l0 = float(p0[i, bi])
+                l1 = float(p1[i, bi])
+                l2 = float(p2[i, bi])
+                q0 *= l0 if l0 > 1e-9 else 1e-9
+                q1 *= l1 if l1 > 1e-9 else 1e-9
+                q2 *= l2 if l2 > 1e-9 else 1e-9
+                s_q = q0 + q1 + q2
+                inv_sq = 1.0 / (s_q if s_q > 1e-12 else 1e-12)
+                q0 = stay * (q0 * inv_sq) + leak_third
+                q1 = stay * (q1 * inv_sq) + leak_third
+                q2 = stay * (q2 * inv_sq) + leak_third
 
-            inferred_dom = self.DOMAINS[int(np.argmax(q))]
+            blind_p = q_hist[:, 0:1] * p0 + q_hist[:, 1:2] * p1 + q_hist[:, 2:3] * p2
+            inferred_dom = self.DOMAINS[0 if (q0 >= q1 and q0 >= q2) else (1 if q1 >= q2 else 2)]
             if inferred_dom == true_dom:
                 correct_lock += 1
             all_probs.append(blind_p)
@@ -4516,7 +5450,7 @@ class AuraFepCorticalLanguageModel:
         metrics = compute_exact_byte_lm_metrics(
             merged_probs,
             bytes(all_bytes),
-            dale_violations=self.neural_column.dale_violations(),
+            dale_violations=self._total_dale_violations(),
             frozen_verified=(fp_before == fp_after),
         )
         metrics["blind_domain_lock_accuracy_pct"] = round((correct_lock / max(1, total_docs)) * 100.0, 2)
@@ -4541,8 +5475,9 @@ class AuraFepCorticalLanguageModel:
         p_frozen, _, mym = self.predict_domain_probs_256(data, domain=domain, enable_myelination=True)
 
         n = len(data)
+        # Caché episódico rápido (6 KiB): usa descuento/concentración calibrados para memoria corta efímera
         fast_col = CorticalMorphogeneticByteColumn(
-            max_order=6, enable_aux=False, enable_aura_v3_genesis=self.enable_aura_v3_genesis
+            max_order=6, enable_aux=False, enable_aura_v3_genesis=False
         )
         p_online = np.empty((n, 256), dtype=np.float32)
         inc = fast_col._inc_packed
@@ -4551,7 +5486,6 @@ class AuraFepCorticalLanguageModel:
 
         for i in range(n):
             b = data[i]
-            # 1. Predecir con Fast-Weights causal sobre b_{<i} (NUNCA ve b_i antes de predecir)
             if i > 0:
                 lim = i if i < 6 else 6
                 row = p_frozen[i].copy()
@@ -4587,7 +5521,6 @@ class AuraFepCorticalLanguageModel:
             else:
                 p_online[i] = p_frozen[i]
 
-            # 2. Actualizar memoria efímera Fast-Weights DESPUÉS de emitir P(b_i | b_{<i})
             lim_u = i if i < 6 else 6
             for o in range(lim_u, -1, -1):
                 ctx = data[i - o:i] if o else b""
@@ -4599,7 +5532,7 @@ class AuraFepCorticalLanguageModel:
             p_online,
             data,
             myelin_mask=mym,
-            dale_violations=self.neural_column.dale_violations(),
+            dale_violations=self._total_dale_violations(),
             frozen_verified=(fp_before == fp_after),
         )
         metrics["eval_seconds"] = round(time.perf_counter() - t0, 3)
@@ -4619,7 +5552,7 @@ class AuraFepCorticalLanguageModel:
         rng = np.random.default_rng(seed ^ 0x6E17A7E)
         buf = bytearray(prompt.encode("utf-8"))
         for _ in range(n_bytes):
-            window = bytes(buf[-32:])
+            window = bytes(buf[-24:])
             pf, _, _ = self.predict_domain_probs_256(window + b" ", domain=domain, enable_myelination=False)
             probs = pf[-1].astype(np.float64)
             logp = np.log(np.maximum(probs, 1e-12)) / max(0.15, float(temperature))
@@ -4712,7 +5645,7 @@ class AuraFepCorticalLanguageModel:
             "neural_only_ppl_byte": round(2.0 ** min(g_neural_bpb, 40.0), 6),
             "max_prob_norm_error": float(f"{max_norm_err:.3e}"),
             "nan_inf_count": nan_inf_total,
-            "dale_violations": self.neural_column.dale_violations(),
+            "dale_violations": self._total_dale_violations(),
             "frozen_verified": all_frozen,
             "mode": "FROZEN",
         }
@@ -4723,11 +5656,14 @@ class AuraFepCorticalLanguageModel:
             "enable_aura_v3_genesis": self.enable_aura_v3_genesis,
             "global_held_out": global_held_out,
             "per_domain_held_out": per_domain,
-            "neural_synapses": self.neural_column.synapse_stats(),
+            "neural_synapses": self._aggregate_neural_synapse_stats(),
             "cortical_branches_pruned": sum(
                 self.specialists[d].pruned_cortical_branches for d in self.DOMAINS
             ),
             "regime_precisions": np.round(self.regime_precisions, 4).tolist(),
+            "friston_entropy_gains": (
+                np.round(self.friston_K, 4).tolist() if self.friston_K is not None else None
+            ),
             "poe_alpha": round(self.poe_alpha, 4),
         }
 
@@ -4735,20 +5671,19 @@ class AuraFepCorticalLanguageModel:
             result["canonical_eval_md_frozen"] = self.evaluate_sequence_frozen(
                 splitter.canonical_eval_md, domain="markdown", enable_myelination=True
             )
-        if include_canonical and splitter.canonical_shift_rust:
+        if include_canonical and include_online_shift and splitter.canonical_shift_rust:
             result["canonical_shift_rust_frozen"] = self.evaluate_sequence_frozen(
                 splitter.canonical_shift_rust, domain="rust", enable_myelination=True
             )
             result["canonical_shift_rust_ood_md_only_frozen"] = self.evaluate_sequence_frozen(
                 splitter.canonical_shift_rust, domain="markdown", enable_myelination=True
             )
-            if include_online_shift:
-                result["canonical_shift_rust_online_causal"] = self.evaluate_sequence_online_causal(
-                    splitter.canonical_shift_rust, domain="rust"
-                )
-                result["canonical_shift_rust_ood_md_online_causal"] = self.evaluate_sequence_online_causal(
-                    splitter.canonical_shift_rust, domain="markdown"
-                )
+            result["canonical_shift_rust_online_causal"] = self.evaluate_sequence_online_causal(
+                splitter.canonical_shift_rust, domain="rust"
+            )
+            result["canonical_shift_rust_ood_md_online_causal"] = self.evaluate_sequence_online_causal(
+                splitter.canonical_shift_rust, domain="markdown"
+            )
 
         if include_blind_routing:
             result["blind_bayesian_held_out"] = self.evaluate_blind_bayesian_stream(

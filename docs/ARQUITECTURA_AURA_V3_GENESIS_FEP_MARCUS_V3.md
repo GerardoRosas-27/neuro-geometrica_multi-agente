@@ -180,18 +180,19 @@ En investigación de IA es demasiado frecuente construir arquitecturas bio-inspi
 
 ### 5.4 Medición Real de BPB, BPC, Cross-Entropy Loss (nats) y Perplejidad (PPL) en Held-Out Sin Fuga (`exp/aura-v3-fep-marcus-bpb`)
 
-Integrada en [`scripts/fep_marcus_core.py`](../scripts/fep_marcus_core.py) (`AuraFepCorticalLanguageModel` + `DaleMountcastleNeuralByteColumn` + `RepoTextCorpusSplitter`) y [`scripts/marcus_fep_multiagent_infinite_loop.py`](../scripts/marcus_fep_multiagent_infinite_loop.py) manteniendo `aura-engine/crates/*.rs` intactos (`AUDIT-v3 PASS`, `SHA-256 = cc90b95f...171`). Partición estricta sin fuga sobre texto real del repositorio (`312` archivos train / `66` archivos held-out no vistos, `0` archivos/hashes/bloques `128 B` compartidos, `0` solapamiento `64 B` con `eval_md`/`shift_rust`, evaluación 100% congelada):
+Integrada en [`scripts/fep_marcus_core.py`](../scripts/fep_marcus_core.py) (`AuraFepCorticalLanguageModel`, `DaleMountcastleNeuralByteColumn` con L4 multi-escala, `SharedLexicalSkipCortex`, `HippocampalCA3LongRangeMatch` y `RepoTextCorpusSplitter`) y [`scripts/marcus_fep_multiagent_infinite_loop.py`](../scripts/marcus_fep_multiagent_infinite_loop.py) manteniendo `aura-engine/crates/*.rs` intactos (`AUDIT-v3 PASS`, `SHA-256 = cc90b95f...171`). Partición estricta e inmutable sin fuga sobre texto real del repositorio (`310` archivos train `SHA=193c02657090c929` / `65` archivos held-out no vistos `SHA=cc55156e263c4dee`, `0` archivos/hashes/bloques `128 B` cross-domain compartidos, `0` solapamiento `64 B` con `eval_md`/`shift_rust`, evaluación 100% congelada):
 
-| Evaluación Held-Out (100% Congelada, `seed = 42`, `8` Ciclos) | `FEP-MARCUS v3` (Brazo 1) | `AURA v3 Genesis + FEP-MARCUS v3` (Brazo 2) | Referencia `main@120e1e8` / Meta |
+| Evaluación Held-Out (100% Congelada, `seed = 42`, Corpus Inmutable) | `FEP-MARCUS v3` (Brazo 1, 5 exp., `8` cic.) | `AURA v3 Genesis + FEP-MARCUS v3` (Brazo 2 v3, 8 exp., `10` cic.) | Ventaja Brazo 2 v3 / vs `main@120e1e8` |
 |---|:---:|:---:|:---:|
-| **Ciclo 0 Prenatal (`0 B` del repo)** | `8.0011 BPB` (`PPL 256.20`) | **`6.0727 BPB` (`PPL 67.31`)** | **`-1.9284 BPB`** in-utero sin fuga |
-| **Held-Out Estándar (`49,089 B`, `48,488 chars`)** | `1.7015 BPB` / `1.7226 BPC` / `PPL 3.25` | **`1.7021 BPB` / `1.7232 BPC` / `1.1798 nats` / `PPL_b 3.2538` / `PPL_c 3.3018`** | **PASS** (`<=1.80 / <=3.50`, Top-1 `70.7%`) |
-| **Enrutamiento Bayesiano Ciego (`24,576 B`, `0` etiquetas)** | `1.6653 BPB` (`PPL 3.17`) | **`1.6682 BPB` / `1.6889 BPC` / `1.1563 nats` / `PPL_b 3.1782`** | **PASS** (supera etiquetas de extensión) |
-| **Full Confirm Held-Out (`172,704 B`, `170,845 chars`)** | `1.7977 BPB` / `1.8173 BPC` / `PPL_c 3.5242` (**FAIL**) | **`1.7786 BPB` / `1.7979 BPC` / `1.2328 nats` / `PPL_b 3.4308` / `PPL_c 3.4771`** (**PASS**) | **Solo Brazo 2 pasa en `172.7 KiB`** (`3/3` mod.) |
-| **Canónico `aura-engine` `eval_md` (`6,144 B`)** | `1.7853 BPB` (`PPL 3.45`) | **`1.7714 BPB` (`PPL_b 3.4139`, Top-1 `68.3%`)** | **`-1.9679 BPB`** vs `3.7393 BPB` (`3.91×` PPL) |
-| **Canónico `shift_rust` (`6,144 B`, Congelado / Online)** | `2.0921` / **`1.6558 BPB`** | **`2.0401`** / `1.7609 BPB` | vs `7.6332` congelado / `5.0989` online |
+| **Ciclo 0 Prenatal (`0 B` del repo)** | `8.0013 BPB` (`PPL 256.24`) | **`6.0904 BPB` (`PPL 68.14`)** | **`-1.9110 BPB`** in-utero sin fuga |
+| **Held-Out Estándar (`49,089 B`, `48,512 chars`)** | `1.7652 BPB` / `1.7862 BPC` / `PPL_b 3.3992` | **`1.5450 BPB` / `1.5633 BPC` / `1.0709 nats` / `PPL_b 2.9180` / `PPL_c 2.9554`** | **`-0.2202 BPB` vs B1** (`-0.2039` @ c8) / **`-2.1943` vs `main`** |
+| **Enrutamiento Bayesiano Ciego (`24,576 B`, `0` etiquetas)** | `1.6640 BPB` (`PPL_b 3.1689`, Lock `100%`) | **`1.5201 BPB` / `1.5389 BPC` / `1.0537 nats` / `PPL_b 2.8681` (Lock `100%`)** | **`-0.1439 BPB` vs B1** (supera etiquetas de extensión) |
+| **Full Confirm Held-Out (`164,629 B`, `162,829 chars`)** | `1.7966 BPB` / `1.8165 BPC` / `PPL_c 3.5222` (**FAIL**) | **`1.6027 BPB` / `1.6204 BPC` / `1.1109 nats` / `PPL_b 3.0370` / `PPL_c 3.0746`** (**PASS**) | **`-0.1939 BPB` vs B1** (`10.15×` más que v1, `3/3` mod., `ECE 0.0185`) |
+| **Solo Componente Neural Dale (Full Confirm)** | `3.8823 BPB` (`152K` sinapsis, `0` viol.) | **`3.0056 BPB` (`PPL_b 8.0310`, `805K` sinapsis Dale, `0` viol.)** | **`-0.8767 BPB` vs B1** / **`-0.7337` vs `3.7393`** |
+| **Canónico `aura-engine` `eval_md` (`6,144 B`)** | `1.8005 BPB` (`PPL_b 3.4835`) | **`1.6524 BPB` (`PPL_b 3.1436`, Top-1 `70.4%`)** | **`-0.1481 BPB` vs B1** / **`-2.0869` vs `main`** (`4.25×` PPL) |
+| **Canónico `shift_rust` (`6,144 B`, Congelado / Online)** | `2.0921` / `1.6560 BPB` | **`1.9218`** / **`1.5787 BPB`** (`PPL 2.99`, Top-1 `74.0%`) | **`-0.1704`** / **`-0.0773 BPB` vs B1** |
 
-*(Reporte científico completo con convergencia Ciclo 0 $\to$ 8, muestras verbatim, auditoría anti-fuga y autocrítica honesta en [`docs/aura_v3/RESULTADOS_BPB_AURA_V3_FEP_MARCUS_V3.md`](aura_v3/RESULTADOS_BPB_AURA_V3_FEP_MARCUS_V3.md)).*
+*(Reporte científico completo con arquitectura de 8 expertos, fusión dinámica de Friston por entropía en 4 regímenes, progresión `v1 -> v3`, muestras verbatim, auditoría anti-fuga y autocrítica honesta en [`docs/aura_v3/RESULTADOS_BPB_AURA_V3_FEP_MARCUS_V3.md`](aura_v3/RESULTADOS_BPB_AURA_V3_FEP_MARCUS_V3.md)).*
 
 ---
 
@@ -199,16 +200,16 @@ Integrada en [`scripts/fep_marcus_core.py`](../scripts/fep_marcus_core.py) (`Aur
 
 | Pregunta Científica | Arquitectura Ganadora | Razón Mecanicista |
 | :--- | :--- | :--- |
-| **¿Cuál gana globalmente?** | **`AURA v3 Genesis + FEP-MARCUS v3`** | Combina la menor Energía Libre/sorpresa, `100%` invariantes formales, `4.34×` mayor ahorro de cómputo y `50.72%` de poda física. |
-| **¿Cuál tiende a tener cognición?** | **`AURA v3 Genesis + FEP-MARCUS v3`** | Única con metacognición de 2º orden calibrada (`Brier = 0.0030`), veto anti-ilusión (`100%`), control dual S1/S2 y curiosidad epistémica activa $G(\pi)$. |
-| **¿Cuál tiene modelo de mundo interno?** | **`AURA v3 Genesis + FEP-MARCUS v3`** *(Simbólico/Físico/Causal)* y **`AURA v3 Genesis`** *(Dinámico/Variedades)* | Une `WorldState` auditable + física Spelke 3D + grafo causal Pearl $do(X)$ + memoria Hopfield/SWR + variedades Lie/simplécticas. |
-| **¿Cuál predice y optimiza mejor su error?** | **`AURA v3 Genesis`** *(OOD dinámica/bytes)* y **`AURA v3 Genesis + FEP-MARCUS v3`** *(FEP/ELBO & BPB/PPL)* | Líder en `new_med_log = -5.3748`, `RS-A = -6.7084`, `shift_rust = 5.0989 bpb`, `BM-6 = 40.0%`, `BM-9 = 9.70 nats`, `F_final = 36.64 nats` y Full Confirm held-out `1.7786 BPB / 1.7979 BPC / PPL 3.4308`. |
+| **¿Cuál gana globalmente?** | **`AURA v3 Genesis + FEP-MARCUS v3`** | Combina la menor Energía Libre/sorpresa, `100%` invariantes formales, `4.46×` mayor ahorro de cómputo y `50.86%` de poda física cognitiva (`50.02%` LM). |
+| **¿Cuál tiende a tener cognición?** | **`AURA v3 Genesis + FEP-MARCUS v3`** | Única con metacognición de 2º orden calibrada (`Brier = 0.0021`), veto anti-ilusión (`100%`), control dual S1/S2 y curiosidad epistémica activa $G(\pi)$. |
+| **¿Cuál tiene modelo de mundo interno?** | **`AURA v3 Genesis + FEP-MARCUS v3`** *(Simbólico/Físico/Causal)* y **`AURA v3 Genesis`** *(Dinámico/Variedades)* | Une `WorldState` auditable + física Spelke 3D + grafo causal Pearl $do(X)$ + memoria Hopfield/CA3/SWR + variedades Lie/simplécticas. |
+| **¿Cuál predice y optimiza mejor su error?** | **`AURA v3 Genesis`** *(OOD dinámica/bytes `8.1 KB`)* y **`AURA v3 Genesis + FEP-MARCUS v3`** *(FEP/ELBO & BPB/PPL)* | Líder en `new_med_log = -5.3748`, `RS-A = -6.7084`, `shift_rust = 5.0989 bpb`, `BM-6 = 40.0%`, `BM-9 = 9.70 nats`, `F_final = 36.64 nats` y Held-Out Estándar **`1.5450 BPB / PPL 2.9180`** · Full Confirm **`1.6027 BPB / 1.6204 BPC / PPL 3.0370`** (`-0.1939 BPB` vs Brazo 1). |
 
 ---
 
 ## 7. Guía de Reproducibilidad Exacta (Directamente en `main` y `exp/aura-v3-fep-marcus-bpb`)
 
-Todo el código ejecutable, los crates Rust (`aura-engine/`, `marcus_neurosymbolic/`, `orbita/`) y el arnés Python 7B multi-agente están integrados directamente en `main` (y la extensión de medición real BPB/BPC/CE/PPL en `exp/aura-v3-fep-marcus-bpb`):
+Todo el código ejecutable, los crates Rust (`aura-engine/`, `marcus_neurosymbolic/`, `orbita/`) y el arnés Python 7B multi-agente están integrados directamente en `main` (y la extensión de medición real BPB/BPC/CE/PPL con Brazo 2 v3 en `exp/aura-v3-fep-marcus-bpb`):
 
 ```bash
 git checkout main
@@ -232,5 +233,5 @@ python3 aura-engine/run_top5_equal.py
 # 5. Medición real BPB / BPC / Cross-Entropy / PPL en held-out sin fuga (rama exp/aura-v3-fep-marcus-bpb):
 git checkout exp/aura-v3-fep-marcus-bpb
 python3 -u scripts/test_fep_marcus_bpb.py
-python3 -u scripts/marcus_fep_multiagent_infinite_loop.py --reset-state --max-episodes 800 --eval-interval 100 --sleep-delay 0.0 --seed 42 --aura-v3-genesis --lm-cycles 8 --lm-eval-bytes-per-domain 16384 --lm-neural-samples 81920
+python3 -u scripts/marcus_fep_multiagent_infinite_loop.py --reset-state --max-episodes 1000 --eval-interval 100 --sleep-delay 0.0 --seed 42 --aura-v3-genesis --lm-shards 8 --lm-cycles 10 --lm-eval-every 4 --lm-eval-bytes-per-domain 16384 --lm-neural-samples 98304
 ```

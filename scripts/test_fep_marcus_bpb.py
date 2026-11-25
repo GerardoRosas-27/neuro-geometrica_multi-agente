@@ -72,32 +72,44 @@ def test_exact_information_theoretic_identities() -> None:
 
 
 def test_strict_causality_no_lookahead() -> None:
-    lm = AuraFepCorticalLanguageModel(seed=42, enable_aura_v3_genesis=True)
-    lm.run_prenatal_in_utero_byte_waves(n_bytes=2048)
     train_toy = (
-        b"## Arquitectura AURA v3 Genesis + FEP-MARCUS v3\n"
+        b"## Arquitectura AURA v3 Genesis + FEP-MARCUS v3 (1.7021 BPB)\n"
         b"La energia libre variacional F(q, o) acota la sorpresa -ln p(o).\n"
     ) * 20
-    lm.specialists["markdown"].fit_bytes(train_toy)
-    lm.shared_cortex.fit_bytes(train_toy)
-    lm.neural_column.train_cyclic_epoch(train_toy, n_samples=2048, batch_size=256, lr=5e-3)
-
-    seq_a = b"## Arquitectura AURA v3 Genesis mide BPB y PPL en texto real."
+    seq_a = b"## Arquitectura AURA v3 Genesis mide BPB y PPL en texto real 1.70."
     cut = 30
-    seq_b = seq_a[:cut] + b"ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ!"[:len(seq_a) - cut]
+    seq_b = seq_a[:cut] + (b"Z" * (len(seq_a) - cut))
     assert len(seq_a) == len(seq_b)
 
-    pa, _, _ = lm.predict_domain_probs_256(seq_a, domain="markdown", enable_myelination=True)
-    pb, _, _ = lm.predict_domain_probs_256(seq_b, domain="markdown", enable_myelination=True)
+    for genesis_flag in (True, False):
+        lm = AuraFepCorticalLanguageModel(seed=42, enable_aura_v3_genesis=genesis_flag)
+        lm.run_prenatal_in_utero_byte_waves(n_bytes=2048)
+        lm.specialists["markdown"].fit_bytes(train_toy)
+        lm.shared_cortex.fit_bytes(train_toy)
+        if genesis_flag:
+            assert lm.shared_digit_norm is not None
+            assert lm.shared_casedigit_norm is not None
+            assert lm.shared_lex_skip is not None
+            assert lm.ca3_long_match is not None
+            lm.shared_digit_norm.fit_bytes(train_toy)
+            lm.shared_casedigit_norm.fit_bytes(train_toy)
+            lm.shared_lex_skip.fit_bytes(train_toy)
+            lm.ca3_long_match.fit_bytes(train_toy)
+            lm.domain_neurals["markdown"].train_cyclic_epoch(train_toy, n_samples=2048, batch_size=256, lr=5e-3)
+        else:
+            lm.neural_column.train_cyclic_epoch(train_toy, n_samples=2048, batch_size=256, lr=5e-3)
 
-    # En todas las posiciones t <= cut, b_{<t} es idéntico -> P(. | b_{<t}) debe ser bit-idéntico!
-    max_diff_prefix = float(np.max(np.abs(pa[:cut + 1] - pb[:cut + 1])))
-    assert max_diff_prefix == 0.0, f"Fuga causal detectada en prefijo: max_diff={max_diff_prefix}"
+        pa, _, _ = lm.predict_domain_probs_256(seq_a, domain="markdown", enable_myelination=True)
+        pb, _, _ = lm.predict_domain_probs_256(seq_b, domain="markdown", enable_myelination=True)
 
-    # Verificar que todas las filas suman 1.0 exacto dentro de float32
-    max_norm = float(np.max(np.abs(pa.sum(axis=1) - 1.0)))
-    assert max_norm < 1e-5, f"Error de normalización excesivo: {max_norm}"
-    print("[PASS] test_strict_causality_no_lookahead")
+        # En todas las posiciones t <= cut, b_{<t} es idéntico -> P(. | b_{<t}) debe ser bit-idéntico!
+        max_diff_prefix = float(np.max(np.abs(pa[:cut + 1] - pb[:cut + 1])))
+        assert max_diff_prefix == 0.0, f"Fuga causal detectada (genesis={genesis_flag}): max_diff={max_diff_prefix}"
+
+        max_norm = float(np.max(np.abs(pa.sum(axis=1) - 1.0)))
+        assert max_norm < 1e-5, f"Error de normalización excesivo (genesis={genesis_flag}): {max_norm}"
+        assert lm._total_dale_violations() == 0
+    print("[PASS] test_strict_causality_no_lookahead (Arm 1 & Arm 2 8-expert)")
 
 
 def test_anti_leakage_splitter_and_frozen_eval() -> None:
@@ -142,15 +154,16 @@ def test_anti_leakage_splitter_and_frozen_eval() -> None:
 
 
 def test_dale_law_and_microglia_pruning() -> None:
-    col = DaleMountcastleNeuralByteColumn(seed=42)
-    assert col.dale_violations() == 0
-    waves = generate_synthetic_prenatal_byte_waves(seed=42, n_bytes=4096)
-    col.train_cyclic_epoch(waves, n_samples=4096, batch_size=512, lr=5e-3)
-    assert col.dale_violations() == 0
-    st = col.microglia_prune(threshold=0.02)
-    assert st["dale_violations"] == 0
-    assert st["pruned_pct"] > 50.0, f"Se esperaba poda física > 50%, obtenido {st['pruned_pct']}%"
-    print(f"[PASS] test_dale_law_and_microglia_pruning (pruned={st['pruned_pct']}%, dale_v=0)")
+    for ms_flag in (False, True):
+        col = DaleMountcastleNeuralByteColumn(seed=42, d_hid=256 if ms_flag else 192, enable_multiscale_l4=ms_flag)
+        assert col.dale_violations() == 0
+        waves = generate_synthetic_prenatal_byte_waves(seed=42, n_bytes=4096)
+        col.train_cyclic_epoch(waves, n_samples=4096, batch_size=512, lr=5e-3)
+        assert col.dale_violations() == 0
+        st = col.microglia_prune(threshold=0.02)
+        assert st["dale_violations"] == 0
+        assert st["pruned_pct"] > 50.0, f"Se esperaba poda física > 50%, obtenido {st['pruned_pct']}%"
+    print(f"[PASS] test_dale_law_and_microglia_pruning (multiscale_l4=False/True, pruned={st['pruned_pct']}%, dale_v=0)")
 
 
 def test_bigram_baseline_proper() -> None:

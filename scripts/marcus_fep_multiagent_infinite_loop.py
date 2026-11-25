@@ -887,6 +887,8 @@ def run_infinite_multiagent_fep_loop(
     enable_aura_v3_genesis: bool = False,
     enable_lm_bpb: bool = True,
     lm_cycles: int = 8,
+    lm_shards: int = 8,
+    lm_eval_every: int = 1,
     lm_eval_bytes_per_domain: int = 24576,
     lm_target_bpb: float = 1.80,
     lm_target_ppl: float = 3.50,
@@ -908,7 +910,7 @@ def run_infinite_multiagent_fep_loop(
     print(
         f"[*] Intervalo AA/LM: cada {eval_interval} eps | Currículo: {curriculum_size} | "
         f"MaxEps: {max_episodes or 'INFINITO'} | LM-BPB: {'ON' if enable_lm_bpb else 'OFF'} "
-        f"(ciclos={lm_cycles}, meta BPB/BPC<={lm_target_bpb:.2f}, PPL<={lm_target_ppl:.2f})"
+        f"(shards={lm_shards}, ciclos={lm_cycles}, meta BPB/BPC<={lm_target_bpb:.2f}, PPL<={lm_target_ppl:.2f})"
     )
     print(f"[*] Logs acotados en: {LOG_FILE}\n")
 
@@ -934,6 +936,7 @@ def run_infinite_multiagent_fep_loop(
     lm_telemetry: Optional[Dict[str, Any]] = None
     lm_out_path = lm_artifact_path or LM_BPB_ARTIFACT
     lm_cycle_idx = 0
+    last_lm_eval: Optional[Dict[str, Any]] = None
 
     def _lm_target_met(eval_dict: Dict[str, Any]) -> bool:
         gh = eval_dict["global_held_out"]
@@ -951,8 +954,9 @@ def run_infinite_multiagent_fep_loop(
         full_confirm_eval: Optional[Dict[str, Any]] = None,
         baselines_full: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        nonlocal lm_telemetry
+        nonlocal lm_telemetry, last_lm_eval
         assert lm_splitter is not None
+        last_lm_eval = eval_res
         gh = eval_res["global_held_out"]
         audit_lm = fep_engine.tester.audit_language_eval(gh, anti_leakage=lm_splitter.audit_report)
         cm = eval_res.get("canonical_eval_md_frozen")
@@ -1012,7 +1016,7 @@ def run_infinite_multiagent_fep_loop(
     if enable_lm_bpb and fep_engine.language_model is not None:
         lm_splitter = RepoTextCorpusSplitter(
             ROOT_DIR,
-            n_cycles=lm_cycles,
+            n_cycles=lm_shards,
             seed=seed,
             eval_bytes_per_domain=lm_eval_bytes_per_domain,
         )
@@ -1214,33 +1218,49 @@ def run_infinite_multiagent_fep_loop(
                 fep_engine, orchestrator=orchestrator, current_episode=ep_num
             )
 
-            # Entrenamiento cíclico de 1 shard disjunto de texto real + validación estrictamente congelada
+            # Entrenamiento cíclico de 1 shard disjunto (o consolidación profunda) + validación congelada
             if enable_lm_bpb and fep_engine.language_model is not None and lm_splitter is not None:
                 tr_st = fep_engine.language_model.train_cycle_shard(
                     lm_cycle_idx,
                     lm_splitter,
                     neural_samples=lm_neural_samples_per_cycle,
                     calibrate_on_train_cal=True,
+                    total_cycles=lm_cycles,
                 )
                 lm_cycle_idx += 1
-                ev_c = fep_engine.language_model.evaluate_full_held_out_suite(
-                    lm_splitter,
-                    use_full_buffers=False,
-                    include_blind_routing=False,
-                    include_online_shift=False,
-                    generate_samples=False,
+                is_final_cycle_now = (max_episodes > 0 and ep_num >= max_episodes and lm_cycle_idx >= lm_cycles)
+                should_eval_now = (
+                    is_final_cycle_now
+                    or lm_cycle_idx == lm_shards
+                    or (lm_eval_every <= 1)
+                    or (lm_cycle_idx % lm_eval_every == 0)
                 )
-                pt_c = _record_lm_eval(ep_num, tr_st, ev_c)
-                lm_log = (
-                    f"[LM Ciclo #{pt_c['cycle']} @ Ep {ep_num}] "
-                    f"Held-Out FROZEN: BPB={pt_c['global_bpb']:.4f} | BPC={pt_c['global_bpc']:.4f} | "
-                    f"CE={pt_c['global_ce_nats']:.4f} nats | PPL_b={pt_c['global_ppl_byte']:.4f} | "
-                    f"PPL_c={pt_c['global_ppl_char']:.4f} | Δvs3.74={pt_c['delta_vs_374_bpb']:+.4f} | "
-                    f"MD={pt_c['markdown_bpb']:.4f} RS={pt_c['rust_bpb']:.4f} PY={pt_c['python_bpb']:.4f} | "
-                    f"CanonMD={pt_c['canonical_eval_md_bpb']:.4f} | Top1={pt_c['global_top1_acc_pct']:.1f}% | "
-                    f"Myelin={pt_c['global_myelinated_pct']:.1f}% | NeuralBPB={pt_c['global_neural_only_bpb']:.4f} | "
-                    f"Meta={'PASS' if pt_c['target_met'] else 'TRAIN'}"
-                )
+                phase_tag = tr_st.get("phase", "INGESTION")
+                if should_eval_now:
+                    ev_c = fep_engine.language_model.evaluate_full_held_out_suite(
+                        lm_splitter,
+                        use_full_buffers=False,
+                        include_blind_routing=is_final_cycle_now,
+                        include_online_shift=is_final_cycle_now,
+                        generate_samples=is_final_cycle_now,
+                    )
+                    pt_c = _record_lm_eval(ep_num, tr_st, ev_c)
+                    lm_log = (
+                        f"[LM Ciclo #{pt_c['cycle']} ({phase_tag}) @ Ep {ep_num}] "
+                        f"Held-Out FROZEN: BPB={pt_c['global_bpb']:.4f} | BPC={pt_c['global_bpc']:.4f} | "
+                        f"CE={pt_c['global_ce_nats']:.4f} nats | PPL_b={pt_c['global_ppl_byte']:.4f} | "
+                        f"PPL_c={pt_c['global_ppl_char']:.4f} | Δvs3.74={pt_c['delta_vs_374_bpb']:+.4f} | "
+                        f"MD={pt_c['markdown_bpb']:.4f} RS={pt_c['rust_bpb']:.4f} PY={pt_c['python_bpb']:.4f} | "
+                        f"CanonMD={pt_c['canonical_eval_md_bpb']:.4f} | Top1={pt_c['global_top1_acc_pct']:.1f}% | "
+                        f"Myelin={pt_c['global_myelinated_pct']:.1f}% | NeuralBPB={pt_c['global_neural_only_bpb']:.4f} | "
+                        f"Meta={'PASS' if pt_c['target_met'] else 'TRAIN'}"
+                    )
+                else:
+                    lm_log = (
+                        f"[LM Ciclo #{tr_st['cycle']} ({phase_tag}) @ Ep {ep_num}] "
+                        f"Entrenado ({tr_st['bytes_ingested_cycle']:,} B, total={tr_st['total_train_bytes_seen']:,} B, "
+                        f"neural_tr={tr_st['neural_train_bpb']:.4f}, {tr_st['train_seconds']:.1f}s)"
+                    )
                 print(lm_log, flush=True)
                 append_bounded_log(LOG_FILE, lm_log)
 
@@ -1306,7 +1326,7 @@ def run_infinite_multiagent_fep_loop(
         if sleep_delay > 0.0:
             time.sleep(sleep_delay)
 
-    # Completar shards cíclicos restantes de texto real (si los episodios terminaron antes de lm_cycles)
+    # Completar shards/ciclos de consolidación restantes (si los episodios terminaron antes de lm_cycles)
     # y ejecutar suite final de confirmación (con enrutamiento bayesiano ciego, OOD shift y muestras verbatim)
     if (not stop_requested) and enable_lm_bpb and fep_engine.language_model is not None and lm_splitter is not None:
         while lm_cycle_idx < lm_cycles:
@@ -1315,37 +1335,45 @@ def run_infinite_multiagent_fep_loop(
                 lm_splitter,
                 neural_samples=lm_neural_samples_per_cycle,
                 calibrate_on_train_cal=True,
+                total_cycles=lm_cycles,
             )
             lm_cycle_idx += 1
             if enable_aura_v3_genesis:
                 fep_engine.language_model.execute_microglia_swr_pruning()
+            is_last_c = (lm_cycle_idx >= lm_cycles)
             ev_c = fep_engine.language_model.evaluate_full_held_out_suite(
                 lm_splitter,
                 use_full_buffers=False,
-                include_blind_routing=False,
-                include_online_shift=False,
-                generate_samples=False,
+                include_blind_routing=is_last_c,
+                include_online_shift=is_last_c,
+                generate_samples=is_last_c,
             )
             pt_c = _record_lm_eval(fep_engine.episodes_processed, tr_st, ev_c)
+            phase_tag = tr_st.get("phase", "INGESTION")
             lm_log = (
-                f"[LM Ciclo #{pt_c['cycle']} (Cierre Corpus) @ Ep {fep_engine.episodes_processed}] "
+                f"[LM Ciclo #{pt_c['cycle']} ({phase_tag}) @ Ep {fep_engine.episodes_processed}] "
                 f"Held-Out FROZEN: BPB={pt_c['global_bpb']:.4f} | BPC={pt_c['global_bpc']:.4f} | "
                 f"CE={pt_c['global_ce_nats']:.4f} nats | PPL_b={pt_c['global_ppl_byte']:.4f} | "
                 f"PPL_c={pt_c['global_ppl_char']:.4f} | Δvs3.74={pt_c['delta_vs_374_bpb']:+.4f} | "
                 f"MD={pt_c['markdown_bpb']:.4f} RS={pt_c['rust_bpb']:.4f} PY={pt_c['python_bpb']:.4f} | "
-                f"CanonMD={pt_c['canonical_eval_md_bpb']:.4f} | Meta={'PASS' if pt_c['target_met'] else 'TRAIN'}"
+                f"CanonMD={pt_c['canonical_eval_md_bpb']:.4f} | Top1={pt_c['global_top1_acc_pct']:.1f}% | "
+                f"Myelin={pt_c['global_myelinated_pct']:.1f}% | NeuralBPB={pt_c['global_neural_only_bpb']:.4f} | "
+                f"Meta={'PASS' if pt_c['target_met'] else 'TRAIN'}"
             )
             print(lm_log, flush=True)
             append_bounded_log(LOG_FILE, lm_log)
 
         print("\n[>>>] EJECUTANDO CONFIRMACIÓN FINAL HELD-OUT (Blind Bayesian + OOD Shift + Full Confirm + Muestras)...", flush=True)
-        final_std_eval = fep_engine.language_model.evaluate_full_held_out_suite(
-            lm_splitter,
-            use_full_buffers=False,
-            include_blind_routing=True,
-            include_online_shift=True,
-            generate_samples=True,
-        )
+        if last_lm_eval is not None and "blind_bayesian_held_out" in last_lm_eval:
+            final_std_eval = last_lm_eval
+        else:
+            final_std_eval = fep_engine.language_model.evaluate_full_held_out_suite(
+                lm_splitter,
+                use_full_buffers=False,
+                include_blind_routing=True,
+                include_online_shift=True,
+                generate_samples=True,
+            )
         full_confirm_eval = None
         baselines_full = None
         if lm_full_confirm_eval:
@@ -1452,7 +1480,9 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, default=42, help="Semilla aleatoria determinista")
     parser.add_argument("--aura-v3-genesis", action="store_true", help="Activa las 4 subrutinas generativas de ADN de AURA v3 Genesis sobre el arnés FEP-MARCUS v3")
     parser.add_argument("--disable-lm-bpb", action="store_true", help="Desactiva el entrenamiento cíclico y medición real de BPB/BPC/CE/PPL")
-    parser.add_argument("--lm-cycles", type=int, default=8, help="Número de shards cíclicos disjuntos del corpus real del repositorio")
+    parser.add_argument("--lm-cycles", type=int, default=8, help="Número total de ciclos LM (ingesta de shards + consolidación profunda si > lm-shards)")
+    parser.add_argument("--lm-shards", type=int, default=8, help="Número de shards disjuntos del corpus real train (fijo=8 para paridad)")
+    parser.add_argument("--lm-eval-every", type=int, default=1, help="Frecuencia de evaluación held-out en ciclos intermedios (siempre evalúa 0, lm-shards y final)")
     parser.add_argument("--lm-eval-bytes-per-domain", type=int, default=24576, help="Bytes held-out estratificados por modalidad en cada ciclo")
     parser.add_argument("--lm-target-bpb", type=float, default=1.80, help="Meta competitiva de BPB y BPC en validación held-out")
     parser.add_argument("--lm-target-ppl", type=float, default=3.50, help="Meta competitiva de Perplejidad (PPL) en validación held-out")
@@ -1471,6 +1501,8 @@ if __name__ == "__main__":
         enable_aura_v3_genesis=args.aura_v3_genesis,
         enable_lm_bpb=not args.disable_lm_bpb,
         lm_cycles=args.lm_cycles,
+        lm_shards=args.lm_shards,
+        lm_eval_every=args.lm_eval_every,
         lm_eval_bytes_per_domain=args.lm_eval_bytes_per_domain,
         lm_target_bpb=args.lm_target_bpb,
         lm_target_ppl=args.lm_target_ppl,
