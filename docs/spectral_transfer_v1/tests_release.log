@@ -1,0 +1,15 @@
+   Compiling spectral_transfer v0.1.0 (/home/antigravity/GerardoRosas-27/neuro-geometrica_multi-agente/spectral_transfer)
+    Finished `release` profile [optimized] target(s) in 13.82s
+     Running unittests src/main.rs (spectral_transfer/target/release/build/spectral_transfer/1387f5acfee83aad/out/spectral_transfer-1387f5acfee83aad)
+
+running 7 tests
+test tests::test_adaptive_rejects_riemann_injection - should panic ... ok
+test tests::test_batch_var_cov_gradients ... ok
+test tests::test_exact_parameter_counts ... ok
+test tests::test_riemann_zeros_reference_accuracy ... ok
+test tests::test_spectral_core_gradients_all_pairing_modes ... ok
+test tests::test_bit_exact_frozen_core_invariance_in_transfer ... ok
+test tests::test_spectral_regularizer_and_mlp_gradients ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+

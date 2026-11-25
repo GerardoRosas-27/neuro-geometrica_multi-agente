@@ -1,0 +1,20 @@
+{
+  "timestamp_utc": "2026-11-25T06:41:18.176926+00:00",
+  "branch": "exp/spectral-transfer-discovery",
+  "git_head_pre_freeze": "9943916fe2b392d41a024a218a1111ddf9975f4e",
+  "files": {
+    "docs/spectral_transfer_v1/PLAN.md": "3bdadb4263fb3451b1bc3c03d16aab866d0f3b6562d167589ad85543820d8806",
+    "spectral_transfer/Cargo.toml": "127299f00511b2d1e7df81b3e65e084216cd466072cff8567362db7e0d9934f4",
+    "spectral_transfer/src/main.rs": "2fef5399a3c5b06f77ccea41495a0045a789c80ba4309d20eb6829099cfd6b90",
+    "spectral_transfer/src/rng.rs": "2e1e6d9df8b3c7aeb9884c51c742aa294ae1f922447c33e2674def6b4446b3f4",
+    "spectral_transfer/src/domains.rs": "8fd8ad21e38a34edfe5e2e0b007c9871d913ebc8edef4b48fd4210873f6f3776",
+    "spectral_transfer/src/models.rs": "9cc693660c3904995e2c430d12f57b3228dd3af0c35c5aaf79b6d08bd8c577db",
+    "spectral_transfer/src/metrics.rs": "49d360887f811c40e4cb03b5ca31f4151416dc5085ee7b83a80505c7e1af2fe1",
+    "spectral_transfer/src/suites.rs": "595089791d539c57c2cc4d0decfe15455804da2c961c6ff0f767f66db8ce1b49",
+    "spectral_transfer/scripts/st_run.py": "c61d42c5ae63514682da7027264abcdc544dab03f922d57db600420409f125c6",
+    "spectral_transfer/scripts/st_summarize.py": "37cafb319ad6cde3ac74d4f435a759cfcdc6172cfd1d554ef523b21665216a9e",
+    "spectral_transfer/scripts/st_freeze_audit.py": "02f363d46c3cf42357bd161b18c37236c856e29f71965d85334c8da2aed9e7ab",
+    "spectral_transfer/scripts/st_plots.py": "1c052538befec93979173c91ad5809ed397ba42ca4f42f4b7943db1498a88279",
+    "spectral_transfer/target/release/spectral_transfer": "55b1c59daaf18950d1aa642f13b028c6a3f9b4e4459126f3531495f88cc5c88d"
+  }
+}

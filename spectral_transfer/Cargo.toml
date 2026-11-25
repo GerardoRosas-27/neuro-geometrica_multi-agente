@@ -1,0 +1,10 @@
+[package]
+name = "spectral_transfer"
+version = "0.1.0"
+edition = "2021"
+description = "Standalone experimental benchmark: autonomous spectral structure learning, causal frequency/phase/pairing dissection, and frozen-core cross-domain transfer (zero connection to ORBITA or CDT-RQM)."
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
