@@ -1204,6 +1204,19 @@ class FepEnergyTester:
         self.recent_monotone: deque = deque(maxlen=window_size)
         self.window_size = window_size
 
+        # Auditoría matemática de modelado de lenguaje (BPB / BPC / CE / PPL)
+        self.lm_evals_audited = 0
+        self.lm_norm_passes = 0
+        self.lm_identity_passes = 0
+        self.lm_dale_passes = 0
+        self.lm_anti_leakage_passes = 0
+        self.lm_best_bpb: Optional[float] = None
+        self.lm_last_bpb: Optional[float] = None
+        self.lm_last_bpc: Optional[float] = None
+        self.lm_last_ce_nats: Optional[float] = None
+        self.lm_last_ppl_byte: Optional[float] = None
+        self.lm_last_ppl_char: Optional[float] = None
+
     def audit_episode(
         self,
         f_estep_init: float,
@@ -1263,6 +1276,89 @@ class FepEnergyTester:
             self.cdt_passes += 1
         return ok
 
+    def audit_language_eval(
+        self,
+        lm_metrics: Dict[str, Any],
+        anti_leakage: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, bool]:
+        """
+        Audita rigurosamente una evaluación held-out real de BPB/BPC/CE/PPL:
+          1. Normalización exacta de P(b | b_{<t}) en Delta^255 (max |sum - 1| < 1e-4).
+          2. Identidades exactas de teoría de la información:
+             BPB = CE / ln(2), BPC = BPB * (N_bytes / N_chars),
+             PPL_byte = exp(CE) = 2^BPB, PPL_char = 2^BPC.
+          3. Cumplimiento estricto de Ley de Dale (0 pesos negativos) y 0 NaN/Inf.
+          4. Cero fuga train / held-out (0 archivos/hashes/bloques 128B compartidos, eval congelada).
+        """
+        self.lm_evals_audited += 1
+        ce = float(lm_metrics.get("ce_nats", float("nan")))
+        bpb = float(lm_metrics.get("bpb", float("nan")))
+        bpc = float(lm_metrics.get("bpc", float("nan")))
+        ppl_b = float(lm_metrics.get("ppl_byte", float("nan")))
+        ppl_c = float(lm_metrics.get("ppl_char", float("nan")))
+        n_bytes = int(lm_metrics.get("n_bytes", 0))
+        n_chars = int(lm_metrics.get("n_chars", 0))
+        norm_err = float(lm_metrics.get("max_prob_norm_error", 1.0))
+        nan_cnt = int(lm_metrics.get("nan_inf_count", 1))
+        dale_v = int(lm_metrics.get("dale_violations", 1))
+        frozen_ok = bool(lm_metrics.get("frozen_verified", False))
+
+        finite_all = all(math.isfinite(x) for x in (ce, bpb, bpc, ppl_b, ppl_c, norm_err)) and (nan_cnt == 0)
+        norm_ok = finite_all and (norm_err < 1e-4)
+
+        if finite_all and n_bytes > 0 and n_chars > 0:
+            exp_bpb = ce / math.log(2.0)
+            exp_bpc = exp_bpb * (n_bytes / n_chars)
+            exp_ppl_b = math.exp(ce)
+            exp_ppl_c = 2.0 ** exp_bpc
+            identity_ok = (
+                abs(bpb - exp_bpb) < 5e-4
+                and abs(bpc - exp_bpc) < 5e-4
+                and (abs(ppl_b - exp_ppl_b) / max(1.0, exp_ppl_b)) < 1e-4
+                and (abs(ppl_c - exp_ppl_c) / max(1.0, exp_ppl_c)) < 1e-4
+                and bpb > 0.0
+            )
+        else:
+            identity_ok = False
+
+        lm_dale_ok = finite_all and (dale_v == 0)
+
+        if anti_leakage is not None:
+            anti_leakage_ok = (
+                frozen_ok
+                and int(anti_leakage.get("shared_files", 1)) == 0
+                and int(anti_leakage.get("shared_hashes", 1)) == 0
+                and int(anti_leakage.get("shared_128b_blocks", 1)) == 0
+                and int(anti_leakage.get("prenatal_repo_bytes", 1)) == 0
+            )
+        else:
+            anti_leakage_ok = frozen_ok
+
+        if norm_ok:
+            self.lm_norm_passes += 1
+        if identity_ok:
+            self.lm_identity_passes += 1
+        if lm_dale_ok:
+            self.lm_dale_passes += 1
+        if anti_leakage_ok:
+            self.lm_anti_leakage_passes += 1
+
+        if finite_all:
+            self.lm_last_bpb = round(bpb, 6)
+            self.lm_last_bpc = round(bpc, 6)
+            self.lm_last_ce_nats = round(ce, 6)
+            self.lm_last_ppl_byte = round(ppl_b, 6)
+            self.lm_last_ppl_char = round(ppl_c, 6)
+            if self.lm_best_bpb is None or bpb < self.lm_best_bpb:
+                self.lm_best_bpb = round(bpb, 6)
+
+        return {
+            "prob_norm_ok": norm_ok,
+            "identity_ok": identity_ok,
+            "lm_dale_ok": lm_dale_ok,
+            "anti_leakage_ok": anti_leakage_ok,
+        }
+
     def summary(self) -> Dict[str, Any]:
         n = max(1, self.total_audited)
         early_mean = float(np.mean(self.early_passive_f)) if self.early_passive_f else 0.0
@@ -1271,6 +1367,7 @@ class FepEnergyTester:
         recent_opt = float(np.mean(self.recent_opt_f)) if self.recent_opt_f else 0.0
         early_s = float(np.mean(self.early_s_init)) if self.early_s_init else 0.0
         recent_s = float(np.mean(self.recent_s_init)) if self.recent_s_init else 0.0
+        lm_n = max(1, self.lm_evals_audited)
         return {
             "episodes_audited": self.total_audited,
             "monotonic_convergence_pct": round((self.monotonic_passes / n) * 100.0, 2),
@@ -1287,6 +1384,17 @@ class FepEnergyTester:
             "recent_window_f_opt": round(recent_opt, 4),
             "f_opt_drift": round(recent_opt - early_opt, 4),
             "s_init_drift": round(recent_s - early_s, 4),
+            "lm_evals_audited": self.lm_evals_audited,
+            "lm_prob_norm_pass_pct": round((self.lm_norm_passes / lm_n) * 100.0, 2) if self.lm_evals_audited > 0 else 100.0,
+            "lm_identity_pass_pct": round((self.lm_identity_passes / lm_n) * 100.0, 2) if self.lm_evals_audited > 0 else 100.0,
+            "lm_dale_pass_pct": round((self.lm_dale_passes / lm_n) * 100.0, 2) if self.lm_evals_audited > 0 else 100.0,
+            "lm_anti_leakage_pass_pct": round((self.lm_anti_leakage_passes / lm_n) * 100.0, 2) if self.lm_evals_audited > 0 else 100.0,
+            "lm_best_bpb": self.lm_best_bpb,
+            "lm_last_bpb": self.lm_last_bpb,
+            "lm_last_bpc": self.lm_last_bpc,
+            "lm_last_ce_nats": self.lm_last_ce_nats,
+            "lm_last_ppl_byte": self.lm_last_ppl_byte,
+            "lm_last_ppl_char": self.lm_last_ppl_char,
         }
 
     def to_dict(self) -> Dict[str, Any]:
@@ -1307,6 +1415,17 @@ class FepEnergyTester:
             "early_s_init": list(self.early_s_init),
             "recent_s_init": list(self.recent_s_init),
             "recent_monotone": list(self.recent_monotone),
+            "lm_evals_audited": self.lm_evals_audited,
+            "lm_norm_passes": self.lm_norm_passes,
+            "lm_identity_passes": self.lm_identity_passes,
+            "lm_dale_passes": self.lm_dale_passes,
+            "lm_anti_leakage_passes": self.lm_anti_leakage_passes,
+            "lm_best_bpb": self.lm_best_bpb,
+            "lm_last_bpb": self.lm_last_bpb,
+            "lm_last_bpc": self.lm_last_bpc,
+            "lm_last_ce_nats": self.lm_last_ce_nats,
+            "lm_last_ppl_byte": self.lm_last_ppl_byte,
+            "lm_last_ppl_char": self.lm_last_ppl_char,
         }
 
     def load_dict(self, data: Dict[str, Any]) -> None:
@@ -1326,6 +1445,17 @@ class FepEnergyTester:
         self.early_s_init = [float(x) for x in data.get("early_s_init", [])]
         self.recent_s_init = deque((float(x) for x in data.get("recent_s_init", [])), maxlen=self.window_size)
         self.recent_monotone = deque((float(x) for x in data.get("recent_monotone", [])), maxlen=self.window_size)
+        self.lm_evals_audited = int(data.get("lm_evals_audited", 0))
+        self.lm_norm_passes = int(data.get("lm_norm_passes", 0))
+        self.lm_identity_passes = int(data.get("lm_identity_passes", 0))
+        self.lm_dale_passes = int(data.get("lm_dale_passes", 0))
+        self.lm_anti_leakage_passes = int(data.get("lm_anti_leakage_passes", 0))
+        self.lm_best_bpb = data.get("lm_best_bpb", None)
+        self.lm_last_bpb = data.get("lm_last_bpb", None)
+        self.lm_last_bpc = data.get("lm_last_bpc", None)
+        self.lm_last_ce_nats = data.get("lm_last_ce_nats", None)
+        self.lm_last_ppl_byte = data.get("lm_last_ppl_byte", None)
+        self.lm_last_ppl_char = data.get("lm_last_ppl_char", None)
 
 
 class MetacognitiveSystem:
@@ -1765,6 +1895,7 @@ class MarcusFep7bInfiniteEngine:
         seed: int = 42,
         load_existing: bool = True,
         enable_aura_v3_genesis: bool = False,
+        enable_language_model: bool = False,
     ):
         self.checkpoint_dir = checkpoint_dir
         self.artifacts_dir = artifacts_dir
@@ -1773,6 +1904,8 @@ class MarcusFep7bInfiniteEngine:
         self.total_dim = n_heads * d_head
         self.sleep_interval = sleep_interval
         self.enable_aura_v3_genesis = enable_aura_v3_genesis
+        self.enable_language_model = enable_language_model
+        self.seed = seed
         self.rng = np.random.default_rng(seed)
 
         self.surprise_threshold = 0.85
@@ -1789,6 +1922,14 @@ class MarcusFep7bInfiniteEngine:
         self.metacognition = MetacognitiveSystem(
             window_size=100,
             enable_aura_v3_genesis=enable_aura_v3_genesis,
+        )
+        self.language_model: Optional["AuraFepCorticalLanguageModel"] = (
+            AuraFepCorticalLanguageModel(
+                seed=seed,
+                enable_aura_v3_genesis=enable_aura_v3_genesis,
+            )
+            if enable_language_model
+            else None
         )
 
         # Subrutina 1 (AURA v3 Genesis): Campo morfogenético 3D [SHH, Wnt, BMP] sobre las 32 minicolumnas
@@ -1851,6 +1992,8 @@ class MarcusFep7bInfiniteEngine:
 
         if self.enable_aura_v3_genesis and self.episodes_processed == 0:
             self._run_prenatal_in_utero_curriculum()
+            if self.language_model is not None:
+                self.language_model.run_prenatal_in_utero_byte_waves()
 
     def _init_balanced_dale_weights(self) -> None:
         """
@@ -2577,6 +2720,8 @@ class MarcusFep7bInfiniteEngine:
             zero_syn = int(np.sum(self.weights_e <= 1e-6) + np.sum(self.weights_i <= 1e-6))
             self.microglia_pruned_synapses = zero_syn
             self.microglia_pruned_pct = round((zero_syn / max(1, total_syn)) * 100.0, 2)
+            if self.language_model is not None:
+                self.language_model.execute_microglia_swr_pruning()
         else:
             fros = np.linalg.norm(w_recomp, axis=(1, 2), keepdims=True)
             w_recomp *= np.float32(self.target_fro_per_head) / np.maximum(fros, np.float32(1e-4))
@@ -2953,3 +3098,1672 @@ class MarcusFep7bInfiniteEngine:
             "metacognition": meta_outcome,
             "audit": audit,
         }
+
+
+# ==============================================================================
+# 6. SUSTRATO CORTICAL DE LENGUAJE AURA v3 GENESIS + FEP-MARCUS v3
+#    MEDICIÓN REAL DE BPB, BPC, CROSS-ENTROPY LOSS (NATS) Y PERPLEJIDAD (PPL)
+# ==============================================================================
+
+from pathlib import Path  # noqa: E402
+
+
+def compute_exact_byte_lm_metrics(
+    probs_256: np.ndarray,
+    data: bytes,
+    myelin_mask: Optional[np.ndarray] = None,
+    dale_violations: int = 0,
+    frozen_verified: bool = True,
+) -> Dict[str, Any]:
+    """
+    Calcula con exactitud matemática todas las métricas de teoría de la información
+    sobre una secuencia real de bytes UTF-8 dadas sus distribuciones causales
+    P(b_t | b_{<t}) en el simplex Delta^255:
+      - Cross-Entropy Loss (nats/byte): CE = -(1/N_bytes) * sum_t ln P(b_t | b_{<t})
+      - Bits Per Byte (BPB):            BPB = CE / ln(2)
+      - Bits Per Character (BPC):       BPC = BPB * (N_bytes / N_chars)
+      - Perplejidad byte (PPL_byte):    exp(CE) = 2^BPB
+      - Perplejidad char (PPL_char):    2^BPC
+      - Calibración metacognitiva de 2º orden sobre confianza Top-1 (Brier & ECE 10-bins)
+      - Auditoría de normalización exacta (max |sum_b P_t(b) - 1|) y conteo NaN/Inf.
+    """
+    n_bytes = len(data)
+    if n_bytes == 0:
+        return {
+            "n_bytes": 0,
+            "n_chars": 0,
+            "bytes_per_char": 1.0,
+            "ce_nats": 5.545177,
+            "bpb": 8.0,
+            "bpc": 8.0,
+            "ppl_byte": 256.0,
+            "ppl_char": 256.0,
+            "top1_acc_pct": 0.0,
+            "top5_acc_pct": 0.0,
+            "mean_entropy_bits": 8.0,
+            "next_byte_brier": 0.25,
+            "next_byte_ece_10bin": 0.0,
+            "myelinated_steps_pct": 0.0,
+            "max_prob_norm_error": 0.0,
+            "nan_inf_count": 0,
+            "dale_violations": int(dale_violations),
+            "frozen_verified": bool(frozen_verified),
+        }
+
+    p = np.asarray(probs_256, dtype=np.float64)
+    nan_inf_count = int(np.sum(~np.isfinite(p)))
+    row_sums = np.sum(p, axis=1)
+    max_norm_err = float(np.max(np.abs(row_sums - 1.0))) if row_sums.size > 0 else 0.0
+
+    y = np.frombuffer(data, dtype=np.uint8).astype(np.int64)
+    idx = np.arange(n_bytes)
+    py = np.clip(p[idx, y], 1e-12, 1.0)
+    neg_log_p = -np.log(py)
+    ce_nats = float(np.mean(neg_log_p))
+    bpb = ce_nats / math.log(2.0)
+
+    decoded_text = data.decode("utf-8", errors="replace")
+    n_chars = max(1, len(decoded_text))
+    bytes_per_char = n_bytes / float(n_chars)
+    bpc = bpb * bytes_per_char
+    ppl_byte = math.exp(min(ce_nats, 30.0))
+    ppl_char = 2.0 ** min(bpc, 40.0)
+
+    # Top-1 & Top-5 exactos
+    top1_pred = np.argmax(p, axis=1)
+    top1_hits = (top1_pred == y).astype(np.float64)
+    top1_acc_pct = float(np.mean(top1_hits)) * 100.0
+    top1_conf = p[idx, top1_pred]
+
+    top5_idx = np.argpartition(p, -5, axis=1)[:, -5:]
+    top5_hits = np.any(top5_idx == y[:, None], axis=1)
+    top5_acc_pct = float(np.mean(top5_hits)) * 100.0
+
+    # Entropía predictiva media H(P(. | b_{<t})) en bits
+    p_safe = np.clip(p, 1e-12, 1.0)
+    ent_bits = -np.sum(p_safe * np.log2(p_safe), axis=1)
+    mean_ent_bits = float(np.mean(ent_bits))
+
+    # Calibración metacognitiva de 2º orden sobre probabilidad Top-1 (Brier & ECE 10-bins)
+    brier = float(np.mean((top1_conf - top1_hits) ** 2))
+    bin_ids = np.clip((top1_conf * 10.0).astype(np.int32), 0, 9)
+    ece = 0.0
+    for b_i in range(10):
+        mask = bin_ids == b_i
+        cnt = int(np.sum(mask))
+        if cnt > 0:
+            ece += (cnt / n_bytes) * abs(float(np.mean(top1_hits[mask])) - float(np.mean(top1_conf[mask])))
+
+    myelin_pct = (float(np.mean(myelin_mask)) * 100.0) if myelin_mask is not None else 0.0
+
+    return {
+        "n_bytes": int(n_bytes),
+        "n_chars": int(n_chars),
+        "bytes_per_char": round(bytes_per_char, 5),
+        "ce_nats": round(ce_nats, 6),
+        "bpb": round(bpb, 6),
+        "bpc": round(bpc, 6),
+        "ppl_byte": round(ppl_byte, 6),
+        "ppl_char": round(ppl_char, 6),
+        "top1_acc_pct": round(top1_acc_pct, 2),
+        "top5_acc_pct": round(top5_acc_pct, 2),
+        "mean_entropy_bits": round(mean_ent_bits, 4),
+        "next_byte_brier": round(brier, 5),
+        "next_byte_ece_10bin": round(ece, 5),
+        "myelinated_steps_pct": round(myelin_pct, 2),
+        "max_prob_norm_error": float(f"{max_norm_err:.3e}"),
+        "nan_inf_count": nan_inf_count,
+        "dale_violations": int(dale_violations),
+        "frozen_verified": bool(frozen_verified),
+    }
+
+
+def generate_synthetic_prenatal_byte_waves(seed: int = 42, n_bytes: int = 4096) -> bytes:
+    """
+    Subrutina 4 (AURA v3 Genesis): Ondas estructurales sintéticas prenatales *in-utero*.
+    Genera ritmos universales sintéticos (sílabas consonante-vocal uniformes a..z/A..Z,
+    dígitos uniformes 0..9, delimitadores balanceados y espacios) con 0% de bytes del
+    repositorio ni vocabulario de validación (cero fuga de datos).
+    """
+    rng = np.random.default_rng(seed ^ 0xA0AA3004)
+    vowels = b"aeiou"
+    consonants = b"bcdfghjklmnpqrstvwxyz"
+    digits = b"0123456789"
+    delims = [(b"(", b")"), (b"[", b"]"), (b"{", b"}"), (b"`", b"`")]
+    out = bytearray()
+    while len(out) < n_bytes:
+        mode = int(rng.integers(0, 6))
+        if mode < 3:
+            # Palabra sintética de sílabas CV uniformes
+            n_syl = int(rng.integers(2, 5))
+            for s in range(n_syl):
+                c = consonants[int(rng.integers(0, len(consonants)))]
+                v = vowels[int(rng.integers(0, len(vowels)))]
+                if s == 0 and int(rng.integers(0, 5)) == 0:
+                    c -= 32  # Mayúscula uniforme
+                out.append(c)
+                out.append(v)
+            out.append(32)
+        elif mode == 3:
+            # Secuencia numérica uniforme
+            for _ in range(int(rng.integers(1, 5))):
+                out.append(digits[int(rng.integers(0, len(digits)))])
+            out.append(32)
+        elif mode == 4:
+            op, cl = delims[int(rng.integers(0, len(delims)))]
+            out.extend(op)
+            out.append(consonants[int(rng.integers(0, len(consonants)))])
+            out.append(vowels[int(rng.integers(0, len(vowels)))])
+            out.extend(cl)
+            out.append(32)
+        else:
+            out.append(10)  # salto de línea estructural
+    return bytes(out[:n_bytes])
+
+
+class RepoTextCorpusSplitter:
+    """
+    Divisor estricto Train / Held-Out sin fuga de datos sobre texto real del repositorio:
+      1. Recolecta archivos reales del repositorio en 3 modalidades (`markdown`, `rust`, `python`).
+      2. Excluye directorios derivados (`.git`, `target`, `artifacts`, `historico`, `node_modules`)
+         y reportes mutables o archivos canónicos (`README.md`, `docs/RESULTADOS_CONSOLIDADOS.md`,
+         `orbita/src/model.rs`, `orbita/src/fam.rs`).
+      3. Deduplica globalmente por SHA-256 exacto de contenido.
+      4. Excluye del pool de entrenamiento cualquier archivo con solapamiento de bloques de 64B
+         respecto a `canonical_eval_md` (6,144 B) o `canonical_shift_rust` (6,144 B).
+      5. Aplica separación determinista 80/20 a nivel de archivo completo (`idx % 5 != 4` train,
+         `idx % 5 == 4` held-out) y filtra cualquier archivo held-out que comparta un solo bloque
+         de 128 bytes (stride 32 B) con train -> 0 archivos, 0 hashes y 0 bloques 128B compartidos.
+      6. Separa un pequeño corte de calibración interno (`train_cal`, 6 KiB/dominio) estrictamente
+         dentro de `train` para calibrar pesos de precisión FEP sin tocar jamás `held_out`.
+    """
+    EXCLUDE_DIRS = {".git", "target", "artifacts", "historico", "node_modules", "__pycache__"}
+    CANONICAL_FILES = {
+        "README.md",
+        "docs/RESULTADOS_CONSOLIDADOS.md",
+        "orbita/src/model.rs",
+        "orbita/src/fam.rs",
+    }
+    MUTABLE_REPORTS = {
+        "docs/marcus_neurosymbolic/RESULTADOS_FEP_MULTIAGENTE_INFINITO.md",
+        "docs/aura_v3/RESULTADOS_BPB_AURA_V3_FEP_MARCUS_V3.md",
+        "docs/ARQUITECTURA_AURA_V3_GENESIS_FEP_MARCUS_V3.md",
+    }
+    MODALITIES = ((".md", "markdown"), (".rs", "rust"), (".py", "python"))
+
+    def __init__(
+        self,
+        repo_root: str,
+        n_cycles: int = 8,
+        seed: int = 42,
+        eval_bytes_per_domain: int = 24576,
+        cal_bytes_per_domain: int = 6144,
+    ):
+        self.repo_root = Path(repo_root).resolve()
+        self.n_cycles = max(1, int(n_cycles))
+        self.seed = int(seed)
+        self.eval_bytes_per_domain = int(eval_bytes_per_domain)
+        self.cal_bytes_per_domain = int(cal_bytes_per_domain)
+
+        # 1. Construir referencias canónicas exactas de aura-engine/bench_b6.rs
+        self.canonical_eval_md, self.canonical_shift_rust = self._load_canonical_aura_benchmarks()
+        canon_blocks_64 = (
+            {self.canonical_eval_md[j:j + 64] for j in range(0, max(0, len(self.canonical_eval_md) - 63), 32)}
+            | {self.canonical_shift_rust[j:j + 64] for j in range(0, max(0, len(self.canonical_shift_rust) - 63), 32)}
+        )
+
+        exclude_files = self.CANONICAL_FILES | self.MUTABLE_REPORTS
+        self.train_files: Dict[str, List[Tuple[str, bytes]]] = {}
+        self.held_out_files: Dict[str, List[Tuple[str, bytes]]] = {}
+        self.train_shards: Dict[str, List[List[bytes]]] = {}
+        self.train_cal_buffers: Dict[str, bytes] = {}
+        self.held_out_buffers: Dict[str, bytes] = {}
+        self.full_held_out_buffers: Dict[str, bytes] = {}
+
+        seen_global_hashes = set()
+        rng = np.random.default_rng(self.seed ^ 0x5EEDB9B1)
+
+        for ext, name in self.MODALITIES:
+            files: List[Tuple[str, bytes]] = []
+            for p in sorted(self.repo_root.rglob(f"*{ext}")):
+                if any(part in self.EXCLUDE_DIRS for part in p.parts):
+                    continue
+                rel = p.relative_to(self.repo_root).as_posix()
+                if rel in exclude_files:
+                    continue
+                try:
+                    raw = p.read_bytes()
+                except OSError:
+                    continue
+                if len(raw) < 256:
+                    continue
+                h = hashlib.sha256(raw).hexdigest()
+                if h in seen_global_hashes:
+                    continue
+                # Garantizar 0 solapamiento de 64B con benchmarks canónicos de aura-engine
+                if any(raw[j:j + 64] in canon_blocks_64 for j in range(0, max(0, len(raw) - 63), 32)):
+                    continue
+                seen_global_hashes.add(h)
+                files.append((rel, raw))
+
+            tr_raw = [f for i, f in enumerate(files) if i % 5 != 4]
+            va_cand = [f for i, f in enumerate(files) if i % 5 == 4]
+
+            # Filtro estricto anti-fuga: 0 bloques compartidos de 128B (stride 32B)
+            tr_blocks_128 = {
+                b[j:j + 128]
+                for _, b in tr_raw
+                for j in range(0, max(0, len(b) - 127), 32)
+            }
+            va_clean = [
+                f for f in va_cand
+                if not any(f[1][j:j + 128] in tr_blocks_128 for j in range(0, max(0, len(f[1]) - 127), 32))
+            ]
+
+            self.train_files[name] = tr_raw
+            self.held_out_files[name] = va_clean
+
+            # Corte de calibración interno estrictamente dentro de train (extraído de los últimos archivos de train)
+            cal_parts: List[bytes] = []
+            cal_collected = 0
+            tr_docs_for_shards: List[bytes] = []
+            for idx_doc, (_, b) in enumerate(tr_raw):
+                if idx_doc >= max(1, len(tr_raw) - 3) and cal_collected < self.cal_bytes_per_domain:
+                    take = min(len(b), self.cal_bytes_per_domain - cal_collected)
+                    cal_parts.append(b[:take])
+                    cal_collected += take
+                    if len(b) > take + 256:
+                        tr_docs_for_shards.append(b[take:])
+                else:
+                    tr_docs_for_shards.append(b)
+            self.train_cal_buffers[name] = b"\n".join(cal_parts)[:self.cal_bytes_per_domain]
+
+            # Barajar deterministamente documentos de entrenamiento y particionar en n_cycles shards disjuntos
+            order = list(range(len(tr_docs_for_shards)))
+            rng.shuffle(order)
+            shuffled_docs = [tr_docs_for_shards[i] for i in order]
+            shards: List[List[bytes]] = [[] for _ in range(self.n_cycles)]
+            # Balancear shards por volumen en bytes (greedy LPT para progresión cíclica uniforme)
+            shard_sizes = [0] * self.n_cycles
+            for doc in shuffled_docs:
+                target_s = int(np.argmin(shard_sizes))
+                shards[target_s].append(doc)
+                shard_sizes[target_s] += len(doc)
+            self.train_shards[name] = shards
+
+            # Buffer held-out estratificado cubriendo TODOS los archivos held-out limpios
+            if va_clean:
+                per_file_eval = max(512, self.eval_bytes_per_domain // len(va_clean))
+                self.held_out_buffers[name] = b"\n".join(b[:per_file_eval] for _, b in va_clean)[:self.eval_bytes_per_domain]
+                per_file_full = max(1024, 65536 // len(va_clean))
+                self.full_held_out_buffers[name] = b"\n".join(b[:per_file_full] for _, b in va_clean)[:65536]
+            else:
+                self.held_out_buffers[name] = b""
+                self.full_held_out_buffers[name] = b""
+
+        # Auditoría criptográfica independiente post-división
+        self.audit_report = self._run_independent_leakage_audit(canon_blocks_64)
+
+    def _load_canonical_aura_benchmarks(self) -> Tuple[bytes, bytes]:
+        md_all = bytearray()
+        for rel in ("README.md", "docs/RESULTADOS_CONSOLIDADOS.md"):
+            p = self.repo_root / rel
+            if p.exists():
+                md_all.extend(p.read_bytes())
+                md_all.append(10)
+        eval_md = bytearray()
+        for bi in range(0, len(md_all), 1024):
+            if (bi // 1024) % 5 == 4 and len(eval_md) < 6144:
+                eval_md.extend(md_all[bi:bi + 1024][:6144 - len(eval_md)])
+
+        rs_all = bytearray()
+        for rel in ("orbita/src/model.rs", "orbita/src/fam.rs"):
+            p = self.repo_root / rel
+            if p.exists():
+                rs_all.extend(p.read_bytes())
+                rs_all.append(10)
+        shift_rust = bytes(rs_all[:6144])
+        return bytes(eval_md), shift_rust
+
+    def _run_independent_leakage_audit(self, canon_blocks_64: set) -> Dict[str, Any]:
+        tr_paths = set()
+        va_paths = set()
+        tr_hashes = set()
+        va_hashes = set()
+        tr_blocks_128 = set()
+        canon_ov = 0
+
+        tr_hasher = hashlib.sha256()
+        va_hasher = hashlib.sha256()
+        per_domain: Dict[str, Dict[str, Any]] = {}
+
+        for _, name in self.MODALITIES:
+            tr = self.train_files[name]
+            va = self.held_out_files[name]
+            for rel, b in tr:
+                tr_paths.add(rel)
+                h = hashlib.sha256(b).hexdigest()
+                tr_hashes.add(h)
+                tr_hasher.update(h.encode("ascii"))
+                for j in range(0, max(0, len(b) - 127), 32):
+                    tr_blocks_128.add(b[j:j + 128])
+                if any(b[j:j + 64] in canon_blocks_64 for j in range(0, max(0, len(b) - 63), 32)):
+                    canon_ov += 1
+            for rel, b in va:
+                va_paths.add(rel)
+                h = hashlib.sha256(b).hexdigest()
+                va_hashes.add(h)
+                va_hasher.update(h.encode("ascii"))
+
+            buf = self.held_out_buffers[name]
+            full_buf = self.full_held_out_buffers[name]
+            per_domain[name] = {
+                "train_files": len(tr),
+                "train_bytes": sum(len(b) for _, b in tr),
+                "train_cal_bytes": len(self.train_cal_buffers[name]),
+                "held_out_files": len(va),
+                "held_out_pool_bytes": sum(len(b) for _, b in va),
+                "held_out_eval_bytes": len(buf),
+                "held_out_eval_chars": len(buf.decode("utf-8", errors="replace")),
+                "held_out_full_eval_bytes": len(full_buf),
+            }
+
+        shared_128 = 0
+        for _, name in self.MODALITIES:
+            for _, b in self.held_out_files[name]:
+                for j in range(0, max(0, len(b) - 127), 32):
+                    if b[j:j + 128] in tr_blocks_128:
+                        shared_128 += 1
+                        break
+
+        return {
+            "seed": self.seed,
+            "n_cycles": self.n_cycles,
+            "train_sha256": tr_hasher.hexdigest()[:16],
+            "held_out_sha256": va_hasher.hexdigest()[:16],
+            "canonical_eval_md_bytes": len(self.canonical_eval_md),
+            "canonical_shift_rust_bytes": len(self.canonical_shift_rust),
+            "shared_files": len(tr_paths & va_paths),
+            "shared_hashes": len(tr_hashes & va_hashes),
+            "shared_128b_blocks": shared_128,
+            "canonical_64b_overlap": canon_ov,
+            "prenatal_repo_bytes": 0,
+            "total_train_files": len(tr_paths),
+            "total_held_out_files": len(va_paths),
+            "total_train_bytes": sum(d["train_bytes"] for d in per_domain.values()),
+            "total_held_out_eval_bytes": sum(d["held_out_eval_bytes"] for d in per_domain.values()),
+            "total_held_out_full_eval_bytes": sum(d["held_out_full_eval_bytes"] for d in per_domain.values()),
+            "per_domain": per_domain,
+        }
+
+
+class BigramByteBaseline:
+    """
+    Línea base clásica Order-1 Byte Bigram con suavizado de Lidstone (alpha=0.25),
+    equivalente exacto a `aura_decoder::BigramByteBaseline`, para comparación directa.
+    """
+    def __init__(self, alpha: float = 0.25):
+        self.alpha = float(alpha)
+        self.counts = np.zeros((256, 256), dtype=np.float64)
+        self.totals = np.zeros(256, dtype=np.float64)
+
+    def fit_bytes(self, data: bytes) -> None:
+        if not data:
+            return
+        arr = np.frombuffer(data, dtype=np.uint8)
+        prev = np.empty_like(arr)
+        prev[0] = 0
+        prev[1:] = arr[:-1]
+        np.add.at(self.counts, (prev, arr), 1.0)
+        np.add.at(self.totals, prev, 1.0)
+
+    def predict_probs_256(self, data: bytes) -> np.ndarray:
+        n = len(data)
+        if n == 0:
+            return np.zeros((0, 256), dtype=np.float64)
+        arr = np.frombuffer(data, dtype=np.uint8)
+        prev = np.empty_like(arr)
+        prev[0] = 0
+        prev[1:] = arr[:-1]
+        probs = (self.counts[prev] + self.alpha) / (self.totals[prev, None] + 256.0 * self.alpha)
+        return probs
+
+    def evaluate(self, data: bytes) -> Dict[str, Any]:
+        probs = self.predict_probs_256(data)
+        return compute_exact_byte_lm_metrics(probs, data, dale_violations=0, frozen_verified=True)
+
+
+class DaleMountcastleNeuralByteColumn:
+    """
+    Subrutina 2 (Microcircuito Cortical Canónico de 6 Capas Mountcastle) + Ley de Dale estricta:
+      - L4 (Entrada talámica): ventana causal de 8 bytes embebidos (128D) + 12 rasgos estructurales (140D).
+      - L2/3 (Codificación predictiva lateral): capa oculta 192D con pesos segregados W1^E, W1^I >= 0.
+      - L5 (Proyección motora de salida): readout 256 bytes con pesos segregados W2^E, W2^I >= 0.
+      - L6/L1 (Retroalimentación apical): M-Step predictivo exacto sobre Cross-Entropy + proyección Dale.
+      - Subrutina 3a: Poda física por Microglía (devora co-activación E/I y sinapsis < umbral a 0 exacto).
+      - Subrutina 4: Pre-entrenamiento sintético prenatal *in-utero* (0% bytes del repositorio).
+    """
+    def __init__(self, ctx_len: int = 8, d_emb: int = 16, d_hid: int = 192, seed: int = 42):
+        self.ctx_len = ctx_len
+        self.d_emb = d_emb
+        self.d_hid = d_hid
+        self.d_in = ctx_len * d_emb + 12
+        self.rng = np.random.default_rng(seed ^ 0xDA1E0002)
+
+        self.emb = self.rng.normal(0.0, 0.25, (256, d_emb)).astype(np.float32)
+        w1 = self.rng.normal(0.0, math.sqrt(2.0 / (self.d_in + d_hid)), (d_hid, self.d_in)).astype(np.float32)
+        w2 = self.rng.normal(0.0, math.sqrt(2.0 / (d_hid + 256)), (256, d_hid)).astype(np.float32)
+        self.w1_e = np.maximum(np.float32(0.0), w1)
+        self.w1_i = np.maximum(np.float32(0.0), -w1)
+        self.b1 = np.zeros(d_hid, dtype=np.float32)
+        self.w2_e = np.maximum(np.float32(0.0), w2)
+        self.w2_i = np.maximum(np.float32(0.0), -w2)
+        self.b2 = np.zeros(256, dtype=np.float32)
+
+        # Estados Adam para descenso predictivo de entropía cruzada
+        self.m_w1 = np.zeros_like(w1)
+        self.v_w1 = np.zeros_like(w1)
+        self.m_b1 = np.zeros_like(self.b1)
+        self.v_b1 = np.zeros_like(self.b1)
+        self.m_w2 = np.zeros_like(w2)
+        self.v_w2 = np.zeros_like(w2)
+        self.m_b2 = np.zeros_like(self.b2)
+        self.v_b2 = np.zeros_like(self.b2)
+        self.m_emb = np.zeros_like(self.emb)
+        self.v_emb = np.zeros_like(self.emb)
+        self.adam_step = 0
+        self.pruned_synapses = 0
+        self.pruned_pct = 0.0
+        self.prenatal_bytes_trained = 0
+
+    def dale_violations(self) -> int:
+        return int(
+            np.sum(self.w1_e < 0)
+            + np.sum(self.w1_i < 0)
+            + np.sum(self.w2_e < 0)
+            + np.sum(self.w2_i < 0)
+        )
+
+    def synapse_stats(self) -> Dict[str, Any]:
+        total = int(self.w1_e.size + self.w1_i.size + self.w2_e.size + self.w2_i.size)
+        zeros = int(
+            np.sum(self.w1_e <= 1e-7)
+            + np.sum(self.w1_i <= 1e-7)
+            + np.sum(self.w2_e <= 1e-7)
+            + np.sum(self.w2_i <= 1e-7)
+        )
+        return {
+            "total_dale_synapses": total,
+            "zero_dale_synapses": zeros,
+            "pruned_pct": round((zeros / max(1, total)) * 100.0, 2),
+            "dale_violations": self.dale_violations(),
+        }
+
+    def weight_fingerprint(self) -> float:
+        return float(
+            np.sum(self.w1_e, dtype=np.float64)
+            + np.sum(self.w1_i, dtype=np.float64)
+            + np.sum(self.w2_e, dtype=np.float64)
+            + np.sum(self.w2_i, dtype=np.float64)
+            + np.sum(self.b2, dtype=np.float64)
+        )
+
+    def _build_features(self, seq: np.ndarray, idxs: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        bsz = len(idxs)
+        ctx = np.zeros((bsz, self.ctx_len), dtype=np.int32)
+        for k in range(self.ctx_len):
+            pos = idxs - (self.ctx_len - k)
+            valid = pos >= 0
+            ctx[valid, k] = seq[pos[valid]]
+        emb_flat = self.emb[ctx].reshape(bsz, -1)
+        b1 = ctx[:, -1]
+        b2 = ctx[:, -2]
+        feats = np.zeros((bsz, 12), dtype=np.float32)
+        feats[:, 0] = ((b1 >= 97) & (b1 <= 122)).astype(np.float32)
+        feats[:, 1] = ((b1 >= 65) & (b1 <= 90)).astype(np.float32)
+        feats[:, 2] = ((b1 >= 48) & (b1 <= 57)).astype(np.float32)
+        feats[:, 3] = (b1 == 32).astype(np.float32)
+        feats[:, 4] = (b1 == 10).astype(np.float32)
+        feats[:, 5] = (b1 >= 128).astype(np.float32)
+        feats[:, 6] = ((b1 == 46) | (b1 == 44) | (b1 == 58) | (b1 == 59)).astype(np.float32)
+        feats[:, 7] = ((b1 == 40) | (b1 == 41) | (b1 == 91) | (b1 == 93) | (b1 == 123) | (b1 == 125)).astype(np.float32)
+        feats[:, 8] = ((b1 == 124) | (b1 == 42) | (b1 == 96) | (b1 == 35) | (b1 == 45)).astype(np.float32)
+        feats[:, 9] = ((b2 >= 97) & (b2 <= 122)).astype(np.float32)
+        feats[:, 10] = (b2 == 32).astype(np.float32)
+        feats[:, 11] = (b2 == 10).astype(np.float32)
+        return ctx, np.concatenate([emb_flat, feats], axis=1)
+
+    def _forward(self, seq: np.ndarray, idxs: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        ctx, x = self._build_features(seq, idxs)
+        w1 = self.w1_e - self.w1_i
+        w2 = self.w2_e - self.w2_i
+        h = np.tanh(x @ w1.T + self.b1)
+        logits = h @ w2.T + self.b2
+        return ctx, x, h, logits
+
+    def run_prenatal_waves(self, seed: int = 42, n_bytes: int = 4096) -> float:
+        """Subrutina 4: Pre-calibración in-utero sobre ondas sintéticas puras (0 bytes del repo)."""
+        waves = generate_synthetic_prenatal_byte_waves(seed=seed, n_bytes=n_bytes)
+        self.prenatal_bytes_trained += len(waves)
+        return self.train_cyclic_epoch(waves, n_samples=min(8192, len(waves) * 2), batch_size=512, lr=4e-3)
+
+    def train_cyclic_epoch(
+        self,
+        data: bytes,
+        n_samples: int = 65536,
+        batch_size: int = 1024,
+        lr: float = 4.5e-3,
+    ) -> float:
+        if len(data) <= self.ctx_len + 1:
+            return 8.0
+        seq = np.frombuffer(data, dtype=np.uint8)
+        idxs_all = self.rng.integers(self.ctx_len, len(seq), size=n_samples)
+        tot_nats = 0.0
+        n_batches = 0
+        b1_a, b2_a, eps = np.float32(0.9), np.float32(0.999), np.float32(1e-8)
+
+        for s in range(0, n_samples, batch_size):
+            idxs = idxs_all[s:s + batch_size]
+            bsz = len(idxs)
+            y = seq[idxs].astype(np.int32)
+            ctx, x, h, logits = self._forward(seq, idxs)
+
+            lmax = logits.max(axis=1, keepdims=True)
+            ex = np.exp(logits - lmax)
+            probs = ex / np.maximum(ex.sum(axis=1, keepdims=True), np.float32(1e-9))
+            tot_nats += float(-np.mean(np.log(np.maximum(probs[np.arange(bsz), y], np.float32(1e-9)))))
+            n_batches += 1
+
+            # L6/L1 Gradiente predictivo exacto sobre Cross-Entropy
+            dlogits = probs
+            dlogits[np.arange(bsz), y] -= np.float32(1.0)
+            dlogits /= np.float32(bsz)
+
+            w2 = self.w2_e - self.w2_i
+            dw2 = dlogits.T @ h
+            db2 = dlogits.sum(axis=0)
+            dh = dlogits @ w2
+            dh_pre = dh * (np.float32(1.0) - h * h)
+            dw1 = dh_pre.T @ x
+            db1 = dh_pre.sum(axis=0)
+            dx = dh_pre @ (self.w1_e - self.w1_i)
+            demb_flat = dx[:, :self.ctx_len * self.d_emb].reshape(bsz, self.ctx_len, self.d_emb)
+            demb = np.zeros_like(self.emb)
+            np.add.at(demb, ctx, demb_flat)
+
+            self.adam_step += 1
+            bc1 = np.float32(1.0 - (0.9 ** self.adam_step))
+            bc2 = np.float32(1.0 - (0.999 ** self.adam_step))
+            lr_f = np.float32(lr)
+
+            for pname, grad in (("w2", dw2), ("b2", db2), ("w1", dw1), ("b1", db1), ("emb", demb)):
+                m = getattr(self, f"m_{pname}")
+                v = getattr(self, f"v_{pname}")
+                m *= b1_a
+                m += (np.float32(1.0) - b1_a) * grad
+                v *= b2_a
+                v += (np.float32(1.0) - b2_a) * (grad * grad)
+                upd = lr_f * (m / bc1) / (np.sqrt(v / bc2) + eps)
+                if pname == "w1":
+                    w_eff = (self.w1_e - self.w1_i) * np.float32(0.9995) - upd
+                    self.w1_e = np.maximum(np.float32(0.0), w_eff)
+                    self.w1_i = np.maximum(np.float32(0.0), -w_eff)
+                elif pname == "w2":
+                    w_eff = (self.w2_e - self.w2_i) * np.float32(0.9995) - upd
+                    self.w2_e = np.maximum(np.float32(0.0), w_eff)
+                    self.w2_i = np.maximum(np.float32(0.0), -w_eff)
+                else:
+                    setattr(self, pname, getattr(self, pname) - upd)
+
+        return (tot_nats / max(1, n_batches)) / math.log(2.0)
+
+    def microglia_prune(self, threshold: float = 0.015) -> Dict[str, Any]:
+        """
+        Subrutina 3a (Jesse Conel): Poda física por microglía en sueño SWR.
+        Elimina 100% de la co-activación E/I redundante y sinapsis |W| < threshold
+        manteniendo Ley de Dale estricta (0 violaciones).
+        """
+        w1 = self.w1_e - self.w1_i
+        w2 = self.w2_e - self.w2_i
+        w1 = np.where(np.abs(w1) < np.float32(threshold), np.float32(0.0), w1)
+        w2 = np.where(np.abs(w2) < np.float32(threshold), np.float32(0.0), w2)
+        self.w1_e = np.maximum(np.float32(0.0), w1)
+        self.w1_i = np.maximum(np.float32(0.0), -w1)
+        self.w2_e = np.maximum(np.float32(0.0), w2)
+        self.w2_i = np.maximum(np.float32(0.0), -w2)
+        st = self.synapse_stats()
+        self.pruned_synapses = st["zero_dale_synapses"]
+        self.pruned_pct = st["pruned_pct"]
+        return st
+
+    def predict_probs_256(self, data: bytes, batch_size: int = 2048) -> np.ndarray:
+        n = len(data)
+        if n == 0:
+            return np.zeros((0, 256), dtype=np.float32)
+        seq = np.frombuffer(data, dtype=np.uint8)
+        out = np.empty((n, 256), dtype=np.float32)
+        for s in range(0, n, batch_size):
+            idxs = np.arange(s, min(n, s + batch_size))
+            _, _, _, logits = self._forward(seq, idxs)
+            lmax = logits.max(axis=1, keepdims=True)
+            ex = np.exp(logits - lmax)
+            out[s:s + len(idxs)] = ex / np.maximum(ex.sum(axis=1, keepdims=True), np.float32(1e-9))
+        return out
+
+
+class CorticalMorphogeneticByteColumn:
+    """
+    Columna Cortical Predictiva Multi-Escala con empaquetado compacto int-singleton:
+      - Subrutina 1 (AURA v3 Genesis): Gradientes Morfogenéticos 3D [SHH, Wnt, BMP] que modulan
+        el descuento Pitman-Yor d(u) y la concentración bayesiana theta(u) a lo largo de los órdenes
+        corticales 0..12 (SHH ventral 0..3 -> Wnt medio 4..7 -> BMP largo alcance 8..12).
+      - Subrutina 3a: Poda física por Microglía de hojas sinápticas de ruido en órdenes profundos.
+      - Subrutina 3b: Mielinización Saltatoria (`System1Fast` en contextos de alta certeza).
+      - Columnas auxiliares estructurales: Skip-1 `(b_{t-4}, b_{t-3}, _, b_{t-1})` y Word-Bigram.
+    """
+    def __init__(
+        self,
+        max_order: int = 12,
+        enable_aux: bool = True,
+        enable_aura_v3_genesis: bool = True,
+    ):
+        self.enable_aura_v3_genesis = enable_aura_v3_genesis
+        self.max_order = max_order if enable_aura_v3_genesis else min(8, max_order)
+        self.enable_aux = enable_aux
+        self.tables: List[Dict[bytes, Any]] = [{} for _ in range(self.max_order + 1)]
+        self.skip1: Optional[Dict[bytes, Any]] = {} if enable_aux else None
+        self.word_tbl: Optional[Dict[Tuple[bytes, bytes], Any]] = {} if enable_aux else None
+        self.total_bytes_ingested = 0
+        self.pruned_cortical_branches = 0
+
+        self.d: List[float] = []
+        self.th: List[float] = []
+        for o in range(self.max_order + 1):
+            u = o / max(1, self.max_order)
+            if enable_aura_v3_genesis:
+                c_shh = math.exp(-2.1 * u)
+                c_wnt = math.exp(-2.4 * ((u - 0.5) ** 2))
+                c_bmp = math.exp(-2.1 * (1.0 - u))
+                d_o = min(0.89, 0.46 + 0.36 * (1.0 - c_shh) + 0.08 * c_wnt + 0.05 * c_bmp)
+                th_o = 0.45 + 1.15 * u + 0.25 * c_wnt
+            else:
+                # Línea base sin gradientes morfogenéticos 3D (descuento/concentración planos)
+                d_o = 0.58
+                th_o = 0.45
+            self.d.append(d_o)
+            self.th.append(th_o)
+
+    @staticmethod
+    def _inc_packed(tbl: dict, ctx: Any, b: int) -> bool:
+        """Incrementa el conteo compacto int-singleton. Retorna True si (ctx, b) ya existía."""
+        node = tbl.get(ctx)
+        if node is None:
+            tbl[ctx] = (1 << 8) | b
+            return False
+        if type(node) is int:
+            sym0 = node & 0xFF
+            cnt0 = node >> 8
+            if sym0 == b:
+                tbl[ctx] = ((cnt0 + 1) << 8) | b
+                return True
+            tbl[ctx] = [cnt0 + 1, 2, {sym0: cnt0, b: 1}]
+            return False
+        dd = node[2]
+        c = dd.get(b)
+        if c is None:
+            dd[b] = 1
+            node[0] += 1
+            node[1] += 1
+            return False
+        dd[b] = c + 1
+        node[0] += 1
+        return True
+
+    def state_fingerprint(self) -> Tuple[int, int, int]:
+        n_ctx = sum(len(t) for t in self.tables)
+        n_aux = (len(self.skip1) if self.skip1 is not None else 0) + (
+            len(self.word_tbl) if self.word_tbl is not None else 0
+        )
+        return (self.total_bytes_ingested, n_ctx, n_aux)
+
+    def fit_bytes(self, data: bytes) -> None:
+        n = len(data)
+        if n == 0:
+            return
+        self.total_bytes_ingested += n
+        tables = self.tables
+        mo = self.max_order
+        inc = self._inc_packed
+        aux = self.enable_aux
+        s1 = self.skip1
+        wt = self.word_tbl
+        prev_w = b""
+        cur_w = bytearray()
+
+        for i in range(n):
+            b = data[i]
+            lim = i if i < mo else mo
+            for o in range(lim, -1, -1):
+                ctx = data[i - o:i] if o else b""
+                if inc(tables[o], ctx, b) and o > 0:
+                    break
+            if aux:
+                if i >= 4:
+                    inc(s1, data[i - 4:i - 2] + data[i - 1:i], b)
+                if prev_w:
+                    inc(wt, (prev_w, bytes(cur_w)), b)
+                if (48 <= b <= 57) or (65 <= b <= 90) or (97 <= b <= 122) or b == 95 or b >= 128:
+                    if len(cur_w) < 4:
+                        cur_w.append(b)
+                elif cur_w:
+                    prev_w = bytes(cur_w)
+                    cur_w.clear()
+
+    def microglia_prune_tree(self, min_order: int = 11, max_singletons_per_order: int = 120000) -> int:
+        """
+        Subrutina 3a (Poda por Microglía en sueño SWR): compacta hojas singleton de ruido
+        en órdenes muy profundos (o >= min_order) cuando superan el presupuesto sináptico,
+        preservando todas las ramas de orden inferior y ramas con evidencia repetida (cnt >= 2).
+        """
+        if not self.enable_aura_v3_genesis:
+            return 0
+        pruned = 0
+        for o in range(min_order, self.max_order + 1):
+            tbl = self.tables[o]
+            if len(tbl) <= max_singletons_per_order:
+                continue
+            excess = len(tbl) - max_singletons_per_order
+            victims = []
+            for k, node in tbl.items():
+                if type(node) is int and (node >> 8) == 1:
+                    victims.append(k)
+                    if len(victims) >= excess:
+                        break
+            for k in victims:
+                del tbl[k]
+            pruned += len(victims)
+        self.pruned_cortical_branches += pruned
+        return pruned
+
+    def predict_slab_256(
+        self,
+        data: bytes,
+        base_prior: np.ndarray,
+        myelin_thresh: float = 0.90,
+        skip_mask: Optional[np.ndarray] = None,
+    ) -> Tuple[np.ndarray, Optional[np.ndarray], Optional[np.ndarray], np.ndarray, np.ndarray]:
+        """
+        Evalúa estrictamente de forma causal P(b_t | b_{<t}) en Delta^255 sobre toda la secuencia
+        sin mutar ningún estado interno (100% read-only).
+        """
+        n = len(data)
+        p_hpyp = np.empty((n, 256), dtype=np.float32)
+        aux = self.enable_aux
+        p_skip = np.empty((n, 256), dtype=np.float32) if aux else None
+        p_word = np.empty((n, 256), dtype=np.float32) if aux else None
+        matched_o = np.zeros(n, dtype=np.int16)
+        myelin_mask = np.zeros(n, dtype=np.bool_)
+
+        tables = self.tables
+        mo = self.max_order
+        ds, ths = self.d, self.th
+        s1 = self.skip1
+        wt = self.word_tbl
+        prev_w = b""
+        cur_w = bytearray()
+        bp = base_prior.astype(np.float32, copy=False)
+        use_myelin = self.enable_aura_v3_genesis and (myelin_thresh > 0.0)
+
+        # Precomputación exacta (100% read-only y efímera) de los niveles de mayor ramificación o=0 y o=1:
+        # P_0 = ((th_0 + d_0*u_0)/(T_0 + th_0)) * bp + q_0
+        # P_1(b) = ((th_1 + d_1*u_1)/(T_1 + th_1)) * P_0 + q_1(b)
+        # Matemáticamente idéntico a recorrer la recursión completa hasta bp, eliminando ~95% de iteraciones.
+        tbl0 = tables[0]
+        node0 = tbl0.get(b"")
+        if node0 is None:
+            p0_vec = bp
+            tot0 = 0
+        else:
+            d0, th0 = ds[0], ths[0]
+            if type(node0) is int:
+                sym0 = node0 & 0xFF
+                cnt0 = node0 >> 8
+                tot0 = cnt0
+                inv0 = 1.0 / (cnt0 + th0)
+                p0_vec = (bp * ((th0 + d0) * inv0)).astype(np.float32)
+                if cnt0 > d0:
+                    p0_vec[sym0] += (cnt0 - d0) * inv0
+            else:
+                tot0, uniq0, sc0 = node0
+                inv0 = 1.0 / (tot0 + th0)
+                p0_vec = (bp * ((th0 + d0 * uniq0) * inv0)).astype(np.float32)
+                for sym0, cnt0 in sc0.items():
+                    if cnt0 > d0:
+                        p0_vec[sym0] += (cnt0 - d0) * inv0
+
+        p1_vecs: List[Optional[np.ndarray]] = [None] * 256
+        p1_tots: List[int] = [0] * 256
+        if mo >= 1 and node0 is not None:
+            tbl1 = tables[1]
+            d1, th1 = ds[1], ths[1]
+            for k1, node1 in tbl1.items():
+                b1 = k1[0]
+                if type(node1) is int:
+                    sym1 = node1 & 0xFF
+                    cnt1 = node1 >> 8
+                    p1_tots[b1] = cnt1
+                    inv1 = 1.0 / (cnt1 + th1)
+                    v1 = (p0_vec * ((th1 + d1) * inv1)).astype(np.float32)
+                    if cnt1 > d1:
+                        v1[sym1] += (cnt1 - d1) * inv1
+                    p1_vecs[b1] = v1
+                else:
+                    tot1, uniq1, sc1 = node1
+                    p1_tots[b1] = tot1
+                    inv1 = 1.0 / (tot1 + th1)
+                    v1 = (p0_vec * ((th1 + d1 * uniq1) * inv1)).astype(np.float32)
+                    for sym1, cnt1 in sc1.items():
+                        if cnt1 > d1:
+                            v1[sym1] += (cnt1 - d1) * inv1
+                    p1_vecs[b1] = v1
+
+        has_node0 = node0 is not None
+        d_a, th_a = 0.72, 0.85
+
+        for i in range(n):
+            b = data[i]
+            if skip_mask is not None and skip_mask[i]:
+                p_hpyp[i] = bp
+                if aux:
+                    if (48 <= b <= 57) or (65 <= b <= 90) or (97 <= b <= 122) or b == 95 or b >= 128:
+                        if len(cur_w) < 4:
+                            cur_w.append(b)
+                    elif cur_w:
+                        prev_w = bytes(cur_w)
+                        cur_w.clear()
+                continue
+
+            row = p_hpyp[i]
+            if not has_node0:
+                row[:] = bp
+                hit_o = 0
+                hit_tot = 0
+            elif i == 0 or mo < 1 or p1_vecs[data[i - 1]] is None:
+                row[:] = p0_vec
+                hit_o = 0
+                hit_tot = tot0
+            else:
+                prev_b = data[i - 1]
+                base_v1 = p1_vecs[prev_b]
+                lim = i if i < mo else mo
+                if lim < 2:
+                    row[:] = base_v1
+                    hit_o = 1
+                    hit_tot = p1_tots[prev_b]
+                else:
+                    chain_hi = []
+                    for o in range(2, lim + 1):
+                        node = tables[o].get(data[i - o:i])
+                        if node is None:
+                            break
+                        chain_hi.append((o, node))
+
+                    if not chain_hi:
+                        row[:] = base_v1
+                        hit_o = 1
+                        hit_tot = p1_tots[prev_b]
+                    else:
+                        hit_o, top_node = chain_hi[-1]
+                        hit_tot = (top_node >> 8) if type(top_node) is int else top_node[0]
+                        w = 1.0
+                        acc: Dict[int, float] = {}
+                        for o, node in reversed(chain_hi):
+                            d = ds[o]
+                            th = ths[o]
+                            if type(node) is int:
+                                sym = node & 0xFF
+                                cnt = node >> 8
+                                inv = 1.0 / (cnt + th)
+                                if cnt > d:
+                                    acc[sym] = acc.get(sym, 0.0) + w * ((cnt - d) * inv)
+                                w *= (th + d) * inv
+                            else:
+                                tot, uniq, sc = node
+                                inv = 1.0 / (tot + th)
+                                w_inv = w * inv
+                                for sym, cnt in sc.items():
+                                    if cnt > d:
+                                        acc[sym] = acc.get(sym, 0.0) + w_inv * (cnt - d)
+                                w *= (th + d * uniq) * inv
+                            if w < 1e-8:
+                                break
+                        np.multiply(base_v1, w, out=row)
+                        for sym, mass in acc.items():
+                            row[sym] += mass
+
+            matched_o[i] = hit_o
+
+            if aux:
+                if use_myelin and hit_o >= 6 and hit_tot >= 6 and float(row.max()) >= myelin_thresh:
+                    myelin_mask[i] = True
+                    p_skip[i] = row
+                    p_word[i] = row
+                else:
+                    ps = p_skip[i]
+                    nd_s = s1.get(data[i - 4:i - 2] + data[i - 1:i]) if i >= 4 else None
+                    if nd_s is None:
+                        ps[:] = row
+                    elif type(nd_s) is int:
+                        sym = nd_s & 0xFF
+                        cnt = nd_s >> 8
+                        inv = 1.0 / (cnt + th_a)
+                        np.multiply(row, (th_a + d_a) * inv, out=ps)
+                        if cnt > d_a:
+                            ps[sym] += (cnt - d_a) * inv
+                    else:
+                        tot, uniq, sc = nd_s
+                        inv = 1.0 / (tot + th_a)
+                        np.multiply(row, (th_a + d_a * uniq) * inv, out=ps)
+                        for sym, cnt in sc.items():
+                            if cnt > d_a:
+                                ps[sym] += (cnt - d_a) * inv
+
+                    pw = p_word[i]
+                    nd_w = wt.get((prev_w, bytes(cur_w))) if prev_w else None
+                    if nd_w is None:
+                        pw[:] = row
+                    elif type(nd_w) is int:
+                        sym = nd_w & 0xFF
+                        cnt = nd_w >> 8
+                        inv = 1.0 / (cnt + th_a)
+                        np.multiply(row, (th_a + d_a) * inv, out=pw)
+                        if cnt > d_a:
+                            pw[sym] += (cnt - d_a) * inv
+                    else:
+                        tot, uniq, sc = nd_w
+                        inv = 1.0 / (tot + th_a)
+                        np.multiply(row, (th_a + d_a * uniq) * inv, out=pw)
+                        for sym, cnt in sc.items():
+                            if cnt > d_a:
+                                pw[sym] += (cnt - d_a) * inv
+
+                if (48 <= b <= 57) or (65 <= b <= 90) or (97 <= b <= 122) or b == 95 or b >= 128:
+                    if len(cur_w) < 4:
+                        cur_w.append(b)
+                elif cur_w:
+                    prev_w = bytes(cur_w)
+                    cur_w.clear()
+
+        return p_hpyp, p_skip, p_word, matched_o, myelin_mask
+
+
+class AuraFepCorticalLanguageModel:
+    """
+    Motor de Lenguaje Cortical Integrado en AURA v3 Genesis + FEP-MARCUS v3:
+      - Fusiona 5 vías predictivas causales en el simplex exacto Delta^255 mediante
+        Product-of-Experts de Energía Libre Variacional (parámetros naturales ponderados
+        por precisión bayesiana Pi_m) + mezcla BMA calibrada:
+          1. Columna Cortical HPYP especialista (órdenes 0..12 con gradientes [SHH, Wnt, BMP])
+          2. Columna Estructural Skip-1 `(b_{t-4}, b_{t-3}, _, b_{t-1})`
+          3. Columna Léxica Word-Bigram `(prev_word, cur_word_prefix)`
+          4. Corteza Generalista Compartida Cross-Domain (órdenes 0..8)
+          5. Columna Neural Cortical Mountcastle de 6 capas bajo Ley de Dale estricta (W^E, W^I >= 0)
+      - Soporta inferencia ciega de modalidad por Inferencia Bayesiana Causal q(k | b_{<t})
+        sin etiquetas de dominio en test, evaluación estrictamente congelada (0 mutaciones)
+        y adaptación causal online efímera (Fast-Weights) para cambio de dominio OOD.
+    """
+    DOMAINS = ("markdown", "rust", "python")
+
+    def __init__(self, seed: int = 42, enable_aura_v3_genesis: bool = True):
+        self.seed = int(seed)
+        self.enable_aura_v3_genesis = bool(enable_aura_v3_genesis)
+        self.base_prior = np.full(256, 1.0 / 256.0, dtype=np.float32)
+
+        self.specialists: Dict[str, CorticalMorphogeneticByteColumn] = {
+            dom: CorticalMorphogeneticByteColumn(
+                max_order=12 if enable_aura_v3_genesis else 8,
+                enable_aux=True,
+                enable_aura_v3_genesis=enable_aura_v3_genesis,
+            )
+            for dom in self.DOMAINS
+        }
+        self.shared_cortex = CorticalMorphogeneticByteColumn(
+            max_order=8 if enable_aura_v3_genesis else 6,
+            enable_aux=False,
+            enable_aura_v3_genesis=enable_aura_v3_genesis,
+        )
+        self.neural_column = DaleMountcastleNeuralByteColumn(
+            ctx_len=8, d_emb=16, d_hid=192, seed=seed
+        )
+
+        # Precisiones variacionales por régimen morfogenético [SHH (0..2), Wnt (3..6), BMP (7..12)]
+        # sobre 5 expertos: [HPYP, Skip-1, Word, Shared, Dale-Neural]
+        self.regime_precisions = np.array(
+            [
+                [0.44, 0.14, 0.14, 0.18, 0.10],  # SHH: contextos cortos/novedosos -> mayor peso neural + shared
+                [0.58, 0.12, 0.14, 0.11, 0.05],  # Wnt: estructura meso-escala
+                [0.70, 0.08, 0.10, 0.09, 0.03],  # BMP: contextos largos de alta evidencia
+            ],
+            dtype=np.float32,
+        )
+        self.poe_alpha = 0.80 if enable_aura_v3_genesis else 0.50
+
+        self.cycles_trained = 0
+        self.total_train_bytes_seen = 0
+        self.prenatal_waves_ran = False
+        self.prenatal_repo_bytes = 0
+        self.swr_pruning_events = 0
+        self.cumulative_neural_train_buf = bytearray()
+        self.last_neural_epoch_bpb = 8.0
+
+    def run_prenatal_in_utero_byte_waves(self, n_bytes: int = 4096) -> Dict[str, Any]:
+        """
+        Subrutina 4: Calibra el prior base estructural y la columna neural Mountcastle con ondas
+        sintéticas puras (0 bytes del repositorio) antes del Ciclo 0.
+        """
+        waves = generate_synthetic_prenatal_byte_waves(seed=self.seed, n_bytes=n_bytes)
+        # Prior base suave en 8 categorías universales ASCII (idéntico dentro de cada clase)
+        counts = np.full(256, 0.5, dtype=np.float64)
+        for b in waves:
+            if 97 <= b <= 122:
+                counts[97:123] += 1.0 / 26.0
+            elif 65 <= b <= 90:
+                counts[65:91] += 1.0 / 26.0
+            elif 48 <= b <= 57:
+                counts[48:58] += 1.0 / 10.0
+            elif b in (32, 10, 9):
+                counts[b] += 1.0
+            else:
+                counts[33:48] += 0.05
+                counts[58:65] += 0.05
+                counts[91:97] += 0.05
+                counts[123:127] += 0.05
+        self.base_prior = (counts / np.sum(counts)).astype(np.float32)
+        pre_bpb = self.neural_column.run_prenatal_waves(seed=self.seed, n_bytes=n_bytes)
+        self.prenatal_waves_ran = True
+        self.prenatal_repo_bytes = 0
+        return {
+            "prenatal_synthetic_bytes": len(waves),
+            "prenatal_repo_bytes": 0,
+            "prenatal_neural_bpb": round(float(pre_bpb), 4),
+        }
+
+    def state_fingerprint(self) -> Dict[str, Any]:
+        return {
+            "specialists": {d: self.specialists[d].state_fingerprint() for d in self.DOMAINS},
+            "shared": self.shared_cortex.state_fingerprint(),
+            "neural": round(self.neural_column.weight_fingerprint(), 6),
+        }
+
+    def train_cycle_shard(
+        self,
+        cycle_idx: int,
+        splitter: RepoTextCorpusSplitter,
+        neural_samples: int = 65536,
+        calibrate_on_train_cal: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        Ejecuta 1 ciclo de entrenamiento progresivo sobre el shard disjunto `cycle_idx` de `train`:
+          1. Ingesta incremental del shard en cada columna especialista y en la corteza compartida.
+          2. Entrenamiento de 1 época cíclica de la Columna Neural Dale Mountcastle (L4->L2/3->L5->L6).
+          3. Calibración de precisiones variacionales FEP exclusivamente sobre `train_cal` (0 acceso a held-out).
+        """
+        t0 = time.perf_counter()
+        shard_idx = cycle_idx % splitter.n_cycles
+        bytes_this_cycle = 0
+        per_dom_bytes: Dict[str, int] = {}
+
+        for dom in self.DOMAINS:
+            docs = splitter.train_shards[dom][shard_idx]
+            dom_b = 0
+            for doc in docs:
+                self.specialists[dom].fit_bytes(doc)
+                self.shared_cortex.fit_bytes(doc)
+                dom_b += len(doc)
+                # Acumular muestra representativa acotada (hasta 1.5 MB) para épocas neurales rápidas
+                if len(self.cumulative_neural_train_buf) < 1_500_000:
+                    self.cumulative_neural_train_buf.extend(doc[:min(len(doc), 32768)])
+                    self.cumulative_neural_train_buf.append(10)
+            per_dom_bytes[dom] = dom_b
+            bytes_this_cycle += dom_b
+
+        self.cycles_trained += 1
+        self.total_train_bytes_seen += bytes_this_cycle
+
+        lr_cycle = max(1.5e-3, 4.5e-3 * (0.88 ** max(0, self.cycles_trained - 1)))
+        neural_bpb = self.neural_column.train_cyclic_epoch(
+            bytes(self.cumulative_neural_train_buf),
+            n_samples=neural_samples,
+            batch_size=1024,
+            lr=lr_cycle,
+        )
+        self.last_neural_epoch_bpb = float(neural_bpb)
+
+        if calibrate_on_train_cal and self.enable_aura_v3_genesis and self.cycles_trained >= 2:
+            self._calibrate_precisions_on_train_cal(splitter)
+
+        dt = time.perf_counter() - t0
+        return {
+            "cycle": self.cycles_trained,
+            "shard_idx": shard_idx,
+            "bytes_ingested_cycle": bytes_this_cycle,
+            "total_train_bytes_seen": self.total_train_bytes_seen,
+            "per_domain_bytes": per_dom_bytes,
+            "neural_train_bpb": round(float(neural_bpb), 4),
+            "dale_violations": self.neural_column.dale_violations(),
+            "train_seconds": round(dt, 2),
+        }
+
+    def _fuse_experts_probs(
+        self,
+        ph: np.ndarray,
+        ps: np.ndarray,
+        pw: np.ndarray,
+        psh: np.ndarray,
+        pn: np.ndarray,
+        matched_o: np.ndarray,
+        myelin_mask: np.ndarray,
+        regime_precisions: Optional[np.ndarray] = None,
+        poe_alpha: Optional[float] = None,
+    ) -> np.ndarray:
+        """
+        Fusión Variacional por Energía Libre (Product-of-Experts en parámetros naturales + BMA)
+        sobre el simplex exacto Delta^255 con atajo de mielinización saltatoria (`System1Fast`).
+        """
+        rp = self.regime_precisions if regime_precisions is None else regime_precisions
+        alpha = self.poe_alpha if poe_alpha is None else poe_alpha
+
+        regime_idx = np.where(matched_o <= 2, 0, np.where(matched_o <= 6, 1, 2))
+        w = rp[regime_idx]  # (N, 5)
+        w0 = w[:, 0:1]
+        w1 = w[:, 1:2]
+        w2 = w[:, 2:3]
+        w3 = w[:, 3:4]
+        w4 = w[:, 4:5]
+
+        eps = np.float32(1e-7)
+        logits = (
+            w0 * np.log(np.maximum(ph, eps))
+            + w1 * np.log(np.maximum(ps, eps))
+            + w2 * np.log(np.maximum(pw, eps))
+            + w3 * np.log(np.maximum(psh, eps))
+            + w4 * np.log(np.maximum(pn, eps))
+        )
+        logits -= logits.max(axis=1, keepdims=True)
+        ex = np.exp(logits)
+        p_poe = ex / np.maximum(ex.sum(axis=1, keepdims=True), np.float32(1e-9))
+
+        p_bma = w0 * ph + w1 * ps + w2 * pw + w3 * psh + w4 * pn
+        p_final = np.float32(alpha) * p_poe + np.float32(1.0 - alpha) * p_bma
+
+        if myelin_mask is not None and np.any(myelin_mask):
+            p_final[myelin_mask] = ph[myelin_mask]
+
+        p_final /= np.maximum(p_final.sum(axis=1, keepdims=True), np.float32(1e-9))
+        return p_final
+
+    def _calibrate_precisions_on_train_cal(self, splitter: RepoTextCorpusSplitter) -> None:
+        """
+        Calibra las precisiones variacionales Pi_m y la mezcla PoE/BMA EXCLUSIVAMENTE sobre
+        el corte interno `train_cal` (0 bytes de held-out).
+        """
+        # Evaluar expertos sobre 2 KiB por dominio de train_cal (solo 6 KiB -> <0.5s)
+        stacks = []
+        for dom in self.DOMAINS:
+            buf = splitter.train_cal_buffers.get(dom, b"")[:2048]
+            if len(buf) < 64:
+                continue
+            ph, ps, pw, mo, mym = self.specialists[dom].predict_slab_256(
+                buf, self.base_prior, myelin_thresh=0.0
+            )
+            psh, _, _, _, _ = self.shared_cortex.predict_slab_256(
+                buf, self.base_prior, myelin_thresh=0.0
+            )
+            pn = self.neural_column.predict_probs_256(buf)
+            y = np.frombuffer(buf, dtype=np.uint8).astype(np.int32)
+            stacks.append((ph, ps, pw, psh, pn, mo, mym, y))
+
+        if not stacks:
+            return
+
+        candidates = [
+            (
+                np.array([
+                    [0.44, 0.14, 0.14, 0.18, 0.10],
+                    [0.58, 0.12, 0.14, 0.11, 0.05],
+                    [0.70, 0.08, 0.10, 0.09, 0.03],
+                ], dtype=np.float32),
+                0.80,
+            ),
+            (
+                np.array([
+                    [0.42, 0.15, 0.15, 0.20, 0.08],
+                    [0.60, 0.12, 0.14, 0.11, 0.03],
+                    [0.72, 0.08, 0.10, 0.08, 0.02],
+                ], dtype=np.float32),
+                0.85,
+            ),
+            (
+                np.array([
+                    [0.48, 0.14, 0.14, 0.19, 0.05],
+                    [0.64, 0.11, 0.13, 0.10, 0.02],
+                    [0.76, 0.07, 0.09, 0.07, 0.01],
+                ], dtype=np.float32),
+                0.82,
+            ),
+            (
+                np.array([
+                    [0.40, 0.14, 0.14, 0.20, 0.12],
+                    [0.56, 0.13, 0.15, 0.12, 0.04],
+                    [0.68, 0.09, 0.11, 0.10, 0.02],
+                ], dtype=np.float32),
+                0.78,
+            ),
+        ]
+
+        best_ce = float("inf")
+        best_cfg = (self.regime_precisions, self.poe_alpha)
+        for cand_rp, cand_alpha in candidates:
+            tot_n = 0.0
+            tot_b = 0
+            for ph, ps, pw, psh, pn, mo, mym, y in stacks:
+                pf = self._fuse_experts_probs(
+                    ph, ps, pw, psh, pn, mo, mym, regime_precisions=cand_rp, poe_alpha=cand_alpha
+                )
+                py = np.maximum(pf[np.arange(len(y)), y].astype(np.float64), 1e-12)
+                tot_n += float(-np.sum(np.log(py)))
+                tot_b += len(y)
+            ce = tot_n / max(1, tot_b)
+            if ce < best_ce:
+                best_ce = ce
+                best_cfg = (cand_rp, cand_alpha)
+
+        self.regime_precisions = best_cfg[0].copy()
+        self.poe_alpha = float(best_cfg[1])
+
+    def execute_microglia_swr_pruning(self) -> Dict[str, Any]:
+        """Subrutina 3a: Poda física por Microglía en sueño SWR sobre sinapsis Dale neurales y árbol cortical."""
+        self.swr_pruning_events += 1
+        neural_st = self.neural_column.microglia_prune(threshold=0.015)
+        pruned_branches = 0
+        for dom in self.DOMAINS:
+            pruned_branches += self.specialists[dom].microglia_prune_tree(
+                min_order=11, max_singletons_per_order=140000
+            )
+        return {
+            "swr_pruning_events": self.swr_pruning_events,
+            "neural_dale_pruned_synapses": neural_st["zero_dale_synapses"],
+            "neural_dale_total_synapses": neural_st["total_dale_synapses"],
+            "neural_dale_pruned_pct": neural_st["pruned_pct"],
+            "neural_dale_violations": neural_st["dale_violations"],
+            "cortical_branches_pruned_step": pruned_branches,
+            "cortical_branches_pruned_total": sum(
+                self.specialists[d].pruned_cortical_branches for d in self.DOMAINS
+            ),
+        }
+
+    def predict_domain_probs_256(
+        self,
+        data: bytes,
+        domain: str,
+        enable_myelination: bool = True,
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Retorna `(p_final (N,256), p_neural (N,256), myelin_mask (N,))` estrictamente causal y read-only.
+        """
+        spec = self.specialists[domain]
+        my_thr = 0.90 if (enable_myelination and self.enable_aura_v3_genesis) else 0.0
+        ph, ps, pw, mo, mym = spec.predict_slab_256(data, self.base_prior, myelin_thresh=my_thr)
+        psh, _, _, _, _ = self.shared_cortex.predict_slab_256(
+            data, self.base_prior, myelin_thresh=0.0, skip_mask=mym if my_thr > 0.0 else None
+        )
+        pn = self.neural_column.predict_probs_256(data)
+        p_final = self._fuse_experts_probs(ph, ps, pw, psh, pn, mo, mym)
+        return p_final, pn, mym
+
+    def evaluate_sequence_frozen(
+        self,
+        data: bytes,
+        domain: str,
+        enable_myelination: bool = True,
+    ) -> Dict[str, Any]:
+        """Evaluación 100% congelada (0 mutaciones de pesos ni conteos, verificada por huella digital)."""
+        t0 = time.perf_counter()
+        fp_before = self.state_fingerprint()
+        p_final, p_neural, mym = self.predict_domain_probs_256(
+            data, domain=domain, enable_myelination=enable_myelination
+        )
+        fp_after = self.state_fingerprint()
+        frozen_ok = (fp_before == fp_after)
+
+        metrics = compute_exact_byte_lm_metrics(
+            p_final,
+            data,
+            myelin_mask=mym,
+            dale_violations=self.neural_column.dale_violations(),
+            frozen_verified=frozen_ok,
+        )
+        y_arr = np.frombuffer(data, dtype=np.uint8).astype(np.int32)
+        p_n_true = np.maximum(p_neural[np.arange(len(y_arr)), y_arr].astype(np.float64), 1e-12)
+        n_ce = float(-np.mean(np.log(p_n_true))) if len(y_arr) > 0 else math.log(256.0)
+        n_bpb = n_ce / math.log(2.0)
+        metrics["neural_only_bpb"] = round(n_bpb, 6)
+        metrics["neural_only_ppl_byte"] = round(math.exp(min(n_ce, 30.0)), 6)
+        metrics["eval_seconds"] = round(time.perf_counter() - t0, 3)
+        metrics["mode"] = "FROZEN"
+        metrics["domain"] = domain
+        return metrics
+
+    def evaluate_blind_bayesian_stream(
+        self,
+        domain_buffers: Dict[str, bytes],
+        max_bytes_per_doc: int = 8192,
+    ) -> Dict[str, Any]:
+        """
+        Inferencia Bayesiana Causal Ciega de Modalidad (0 etiquetas de dominio en test):
+        Mantiene el posterior variacional q(k | b_{<t}) sobre los 3 especialistas
+        (`markdown`, `rust`, `python`) actualizado EXCLUSIVAMENTE a partir de bytes pasados b_{<t}.
+        Mezcla causal: P_blind(b_t | b_{<t}) = sum_k q(k | b_{<t}) * P_k(b_t | b_{<t}).
+        """
+        t0 = time.perf_counter()
+        fp_before = self.state_fingerprint()
+        all_probs: List[np.ndarray] = []
+        all_bytes = bytearray()
+        correct_lock = 0
+        total_docs = 0
+
+        for true_dom, raw_buf in domain_buffers.items():
+            buf = raw_buf[:max_bytes_per_doc]
+            if not buf:
+                continue
+            total_docs += 1
+            n = len(buf)
+            # Calcular distribuciones causales de los 3 especialistas (sin usar true_dom)
+            dom_probs = {}
+            for d in self.DOMAINS:
+                pf, _, _ = self.predict_domain_probs_256(buf, domain=d, enable_myelination=True)
+                dom_probs[d] = pf
+
+            q = np.full(len(self.DOMAINS), 1.0 / len(self.DOMAINS), dtype=np.float64)
+            leak = 0.002
+            blind_p = np.empty((n, 256), dtype=np.float32)
+            for i in range(n):
+                # 1. Predecir b_i ANTES de observar b_i usando posterior causal q(k | b_{<i})
+                mix = (
+                    q[0] * dom_probs[self.DOMAINS[0]][i]
+                    + q[1] * dom_probs[self.DOMAINS[1]][i]
+                    + q[2] * dom_probs[self.DOMAINS[2]][i]
+                )
+                blind_p[i] = mix
+                # 2. Actualizar posterior bayesiano q(k | b_{<=i}) con verosimilitud causal observada
+                bi = buf[i]
+                likes = np.array(
+                    [max(float(dom_probs[d][i, bi]), 1e-9) for d in self.DOMAINS],
+                    dtype=np.float64,
+                )
+                q = q * likes
+                q /= max(float(np.sum(q)), 1e-12)
+                q = (1.0 - leak) * q + (leak / len(self.DOMAINS))
+
+            inferred_dom = self.DOMAINS[int(np.argmax(q))]
+            if inferred_dom == true_dom:
+                correct_lock += 1
+            all_probs.append(blind_p)
+            all_bytes.extend(buf)
+
+        fp_after = self.state_fingerprint()
+        merged_probs = np.concatenate(all_probs, axis=0) if all_probs else np.zeros((0, 256), dtype=np.float32)
+        metrics = compute_exact_byte_lm_metrics(
+            merged_probs,
+            bytes(all_bytes),
+            dale_violations=self.neural_column.dale_violations(),
+            frozen_verified=(fp_before == fp_after),
+        )
+        metrics["blind_domain_lock_accuracy_pct"] = round((correct_lock / max(1, total_docs)) * 100.0, 2)
+        metrics["eval_seconds"] = round(time.perf_counter() - t0, 3)
+        metrics["mode"] = "FROZEN_BLIND_BAYESIAN_ROUTING"
+        return metrics
+
+    def evaluate_sequence_online_causal(
+        self,
+        data: bytes,
+        domain: str = "rust",
+        fast_weight_alpha: float = 0.28,
+    ) -> Dict[str, Any]:
+        """
+        Adaptación Causal Online (Fast-Weights efímero, estrictamente predecir b_t ANTES de observar b_t):
+        Usa un caché episódico HPYP efímero (órdenes 0..6) descartado al concluir; deja el modelo
+        congelado 100% intacto (`frozen_verified = True`). Comparable directamente con `shift_rust_bpb`
+        online de `aura-engine`.
+        """
+        t0 = time.perf_counter()
+        fp_before = self.state_fingerprint()
+        p_frozen, _, mym = self.predict_domain_probs_256(data, domain=domain, enable_myelination=True)
+
+        n = len(data)
+        fast_col = CorticalMorphogeneticByteColumn(
+            max_order=6, enable_aux=False, enable_aura_v3_genesis=self.enable_aura_v3_genesis
+        )
+        p_online = np.empty((n, 256), dtype=np.float32)
+        inc = fast_col._inc_packed
+        tables = fast_col.tables
+        ds, ths = fast_col.d, fast_col.th
+
+        for i in range(n):
+            b = data[i]
+            # 1. Predecir con Fast-Weights causal sobre b_{<i} (NUNCA ve b_i antes de predecir)
+            if i > 0:
+                lim = i if i < 6 else 6
+                row = p_frozen[i].copy()
+                hit_o = -1
+                for o in range(lim + 1):
+                    ctx = data[i - o:i] if o else b""
+                    node = tables[o].get(ctx)
+                    if node is None:
+                        break
+                    hit_o = o
+                    d = ds[o]
+                    th = ths[o]
+                    if type(node) is int:
+                        sym = node & 0xFF
+                        cnt = node >> 8
+                        inv = 1.0 / (cnt + th)
+                        row *= (th + d) * inv
+                        if cnt > d:
+                            row[sym] += (cnt - d) * inv
+                    else:
+                        tot, uniq, sc = node
+                        inv = 1.0 / (tot + th)
+                        row *= (th + d * uniq) * inv
+                        for sym, cnt in sc.items():
+                            if cnt > d:
+                                row[sym] += (cnt - d) * inv
+                if hit_o >= 1:
+                    w_fw = min(0.55, fast_weight_alpha * (1.0 + 0.18 * hit_o))
+                    mix = (1.0 - w_fw) * p_frozen[i] + w_fw * row
+                    p_online[i] = mix / max(float(mix.sum()), 1e-9)
+                else:
+                    p_online[i] = p_frozen[i]
+            else:
+                p_online[i] = p_frozen[i]
+
+            # 2. Actualizar memoria efímera Fast-Weights DESPUÉS de emitir P(b_i | b_{<i})
+            lim_u = i if i < 6 else 6
+            for o in range(lim_u, -1, -1):
+                ctx = data[i - o:i] if o else b""
+                if inc(tables[o], ctx, b) and o > 0:
+                    break
+
+        fp_after = self.state_fingerprint()
+        metrics = compute_exact_byte_lm_metrics(
+            p_online,
+            data,
+            myelin_mask=mym,
+            dale_violations=self.neural_column.dale_violations(),
+            frozen_verified=(fp_before == fp_after),
+        )
+        metrics["eval_seconds"] = round(time.perf_counter() - t0, 3)
+        metrics["mode"] = "ONLINE_CAUSAL_FAST_WEIGHTS"
+        metrics["domain"] = domain
+        return metrics
+
+    def generate_text(
+        self,
+        prompt: str,
+        n_bytes: int = 128,
+        domain: str = "markdown",
+        temperature: float = 0.72,
+        seed: int = 42,
+    ) -> str:
+        """Genera texto real byte a byte muestreando la distribución exacta P(b_t | b_{<t})."""
+        rng = np.random.default_rng(seed ^ 0x6E17A7E)
+        buf = bytearray(prompt.encode("utf-8"))
+        for _ in range(n_bytes):
+            window = bytes(buf[-32:])
+            pf, _, _ = self.predict_domain_probs_256(window + b" ", domain=domain, enable_myelination=False)
+            probs = pf[-1].astype(np.float64)
+            logp = np.log(np.maximum(probs, 1e-12)) / max(0.15, float(temperature))
+            logp -= np.max(logp)
+            ex = np.exp(logp)
+            ex /= np.sum(ex)
+            nxt = int(rng.choice(256, p=ex))
+            buf.append(nxt)
+        return bytes(buf[len(prompt.encode("utf-8")):]).decode("utf-8", errors="replace")
+
+    def evaluate_full_held_out_suite(
+        self,
+        splitter: RepoTextCorpusSplitter,
+        use_full_buffers: bool = False,
+        include_blind_routing: bool = True,
+        include_online_shift: bool = True,
+        generate_samples: bool = False,
+        include_canonical: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        Ejecuta la suite completa de validación held-out estrictamente congelada sobre texto real:
+          - Global Held-Out (ponderado exacto sobre las 3 modalidades sin fuga)
+          - Desglose por modalidad (`markdown`, `rust`, `python`)
+          - Enrutamiento Bayesiano Ciego (`blind_bayesian_routing`, 0 etiquetas de dominio)
+          - Benchmarks canónicos de `aura-engine` (`canonical_eval_md` 6,144B + `canonical_shift_rust` 6,144B)
+        """
+        t0 = time.perf_counter()
+        buffers = splitter.full_held_out_buffers if use_full_buffers else splitter.held_out_buffers
+
+        per_domain: Dict[str, Dict[str, Any]] = {}
+        tot_nats = 0.0
+        tot_bytes = 0
+        tot_chars = 0
+        tot_top1 = 0.0
+        tot_top5 = 0.0
+        tot_ent = 0.0
+        tot_brier = 0.0
+        tot_ece = 0.0
+        tot_myelin = 0.0
+        tot_neural_nats = 0.0
+        max_norm_err = 0.0
+        nan_inf_total = 0
+        all_frozen = True
+
+        for dom in self.DOMAINS:
+            buf = buffers.get(dom, b"")
+            if not buf:
+                continue
+            m = self.evaluate_sequence_frozen(buf, domain=dom, enable_myelination=True)
+            per_domain[dom] = m
+            nb = m["n_bytes"]
+            tot_nats += m["ce_nats"] * nb
+            tot_bytes += nb
+            tot_chars += m["n_chars"]
+            tot_top1 += m["top1_acc_pct"] * nb
+            tot_top5 += m["top5_acc_pct"] * nb
+            tot_ent += m["mean_entropy_bits"] * nb
+            tot_brier += m["next_byte_brier"] * nb
+            tot_ece += m["next_byte_ece_10bin"] * nb
+            tot_myelin += m["myelinated_steps_pct"] * nb
+            tot_neural_nats += (m["neural_only_bpb"] * math.log(2.0)) * nb
+            max_norm_err = max(max_norm_err, m["max_prob_norm_error"])
+            nan_inf_total += m["nan_inf_count"]
+            all_frozen = all_frozen and m["frozen_verified"]
+
+        g_ce = tot_nats / max(1, tot_bytes)
+        g_bpb = g_ce / math.log(2.0)
+        g_ratio = tot_bytes / max(1, tot_chars)
+        g_bpc = g_bpb * g_ratio
+        g_ppl_b = math.exp(min(g_ce, 30.0))
+        g_ppl_c = 2.0 ** min(g_bpc, 40.0)
+        g_neural_bpb = (tot_neural_nats / max(1, tot_bytes)) / math.log(2.0)
+
+        global_held_out = {
+            "n_bytes": tot_bytes,
+            "n_chars": tot_chars,
+            "bytes_per_char": round(g_ratio, 5),
+            "ce_nats": round(g_ce, 6),
+            "bpb": round(g_bpb, 6),
+            "bpc": round(g_bpc, 6),
+            "ppl_byte": round(g_ppl_b, 6),
+            "ppl_char": round(g_ppl_c, 6),
+            "top1_acc_pct": round(tot_top1 / max(1, tot_bytes), 2),
+            "top5_acc_pct": round(tot_top5 / max(1, tot_bytes), 2),
+            "mean_entropy_bits": round(tot_ent / max(1, tot_bytes), 4),
+            "next_byte_brier": round(tot_brier / max(1, tot_bytes), 5),
+            "next_byte_ece_10bin": round(tot_ece / max(1, tot_bytes), 5),
+            "myelinated_steps_pct": round(tot_myelin / max(1, tot_bytes), 2),
+            "neural_only_bpb": round(g_neural_bpb, 6),
+            "neural_only_ppl_byte": round(2.0 ** min(g_neural_bpb, 40.0), 6),
+            "max_prob_norm_error": float(f"{max_norm_err:.3e}"),
+            "nan_inf_count": nan_inf_total,
+            "dale_violations": self.neural_column.dale_violations(),
+            "frozen_verified": all_frozen,
+            "mode": "FROZEN",
+        }
+
+        result: Dict[str, Any] = {
+            "cycle": self.cycles_trained,
+            "total_train_bytes_seen": self.total_train_bytes_seen,
+            "enable_aura_v3_genesis": self.enable_aura_v3_genesis,
+            "global_held_out": global_held_out,
+            "per_domain_held_out": per_domain,
+            "neural_synapses": self.neural_column.synapse_stats(),
+            "cortical_branches_pruned": sum(
+                self.specialists[d].pruned_cortical_branches for d in self.DOMAINS
+            ),
+            "regime_precisions": np.round(self.regime_precisions, 4).tolist(),
+            "poe_alpha": round(self.poe_alpha, 4),
+        }
+
+        if include_canonical and splitter.canonical_eval_md:
+            result["canonical_eval_md_frozen"] = self.evaluate_sequence_frozen(
+                splitter.canonical_eval_md, domain="markdown", enable_myelination=True
+            )
+        if include_canonical and splitter.canonical_shift_rust:
+            result["canonical_shift_rust_frozen"] = self.evaluate_sequence_frozen(
+                splitter.canonical_shift_rust, domain="rust", enable_myelination=True
+            )
+            result["canonical_shift_rust_ood_md_only_frozen"] = self.evaluate_sequence_frozen(
+                splitter.canonical_shift_rust, domain="markdown", enable_myelination=True
+            )
+            if include_online_shift:
+                result["canonical_shift_rust_online_causal"] = self.evaluate_sequence_online_causal(
+                    splitter.canonical_shift_rust, domain="rust"
+                )
+                result["canonical_shift_rust_ood_md_online_causal"] = self.evaluate_sequence_online_causal(
+                    splitter.canonical_shift_rust, domain="markdown"
+                )
+
+        if include_blind_routing:
+            result["blind_bayesian_held_out"] = self.evaluate_blind_bayesian_stream(
+                buffers, max_bytes_per_doc=8192
+            )
+
+        if generate_samples:
+            result["verbatim_samples"] = {
+                "prompt_md": "## Resultados de ",
+                "gen_md": self.generate_text("## Resultados de ", n_bytes=120, domain="markdown", temperature=0.65, seed=self.seed),
+                "prompt_rust": "pub fn ",
+                "gen_rust": self.generate_text("pub fn ", n_bytes=120, domain="rust", temperature=0.65, seed=self.seed + 1),
+                "prompt_python": "def evaluate_",
+                "gen_python": self.generate_text("def evaluate_", n_bytes=120, domain="python", temperature=0.65, seed=self.seed + 2),
+            }
+
+        result["suite_eval_seconds"] = round(time.perf_counter() - t0, 2)
+        return result

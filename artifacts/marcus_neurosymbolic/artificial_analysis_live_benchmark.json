@@ -1,8 +1,8 @@
 {
-  "evaluation_round": 8,
-  "episode": 700,
-  "timestamp": "2026-11-22T19:38:25.369442+00:00",
-  "eval_duration_seconds": 1.212,
+  "evaluation_round": 9,
+  "episode": 800,
+  "timestamp": "2026-11-25T07:48:18.079386+00:00",
+  "eval_duration_seconds": 1.152,
   "total_questions": 300,
   "passive_correct": 300,
   "active_correct": 300,
@@ -13,14 +13,14 @@
   "active_rescued_questions": 0,
   "unresolved_passive": 0,
   "hallucination_rate_pct": 0.0,
-  "mean_passive_free_energy": 42.385,
-  "mean_passive_surprise": 0.434,
+  "mean_passive_free_energy": 42.498,
+  "mean_passive_surprise": 0.428,
   "weakest_domain": "Law",
   "weakest_domain_acc": 100.0,
   "weakest_domains_order": [
     "Law",
-    "Science Engineering and Mathematics",
     "Humanities and Social Sciences",
+    "Science Engineering and Mathematics",
     "Software Engineering",
     "Finance",
     "Health"
@@ -41,9 +41,9 @@
       "passive_accuracy_pct": 100.0,
       "accuracy_pct": 100.0,
       "prior_conf_coverage_pct": 100.0,
-      "avg_free_energy": 42.488,
-      "avg_surprise": 0.45,
-      "avg_hrr_sim": 0.6829,
+      "avg_free_energy": 42.521,
+      "avg_surprise": 0.443,
+      "avg_hrr_sim": 0.6831,
       "failed_subtopics_count": 0
     },
     "Software Engineering": {
@@ -53,9 +53,9 @@
       "passive_accuracy_pct": 100.0,
       "accuracy_pct": 100.0,
       "prior_conf_coverage_pct": 100.0,
-      "avg_free_energy": 42.352,
-      "avg_surprise": 0.439,
-      "avg_hrr_sim": 0.6954,
+      "avg_free_energy": 42.5,
+      "avg_surprise": 0.435,
+      "avg_hrr_sim": 0.6953,
       "failed_subtopics_count": 0
     },
     "Finance": {
@@ -65,8 +65,8 @@
       "passive_accuracy_pct": 100.0,
       "accuracy_pct": 100.0,
       "prior_conf_coverage_pct": 100.0,
-      "avg_free_energy": 42.289,
-      "avg_surprise": 0.391,
+      "avg_free_energy": 42.447,
+      "avg_surprise": 0.387,
       "avg_hrr_sim": 0.7381,
       "failed_subtopics_count": 0
     },
@@ -77,9 +77,9 @@
       "passive_accuracy_pct": 100.0,
       "accuracy_pct": 100.0,
       "prior_conf_coverage_pct": 100.0,
-      "avg_free_energy": 42.236,
-      "avg_surprise": 0.47,
-      "avg_hrr_sim": 0.6462,
+      "avg_free_energy": 42.361,
+      "avg_surprise": 0.464,
+      "avg_hrr_sim": 0.6463,
       "failed_subtopics_count": 0
     },
     "Humanities and Social Sciences": {
@@ -89,8 +89,8 @@
       "passive_accuracy_pct": 100.0,
       "accuracy_pct": 100.0,
       "prior_conf_coverage_pct": 100.0,
-      "avg_free_energy": 42.429,
-      "avg_surprise": 0.438,
+      "avg_free_energy": 42.547,
+      "avg_surprise": 0.433,
       "avg_hrr_sim": 0.6988,
       "failed_subtopics_count": 0
     },
@@ -101,9 +101,9 @@
       "passive_accuracy_pct": 100.0,
       "accuracy_pct": 100.0,
       "prior_conf_coverage_pct": 100.0,
-      "avg_free_energy": 42.496,
-      "avg_surprise": 0.408,
-      "avg_hrr_sim": 0.7496,
+      "avg_free_energy": 42.603,
+      "avg_surprise": 0.402,
+      "avg_hrr_sim": 0.7497,
       "failed_subtopics_count": 0
     }
   },
@@ -171,6 +171,14 @@
       "overall_accuracy_pct": 100.0,
       "mean_passive_free_energy": 42.385,
       "mean_passive_surprise": 0.434
+    },
+    {
+      "evaluation_round": 9,
+      "episode": 800,
+      "passive_accuracy_pct": 100.0,
+      "overall_accuracy_pct": 100.0,
+      "mean_passive_free_energy": 42.498,
+      "mean_passive_surprise": 0.428
     }
   ]
 }
