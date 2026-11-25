@@ -1,0 +1,83 @@
+=== SUMMARY CONFIRM (N=16 seeds) : 1/8 PASS ===
+  H_T1: FAIL
+  H_T2: FAIL
+  H_T3: PASS
+  H_T4: FAIL
+  H_T5: FAIL
+  H_T6: FAIL
+  H_T7: FAIL
+  H_T8: FAIL
+
+--- T1 (Domain A) ---
+  adaptive_spectral  | acc=71.23% rmse=0.4832 nmi=0.329 abd=54.24% cfr= 86.6% <r>=0.406->0.615
+  riemann_fixed      | acc=71.40% rmse=0.5509 nmi=0.280 abd=44.43% cfr= 84.9% <r>=0.616->0.616
+  fourier_fixed      | acc=70.48% rmse=0.5478 nmi=0.295 abd=45.76% cfr= 84.5% <r>=0.000->0.000
+  poisson_fixed      | acc=69.86% rmse=0.5778 nmi=0.298 abd=41.96% cfr= 84.6% <r>=0.374->0.374
+  dyson_fixed        | acc=68.75% rmse=0.5691 nmi=0.276 abd=44.90% cfr= 82.7% <r>=0.633->0.633
+  mlp_conventional   | acc=66.68% rmse=0.6516 nmi=0.288 abd=31.70% cfr= 78.4% <r>=0.000->0.000
+
+--- T2 (Causal Dissection: Frequencies, Phases, Pairings) ---
+  full_adaptive            | acc=71.23% sym=71.24% asym=71.11% rmse=0.4832 abd=54.24% nmi=0.329
+  ablate_phase_scramble    | acc=24.25% sym=30.45% asym=18.82% rmse=1.7758 abd= 4.95% nmi=0.068
+  train_zero_phase         | acc=68.22% sym=70.45% asym=66.40% rmse=0.5794 abd=41.11% nmi=0.276
+  ablate_pairing_additive  | acc=46.16% sym=40.67% asym=50.97% rmse=0.8913 abd=13.54% nmi=0.116
+  ablate_pairing_permuted  | acc=25.81% sym=27.24% asym=24.49% rmse=1.7499 abd= 6.48% nmi=0.069
+  ablate_freq_riemann      | acc=71.40% sym=71.94% asym=70.94% rmse=0.5509 abd=44.43% nmi=0.280
+  ablate_freq_fourier      | acc=70.48% sym=71.62% asym=69.51% rmse=0.5478 abd=45.76% nmi=0.295
+  ablate_freq_poisson      | acc=69.86% sym=70.49% asym=69.29% rmse=0.5778 abd=41.96% nmi=0.298
+
+--- T3 (Transfer A -> B Continuous Oscillators, N_few=48) ---
+  transfer_spectral_A      | acc=59.93% rmse=0.7695 nmi=0.214 abd=29.41% (N24=51.09%, N96=68.78%)
+  riemann_A                | acc=60.00% rmse=0.7526 nmi=0.206 abd=30.23% (N24=49.71%, N96=67.29%)
+  fourier_A                | acc=59.84% rmse=0.7585 nmi=0.225 abd=29.43% (N24=47.45%, N96=66.34%)
+  poisson_A                | acc=57.34% rmse=0.7926 nmi=0.198 abd=29.22% (N24=51.60%, N96=66.70%)
+  dyson_A                  | acc=59.81% rmse=0.7523 nmi=0.218 abd=30.06% (N24=53.26%, N96=65.54%)
+  transfer_mlp_A           | acc=51.70% rmse=0.9591 nmi=0.138 abd=18.46% (N24=41.45%, N96=60.92%)
+  neg_ctrl_noise_A         | acc=51.96% rmse=0.9224 nmi=0.105 abd=18.41% (N24=42.77%, N96=60.80%)
+  neg_ctrl_phase_scramble  | acc=52.28% rmse=0.8665 nmi=0.137 abd=20.95% (N24=43.99%, N96=62.44%)
+  untrained_poisson        | acc=54.70% rmse=0.8562 nmi=0.139 abd=21.68% (N24=43.57%, N96=61.58%)
+  scratch_spectral         | acc=57.58% rmse=0.8680 nmi=0.220 abd=30.98% (N24=47.43%, N96=69.40%)
+  scratch_mlp              | acc=48.13% rmse=1.0254 nmi=0.111 abd=19.36% (N24=36.90%, N96=63.36%)
+
+--- T4 (Transfer A -> C Discrete Relational Graph, N_few=60) ---
+  transfer_spectral_A      | acc=56.89% cons=37.27% nmi=0.219 abd=62.16% (N30=46.87%, N120=72.31%)
+  riemann_A                | acc=58.24% cons=38.23% nmi=0.173 abd=65.94% (N30=47.27%, N120=69.21%)
+  fourier_A                | acc=58.55% cons=40.42% nmi=0.176 abd=65.57% (N30=46.88%, N120=70.00%)
+  poisson_A                | acc=57.83% cons=35.81% nmi=0.176 abd=63.62% (N30=47.37%, N120=71.85%)
+  dyson_A                  | acc=58.44% cons=38.61% nmi=0.169 abd=65.50% (N30=48.23%, N120=71.44%)
+  transfer_mlp_A           | acc=53.98% cons=31.97% nmi=0.268 abd=53.58% (N30=46.29%, N120=66.66%)
+  neg_ctrl_noise_A         | acc=47.85% cons=26.97% nmi=0.100 abd=52.16% (N30=41.02%, N120=58.92%)
+  neg_ctrl_phase_scramble  | acc=51.84% cons=32.41% nmi=0.211 abd=54.92% (N30=44.34%, N120=59.81%)
+  untrained_poisson        | acc=52.85% cons=33.19% nmi=0.275 abd=55.73% (N30=48.50%, N120=60.77%)
+  scratch_spectral         | acc=65.20% cons=48.23% nmi=0.407 abd=73.66% (N30=52.13%, N120=83.46%)
+  scratch_mlp              | acc=62.62% cons=44.59% nmi=0.449 abd=67.64% (N30=49.04%, N120=93.61%)
+
+--- Key Paired Diffs (IC 95%) ---
+  t1_acc_adapt_vs_riemann                 : -0.17% [-2.07, +1.62]
+  t1_acc_adapt_vs_poisson                 : +1.37% [-0.19, +3.07]
+  t1_r_gain                               : 0.2093 [0.1840, 0.2353]
+  t1_abd_adapt_vs_mlp                     : +22.53% [+18.99, +26.15]
+  t1_rmse_adapt_vs_mlp                    : -0.1684 [-0.1957, -0.1431]
+  t2_acc_full_vs_phase_scramble           : +46.99% [+43.88, +50.17]
+  t2_acc_full_vs_additive                 : +25.08% [+22.99, +26.92]
+  t2_acc_full_vs_permuted                 : +45.43% [+43.15, +47.50]
+  t3_n48_acc_vs_scratch_spectral          : +2.35% [-0.41, +5.01]
+  t3_n48_rmse_vs_scratch_spectral         : -0.0985 [-0.1518, -0.0446]
+  t3_n48_acc_vs_transfer_mlp_A            : +8.24% [+3.92, +13.20]
+  t3_n48_rmse_vs_transfer_mlp_A           : -0.1897 [-0.2653, -0.1247]
+  t3_n48_acc_vs_riemann_A                 : -0.07% [-4.00, +3.97]
+  t3_n48_acc_vs_poisson_A                 : +2.59% [-0.63, +5.57]
+  t3_n48_acc_vs_neg_ctrl_noise_A          : +7.97% [+4.65, +11.19]
+  t3_n48_acc_vs_untrained_poisson         : +5.23% [+1.96, +8.50]
+  t4_n60_acc_vs_scratch_spectral          : -8.30% [-12.60, -4.32]
+  t4_n60_acc_vs_transfer_mlp_A            : +2.91% [-0.63, +6.72]
+  t4_n60_acc_vs_riemann_A                 : -1.35% [-5.16, +2.19]
+  t4_n60_acc_vs_neg_ctrl_noise_A          : +9.04% [+4.28, +13.73]
+  t4_n60_acc_vs_neg_ctrl_phase_scramble   : +5.06% [+2.25, +7.66]
+  t4_n60_nmi_vs_untrained                 : -0.0567 [-0.1039, 0.0015]
+  t4_n60_cons_vs_transfer_mlp             : +5.30% [+0.98, +9.71]
+  t4_n60_abd_vs_untrained                 : +6.43% [-0.40, +13.14]
+  t3_n24_acc_vs_scratch_spectral          : +3.66% [+0.24, +6.85]
+  t3_n24_acc_vs_scratch_mlp               : +14.18% [+9.62, +18.97]
+  t4_n30_acc_vs_scratch_spectral          : -5.25% [-8.45, -1.91]
+  t4_n30_acc_vs_scratch_mlp               : -2.16% [-4.88, +0.71]
