@@ -85,6 +85,47 @@ def atomic_write_f32_array(path: str, arr: np.ndarray) -> None:
         raise
 
 
+def atomic_write_npz(path: str, arrays: Dict[str, np.ndarray]) -> Tuple[str, int]:
+    """Escribe un diccionario de tensores NumPy de forma 100% atómica (.npz) y retorna (sha256[:16], size_bytes)."""
+    parent = os.path.dirname(path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    fd, tmp_path = tempfile.mkstemp(prefix=".tmp_", suffix=".npz", dir=parent or ".")
+    try:
+        with os.fdopen(fd, "wb") as f:
+            np.savez(f, **arrays)
+            f.flush()
+            os.fsync(f.fileno())
+        h = hashlib.sha256()
+        size = 0
+        with open(tmp_path, "rb") as rf:
+            while True:
+                chunk = rf.read(1 << 20)
+                if not chunk:
+                    break
+                h.update(chunk)
+                size += len(chunk)
+        os.replace(tmp_path, path)
+        return h.hexdigest()[:16], size
+    except Exception:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+        raise
+
+
+def file_sha256_prefix(path: str, length: int = 16) -> str:
+    if not os.path.exists(path):
+        return ""
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        while True:
+            chunk = f.read(1 << 20)
+            if not chunk:
+                break
+            h.update(chunk)
+    return h.hexdigest()[:length]
+
+
 def append_bounded_log(log_path: str, line: str, max_bytes: int = 4 * 1024 * 1024) -> None:
     parent = os.path.dirname(log_path)
     if parent:
@@ -1972,6 +2013,7 @@ class MarcusFep7bInfiniteEngine:
         self.cum_surprise = 0.0
         self.monotone_violations = 0
         self.loaded_orchestrator_state: Optional[Dict[str, Any]] = None
+        self.loaded_loop_state: Optional[Dict[str, Any]] = None
 
         # Buffers preasignados para eliminar fragmentación de heap en M-step
         self._w_eff: np.ndarray = np.empty_like(self.weights_e)
@@ -2126,6 +2168,17 @@ class MarcusFep7bInfiniteEngine:
                     self.metacognition.load_dict(mdata["metacognition_state"])
                 if isinstance(mdata.get("orchestrator_state"), dict):
                     self.loaded_orchestrator_state = mdata["orchestrator_state"]
+                if isinstance(mdata.get("loop_state"), dict):
+                    self.loaded_loop_state = mdata["loop_state"]
+                self.microglia_pruned_synapses = int(
+                    mdata.get("microglia_pruned_synapses", self.microglia_pruned_synapses)
+                )
+                self.microglia_pruned_pct = float(
+                    mdata.get("microglia_pruned_pct", self.microglia_pruned_pct)
+                )
+                self.prenatal_waves_executed = int(
+                    mdata.get("prenatal_waves_executed", self.prenatal_waves_executed)
+                )
 
                 saved_pi = mdata.get("precisions")
                 if isinstance(saved_pi, list) and len(saved_pi) == self.n_heads:
@@ -2157,13 +2210,15 @@ class MarcusFep7bInfiniteEngine:
         elbo_val: float,
         s_val: float,
         orchestrator_state: Optional[Dict[str, Any]] = None,
-    ) -> None:
+        loop_state: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        t0 = time.perf_counter()
         bin_path = os.path.join(self.checkpoint_dir, "weights_marcus_fep_7b.bin")
         stacked = np.concatenate([self.weights_e.ravel(), self.weights_i.ravel()])
         atomic_write_f32_array(bin_path, stacked)
 
+        hop_path = os.path.join(self.checkpoint_dir, "hopfield_bank_v2.bin")
         if self.memory.proto_obs:
-            hop_path = os.path.join(self.checkpoint_dir, "hopfield_bank_v2.bin")
             obs_flat = np.stack(self.memory.proto_obs, axis=0).astype(np.float32).ravel()
             lat_flat = np.stack(self.memory.proto_latents, axis=0).astype(np.float32).ravel()
             atomic_write_f32_array(hop_path, np.concatenate([obs_flat, lat_flat]))
@@ -2173,7 +2228,11 @@ class MarcusFep7bInfiniteEngine:
         v_i = int(np.sum(self.weights_i < 0))
         meta_summary = self.metacognition.summary()
         meta = {
-            "architecture": "FEP_MARCUS_7B_V3_METACOGNITIVE",
+            "architecture": (
+                "AURA_V3_GENESIS_FEP_MARCUS_7B_V3_METACOGNITIVE"
+                if self.enable_aura_v3_genesis
+                else "FEP_MARCUS_7B_V3_METACOGNITIVE"
+            ),
             "scale": "7B_EQUIVALENT",
             "objective": "100%_VARIATIONAL_FREE_ENERGY_MINIMIZATION_&_2ND_ORDER_METACOGNITION",
             "hidden_dimension": self.total_dim,
@@ -2189,6 +2248,9 @@ class MarcusFep7bInfiniteEngine:
             "mean_precision": round(float(np.mean(self.precisions)), 4),
             "consolidated_prototypes": len(self.memory.proto_obs),
             "world_state_facts": len(self.memory.world_state_facts),
+            "microglia_pruned_synapses": self.microglia_pruned_synapses,
+            "microglia_pruned_pct": self.microglia_pruned_pct,
+            "prenatal_waves_executed": self.prenatal_waves_executed,
             "variational_free_energy": round(f_val, 4),
             "evidence_lower_bound": round(elbo_val, 4),
             "current_surprise": round(s_val, 4),
@@ -2197,6 +2259,8 @@ class MarcusFep7bInfiniteEngine:
             "dale_violations": v_e + v_i,
             "timestamp": datetime.now().isoformat(),
         }
+        if loop_state is not None:
+            meta["buffer_flushes_completed"] = int(loop_state.get("buffer_flushes_completed", 0))
         atomic_write_json(meta_path, meta)
 
         mem_path = os.path.join(self.checkpoint_dir, "world_state_fep_v2.json")
@@ -2209,6 +2273,9 @@ class MarcusFep7bInfiniteEngine:
             "cum_free_energy": self.cum_free_energy,
             "cum_surprise": self.cum_surprise,
             "monotone_violations": self.monotone_violations,
+            "microglia_pruned_synapses": self.microglia_pruned_synapses,
+            "microglia_pruned_pct": self.microglia_pruned_pct,
+            "prenatal_waves_executed": self.prenatal_waves_executed,
             "precisions": [round(float(x), 5) for x in self.precisions],
             "proto_count": len(self.memory.proto_obs),
             "proto_hits": self.memory.proto_hits,
@@ -2218,7 +2285,19 @@ class MarcusFep7bInfiniteEngine:
         }
         if orchestrator_state is not None:
             mem_payload["orchestrator_state"] = orchestrator_state
+        if loop_state is not None:
+            mem_payload["loop_state"] = loop_state
         atomic_write_json(mem_path, mem_payload)
+
+        return {
+            "weights_path": bin_path,
+            "weights_sha256": file_sha256_prefix(bin_path),
+            "weights_size_bytes": os.path.getsize(bin_path) if os.path.exists(bin_path) else 0,
+            "hopfield_sha256": file_sha256_prefix(hop_path),
+            "world_state_sha256": file_sha256_prefix(mem_path),
+            "dale_violations": v_e + v_i,
+            "save_ms": round((time.perf_counter() - t0) * 1000.0, 2),
+        }
 
     # --------------------------------------------------------------------------
     # EVALUACIÓN EXACTA DE ENERGÍA LIBRE VARIACIONAL F(q, o) Y ELBO
@@ -3291,6 +3370,7 @@ class RepoTextCorpusSplitter:
         "docs/ARQUITECTURA_AURA_V3_GENESIS_FEP_MARCUS_V3.md",
         "scripts/fep_marcus_core.py",
         "scripts/marcus_fep_multiagent_infinite_loop.py",
+        "scripts/infinite_buffer_trainer.py",
         "scripts/test_fep_marcus_bpb.py",
     }
     MODALITIES = ((".md", "markdown"), (".rs", "rust"), (".py", "python"))
@@ -3861,6 +3941,90 @@ class DaleMountcastleNeuralByteColumn:
             ex = np.exp(logits - lmax)
             out[s:s + len(idxs)] = ex / np.maximum(ex.sum(axis=1, keepdims=True), np.float32(1e-9))
         return out
+
+    def export_state_arrays(self, prefix: str) -> Tuple[Dict[str, np.ndarray], Dict[str, Any]]:
+        """Exporta todos los tensores Dale y estados Adam para guardado atómico .npz."""
+        arrs: Dict[str, np.ndarray] = {
+            f"{prefix}__emb": self.emb,
+            f"{prefix}__w1_e": self.w1_e,
+            f"{prefix}__w1_i": self.w1_i,
+            f"{prefix}__b1": self.b1,
+            f"{prefix}__w2_e": self.w2_e,
+            f"{prefix}__w2_i": self.w2_i,
+            f"{prefix}__b2": self.b2,
+            f"{prefix}__m_w1": self.m_w1,
+            f"{prefix}__v_w1": self.v_w1,
+            f"{prefix}__m_b1": self.m_b1,
+            f"{prefix}__v_b1": self.v_b1,
+            f"{prefix}__m_w2": self.m_w2,
+            f"{prefix}__v_w2": self.v_w2,
+            f"{prefix}__m_b2": self.m_b2,
+            f"{prefix}__v_b2": self.v_b2,
+            f"{prefix}__m_emb": self.m_emb,
+            f"{prefix}__v_emb": self.v_emb,
+        }
+        if self.enable_multiscale_l4 and self.h2_emb is not None:
+            arrs[f"{prefix}__h2_emb"] = self.h2_emb
+            arrs[f"{prefix}__h3_emb"] = self.h3_emb
+            arrs[f"{prefix}__h4_emb"] = self.h4_emb
+            arrs[f"{prefix}__h6_emb"] = self.h6_emb
+        meta = {
+            "ctx_len": self.ctx_len,
+            "d_emb": self.d_emb,
+            "d_hid": self.d_hid,
+            "enable_multiscale_l4": self.enable_multiscale_l4,
+            "n_hash": self.n_hash,
+            "d_hash": self.d_hash,
+            "adam_step": int(self.adam_step),
+            "pruned_synapses": int(self.pruned_synapses),
+            "pruned_pct": float(self.pruned_pct),
+            "prenatal_bytes_trained": int(self.prenatal_bytes_trained),
+            "weight_fingerprint": round(self.weight_fingerprint(), 6),
+        }
+        return arrs, meta
+
+    def load_state_arrays(self, arrays: Any, meta: Dict[str, Any], prefix: str) -> bool:
+        """Restaura tensores Dale y estados Adam verificando finitud y 0 violaciones de Ley de Dale."""
+        req_keys = (
+            "emb", "w1_e", "w1_i", "b1", "w2_e", "w2_i", "b2",
+            "m_w1", "v_w1", "m_b1", "v_b1", "m_w2", "v_w2", "m_b2", "v_b2", "m_emb", "v_emb",
+        )
+        for k in req_keys:
+            fk = f"{prefix}__{k}"
+            if fk not in arrays:
+                return False
+            arr = np.asarray(arrays[fk], dtype=np.float32)
+            cur = getattr(self, k)
+            if arr.shape != cur.shape or not np.all(np.isfinite(arr)):
+                return False
+        if self.enable_multiscale_l4:
+            for k in ("h2_emb", "h3_emb", "h4_emb", "h6_emb"):
+                fk = f"{prefix}__{k}"
+                if fk not in arrays:
+                    return False
+                arr = np.asarray(arrays[fk], dtype=np.float32)
+                cur = getattr(self, k)
+                if cur is None or arr.shape != cur.shape or not np.all(np.isfinite(arr)):
+                    return False
+
+        self.emb = np.asarray(arrays[f"{prefix}__emb"], dtype=np.float32).copy()
+        self.w1_e = np.maximum(np.float32(0.0), np.asarray(arrays[f"{prefix}__w1_e"], dtype=np.float32)).copy()
+        self.w1_i = np.maximum(np.float32(0.0), np.asarray(arrays[f"{prefix}__w1_i"], dtype=np.float32)).copy()
+        self.b1 = np.asarray(arrays[f"{prefix}__b1"], dtype=np.float32).copy()
+        self.w2_e = np.maximum(np.float32(0.0), np.asarray(arrays[f"{prefix}__w2_e"], dtype=np.float32)).copy()
+        self.w2_i = np.maximum(np.float32(0.0), np.asarray(arrays[f"{prefix}__w2_i"], dtype=np.float32)).copy()
+        self.b2 = np.asarray(arrays[f"{prefix}__b2"], dtype=np.float32).copy()
+        for k in ("m_w1", "v_w1", "m_b1", "v_b1", "m_w2", "v_w2", "m_b2", "v_b2", "m_emb", "v_emb"):
+            setattr(self, k, np.asarray(arrays[f"{prefix}__{k}"], dtype=np.float32).copy())
+        if self.enable_multiscale_l4:
+            for k in ("h2_emb", "h3_emb", "h4_emb", "h6_emb"):
+                setattr(self, k, np.asarray(arrays[f"{prefix}__{k}"], dtype=np.float32).copy())
+
+        self.adam_step = int(meta.get("adam_step", self.adam_step))
+        self.pruned_synapses = int(meta.get("pruned_synapses", self.pruned_synapses))
+        self.pruned_pct = float(meta.get("pruned_pct", self.pruned_pct))
+        self.prenatal_bytes_trained = int(meta.get("prenatal_bytes_trained", self.prenatal_bytes_trained))
+        return self.dale_violations() == 0
 
 
 class CorticalMorphogeneticByteColumn:
@@ -5702,3 +5866,449 @@ class AuraFepCorticalLanguageModel:
 
         result["suite_eval_seconds"] = round(time.perf_counter() - t0, 2)
         return result
+
+    def _eval_train_cal_nll(self, splitter: RepoTextCorpusSplitter, cal_bytes_per_dom: int = 4096) -> float:
+        """Evalúa Cross-Entropy (nats) exclusivamente sobre `train_cal` (0 B held-out)."""
+        tot_n = 0.0
+        tot_b = 0
+        for dom in self.DOMAINS:
+            buf = splitter.train_cal_buffers.get(dom, b"")[:cal_bytes_per_dom]
+            if len(buf) < 64:
+                continue
+            p_final, _, _ = self.predict_domain_probs_256(buf, domain=dom, enable_myelination=False)
+            y = np.frombuffer(buf, dtype=np.uint8).astype(np.int32)
+            py = np.maximum(p_final[np.arange(len(y)), y].astype(np.float64), 1e-12)
+            tot_n += float(-np.sum(np.log(py)))
+            tot_b += len(y)
+        return tot_n / max(1, tot_b)
+
+    def consolidate_from_buffer(
+        self,
+        domain_byte_chunks: Dict[str, bytes],
+        splitter: RepoTextCorpusSplitter,
+        neural_samples: int = 65536,
+        recalibrate_friston: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        Consolidación infinita impulsada por llenado de buffer (estrictamente sobre bytes `train`,
+        0% fuga held-out, sin duplicar conteos HPYP):
+          - Refina todas las columnas neurales DaleMountcastle con LR coseno con reinicios suaves
+            mezclando el lote recién vaciado del buffer con replay acotado de `train`.
+          - Ejecuta poda microglial respetando Ley de Dale estricta (0 violaciones).
+          - Si `recalibrate_friston=True`, recalibra `(W, K, B, alpha)` sobre `train_cal` con
+            salvaguarda monótona (solo acepta si reduce NLL en `train_cal`).
+        """
+        t0 = time.perf_counter()
+        gc_was = gc.isenabled()
+        if gc_was:
+            gc.disable()
+        try:
+            self.cycles_trained += 1
+            buf_bytes_total = sum(len(v) for v in domain_byte_chunks.values())
+            # Ciclo coseno suave con reinicio cálido cada 8 flushes y decaimiento gradual acotado
+            super_cycle = max(0, (self.cycles_trained - 1) // 8)
+            phase_in_cycle = ((self.cycles_trained - 1) % 8) / 8.0
+            decay = max(0.35, 0.90 ** super_cycle)
+            lr_min = 4.0e-4 * decay
+            lr_max = 2.2e-3 * decay
+            lr_cycle = lr_min + (lr_max - lr_min) * 0.5 * (1.0 + math.cos(math.pi * phase_in_cycle))
+
+            if self.enable_aura_v3_genesis and self.domain_neurals:
+                dom_bpbs = []
+                for dom in self.DOMAINS:
+                    fresh = domain_byte_chunks.get(dom, b"")
+                    replay = bytes(self.domain_neural_train_bufs.get(dom, b""))
+                    # Mezclar 50/50 lote fresco del buffer + replay de train sin crecer RAM
+                    if fresh and replay:
+                        # Repetir fresh hasta ~256 KiB para balancear contra replay si fresh es pequeño
+                        rep_k = max(1, min(4, (262144 // max(1, len(fresh)))))
+                        train_blob = (fresh * rep_k) + replay[:1_048_576]
+                    else:
+                        train_blob = fresh or replay
+                    if len(train_blob) > 32:
+                        b_d = self.domain_neurals[dom].train_cyclic_epoch(
+                            train_blob, n_samples=neural_samples, batch_size=512, lr=lr_cycle
+                        )
+                        dom_bpbs.append(b_d)
+                neural_bpb = float(np.mean(dom_bpbs)) if dom_bpbs else self.last_neural_epoch_bpb
+                self.last_neural_epoch_bpb = neural_bpb
+
+                # Poda microglial suave que mantiene 0 violaciones Dale
+                for col in self.domain_neurals.values():
+                    col.microglia_prune(threshold=0.010)
+                self.swr_pruning_events += 1
+
+                friston_updated = False
+                if recalibrate_friston and self.friston_W is not None:
+                    old_W = self.friston_W.copy()
+                    old_K = self.friston_K.copy() if self.friston_K is not None else None
+                    old_B = self.friston_B.copy() if self.friston_B is not None else None
+                    old_a = self.poe_alpha
+                    old_nll = self._eval_train_cal_nll(splitter, cal_bytes_per_dom=4096)
+                    self._calibrate_aura_v3_friston_on_train_cal(
+                        splitter, steps=45, cal_bytes_per_dom=4096, include_oof=bool(self.oof_cal_stacks)
+                    )
+                    new_nll = self._eval_train_cal_nll(splitter, cal_bytes_per_dom=4096)
+                    if new_nll <= old_nll + 1e-6:
+                        friston_updated = True
+                    else:
+                        self.friston_W = old_W
+                        self.friston_K = old_K
+                        self.friston_B = old_B
+                        self.regime_precisions = old_W
+                        self.poe_alpha = old_a
+            else:
+                fresh_all = b"\n".join(v for v in domain_byte_chunks.values() if v)
+                train_blob = (fresh_all + bytes(self.cumulative_neural_train_buf)[:786432]) if fresh_all else bytes(self.cumulative_neural_train_buf)
+                neural_bpb = self.neural_column.train_cyclic_epoch(
+                    train_blob, n_samples=neural_samples, batch_size=1024, lr=lr_cycle
+                )
+                self.last_neural_epoch_bpb = float(neural_bpb)
+                friston_updated = False
+        finally:
+            if gc_was:
+                gc.enable()
+
+        return {
+            "cycle": self.cycles_trained,
+            "phase": "BUFFER_CONSOLIDATION",
+            "bytes_ingested_cycle": 0,
+            "buffer_bytes_consolidated": buf_bytes_total,
+            "total_train_bytes_seen": self.total_train_bytes_seen,
+            "lr_cycle": round(float(lr_cycle), 6),
+            "neural_train_bpb": round(float(neural_bpb), 4),
+            "friston_updated": friston_updated,
+            "dale_violations": self._total_dale_violations(),
+            "train_seconds": round(time.perf_counter() - t0, 2),
+        }
+
+    def save_learned_state(
+        self,
+        checkpoint_dir: str,
+        tag: str = "latest",
+        extra_meta: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Guarda atómicamente TODO el estado aprendido del modelo de lenguaje:
+          - Pesos Dale + estados Adam de todas las columnas neurales Mountcastle (.npz)
+          - Precisiones dinámicas de Friston (W, K, B, poe_alpha) y prior base
+          - Curvas morfogenéticas [SHH, Wnt, BMP] (d, th) de todas las columnas corticales
+          - Progreso de shards ingeridos, ciclos entrenados y auditoría Dale (0 violaciones)
+        """
+        t0 = time.perf_counter()
+        os.makedirs(checkpoint_dir, exist_ok=True)
+        prefix_file = "best_" if tag == "best" else ""
+        npz_path = os.path.join(checkpoint_dir, f"{prefix_file}aura_v3_lm_learned_state.npz")
+        meta_path = os.path.join(checkpoint_dir, f"{prefix_file}aura_v3_lm_meta.json")
+
+        arrays: Dict[str, np.ndarray] = {
+            "base_prior": self.base_prior.astype(np.float32, copy=False),
+            "regime_precisions": self.regime_precisions.astype(np.float32, copy=False),
+        }
+        if self.friston_W is not None:
+            arrays["friston_W"] = self.friston_W.astype(np.float32, copy=False)
+        if self.friston_K is not None:
+            arrays["friston_K"] = self.friston_K.astype(np.float32, copy=False)
+        if self.friston_B is not None:
+            arrays["friston_B"] = self.friston_B.astype(np.float32, copy=False)
+
+        neural_meta: Dict[str, Any] = {}
+        if self.enable_aura_v3_genesis and self.domain_neurals:
+            for dom, col in self.domain_neurals.items():
+                c_arrs, c_meta = col.export_state_arrays(f"dom_{dom}")
+                arrays.update(c_arrs)
+                neural_meta[dom] = c_meta
+        else:
+            c_arrs, c_meta = self.neural_column.export_state_arrays("shared_neural")
+            arrays.update(c_arrs)
+            neural_meta["shared"] = c_meta
+
+        npz_sha, npz_size = atomic_write_npz(npz_path, arrays)
+
+        morphogens: Dict[str, Any] = {
+            "shared_cortex": {"d": list(self.shared_cortex.d), "th": list(self.shared_cortex.th)},
+            "specialists": {
+                dom: {"d": list(self.specialists[dom].d), "th": list(self.specialists[dom].th)}
+                for dom in self.DOMAINS
+            },
+        }
+        if self.shared_digit_norm is not None:
+            morphogens["shared_digit_norm"] = {
+                "d": list(self.shared_digit_norm.d),
+                "th": list(self.shared_digit_norm.th),
+            }
+        if self.shared_casedigit_norm is not None:
+            morphogens["shared_casedigit_norm"] = {
+                "d": list(self.shared_casedigit_norm.d),
+                "th": list(self.shared_casedigit_norm.th),
+            }
+
+        dale_v = self._total_dale_violations()
+        meta: Dict[str, Any] = {
+            "format_version": "aura_v3_lm_checkpoint_v1",
+            "tag": tag,
+            "timestamp": datetime.now().isoformat(),
+            "enable_aura_v3_genesis": self.enable_aura_v3_genesis,
+            "seed": self.seed,
+            "cycles_trained": int(self.cycles_trained),
+            "ingested_shards": sorted(int(s) for s in self.ingested_shards),
+            "total_train_bytes_seen": int(self.total_train_bytes_seen),
+            "prenatal_waves_ran": bool(self.prenatal_waves_ran),
+            "prenatal_repo_bytes": int(self.prenatal_repo_bytes),
+            "swr_pruning_events": int(self.swr_pruning_events),
+            "last_neural_epoch_bpb": round(float(self.last_neural_epoch_bpb), 6),
+            "poe_alpha": float(self.poe_alpha),
+            "morphogens": morphogens,
+            "neural_columns": neural_meta,
+            "neural_synapses": self._aggregate_neural_synapse_stats(),
+            "dale_violations": dale_v,
+            "npz_file": os.path.basename(npz_path),
+            "npz_sha256": npz_sha,
+            "npz_size_bytes": npz_size,
+        }
+        if extra_meta:
+            meta["extra"] = extra_meta
+        atomic_write_json(meta_path, meta)
+
+        return {
+            "tag": tag,
+            "npz_path": npz_path,
+            "meta_path": meta_path,
+            "npz_sha256": npz_sha,
+            "npz_size_bytes": npz_size,
+            "dale_violations": dale_v,
+            "save_ms": round((time.perf_counter() - t0) * 1000.0, 2),
+        }
+
+    def load_learned_state(
+        self,
+        checkpoint_dir: str,
+        splitter: Optional[RepoTextCorpusSplitter] = None,
+        tag: str = "latest",
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Restaura atómicamente el estado aprendido del LM (.npz + .json) y rehidrata de forma
+        determinista únicamente los `ingested_shards` de `train` cuando se proporciona `splitter`,
+        preservando los pesos Dale, momentos Adam, parámetros de Friston y curvas morfogenéticas.
+        """
+        prefix_file = "best_" if tag == "best" else ""
+        npz_path = os.path.join(checkpoint_dir, f"{prefix_file}aura_v3_lm_learned_state.npz")
+        meta_path = os.path.join(checkpoint_dir, f"{prefix_file}aura_v3_lm_meta.json")
+        if not (os.path.exists(npz_path) and os.path.exists(meta_path)):
+            return None
+
+        try:
+            with open(meta_path, "r", encoding="utf-8") as f:
+                meta = json.load(f)
+            if bool(meta.get("enable_aura_v3_genesis")) != self.enable_aura_v3_genesis:
+                return None
+
+            with np.load(npz_path, allow_pickle=False) as arrays:
+                if "base_prior" in arrays:
+                    bp = np.asarray(arrays["base_prior"], dtype=np.float32)
+                    if bp.shape == (256,) and np.all(np.isfinite(bp)):
+                        self.base_prior = bp.copy()
+
+                if self.enable_aura_v3_genesis and self.domain_neurals:
+                    nmeta = meta.get("neural_columns", {})
+                    for dom, col in self.domain_neurals.items():
+                        ok = col.load_state_arrays(arrays, nmeta.get(dom, {}), f"dom_{dom}")
+                        if not ok:
+                            return None
+                    if "friston_W" in arrays and "friston_K" in arrays and "friston_B" in arrays:
+                        self.friston_W = np.asarray(arrays["friston_W"], dtype=np.float32).copy()
+                        self.friston_K = np.asarray(arrays["friston_K"], dtype=np.float32).copy()
+                        self.friston_B = np.asarray(arrays["friston_B"], dtype=np.float32).copy()
+                        self.regime_precisions = self.friston_W
+                else:
+                    nmeta = meta.get("neural_columns", {})
+                    ok = self.neural_column.load_state_arrays(arrays, nmeta.get("shared", {}), "shared_neural")
+                    if not ok:
+                        return None
+                    if "regime_precisions" in arrays:
+                        self.regime_precisions = np.asarray(arrays["regime_precisions"], dtype=np.float32).copy()
+
+            self.poe_alpha = float(meta.get("poe_alpha", self.poe_alpha))
+            self.prenatal_waves_ran = bool(meta.get("prenatal_waves_ran", self.prenatal_waves_ran))
+            self.prenatal_repo_bytes = int(meta.get("prenatal_repo_bytes", 0))
+            self.swr_pruning_events = int(meta.get("swr_pruning_events", 0))
+            self.last_neural_epoch_bpb = float(meta.get("last_neural_epoch_bpb", self.last_neural_epoch_bpb))
+            saved_shards = sorted(int(s) for s in meta.get("ingested_shards", []))
+
+            # Rehidratar tablas corticales HPYP/LexSkip/CA3 deterministas desde los shards ya ingeridos
+            if splitter is not None and saved_shards:
+                gc_was = gc.isenabled()
+                if gc_was:
+                    gc.disable()
+                try:
+                    for shard_idx in saved_shards:
+                        if shard_idx in self.ingested_shards or shard_idx >= splitter.n_cycles:
+                            continue
+                        shard_bytes = 0
+                        for dom in self.DOMAINS:
+                            for doc in splitter.train_shards[dom][shard_idx]:
+                                self.specialists[dom].fit_bytes(doc)
+                                self.shared_cortex.fit_bytes(doc)
+                                if self.enable_aura_v3_genesis:
+                                    if self.shared_digit_norm is not None:
+                                        self.shared_digit_norm.fit_transformed_bytes(doc, _DIGIT_NORM_TABLE)
+                                    if self.shared_casedigit_norm is not None:
+                                        self.shared_casedigit_norm.fit_transformed_bytes(doc, _CASEDIGIT_NORM_TABLE)
+                                    if self.shared_lex_skip is not None:
+                                        self.shared_lex_skip.fit_bytes(doc)
+                                    if self.ca3_long_match is not None:
+                                        self.ca3_long_match.fit_bytes(doc)
+                                    if len(self.domain_neural_train_bufs[dom]) < 2_200_000:
+                                        self.domain_neural_train_bufs[dom].extend(doc)
+                                        self.domain_neural_train_bufs[dom].append(10)
+                                else:
+                                    if len(self.cumulative_neural_train_buf) < 1_500_000:
+                                        self.cumulative_neural_train_buf.extend(doc[:min(len(doc), 32768)])
+                                        self.cumulative_neural_train_buf.append(10)
+                                shard_bytes += len(doc)
+                        self.ingested_shards.add(shard_idx)
+                        self.total_train_bytes_seen += shard_bytes
+                    if self.enable_aura_v3_genesis:
+                        gc.freeze()
+                finally:
+                    if gc_was:
+                        gc.enable()
+            else:
+                self.ingested_shards = set(saved_shards)
+                self.total_train_bytes_seen = int(meta.get("total_train_bytes_seen", self.total_train_bytes_seen))
+
+            # Restaurar curvas morfogenéticas exactas (d, th) e invalidar caché p0/p1
+            morph = meta.get("morphogens", {})
+            if isinstance(morph.get("shared_cortex"), dict):
+                self.shared_cortex.d = list(morph["shared_cortex"]["d"])
+                self.shared_cortex.th = list(morph["shared_cortex"]["th"])
+                self.shared_cortex._p01_cache_key = None
+            if isinstance(morph.get("specialists"), dict):
+                for dom in self.DOMAINS:
+                    dm = morph["specialists"].get(dom)
+                    if isinstance(dm, dict):
+                        self.specialists[dom].d = list(dm["d"])
+                        self.specialists[dom].th = list(dm["th"])
+                        self.specialists[dom]._p01_cache_key = None
+            if self.shared_digit_norm is not None and isinstance(morph.get("shared_digit_norm"), dict):
+                self.shared_digit_norm.d = list(morph["shared_digit_norm"]["d"])
+                self.shared_digit_norm.th = list(morph["shared_digit_norm"]["th"])
+                self.shared_digit_norm._p01_cache_key = None
+            if self.shared_casedigit_norm is not None and isinstance(morph.get("shared_casedigit_norm"), dict):
+                self.shared_casedigit_norm.d = list(morph["shared_casedigit_norm"]["d"])
+                self.shared_casedigit_norm.th = list(morph["shared_casedigit_norm"]["th"])
+                self.shared_casedigit_norm._p01_cache_key = None
+
+            self.cycles_trained = int(meta.get("cycles_trained", self.cycles_trained))
+            return meta
+        except Exception as e:
+            print(f"[!] Error restaurando checkpoint LM ({meta_path}): {e}")
+            return None
+
+
+class BoundedLearningBuffer:
+    """
+    Buffer Acotado de Experiencia y Bytes de Entrenamiento para el Arnés Infinito:
+      - Acumula episodios cognitivos + fragmentos de texto `train` (0% held-out).
+      - Detecta exactamente cuándo se llena (`episodes >= max_episodes` o `bytes >= max_bytes`).
+      - Al vaciarse (`drain()`), libera la RAM acumulada, contabiliza el flush y registra
+        una entrada auditable con checksums SHA-256 en el ledger rotativo `.jsonl`.
+    """
+    DOMAINS = ("markdown", "rust", "python")
+
+    def __init__(self, max_episodes: int = 64, max_bytes: int = 524_288):
+        self.max_episodes = max(1, int(max_episodes))
+        self.max_bytes = max(1024, int(max_bytes))
+        self.episodes: List[Dict[str, Any]] = []
+        self.lm_bytes_by_domain: Dict[str, bytearray] = {d: bytearray() for d in self.DOMAINS}
+        self.buffered_bytes: int = 0
+        self.flushes_completed: int = 0
+        self.total_episodes_flushed: int = 0
+        self.total_bytes_flushed: int = 0
+
+    def restore_counters(
+        self,
+        flushes_completed: int = 0,
+        total_episodes_flushed: int = 0,
+        total_bytes_flushed: int = 0,
+    ) -> None:
+        self.flushes_completed = max(0, int(flushes_completed))
+        self.total_episodes_flushed = max(0, int(total_episodes_flushed))
+        self.total_bytes_flushed = max(0, int(total_bytes_flushed))
+
+    def push_episode(self, episode_record: Dict[str, Any]) -> None:
+        self.episodes.append(episode_record)
+
+    def push_lm_bytes(self, domain: str, chunk: bytes) -> None:
+        if not chunk:
+            return
+        dom = domain if domain in self.lm_bytes_by_domain else self.DOMAINS[0]
+        self.lm_bytes_by_domain[dom].extend(chunk)
+        self.buffered_bytes += len(chunk)
+
+    def is_empty(self) -> bool:
+        return (len(self.episodes) == 0) and (self.buffered_bytes == 0)
+
+    def is_full(self) -> bool:
+        return (len(self.episodes) >= self.max_episodes) or (self.buffered_bytes >= self.max_bytes)
+
+    def full_reason(self) -> str:
+        ep_full = len(self.episodes) >= self.max_episodes
+        by_full = self.buffered_bytes >= self.max_bytes
+        if ep_full and by_full:
+            return "episodes_and_bytes_full"
+        if ep_full:
+            return "episodes_full"
+        if by_full:
+            return "bytes_full"
+        return "partial"
+
+    def fill_status(self) -> Dict[str, Any]:
+        ep_n = len(self.episodes)
+        return {
+            "episodes_buffered": ep_n,
+            "max_episodes": self.max_episodes,
+            "episodes_fill_pct": round((ep_n / self.max_episodes) * 100.0, 2),
+            "bytes_buffered": self.buffered_bytes,
+            "max_bytes": self.max_bytes,
+            "bytes_fill_pct": round((self.buffered_bytes / self.max_bytes) * 100.0, 2),
+            "is_full": self.is_full(),
+            "flushes_completed": self.flushes_completed,
+            "total_episodes_flushed": self.total_episodes_flushed,
+            "total_bytes_flushed": self.total_bytes_flushed,
+        }
+
+    def drain(self, override_reason: Optional[str] = None) -> Dict[str, Any]:
+        reason = override_reason or self.full_reason()
+        ep_list = list(self.episodes)
+        by_map = {d: bytes(buf) for d, buf in self.lm_bytes_by_domain.items()}
+        ep_cnt = len(ep_list)
+        by_cnt = self.buffered_bytes
+
+        # Vaciar RAM inmediatamente para garantizar memoria acotada en ejecución infinita
+        self.episodes.clear()
+        for buf in self.lm_bytes_by_domain.values():
+            buf.clear()
+        self.buffered_bytes = 0
+
+        self.flushes_completed += 1
+        self.total_episodes_flushed += ep_cnt
+        self.total_bytes_flushed += by_cnt
+
+        return {
+            "flush_id": self.flushes_completed,
+            "trigger": reason,
+            "episodes_count": ep_cnt,
+            "bytes_count": by_cnt,
+            "episodes": ep_list,
+            "lm_bytes_by_domain": by_map,
+        }
+
+    @staticmethod
+    def append_flush_ledger(
+        ledger_path: str,
+        entry: Dict[str, Any],
+        max_bytes: int = 8 * 1024 * 1024,
+    ) -> None:
+        append_bounded_log(ledger_path, json.dumps(entry, ensure_ascii=False), max_bytes=max_bytes)
+

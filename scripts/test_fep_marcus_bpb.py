@@ -17,10 +17,12 @@ Verifica 8 invariantes estrictos:
   8. Integridad criptográfica `AUDIT-v3 PASS` (SHA-256 de aura-engine/crates/*.rs 100% intacto).
 """
 
+import json
 import math
 import os
 import subprocess
 import sys
+import tempfile
 import numpy as np
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -31,8 +33,10 @@ if SCRIPT_DIR not in sys.path:
 from fep_marcus_core import (  # noqa: E402
     AuraFepCorticalLanguageModel,
     BigramByteBaseline,
+    BoundedLearningBuffer,
     DaleMountcastleNeuralByteColumn,
     FepEnergyTester,
+    MarcusFep7bInfiniteEngine,
     RepoTextCorpusSplitter,
     compute_exact_byte_lm_metrics,
     generate_synthetic_prenatal_byte_waves,
@@ -190,11 +194,104 @@ def test_audit_v3_pass_preserved() -> None:
     print(f"[PASS] test_audit_v3_pass_preserved ({out})")
 
 
+def test_infinite_buffer_fill_save_and_resume() -> None:
+    # 1. Verificar llenado de BoundedLearningBuffer por episodios y por bytes + drenado + ledger
+    buf = BoundedLearningBuffer(max_episodes=4, max_bytes=2048)
+    assert buf.is_empty() is True
+    for i in range(3):
+        buf.push_episode({"episode": i + 1, "f_final": 38.0})
+        buf.push_lm_bytes("markdown", b"a" * 256)
+    assert buf.is_full() is False
+    buf.push_episode({"episode": 4, "f_final": 37.5})
+    assert buf.is_full() is True
+    assert buf.full_reason() == "episodes_full"
+    batch1 = buf.drain()
+    assert batch1["flush_id"] == 1 and batch1["episodes_count"] == 4 and batch1["bytes_count"] == 768
+    assert buf.is_empty() is True
+
+    # Llenado por bytes
+    buf.push_lm_bytes("rust", b"pub fn x() {}\n" * 200)
+    assert buf.is_full() is True
+    assert buf.full_reason() == "bytes_full"
+    batch2 = buf.drain()
+    assert batch2["flush_id"] == 2 and batch2["bytes_count"] >= 2048
+    assert buf.flushes_completed == 2 and buf.is_empty() is True
+
+    # 2. Verificar guardado atómico y reanudación bit-exacta del LM + motor cognitivo + consolidación
+    splitter = RepoTextCorpusSplitter(
+        ROOT_DIR, n_cycles=8, seed=42, eval_bytes_per_domain=2048, cal_bytes_per_domain=1024
+    )
+    assert splitter.audit_report["train_sha256"] == "193c02657090c929"
+    assert splitter.audit_report["held_out_sha256"] == "cc55156e263c4dee"
+
+    with tempfile.TemporaryDirectory(prefix="aura_inf_buf_test_") as tmpdir:
+        ckpt_dir = os.path.join(tmpdir, "checkpoints")
+        art_dir = os.path.join(tmpdir, "artifacts")
+        ledger_path = os.path.join(tmpdir, "buffer_flush_ledger.jsonl")
+
+        # Motor cognitivo: guardar y restaurar loop_state + Dale weights
+        eng1 = MarcusFep7bInfiniteEngine(
+            ckpt_dir, art_dir, seed=42, load_existing=False, enable_aura_v3_genesis=True, enable_language_model=False
+        )
+        eng1.episodes_processed = 64
+        cog_rcpt = eng1.save_checkpoint(
+            38.5, -38.5, 0.35, loop_state={"buffer_flushes_completed": 2, "lm_cycle_idx": 1}
+        )
+        assert cog_rcpt["dale_violations"] == 0 and len(cog_rcpt["weights_sha256"]) == 16
+
+        eng2 = MarcusFep7bInfiniteEngine(
+            ckpt_dir, art_dir, seed=42, load_existing=True, enable_aura_v3_genesis=True, enable_language_model=False
+        )
+        assert eng2.episodes_processed == 64
+        assert eng2.loaded_loop_state is not None
+        assert eng2.loaded_loop_state["buffer_flushes_completed"] == 2
+        assert float(np.max(np.abs(eng1.weights_e - eng2.weights_e))) == 0.0
+        assert float(np.max(np.abs(eng1.weights_i - eng2.weights_i))) == 0.0
+
+        # LM: entrenar shard 0 + consolidación desde buffer -> guardar -> recargar -> predicción bit-idéntica
+        lm1 = AuraFepCorticalLanguageModel(seed=42, enable_aura_v3_genesis=True)
+        lm1.run_prenatal_in_utero_byte_waves(n_bytes=2048)
+        lm1.train_cycle_shard(0, splitter, neural_samples=2048, calibrate_on_train_cal=False, total_cycles=8)
+        cons_st = lm1.consolidate_from_buffer(
+            {d: splitter.train_cal_buffers[d][:1024] for d in lm1.DOMAINS},
+            splitter,
+            neural_samples=2048,
+            recalibrate_friston=True,
+        )
+        assert cons_st["dale_violations"] == 0
+        lm_rcpt = lm1.save_learned_state(ckpt_dir, tag="latest", extra_meta={"buffer_flushes_completed": 2})
+        assert lm_rcpt["dale_violations"] == 0 and lm_rcpt["npz_size_bytes"] > 100_000
+
+        BoundedLearningBuffer.append_flush_ledger(ledger_path, {"flush_id": 1, "npz_sha256": lm_rcpt["npz_sha256"]})
+        with open(ledger_path, "r", encoding="utf-8") as lf:
+            rec = json.loads(lf.readline())
+        assert rec["npz_sha256"] == lm_rcpt["npz_sha256"]
+
+        sample_ho = splitter.held_out_buffers["markdown"][:512]
+        p1, _, _ = lm1.predict_domain_probs_256(sample_ho, domain="markdown", enable_myelination=True)
+
+        lm2 = AuraFepCorticalLanguageModel(seed=42, enable_aura_v3_genesis=True)
+        restored = lm2.load_learned_state(ckpt_dir, splitter=splitter, tag="latest")
+        assert restored is not None
+        assert lm2.cycles_trained == lm1.cycles_trained
+        assert lm2.ingested_shards == lm1.ingested_shards
+        assert lm2._total_dale_violations() == 0
+        p2, _, _ = lm2.predict_domain_probs_256(sample_ho, domain="markdown", enable_myelination=True)
+        max_diff = float(np.max(np.abs(p1 - p2)))
+        assert max_diff == 0.0, f"Diferencia al restaurar checkpoint LM: {max_diff}"
+
+    print(
+        f"[PASS] test_infinite_buffer_fill_save_and_resume "
+        f"(npz={lm_rcpt['npz_size_bytes']/(1024*1024):.1f}MB, save={lm_rcpt['save_ms']:.1f}ms, max_diff=0.0, dale_v=0)"
+    )
+
+
 if __name__ == "__main__":
     test_exact_information_theoretic_identities()
     test_strict_causality_no_lookahead()
     test_dale_law_and_microglia_pruning()
     test_bigram_baseline_proper()
     test_anti_leakage_splitter_and_frozen_eval()
+    test_infinite_buffer_fill_save_and_resume()
     test_audit_v3_pass_preserved()
-    print("\nALL 6/6 SCIENTIFIC INVARIANT TESTS PASSED!")
+    print("\nALL 7/7 SCIENTIFIC INVARIANT TESTS PASSED!")

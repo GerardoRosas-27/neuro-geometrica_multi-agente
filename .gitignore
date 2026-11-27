@@ -35,7 +35,15 @@ __pycache__/
 
 # Checkpoints de train en vivo (runtime)
 data/checkpoints/*.json
+data/checkpoints/*.bin
+data/checkpoints/*.npz
 data/checkpoints/datasets/
+data/stream_buffer/*.jsonl
+data/stream_buffer/*.jsonl.*
+data/stream_buffer/*.pid
+data/marcus_fep_multiagent_infinite.log
+data/marcus_fep_multiagent_infinite.log.*
+artifacts/marcus_neurosymbolic/infinite_buffer_*.json
 !data/checkpoints/.gitkeep
 !data/checkpoints/datasets/.gitkeep
 
