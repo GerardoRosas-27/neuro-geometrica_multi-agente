@@ -1,0 +1,34 @@
+{
+  "timestamp_utc": "2026-11-25T18:07:51.819938+00:00",
+  "seed": "0xF200",
+  "bit_exact_match": true,
+  "files": {
+    "metrics_t1.csv": {
+      "mode": "exact_all_non_timing_cols",
+      "rows": 6,
+      "match": true
+    },
+    "metrics_t2.csv": {
+      "mode": "byte_exact",
+      "orig_sha256": "70583e031c3a3befbaabb5579b26fe5e8aa14107d96a90f107cd5e76209327ad",
+      "replay_sha256": "70583e031c3a3befbaabb5579b26fe5e8aa14107d96a90f107cd5e76209327ad",
+      "match": true
+    },
+    "metrics_t3.csv": {
+      "mode": "exact_all_non_timing_cols",
+      "rows": 36,
+      "match": true
+    },
+    "metrics_t4.csv": {
+      "mode": "exact_all_non_timing_cols",
+      "rows": 36,
+      "match": true
+    },
+    "trace_wave_collision.csv": {
+      "mode": "byte_exact",
+      "orig_sha256": "14d003794873109036d98d5d0d95dfae331f11badb227bceafb18da6663a67d5",
+      "replay_sha256": "14d003794873109036d98d5d0d95dfae331f11badb227bceafb18da6663a67d5",
+      "match": true
+    }
+  }
+}

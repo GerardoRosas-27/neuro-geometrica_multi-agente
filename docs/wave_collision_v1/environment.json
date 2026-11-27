@@ -1,10 +1,10 @@
 {
-  "timestamp_utc": "2026-11-25T17:51:52.219334+00:00",
+  "timestamp_utc": "2026-11-25T18:06:21.579273+00:00",
   "os": "Linux-6.18.57-x86_64-with-glibc2.39",
   "python": "3.12.16",
   "cpu_count": 2,
   "rustc": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
   "cargo": "cargo 1.100.0 (3acc79c0c 2026-11-05)",
   "git_branch": "exp/wave-collision-autocal",
-  "git_head": "876eaa9a8bb1d073c2286bb1888282c6b3f1f018"
+  "git_head": "ebb9e35798ec086eaf9a8aa8bfdfa9e344dbfb76"
 }
