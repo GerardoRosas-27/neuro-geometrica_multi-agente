@@ -1,0 +1,12 @@
+   Compiling nervous_wave_b v0.1.0 (/home/antigravity/GerardoRosas-27/neuro-geometrica_multi-agente/nervous_wave_b)
+    Finished `release` profile [optimized] target(s) in 9.47s
+     Running unittests src/main.rs (nervous_wave_b/target/release/build/nervous_wave_b/499e7ddc9dcd8e29/out/nervous_wave_b-499e7ddc9dcd8e29)
+
+running 4 tests
+test tests::test_causality_and_kuramoto_incoherent_dispersion ... ok
+test tests::test_exact_analytical_bptt_gradients ... ok
+test tests::test_topology_counts_uniqueness_and_hops ... ok
+test tests::test_frozen_tissue_bit_exact_during_resonant_transfer ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s
+

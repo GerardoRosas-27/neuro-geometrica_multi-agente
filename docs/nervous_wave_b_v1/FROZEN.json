@@ -1,0 +1,21 @@
+{
+  "experiment": "nervous_wave_coherence_b",
+  "frozen_at_utc": "2026-11-27T05:27:51.729714+00:00",
+  "git_branch": "exp/nervous-wave-coherence-b",
+  "git_head_pre_freeze": "d2dc0d117518da1735ff302a35f99480233488fd",
+  "files": {
+    "docs/nervous_wave_b_v1/PLAN.md": "285a4544597a5d19af3a1c77227c64d2cb580c8878626f5ebbba83e7d450ff33",
+    "nervous_wave_b/Cargo.toml": "cde2a045266965e69cbbc81acd9bc078fbd0ef035bb107140a59a93de2775d60",
+    "nervous_wave_b/src/rng.rs": "6d8f2dfeb0a1b4cf8f6dae3701c7398d7f1aebfb1d091f519c72bcae4977e61b",
+    "nervous_wave_b/src/domains.rs": "4ea4f2fbdae82284c9a3aaea765ceacb53d78155f3ea350988070139eb7d1b4e",
+    "nervous_wave_b/src/topology.rs": "7e39b14002e118f6fd2dad3a37c72cfa27ca303059ca3435eaafcecab0c17bf0",
+    "nervous_wave_b/src/wave_net.rs": "a659518736cddc0a9b958bddc229c4c0040eafd6f700d2dbb54889f2b2f438af",
+    "nervous_wave_b/src/suites.rs": "3e8e5928fa950e3c7ac05f7bd16355c9666690c7a245bf2d5a5e4be1850a7985",
+    "nervous_wave_b/src/main.rs": "d54aecddeb451609b63740fcde6562db7c184841b8fcbae43ba95d929f9154be",
+    "scripts/nwb_run.py": "7ab3f2d31d832f65e6bd70f151b273cb8b00d1dab5c0fb2ee03665e565b9b2cf",
+    "scripts/nwb_summarize.py": "174e1743949b79e0ef0bf1ebeb1ba7ce57d31c81b56ff2a6281d582b59d72f51",
+    "scripts/nwb_freeze_audit.py": "6efd37abfc1710427eaacf8b46d6f7e90d660baf2b483ddbc010bde532fec66c",
+    "scripts/nwb_plots.py": "5b20d2aedb6b4861906279b088a78fa85bd1eabf608758845fc8fcb1c623e58c",
+    "nervous_wave_b/target/release/nervous_wave_b": "e259812023b89ca2a72d8ddcbe24b3d01a8a93e938e8d20f7547e8912c82401f"
+  }
+}
