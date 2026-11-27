@@ -22,5 +22,29 @@
     "n_seeds": 16,
     "wall_seconds": 375.101,
     "git_head": "e4fa47f94df2a0b6436e86c95ff22b0fd6be7cba"
+  },
+  "confirm": {
+    "timestamp_utc": "2026-11-27T04:19:28.753631+00:00",
+    "seeds": [
+      "0xA200",
+      "0xA201",
+      "0xA202",
+      "0xA203",
+      "0xA204",
+      "0xA205",
+      "0xA206",
+      "0xA207",
+      "0xA208",
+      "0xA209",
+      "0xA20A",
+      "0xA20B",
+      "0xA20C",
+      "0xA20D",
+      "0xA20E",
+      "0xA20F"
+    ],
+    "n_seeds": 16,
+    "wall_seconds": 209.291,
+    "git_head": "b7da38040eda77884ed7860b20bf88b31a67d62e"
   }
 }

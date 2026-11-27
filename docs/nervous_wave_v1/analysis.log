@@ -1,0 +1,60 @@
+=== PRUEBA A — SUMMARY CONFIRM (N=16 seeds) : 0/6 PASS ===
+  H_N1: FAIL
+  H_N2: FAIL
+  H_N3: FAIL
+  H_N4: FAIL
+  H_N5: FAIL
+  H_N6: FAIL
+
+--- P1 (Physical Wave Propagation) ---
+  nervous_system         | E= 256 E_hub0=0.0000 t_arr=2.00 hops=2.00 E_fin=0.616 locSNR=100.0% coinc=0.551
+  grid_local_lattice     | E= 256 E_hub0=0.0000 t_arr=3.17 hops=3.50 E_fin=0.969 locSNR=100.0% coinc=0.515
+  random_erdos_renyi     | E= 256 E_hub0=0.0000 t_arr=1.00 hops=2.84 E_fin=1.005 locSNR= 50.8% coinc=0.563
+  all_to_all_flat        | E=4096 E_hub0=0.0000 t_arr=1.00 hops=1.00 E_fin=1.073 locSNR= 50.1% coinc=0.559
+  nervous_no_delay       | E= 256 E_hub0=0.0000 t_arr=2.01 hops=2.00 E_fin=0.822 locSNR=100.0% coinc=0.586
+  nervous_no_inhibition  | E= 256 E_hub0=0.0000 t_arr=2.00 hops=2.00 E_fin=0.691 locSNR=100.0% coinc=0.552
+
+--- P2 (Relational Inference: Domain A & Domain C) ---
+  nervous_system         | E= 256 A_acc=64.46% rmse=0.6936 abd=25.96% 2hop=64.32% | C_acc=67.38% cons=51.47%
+  grid_local_lattice     | E= 256 A_acc=63.78% rmse=0.7077 abd=24.34% 2hop=63.39% | C_acc=69.95% cons=54.46%
+  random_erdos_renyi     | E= 256 A_acc=64.42% rmse=0.6902 abd=25.81% 2hop=63.80% | C_acc=68.73% cons=52.96%
+  all_to_all_flat        | E=4096 A_acc=66.15% rmse=0.6638 abd=29.09% 2hop=66.41% | C_acc=76.95% cons=65.33%
+  nervous_no_delay       | E= 256 A_acc=54.65% rmse=0.8391 abd=14.02% 2hop=54.74% | C_acc=67.45% cons=53.65%
+  nervous_no_inhibition  | E= 256 A_acc=64.76% rmse=0.6895 abd=26.79% 2hop=65.05% | C_acc=69.57% cons=56.02%
+
+--- P3 (Neurological Resilience: 15%/30% Axonal Lesions & sigma=0.50 Noise) ---
+  nervous_system         | clean=64.46% L15=42.67% (66.4%) L30=33.56% (52.3%) noise=49.68% (77.3%)
+  grid_local_lattice     | clean=63.78% L15=39.43% (62.1%) L30=30.39% (47.8%) noise=46.29% (72.7%)
+  random_erdos_renyi     | clean=64.42% L15=40.79% (63.4%) L30=31.66% (49.3%) noise=48.64% (75.5%)
+  all_to_all_flat        | clean=66.15% L15=51.63% (78.1%) L30=40.77% (61.8%) noise=50.66% (76.7%)
+  nervous_no_delay       | clean=54.65% L15=42.67% (78.6%) L30=36.94% (68.3%) noise=42.00% (77.2%)
+  nervous_no_inhibition  | clean=64.76% L15=42.74% (66.3%) L30=34.07% (52.8%) noise=49.72% (76.9%)
+
+--- P4 (Cross-Domain A -> C Frozen-Synapse Myelin Calibration Transfer, N=60) ---
+  nervous_transfer         | E= 256 acc=52.54% cons=31.20% abd=52.74%
+  grid_transfer            | E= 256 acc=53.40% cons=31.40% abd=50.76%
+  random_transfer          | E= 256 acc=51.99% cons=30.60% abd=53.15%
+  flat_transfer            | E=4096 acc=54.24% cons=32.45% abd=54.24%
+  ctrl_permuted_synapses   | E= 256 acc=49.59% cons=29.16% abd=50.39%
+
+--- Key Paired Diffs (IC 95%) ---
+  p1_coinc_nervous_vs_grid              : +0.04 [+0.03, +0.05] (16/16 wins)
+  p1_coinc_nervous_vs_random            : -0.01 [-0.02, -0.00] (4/16 wins)
+  p2_acc_a_vs_grid_local_lattice        : +0.68% [-0.77, +2.13] (9/16 wins)
+  p2_rmse_a_vs_grid_local_lattice       : -0.01 [-0.03, +0.00] (5/16 wins)
+  p2_acc_a_vs_random_erdos_renyi        : +0.04% [-0.98, +1.00] (8/16 wins)
+  p2_rmse_a_vs_random_erdos_renyi       : +0.00 [-0.01, +0.02] (11/16 wins)
+  p2_acc_a_vs_all_to_all_flat           : -1.69% [-2.94, -0.32] (3/16 wins)
+  p2_rmse_a_vs_all_to_all_flat          : +0.03 [+0.01, +0.05] (14/16 wins)
+  p2_acc_c_vs_all_to_all_flat           : -9.57% [-16.30, -2.57] (2/16 wins)
+  p2_acc_a_vs_nervous_no_delay          : +9.81% [+6.74, +13.03] (16/16 wins)
+  p2_abd_a_vs_nervous_no_delay          : +11.94% [+9.58, +14.46] (16/16 wins)
+  p3_noise_vs_nervous_no_inhibition     : -0.04% [-2.60, +2.65] (7/16 wins)
+  p3_noise_vs_grid_local_lattice        : +3.39% [+0.09, +6.59] (11/16 wins)
+  p3_noise_vs_all_to_all_flat           : -0.98% [-3.50, +1.73] (6/16 wins)
+  p3_l15_vs_grid_local_lattice          : +3.24% [+1.30, +5.11] (12/16 wins)
+  p3_l15_vs_random_erdos_renyi          : +1.88% [-0.16, +3.80] (11/16 wins)
+  p3_l30_vs_random_erdos_renyi          : +1.90% [+0.29, +3.53] (10/16 wins)
+  p4_acc_vs_grid_transfer               : -0.86% [-3.44, +1.87] (5/16 wins)
+  p4_acc_vs_random_transfer             : +0.55% [-2.30, +3.30] (7/16 wins)
+  p4_acc_vs_ctrl_permuted_synapses      : +2.95% [+0.23, +5.82] (8/16 wins)

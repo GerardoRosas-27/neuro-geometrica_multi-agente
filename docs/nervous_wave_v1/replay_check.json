@@ -1,0 +1,35 @@
+{
+  "timestamp_utc": "2026-11-27T04:20:19.802238+00:00",
+  "seed": "0xA200",
+  "bit_exact_match": true,
+  "files": {
+    "metrics_p1_physics.csv": {
+      "mode": "byte_exact",
+      "orig_sha256": "daea4199c3b653a334cbb4545c8eef72a63dfbd9b3e3ff17c29d495004c52996",
+      "replay_sha256": "daea4199c3b653a334cbb4545c8eef72a63dfbd9b3e3ff17c29d495004c52996",
+      "match": true
+    },
+    "metrics_p2_inference.csv": {
+      "mode": "exact_all_non_timing_cols",
+      "rows": 6,
+      "match": true
+    },
+    "metrics_p3_resilience.csv": {
+      "mode": "byte_exact",
+      "orig_sha256": "df9ceada93498a2b1bcee14bed5ce44d857e8598d4cb6e77fa8d2b5e9ae12883",
+      "replay_sha256": "df9ceada93498a2b1bcee14bed5ce44d857e8598d4cb6e77fa8d2b5e9ae12883",
+      "match": true
+    },
+    "metrics_p4_transfer.csv": {
+      "mode": "exact_all_non_timing_cols",
+      "rows": 5,
+      "match": true
+    },
+    "trace_nervous_wave.csv": {
+      "mode": "byte_exact",
+      "orig_sha256": "53692f5b96b129f8bebf759f7ef73acb0848fb12cb2a8f2f20ebc193bc0ff365",
+      "replay_sha256": "53692f5b96b129f8bebf759f7ef73acb0848fb12cb2a8f2f20ebc193bc0ff365",
+      "match": true
+    }
+  }
+}
