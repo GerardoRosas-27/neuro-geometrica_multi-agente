@@ -1,0 +1,12 @@
+   Compiling nervous_wave v0.1.0 (/home/antigravity/GerardoRosas-27/neuro-geometrica_multi-agente/nervous_wave)
+    Finished `release` profile [optimized] target(s) in 11.07s
+     Running unittests src/main.rs (nervous_wave/target/release/build/nervous_wave/a57a8ab9f70d6694/out/nervous_wave-a57a8ab9f70d6694)
+
+running 4 tests
+test tests::test_bit_exact_frozen_synapses_during_myelin_transfer ... ok
+test tests::test_exact_topology_edge_counts_and_hop_distances ... ok
+test tests::test_physical_wavefront_causality_and_energy_bounds ... ok
+test tests::test_bptt_analytical_gradients_all_topologies_and_myelin ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+

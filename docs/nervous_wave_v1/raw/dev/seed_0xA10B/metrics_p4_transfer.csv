@@ -1,0 +1,6 @@
+seed,arm,n_edges,myelin_knobs,checksum_ok,cls_acc,alg_consistency,abd_top1,train_ms
+0xA10B,nervous_transfer,256,64,1,0.528125,0.259257,0.542857,673.54
+0xA10B,grid_transfer,256,64,1,0.531250,0.323640,0.500000,688.06
+0xA10B,random_transfer,256,64,1,0.496875,0.284634,0.542857,666.19
+0xA10B,flat_transfer,4096,64,1,0.528125,0.371918,0.571429,8539.65
+0xA10B,ctrl_permuted_synapses,256,64,1,0.512500,0.343504,0.485714,675.69

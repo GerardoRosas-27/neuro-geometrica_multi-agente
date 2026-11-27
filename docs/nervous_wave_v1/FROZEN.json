@@ -1,0 +1,20 @@
+{
+  "timestamp_utc": "2026-11-27T04:12:16.757314+00:00",
+  "branch": "exp/nervous-wave-topology",
+  "git_head_pre_freeze": "e4fa47f94df2a0b6436e86c95ff22b0fd6be7cba",
+  "files": {
+    "docs/nervous_wave_v1/PLAN.md": "1e5cc06e42e064b2dfd64dcf26d895f87cc669d4ecc4641a58f262ecf5942400",
+    "nervous_wave/Cargo.toml": "533cd335ef623c5adf9a9d5caca9a5be5fda6771714e58e49dc9a93193016504",
+    "nervous_wave/src/main.rs": "4d8ba826e8d1773fb314bd58c82a19fd1429755b8bf98d8b911f99a35383725e",
+    "nervous_wave/src/rng.rs": "14016fc7da34d783fd252288fdd11b416c472c01042ced051b70433a07ba8236",
+    "nervous_wave/src/domains.rs": "1f095a1327feb05b96727435470282e5fe4581d849ca61e13b7a787524c680a3",
+    "nervous_wave/src/topology.rs": "3399f554a0c5f056ab23a499415d0905bbc61856f0f01c141b22c92a52cf62e0",
+    "nervous_wave/src/wave_net.rs": "57496313c5f9a65901c4883b434d58220cb09f05f202e94cb4179e1ac96be5fd",
+    "nervous_wave/src/suites.rs": "fa8feda880e6013072e62deba0b0c25bd89e2718ad619379f18e131e8a16939d",
+    "nervous_wave/scripts/nw_run.py": "b65e43e02f88c2598d1ed9cc9834c84e423ba9a5fda9eeaa1d0c4e543a63ae1f",
+    "nervous_wave/scripts/nw_summarize.py": "fff5c4ca4fe497d3201d7c97c802dc5f082e89b007ab0461fcb42b2101e5e4f1",
+    "nervous_wave/scripts/nw_freeze_audit.py": "3e787f54dd67a806e2c25ab059a012dd26d3cf4877fbca7f2b454f41571f7491",
+    "nervous_wave/scripts/nw_plots.py": "800e448e7f737f06cd3e4494444a89f3fadf5e5be1d5772111dd7396ae7818ee",
+    "nervous_wave/target/release/nervous_wave": "e21049fd75b8bc779ec8742b98a41fc7660fbc1f2339613811e52dd2719832ca"
+  }
+}

@@ -14,12 +14,12 @@ Todos los brazos topológicos ejecutan **exactamente la misma ecuación de propa
    - Receptores del Pasado \(i \in \{0..7\}\): \(\psi_i(0) = \exp\!\bigl(\mathrm{i}(\mathbf{w}_i^{\text{in}}\cdot \mathbf{u} + \phi_i^{\text{in}})\bigr)\).
    - Receptores del Futuro \(i \in \{8..15\}\): \(\psi_i(0) = \exp\!\bigl(\mathrm{i}(\mathbf{w}_i^{\text{in}}\cdot \mathbf{v} + \phi_i^{\text{in}})\bigr)\).
    - Interneuronas ganglionares (\(16..47\)) y hubs asociativos (\(48..63\)): \(\psi_i(0) = 0 + 0\,\mathrm{i}\).
-2. **Propagación axonal con velocidad/retardo de fase y superposición compleja (\(t = 0..7\)):**
-   $$I_i(t) = \sum_{e=(j\to i)\in\mathcal{E}} g_e\, e^{\mathrm{i}\theta_e}\, \psi_j(t), \qquad g_e = \frac{\text{sign}_e\cdot \text{softplus}(\alpha_e)}{\sqrt{\max(1, d_{\text{in}}(i))}}$$
-   donde \(\text{sign}_e = -1\) en interneuronas inhibitorias (inhibición lateral en contrafase \(\pi\)) y \(\text{sign}_e = +1\) en conexiones excitatorias y tractos mielinizados; \(\theta_e \in \mathbb{R}\) codifica el retardo de fase axonal \(\omega\tau_e\) (en `nervous_no_delay`, \(\theta_e \equiv 0\) y \(\omega_i \equiv 0\)).
-3. **Actualización resonante somática con saturación preservadora de fase (energía acotada):**
-   $$s_i(t) = \gamma_i\, e^{\mathrm{i}\omega_i}\,\psi_i(t) + I_i(t) + \eta_i(t), \qquad \psi_i(t+1) = \frac{s_i(t)}{\sqrt{1 + \beta_{\text{sat}}\, |s_i(t)|^2}}$$
-   con \(\gamma_i = \sigma(\tilde{\gamma}_i)\in(0,1)\), \(\beta_{\text{sat}} = 0.50\), e inyección sensorial sostenida suave \(\eta_i(t) = 0.35\,\psi_i(0)\) en receptores durante \(t \in \{0, 1\}\).
+2. **Propagación axonal con velocidad/retardo de fase, inhibición divisiva (*shunting*) y superposición compleja (\(t = 0..7\)):**
+   $$I_i(t) = \sum_{e=(j\to i),\,\text{sign}_e>0} g_e\, e^{\mathrm{i}\theta_e}\, \psi_j(t), \qquad E_i^{\text{inh}}(t) = \sum_{e=(j\to i),\,\text{sign}_e<0} |g_e|\, |\psi_j(t)|^2$$
+   donde \(g_e = \text{sign}_e\cdot \text{softplus}(\alpha_e)/\sqrt{\max(1, d_{\text{in}}(i))}\); las interneuronas inhibitorias (\(\text{sign}_e = -1\)) ejercen **inhibición lateral divisiva (*shunting* GABAérgico)** sobre la energía ganglionar local sin destruir la fase coherente, y \(\theta_e \in \mathbb{R}\) codifica el retardo de fase axonal (en `nervous_no_delay`, \(\theta_e \equiv 0\) y \(\omega_i \equiv 0\)).
+3. **Actualización resonante somática con saturación preservadora de fase e inhibición divisiva (energía acotada):**
+   $$s_i(t) = \gamma_i\, e^{\mathrm{i}\omega_i}\,\psi_i(t) + I_i(t) + \eta_i(t), \qquad \psi_i(t+1) = \frac{s_i(t)}{\sqrt{1 + \beta_{\text{sat}}\, |s_i(t)|^2 + \lambda_{\text{shunt}}\, E_i^{\text{inh}}(t)}}$$
+   con \(\gamma_i = \sigma(\tilde{\gamma}_i)\in(0,1)\), \(\beta_{\text{sat}} = 0.50\), \(\lambda_{\text{shunt}} = 0.22\), e inyección sensorial sostenida suave \(\eta_i(t) = 0.35\,\psi_i(0)\) en receptores durante \(t \in \{0, 1\}\).
 4. **Lectura interferométrica en los `16` hubs asociativos convergentes (\(h \in \{48..63\}\)):**
    Promediada en la ventana de colisión estacionaria \(t \in \{6, 7, 8\}\), cada hub produce 2 observables físicos —cuadratura real \(\operatorname{Re}(\psi_h)\) e intensidad interferométrica centrada \(|\psi_h|^2 - 0.5\) (que contiene el término cruzado de colisión \(2\operatorname{Re}(\psi_h^{\text{pasado}}\psi_h^{\text{futuro}*})\))— formando \(\mathbf{z}_{\text{rel}} \in \mathbb{R}^{32}\). Retropropagación exacta en el tiempo (BPTT analítico verificado a `< 1e-5` por diferencias finitas).
 
