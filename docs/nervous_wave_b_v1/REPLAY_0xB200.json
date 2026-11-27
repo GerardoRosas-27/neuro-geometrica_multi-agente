@@ -1,0 +1,32 @@
+{
+  "seed": "0xB200",
+  "bit_exact_match": true,
+  "files_matched": 5,
+  "files_total": 5,
+  "per_file": {
+    "b1_physics.csv": {
+      "match": true,
+      "orig_sha256": "7af33c6fd9bc69e166605ee18e199a6eaa19a2b82f19c848f021d3d06f520454",
+      "replay_sha256": "7af33c6fd9bc69e166605ee18e199a6eaa19a2b82f19c848f021d3d06f520454"
+    },
+    "b2_inference.csv": {
+      "match": true,
+      "orig_sha256": "1ac5bc99805c58d0d97d56cd854904a99d3ba460587bd18d1be06a0f89e0f3a6",
+      "replay_sha256": "1ac5bc99805c58d0d97d56cd854904a99d3ba460587bd18d1be06a0f89e0f3a6"
+    },
+    "b3_resilience.csv": {
+      "match": true,
+      "orig_sha256": "a3d632ba691b902c4e410112378342c08d703602d917d23b6edabd5c80d8a4a6",
+      "replay_sha256": "a3d632ba691b902c4e410112378342c08d703602d917d23b6edabd5c80d8a4a6"
+    },
+    "b4_transfer.csv": {
+      "match": true,
+      "orig_sha256": "1167746206e48956e08ab0dfa968112716acbffc547d8b0fa518eade6025b6bf",
+      "replay_sha256": "1167746206e48956e08ab0dfa968112716acbffc547d8b0fa518eade6025b6bf"
+    },
+    "seed_meta.json": {
+      "match": true,
+      "note": "semantic exact (excluding wall-clock elapsed_ms)"
+    }
+  }
+}

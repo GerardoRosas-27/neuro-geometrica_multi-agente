@@ -1,0 +1,146 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 580" width="900" height="580" font-family="system-ui, -apple-system, sans-serif">
+  <rect width="900" height="580" fill="#ffffff"/>
+  <text x="24" y="30" font-size="16" font-weight="700" fill="#0f172a">Prueba B — Suite B2: Relational Inference & Sparse 4x Parity</text>
+  <text x="24" y="48" font-size="11.5" fill="#475569">Blind CONFIRM (N=16 seeds) | N=128, E=1,024 sparse arms vs E=4,096 dense control</text>
+  <rect x="20" y="64" width="420" height="240" fill="#f8fafc" stroke="#e2e8f0" rx="6"/>
+  <text x="30" y="82" font-size="12" font-weight="700" fill="#1e293b">Domain A Relational Accuracy (%)</text>
+  <line x1="64" y1="260.0" x2="426" y2="260.0" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="58" y="263.5" font-size="9.5" fill="#64748b" text-anchor="end">40%</text>
+  <line x1="64" y1="218.0" x2="426" y2="218.0" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="58" y="221.5" font-size="9.5" fill="#64748b" text-anchor="end">50%</text>
+  <line x1="64" y1="176.0" x2="426" y2="176.0" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="58" y="179.5" font-size="9.5" fill="#64748b" text-anchor="end">60%</text>
+  <line x1="64" y1="134.0" x2="426" y2="134.0" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="58" y="137.5" font-size="9.5" fill="#64748b" text-anchor="end">70%</text>
+  <line x1="64" y1="92.0" x2="426" y2="92.0" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="58" y="95.5" font-size="9.5" fill="#64748b" text-anchor="end">80%</text>
+  <rect x="75.5" y="149.3" width="37.4" height="110.7" fill="#0f766e" rx="3" opacity="0.9"/>
+  <line x1="94.2" y1="135.7" x2="94.2" y2="162.9" stroke="#0f172a" stroke-width="1.2"/>
+  <text x="94.2" y="132.7" font-size="9" font-weight="600" fill="#0f172a" text-anchor="middle">66.4</text>
+  <text x="94.2" y="273.0" font-size="8.5" fill="#334155" text-anchor="middle" transform="rotate(-18 94.2 273.0)">Nervous B (1024)</text>
+  <rect x="135.8" y="150.7" width="37.4" height="109.3" fill="#0284c7" rx="3" opacity="0.9"/>
+  <line x1="154.5" y1="138.2" x2="154.5" y2="163.3" stroke="#0f172a" stroke-width="1.2"/>
+  <text x="154.5" y="135.2" font-size="9" font-weight="600" fill="#0f172a" text-anchor="middle">66.0</text>
+  <text x="154.5" y="273.0" font-size="8.5" fill="#334155" text-anchor="middle" transform="rotate(-18 154.5 273.0)">No Coh Gate (1024)</text>
+  <rect x="196.1" y="191.8" width="37.4" height="68.2" fill="#64748b" rx="3" opacity="0.9"/>
+  <line x1="214.8" y1="170.0" x2="214.8" y2="213.5" stroke="#0f172a" stroke-width="1.2"/>
+  <text x="214.8" y="167.0" font-size="9" font-weight="600" fill="#0f172a" text-anchor="middle">56.2</text>
+  <text x="214.8" y="273.0" font-size="8.5" fill="#334155" text-anchor="middle" transform="rotate(-18 214.8 273.0)">No Phase (1024)</text>
+  <rect x="256.5" y="148.3" width="37.4" height="111.7" fill="#d97706" rx="3" opacity="0.9"/>
+  <line x1="275.2" y1="134.3" x2="275.2" y2="162.4" stroke="#0f172a" stroke-width="1.2"/>
+  <text x="275.2" y="131.3" font-size="9" font-weight="600" fill="#0f172a" text-anchor="middle">66.6</text>
+  <text x="275.2" y="273.0" font-size="8.5" fill="#334155" text-anchor="middle" transform="rotate(-18 275.2 273.0)">Grid Local (1024)</text>
+  <rect x="316.8" y="147.2" width="37.4" height="112.8" fill="#9333ea" rx="3" opacity="0.9"/>
+  <line x1="335.5" y1="131.0" x2="335.5" y2="163.3" stroke="#0f172a" stroke-width="1.2"/>
+  <text x="335.5" y="128.0" font-size="9" font-weight="600" fill="#0f172a" text-anchor="middle">66.9</text>
+  <text x="335.5" y="273.0" font-size="8.5" fill="#334155" text-anchor="middle" transform="rotate(-18 335.5 273.0)">Random ER (1024)</text>
+  <rect x="377.1" y="153.4" width="37.4" height="106.6" fill="#dc2626" rx="3" opacity="0.9"/>
+  <line x1="395.8" y1="136.9" x2="395.8" y2="169.9" stroke="#0f172a" stroke-width="1.2"/>
+  <text x="395.8" y="133.9" font-size="9" font-weight="600" fill="#0f172a" text-anchor="middle">65.4</text>
+  <text x="395.8" y="273.0" font-size="8.5" fill="#334155" text-anchor="middle" transform="rotate(-18 395.8 273.0)">Flat Dense (4096)</text><rect x="460" y="64" width="420" height="240" fill="#f8fafc" stroke="#e2e8f0" rx="6"/>
+  <text x="470" y="82" font-size="12" font-weight="700" fill="#1e293b">Domain A Abduction Top-1 (%)</text>
+  <line x1="504" y1="260.0" x2="866" y2="260.0" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="498" y="263.5" font-size="9.5" fill="#64748b" text-anchor="end">0%</text>
+  <line x1="504" y1="218.0" x2="866" y2="218.0" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="498" y="221.5" font-size="9.5" fill="#64748b" text-anchor="end">14%</text>
+  <line x1="504" y1="176.0" x2="866" y2="176.0" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="498" y="179.5" font-size="9.5" fill="#64748b" text-anchor="end">28%</text>
+  <line x1="504" y1="134.0" x2="866" y2="134.0" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="498" y="137.5" font-size="9.5" fill="#64748b" text-anchor="end">41%</text>
+  <line x1="504" y1="92.0" x2="866" y2="92.0" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="498" y="95.5" font-size="9.5" fill="#64748b" text-anchor="end">55%</text>
+  <rect x="515.5" y="159.1" width="37.4" height="100.9" fill="#0f766e" rx="3" opacity="0.9"/>
+  <line x1="534.2" y1="137.3" x2="534.2" y2="181.0" stroke="#0f172a" stroke-width="1.2"/>
+  <text x="534.2" y="134.3" font-size="9" font-weight="600" fill="#0f172a" text-anchor="middle">33.0</text>
+  <text x="534.2" y="273.0" font-size="8.5" fill="#334155" text-anchor="middle" transform="rotate(-18 534.2 273.0)">Nervous B (1024)</text>
+  <rect x="575.8" y="174.9" width="37.4" height="85.1" fill="#0284c7" rx="3" opacity="0.9"/>
+  <line x1="594.5" y1="155.7" x2="594.5" y2="194.1" stroke="#0f172a" stroke-width="1.2"/>
+  <text x="594.5" y="152.7" font-size="9" font-weight="600" fill="#0f172a" text-anchor="middle">27.9</text>
+  <text x="594.5" y="273.0" font-size="8.5" fill="#334155" text-anchor="middle" transform="rotate(-18 594.5 273.0)">No Coh Gate (1024)</text>
+  <rect x="636.1" y="204.8" width="37.4" height="55.2" fill="#64748b" rx="3" opacity="0.9"/>
+  <line x1="654.8" y1="190.4" x2="654.8" y2="219.2" stroke="#0f172a" stroke-width="1.2"/>
+  <text x="654.8" y="187.4" font-size="9" font-weight="600" fill="#0f172a" text-anchor="middle">18.1</text>
+  <text x="654.8" y="273.0" font-size="8.5" fill="#334155" text-anchor="middle" transform="rotate(-18 654.8 273.0)">No Phase (1024)</text>
+  <rect x="696.5" y="164.8" width="37.4" height="95.2" fill="#d97706" rx="3" opacity="0.9"/>
+  <line x1="715.2" y1="148.4" x2="715.2" y2="181.1" stroke="#0f172a" stroke-width="1.2"/>
+  <text x="715.2" y="145.4" font-size="9" font-weight="600" fill="#0f172a" text-anchor="middle">31.2</text>
+  <text x="715.2" y="273.0" font-size="8.5" fill="#334155" text-anchor="middle" transform="rotate(-18 715.2 273.0)">Grid Local (1024)</text>
+  <rect x="756.8" y="158.9" width="37.4" height="101.1" fill="#9333ea" rx="3" opacity="0.9"/>
+  <line x1="775.5" y1="139.9" x2="775.5" y2="177.9" stroke="#0f172a" stroke-width="1.2"/>
+  <text x="775.5" y="136.9" font-size="9" font-weight="600" fill="#0f172a" text-anchor="middle">33.1</text>
+  <text x="775.5" y="273.0" font-size="8.5" fill="#334155" text-anchor="middle" transform="rotate(-18 775.5 273.0)">Random ER (1024)</text>
+  <rect x="817.1" y="158.4" width="37.4" height="101.6" fill="#dc2626" rx="3" opacity="0.9"/>
+  <line x1="835.8" y1="136.8" x2="835.8" y2="180.0" stroke="#0f172a" stroke-width="1.2"/>
+  <text x="835.8" y="133.8" font-size="9" font-weight="600" fill="#0f172a" text-anchor="middle">33.3</text>
+  <text x="835.8" y="273.0" font-size="8.5" fill="#334155" text-anchor="middle" transform="rotate(-18 835.8 273.0)">Flat Dense (4096)</text><rect x="20" y="320" width="420" height="240" fill="#f8fafc" stroke="#e2e8f0" rx="6"/>
+  <text x="30" y="338" font-size="12" font-weight="700" fill="#1e293b">Domain C Discrete Graph Accuracy (%)</text>
+  <line x1="64" y1="516.0" x2="426" y2="516.0" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="58" y="519.5" font-size="9.5" fill="#64748b" text-anchor="end">50%</text>
+  <line x1="64" y1="474.0" x2="426" y2="474.0" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="58" y="477.5" font-size="9.5" fill="#64748b" text-anchor="end">60%</text>
+  <line x1="64" y1="432.0" x2="426" y2="432.0" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="58" y="435.5" font-size="9.5" fill="#64748b" text-anchor="end">70%</text>
+  <line x1="64" y1="390.0" x2="426" y2="390.0" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="58" y="393.5" font-size="9.5" fill="#64748b" text-anchor="end">80%</text>
+  <line x1="64" y1="348.0" x2="426" y2="348.0" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="58" y="351.5" font-size="9.5" fill="#64748b" text-anchor="end">90%</text>
+  <rect x="75.5" y="501.1" width="37.4" height="14.9" fill="#0f766e" rx="3" opacity="0.9"/>
+  <line x1="94.2" y1="478.7" x2="94.2" y2="516.0" stroke="#0f172a" stroke-width="1.2"/>
+  <text x="94.2" y="475.7" font-size="9" font-weight="600" fill="#0f172a" text-anchor="middle">53.6</text>
+  <text x="94.2" y="529.0" font-size="8.5" fill="#334155" text-anchor="middle" transform="rotate(-18 94.2 529.0)">Nervous B (1024)</text>
+  <rect x="135.8" y="501.3" width="37.4" height="14.7" fill="#0284c7" rx="3" opacity="0.9"/>
+  <line x1="154.5" y1="485.9" x2="154.5" y2="516.0" stroke="#0f172a" stroke-width="1.2"/>
+  <text x="154.5" y="482.9" font-size="9" font-weight="600" fill="#0f172a" text-anchor="middle">53.5</text>
+  <text x="154.5" y="529.0" font-size="8.5" fill="#334155" text-anchor="middle" transform="rotate(-18 154.5 529.0)">No Coh Gate (1024)</text>
+  <rect x="196.1" y="516.0" width="37.4" height="0.0" fill="#64748b" rx="3" opacity="0.9"/>
+  <line x1="214.8" y1="525.6" x2="214.8" y2="516.0" stroke="#0f172a" stroke-width="1.2"/>
+  <text x="214.8" y="522.6" font-size="9" font-weight="600" fill="#0f172a" text-anchor="middle">41.3</text>
+  <text x="214.8" y="529.0" font-size="8.5" fill="#334155" text-anchor="middle" transform="rotate(-18 214.8 529.0)">No Phase (1024)</text>
+  <rect x="256.5" y="504.5" width="37.4" height="11.5" fill="#d97706" rx="3" opacity="0.9"/>
+  <line x1="275.2" y1="483.4" x2="275.2" y2="516.0" stroke="#0f172a" stroke-width="1.2"/>
+  <text x="275.2" y="480.4" font-size="9" font-weight="600" fill="#0f172a" text-anchor="middle">52.7</text>
+  <text x="275.2" y="529.0" font-size="8.5" fill="#334155" text-anchor="middle" transform="rotate(-18 275.2 529.0)">Grid Local (1024)</text>
+  <rect x="316.8" y="498.5" width="37.4" height="17.5" fill="#9333ea" rx="3" opacity="0.9"/>
+  <line x1="335.5" y1="479.3" x2="335.5" y2="516.0" stroke="#0f172a" stroke-width="1.2"/>
+  <text x="335.5" y="476.3" font-size="9" font-weight="600" fill="#0f172a" text-anchor="middle">54.2</text>
+  <text x="335.5" y="529.0" font-size="8.5" fill="#334155" text-anchor="middle" transform="rotate(-18 335.5 529.0)">Random ER (1024)</text>
+  <rect x="377.1" y="516.0" width="37.4" height="0.0" fill="#dc2626" rx="3" opacity="0.9"/>
+  <line x1="395.8" y1="500.7" x2="395.8" y2="516.0" stroke="#0f172a" stroke-width="1.2"/>
+  <text x="395.8" y="497.7" font-size="9" font-weight="600" fill="#0f172a" text-anchor="middle">49.6</text>
+  <text x="395.8" y="529.0" font-size="8.5" fill="#334155" text-anchor="middle" transform="rotate(-18 395.8 529.0)">Flat Dense (4096)</text><rect x="460" y="320" width="420" height="240" fill="#f8fafc" stroke="#e2e8f0" rx="6"/>
+  <text x="470" y="338" font-size="12" font-weight="700" fill="#1e293b">Domain C Algebraic Consistency (%)</text>
+  <line x1="504" y1="516.0" x2="866" y2="516.0" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="498" y="519.5" font-size="9.5" fill="#64748b" text-anchor="end">30%</text>
+  <line x1="504" y1="474.0" x2="866" y2="474.0" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="498" y="477.5" font-size="9.5" fill="#64748b" text-anchor="end">44%</text>
+  <line x1="504" y1="432.0" x2="866" y2="432.0" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="498" y="435.5" font-size="9.5" fill="#64748b" text-anchor="end">58%</text>
+  <line x1="504" y1="390.0" x2="866" y2="390.0" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="498" y="393.5" font-size="9.5" fill="#64748b" text-anchor="end">71%</text>
+  <line x1="504" y1="348.0" x2="866" y2="348.0" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="498" y="351.5" font-size="9.5" fill="#64748b" text-anchor="end">85%</text>
+  <rect x="515.5" y="513.0" width="37.4" height="3.0" fill="#0f766e" rx="3" opacity="0.9"/>
+  <line x1="534.2" y1="491.6" x2="534.2" y2="516.0" stroke="#0f172a" stroke-width="1.2"/>
+  <text x="534.2" y="488.6" font-size="9" font-weight="600" fill="#0f172a" text-anchor="middle">31.0</text>
+  <text x="534.2" y="529.0" font-size="8.5" fill="#334155" text-anchor="middle" transform="rotate(-18 534.2 529.0)">Nervous B (1024)</text>
+  <rect x="575.8" y="511.8" width="37.4" height="4.2" fill="#0284c7" rx="3" opacity="0.9"/>
+  <line x1="594.5" y1="495.3" x2="594.5" y2="516.0" stroke="#0f172a" stroke-width="1.2"/>
+  <text x="594.5" y="492.3" font-size="9" font-weight="600" fill="#0f172a" text-anchor="middle">31.4</text>
+  <text x="594.5" y="529.0" font-size="8.5" fill="#334155" text-anchor="middle" transform="rotate(-18 594.5 529.0)">No Coh Gate (1024)</text>
+  <rect x="636.1" y="516.0" width="37.4" height="0.0" fill="#64748b" rx="3" opacity="0.9"/>
+  <line x1="654.8" y1="516.4" x2="654.8" y2="516.0" stroke="#0f172a" stroke-width="1.2"/>
+  <text x="654.8" y="513.4" font-size="9" font-weight="600" fill="#0f172a" text-anchor="middle">22.6</text>
+  <text x="654.8" y="529.0" font-size="8.5" fill="#334155" text-anchor="middle" transform="rotate(-18 654.8 529.0)">No Phase (1024)</text>
+  <rect x="696.5" y="516.0" width="37.4" height="0.0" fill="#d97706" rx="3" opacity="0.9"/>
+  <line x1="715.2" y1="499.6" x2="715.2" y2="516.0" stroke="#0f172a" stroke-width="1.2"/>
+  <text x="715.2" y="496.6" font-size="9" font-weight="600" fill="#0f172a" text-anchor="middle">29.2</text>
+  <text x="715.2" y="529.0" font-size="8.5" fill="#334155" text-anchor="middle" transform="rotate(-18 715.2 529.0)">Grid Local (1024)</text>
+  <rect x="756.8" y="508.3" width="37.4" height="7.7" fill="#9333ea" rx="3" opacity="0.9"/>
+  <line x1="775.5" y1="485.0" x2="775.5" y2="516.0" stroke="#0f172a" stroke-width="1.2"/>
+  <text x="775.5" y="482.0" font-size="9" font-weight="600" fill="#0f172a" text-anchor="middle">32.5</text>
+  <text x="775.5" y="529.0" font-size="8.5" fill="#334155" text-anchor="middle" transform="rotate(-18 775.5 529.0)">Random ER (1024)</text>
+  <rect x="817.1" y="516.0" width="37.4" height="0.0" fill="#dc2626" rx="3" opacity="0.9"/>
+  <line x1="835.8" y1="511.6" x2="835.8" y2="516.0" stroke="#0f172a" stroke-width="1.2"/>
+  <text x="835.8" y="508.6" font-size="9" font-weight="600" fill="#0f172a" text-anchor="middle">26.2</text>
+  <text x="835.8" y="529.0" font-size="8.5" fill="#334155" text-anchor="middle" transform="rotate(-18 835.8 529.0)">Flat Dense (4096)</text>
+</svg>

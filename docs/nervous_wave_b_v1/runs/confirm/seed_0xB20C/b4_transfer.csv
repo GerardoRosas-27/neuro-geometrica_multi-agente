@@ -1,0 +1,11 @@
+seed,arm,target_domain,n_train,n_nodes,n_edges,frozen_ok,acc,rmse,consistency,hub_r_coh
+45580,nervous_transfer,domain_b_oscillators,48,128,1024,1,0.585271,1.066378,0.000000,0.408475
+45580,nervous_transfer,domain_c_graph,60,128,1024,1,0.550000,0.000000,0.299042,0.412736
+45580,grid_transfer,domain_b_oscillators,48,128,1024,1,0.631783,0.959751,0.000000,0.468385
+45580,grid_transfer,domain_c_graph,60,128,1024,1,0.490625,0.000000,0.235619,0.466623
+45580,random_transfer,domain_b_oscillators,48,128,1024,1,0.624031,0.940988,0.000000,0.411273
+45580,random_transfer,domain_c_graph,60,128,1024,1,0.546875,0.000000,0.298693,0.411942
+45580,flat_transfer,domain_b_oscillators,48,64,4096,1,0.612403,0.864347,0.000000,0.267596
+45580,flat_transfer,domain_c_graph,60,64,4096,1,0.521875,0.000000,0.273063,0.262024
+45580,ctrl_permuted_synapses,domain_b_oscillators,48,128,1024,1,0.565891,1.035812,0.000000,0.367945
+45580,ctrl_permuted_synapses,domain_c_graph,60,128,1024,1,0.500000,0.000000,0.243364,0.361013
